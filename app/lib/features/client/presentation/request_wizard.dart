@@ -151,8 +151,10 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         addressLine: _currentAddress,
         reference: _reference.isEmpty ? null : _reference,
         scheduledFor: _emergency ? null : _scheduled,
-        latitude: _override?.latitude ?? widget.profile.latitude,
-        longitude: _override?.longitude ?? widget.profile.longitude,
+        // Se o cliente escolheu OUTRO endereço, nunca herda as coordenadas do perfil (seriam de outra casa):
+        // sem coordenadas, o servidor geocodifica (Nominatim) e o cliente confirma o pino no mapa.
+        latitude: _override != null ? _override!.latitude : widget.profile.latitude,
+        longitude: _override != null ? _override!.longitude : widget.profile.longitude,
         photoPaths: paths,
       );
 
