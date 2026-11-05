@@ -52,7 +52,7 @@ Manteremos você informado(a) do andamento e, com sua autorização, creditaremo
 
 * Aplicativo Flutter (Android/iOS) deste repositório.
 * Esquema do banco, **políticas RLS**, *grants*, funções RPC e *triggers* em `supabase/migrations/`.
-* Edge Functions `enviar-email-aprovacao`, `excluir-conta`, `pix-webhook` e `geocode-job`.
+* Edge Functions `enviar-email-aprovacao`, `excluir-conta` e `pix-webhook`.
 * **Início do serviço agendado** (`start_job`: relógio do servidor, geofence/Haversine, modo de homologação), `set_job_location`, chat (idempotência e arquivo) e dossiês (`provider_job_dossier`, `client_job_dossier`, `my_received_reviews`).
 * **Carteira, ledger e custódia** (`client_wallets`, `ledger_*`, `wallet_statement`, `pix_topups`, gatilhos de `payments`): integridade contábil, idempotência e autenticação do webhook.
 * Configuração de Storage (*buckets* e políticas) e de Auth documentada.

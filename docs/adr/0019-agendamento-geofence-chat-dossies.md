@@ -22,7 +22,7 @@ Testes de campo com dois aparelhos (cliente e profissional) revelaram:
    * **Horário:** relógio do **servidor** (`now()`), a partir de **15 min antes** de `scheduled_for`. O app só antecipa a UI com um relógio sincronizado (`ServerClock`).
    * **Geofence:** distância de **Haversine** entre a posição enviada e o destino ≤ raio (**100 m**; **250 m** se o ponto veio só da rua; **0** se veio só do bairro/cidade, impreciso demais). Precisão do GPS > 100 m é recusada.
    * Erros tipados (`START_TOO_EARLY|iso`, `START_TOO_FAR|dist|raio`, …) viram mensagens claras no app. O início grava `started_at`, `start_distance_m` e `start_simulated`.
-3. **Destino confiável (`job_geo`, privado).** Prioridade: **pino confirmado pelo cliente** (`set_job_location`) > coordenadas do pedido > geocodificação **Nominatim** (Edge Function `geocode-job`, com cache, 1 req/s e User-Agent). O OSM não conhece muitas ruas brasileiras (a do teste só resolve até a cidade), por isso o **cliente confirma o pino no mapa** (OSM/CARTO + `flutter_map`); o app sempre incentiva isso enquanto o ponto não é um pino do cliente.
+3. **Destino confiável (`job_geo`, privado), gravado só pelo CLIENTE.** Prioridade: **pino confirmado pelo cliente** (`set_job_location`, `client_pin`) > coordenadas do pedido > geocodificação **Nominatim feita no app do cliente** (`client_geocode`, com a qualidade `house`/`street`/`locality`, que define o raio). A geocodificação **não** roda no servidor: uma Edge Function testada em produção recebeu **403** do Nominatim público (bloqueia IPs de datacenter), então a função foi removida. Além disso o OSM não conhece muitas ruas brasileiras (a do teste só resolve até a cidade), por isso o **cliente confirma o pino no mapa** (OSM/CARTO + `flutter_map`); o app sempre incentiva isso enquanto o ponto não é um pino do cliente, e o pagamento notifica o cliente (`confirm_location`).
 4. **Homologação:** `start_job(..., p_simulate := true)` ignora horário e GPS **somente** com `app_settings.checkin_sandbox = 'true'` (e o app mostra o botão "🧪 Simular dia/hora e GPS no local" com `CHECKIN_SANDBOX=true`). Em produção: desligar a flag e compilar com `CHECKIN_SANDBOX=false`.
 5. **Mapa e rota 100 % gratuitos:** `flutter_map` com OpenStreetMap (claro) e CARTO Dark Matter (escuro); rota real nas ruas, distância e ETA pelo **OSRM** público; atalhos para Google Maps/Waze por `url_launcher`.
 6. **Chat:** ordem `ASC` explícita; **idempotência** por `messages.client_message_id` (UUID v4 gerado no clique) + `UNIQUE (job_id, sender_id, client_message_id)`; UI otimista (🕒 → ✓✓) que **substitui** a mensagem pelo eco do banco, sem duplicar; `23505` = sucesso. **Arquivo morto:** gatilho recusa INSERT quando o serviço está `completed`/`canceled` (`CHAT_ARCHIVED`), mas o profissional contratado e o cliente continuam **lendo** (`can_chat` ampliado). Cabeçalho via RPC `chat_counterpart`.
@@ -36,14 +36,15 @@ Testes de campo com dois aparelhos (cliente e profissional) revelaram:
 | :-- | :-- | :-- |
 | "Agendado" derivado de `started_at is null` (sem novo status) | Evidência/PIN/conclusão teriam de ganhar um *gate* extra em cada RPC; esquecer um abre brecha | Um status novo falha fechado: tudo que exige `in_progress` já recusa |
 | Validar horário e GPS só no app | Relógio e GPS do celular são adulteráveis | O servidor decide; o app só antecipa |
-| Geocodificar só no app | O servidor não pode confiar em coordenadas enviadas pelo profissional | Edge Function com `service_role` + pino do cliente |
+| Geocodificar no servidor (Edge Function) | O Nominatim público devolve 403 a IP de datacenter (comprovado) | Geocodificação no app do **cliente** (dono do endereço, confiável) + pino |
+| Aceitar coordenadas enviadas pelo profissional | Ele poderia "mover a casa" para onde está | Só o cliente dono grava (`set_job_location`) |
 | Confiar apenas no Nominatim | OSM incompleto no Brasil → geofence inalcançável | Pino confirmado pelo cliente tem prioridade; `locality` não vale para validar |
 | Pacote `uuid` para o `client_message_id` | Dependência para ~10 linhas | `Random.secure` + teste de formato/versão/variante |
 | Google Maps SDK | Chave, cobrança, cota | OSM/CARTO/OSRM são gratuitos |
 
 ## Consequências
 
-* (+) Serviço agendado não tem cronômetro nem "Finalizar" até estar **no horário e no local**; o servidor impõe, e há 152 asserções SQL cobrindo bordas (14/15/16 min, 99/101 m, raio de rua, sandbox ligado/desligado).
+* (+) Serviço agendado não tem cronômetro nem "Finalizar" até estar **no horário e no local**; o servidor impõe, e há 183 asserções SQL cobrindo bordas (14/15/16 min, 99/101 m, raio de rua, sandbox ligado/desligado).
 * (+) Chat sem duplicatas, na ordem certa e arquivado de forma segura; privacidade dos dossiês verificada.
 * (−) O GPS vem do aparelho: um GPS falso (*mock location*) ainda engana o geofence. Mitigações futuras: Play Integrity e leitura de QR do PIN (ROADMAP).
 * (−) O OSRM público é um servidor de demonstração (baixo volume); falhando, a UI mostra a distância em linha reta.
@@ -52,10 +53,10 @@ Testes de campo com dois aparelhos (cliente e profissional) revelaram:
 
 ## Verificação
 
-`supabase/tests/scheduled_start_smoke.sql` (152), `security_smoke.sql` (63, incl. início do serviço agendado), `test/scheduling_test.dart` (30), `test/chat_test.dart`, `test/client_history_test.dart`, `test/dossier_test.dart`, `test/completion_redesign_test.dart`.
+`supabase/tests/scheduled_start_smoke.sql` (183), `security_smoke.sql` (63, incl. início do serviço agendado), `test/scheduling_test.dart` (31), `test/geocode_test.dart` (12), `test/chat_test.dart`, `test/client_history_test.dart`, `test/dossier_test.dart`, `test/completion_redesign_test.dart`.
 
 ## Referências
 
-* Migrations `20261030120000_scheduled_start_chat_dossier.sql` e `20261030130000_job_location_pin.sql`; Edge Function `supabase/functions/geocode-job/`.
+* Migrations `20261030120000_scheduled_start_chat_dossier.sql`, `20261030130000_job_location_pin.sql` e `20261105100000_client_geocode_location.sql`.
 * `app/lib/core/models/scheduling_models.dart`, `core/utils/geo.dart`, `core/services/scheduling_service.dart`, `features/shared/presentation/{scheduled_service_screen,service_map_widgets,chat_screen,review_thanks_view}.dart`.
 * Nominatim Usage Policy; OSRM HTTP API; documentação do `flutter_map`.

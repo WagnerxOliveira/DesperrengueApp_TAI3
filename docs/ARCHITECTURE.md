@@ -122,7 +122,6 @@ flowchart TB
 | Realtime | Supabase Realtime | Difusão de mudanças (`jobs`, `quotes`, `job_invites`, `messages`, `notifications`) |
 | Storage | S3-compatível | Documentos de KYC, fotos de pedido/evidência, mídia pública |
 | Edge Function | Deno | Envio do e-mail de aprovação do KYC (autenticada por segredo compartilhado, [ADR-0010](adr/0010-webhook-autenticado-por-segredo-no-vault.md)) |
-| Edge Function `geocode-job` | Deno | Resolve e guarda em cache o destino do serviço (Nominatim); valida o JWT do usuário e só atende o cliente dono ou o profissional contratado ([ADR-0019](adr/0019-agendamento-geofence-chat-dossies.md)) |
 | Edge Function `pix-webhook` | Deno | Recebe a confirmação do Pix (payload normalizado, header `x-webhook-secret`) e chama `confirm_topup` (idempotente) com `service_role` ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) |
 | Edge Function `excluir-conta` | Deno + `pdf-lib` | Offboarding LGPD: valida o JWT do usuário, gera o Dossiê PDF, envia (Resend) e só então apaga dados e conta ([ADR-0013](adr/0013-exclusao-de-conta-lgpd-e-dossie.md)) |
 | Abertura do app | Flutter | Splash nativa + animada, init paralela, sessão no Keystore, último perfil ([ADR-0015](adr/0015-abertura-do-app-splash-init-e-sessao-segura.md)) |
@@ -281,7 +280,7 @@ erDiagram
         double lat
         double lng
         text precision_level "house|street|locality"
-        text source "client_pin|nominatim"
+        text source "client_pin|client_geocode"
     }
 ```
 
@@ -424,7 +423,7 @@ O cliente **paga a reserva da visita antes** do aceite; o profissional tem 5 min
 ```mermaid
 flowchart TD
     S["Serviço scheduled (pago)"] --> D{"Destino conhecido?"}
-    D -- "não" --> G["Edge Function geocode-job<br/>Nominatim + cache (job_geo)"]
+    D -- "não" --> G["App do CLIENTE geocodifica (Nominatim)<br/>set_job_location(client_geocode + qualidade)"]
     G --> D
     D -- "sim" --> T{"Horário<br/>now() servidor >= agenda - 15 min?"}
     T -- "não" --> X1["START_TOO_EARLY"]
@@ -434,7 +433,7 @@ flowchart TD
     SIM["p_simulate (só checkin_sandbox='true')"] -.-> OK
 ```
 
-Prioridade do destino: **pino do cliente** (`set_job_location`) > coordenadas do pedido > geocodificação. Raio: 100 m (pino/casa), 250 m (só a rua), 0 (só bairro/cidade: não valida presença). A UI do profissional espelha as duas travas num checklist e o servidor revalida tudo; o cliente vê as regras, mas nenhum controle de início.
+Prioridade do destino: **pino do cliente** (`set_job_location`, `client_pin`) > coordenadas do pedido > geocodificação do app do cliente (`client_geocode`, que nunca sobrescreve um pino). Raio: 100 m (pino/casa), 250 m (só a rua), 0 (só bairro/cidade: não valida presença). A UI do profissional espelha as duas travas num checklist e o servidor revalida tudo; o cliente vê as regras, mas nenhum controle de início.
 
 ### 7.4 Recarga Pix e pagamento com saldo
 
@@ -536,7 +535,7 @@ Política de divulgação de vulnerabilidades: [SECURITY.md](../.github/SECURITY
 | Resend | SMTP do Auth (`smtp.resend.com:465`, remetente `suporte@desperrengue.tech`) e API da Edge Function |
 | ViaCEP | Preenchimento de endereço por CEP (cliente HTTP direto do app) |
 | Abstract API | Validação opcional de e-mail no cadastro (`--dart-define`) |
-| Nominatim (OSM) | Geocodificação server-side na Edge Function `geocode-job` (≤ 1 req/s, User-Agent identificável, cache em `job_geo`) |
+| Nominatim (OSM) | Geocodificação no **app do cliente** (≤ 1 req/s, User-Agent identificável); o resultado vai para `job_geo` por `set_job_location`. Não é feita no servidor: o Nominatim público devolve 403 a IPs de datacenter (verificado numa Edge Function) |
 | OSRM público | Rota real nas ruas, distância e ETA no mapa do profissional (fallback: linha reta) |
 | OpenStreetMap / CARTO | Blocos do mapa (claro/escuro) via `flutter_map`, com atribuição |
 | Pix (sandbox) | BR Code EMV com chave **fictícia** gerado no banco + Edge Function `pix-webhook`; sem PSP real ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) |

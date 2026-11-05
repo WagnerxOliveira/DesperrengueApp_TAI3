@@ -76,7 +76,7 @@ Você **não perde** conta nem dados. Se tocar em **Depois**, o aviso volta na p
 ### 2.6 Roteiro: serviço agendado (cliente + profissional)
 
 1. O cliente paga um serviço **com data futura**. Nos dois celulares aparece **"Serviço agendado"**: não há cronômetro nem "Finalizar serviço".
-2. **Cliente:** toque no cartão do endereço → **Confirmar o local exato no mapa** (toque sobre a casa ou use o GPS) → **Confirmar este local**.
+2. **Cliente:** o app já tenta achar a casa sozinho, mas confirme: toque no cartão do endereço → **Confirmar o local exato no mapa** (toque sobre a casa ou use o GPS) → **Confirmar este local**. Sem o ponto confirmado, o profissional não consegue iniciar sem a simulação de teste.
 3. **Profissional:** veja o **checklist** (⏳ data e horário · 📍 distância até o cliente). O botão **Iniciar serviço** fica cinza. Toque no endereço para abrir o **mapa com a rota**, a distância e o tempo; há atalhos para **Google Maps** e **Waze**.
 4. **Teste sem esperar nem viajar:** toque em **"🧪 Simular dia/hora e GPS no local"** → o serviço vira *em andamento* e o cronômetro começa.
 5. **Chat:** as mensagens aparecem em ordem (a mais antiga em cima), sem duplicar; depois de concluído, a conversa fica **arquivada** (só leitura) no histórico do cliente e no dossiê do profissional.
