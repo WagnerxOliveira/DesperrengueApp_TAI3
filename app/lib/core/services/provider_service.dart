@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/account_models.dart';
 import '../models/marketplace_models.dart';
+import '../models/provider_dossier_models.dart';
 import '../models/showcase_models.dart';
 import '../models/user_profile.dart';
 
@@ -83,6 +84,24 @@ class ProviderService {
   /// Direito de resposta: o profissional responde UMA vez a cada avaliação revelada.
   Future<void> replyToReview(String reviewId, String text) =>
       _client.rpc('reply_to_review', params: {'p_review': reviewId, 'p_text': text});
+
+  /// Avaliações REVELADAS do profissional logado, já com `job_id` (uso interno do dono:
+  /// abre o dossiê do serviço). A lista pública continua em [reviews] (view sem job_id).
+  Future<List<OwnReview>> myReceivedReviews() async {
+    final rows = await _client.rpc('my_received_reviews');
+    return [
+      if (rows is List)
+        for (final r in rows)
+          if (r is Map) OwnReview.fromMap(Map<String, dynamic>.from(r)),
+    ];
+  }
+
+  /// Dossiê completo do serviço (bruto/taxa/líquido, evidências, avaliação do cliente).
+  /// O servidor devolve null para quem não é o profissional contratado.
+  Future<ProviderJobDossier?> jobDossier(String jobId) async {
+    final r = await _client.rpc('provider_job_dossier', params: {'p_job': jobId});
+    return r is Map ? ProviderJobDossier.fromMap(Map<String, dynamic>.from(r)) : null;
+  }
 
   /// Reputação do cliente (nota média e quantidade), só para profissionais envolvidos.
   Future<({double avg, int count})?> clientReputation(String clientId) async {

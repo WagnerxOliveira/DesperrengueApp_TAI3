@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../models/client_dossier_models.dart';
 import '../models/marketplace_models.dart';
 import 'media_service.dart';
 
@@ -71,6 +72,28 @@ class JobService {
   Future<Job?> fetchJob(String id) async {
     final row = await _client.from('jobs').select().eq('id', id).maybeSingle();
     return row == null ? null : Job.fromMap(row);
+  }
+
+  /// Dossiê do serviço para o cliente dono (RPC `client_job_dossier`); null se não for o dono.
+  Future<ClientDossier?> clientJobDossier(String jobId) async {
+    final r = await _client.rpc('client_job_dossier', params: {'p_job': jobId});
+    if (r is Map) return ClientDossier.fromMap(Map<String, dynamic>.from(r));
+    return null;
+  }
+
+  /// Serviços concluídos/cancelados do cliente logado, mais recentes primeiro
+  /// (conclusão/aprovação > criação). Alimenta o "Histórico de serviços".
+  Future<List<Job>> fetchMyFinishedJobs() async {
+    final rows = await _client
+        .from('jobs')
+        .select()
+        .eq('client_id', uid)
+        .inFilter('status', ['completed', 'canceled'])
+        .order('created_at', ascending: false);
+    final jobs = rows.map(Job.fromMap).toList();
+    DateTime when(Job j) => j.approvedAt ?? j.finishedAt ?? j.createdAt;
+    jobs.sort((a, b) => when(b).compareTo(when(a)));
+    return jobs;
   }
 
   Stream<Job?> streamJob(String id) => _client

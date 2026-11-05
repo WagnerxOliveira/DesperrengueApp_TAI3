@@ -28,6 +28,10 @@ const List<ServiceCategory> kCategories = [
 enum JobStatus {
   open('open'),
   awaitingPayment('awaiting_payment'),
+
+  /// Pago e com data marcada: o serviço AINDA NÃO começou (sem cronômetro, sem "Finalizar").
+  /// Só vira [inProgress] pela RPC `start_job` (janela de horário + geofence), nunca no cliente.
+  scheduled('scheduled'),
   inProgress('in_progress'),
   awaitingApproval('awaiting_approval'),
   completed('completed'),
@@ -41,7 +45,7 @@ enum JobStatus {
       JobStatus.values.firstWhere((s) => s.wire == v, orElse: () => open);
 
   bool get isActive =>
-      this == open || this == awaitingPayment || this == inProgress || this == awaitingApproval || this == disputed;
+      this == open || this == awaitingPayment || this == scheduled || this == inProgress || this == awaitingApproval || this == disputed;
 }
 
 class Job {
@@ -67,6 +71,8 @@ class Job {
     this.latitude,
     this.longitude,
     this.paidAt,
+    this.startedAt,
+    this.startSimulated = false,
     this.finishedAt,
     this.approvedAt,
   });
@@ -92,8 +98,16 @@ class Job {
   final double? latitude;
   final double? longitude;
   final DateTime? paidAt;
+
+  /// Início REAL do serviço (gravado pelo servidor em `start_job` ou no aceite da emergência).
+  final DateTime? startedAt;
+
+  /// `true` se o início foi feito pelo modo de homologação (sem janela/geofence).
+  final bool startSimulated;
   final DateTime? finishedAt;
   final DateTime? approvedAt;
+
+  bool get isScheduledPhase => status == JobStatus.scheduled;
 
   bool get isEmergency => urgency == 'emergency';
   bool get isDirect => visibility == 'direct';
@@ -124,6 +138,8 @@ class Job {
     latitude: _num(m['latitude']),
     longitude: _num(m['longitude']),
     paidAt: _dt(m['paid_at']),
+    startedAt: _dt(m['started_at']),
+    startSimulated: (m['start_simulated'] as bool?) ?? false,
     finishedAt: _dt(m['finished_at']),
     approvedAt: _dt(m['approved_at']),
   );
@@ -287,12 +303,17 @@ class ChatMessage {
     required this.body,
     required this.createdAt,
     this.meta,
+    this.clientMessageId,
   });
 
   final int id;
   final String jobId;
   final String providerId;
   final String senderId;
+
+  /// UUID gerado no app a cada envio (idempotência: o banco tem UNIQUE por
+  /// job+remetente+este id, então reenvio/eco nunca duplica o balão).
+  final String? clientMessageId;
   final String kind;
   final String body;
   final DateTime createdAt;
@@ -307,6 +328,7 @@ class ChatMessage {
     body: (m['body'] as String?) ?? '',
     createdAt: _dt(m['created_at']) ?? DateTime.now(),
     meta: (m['meta'] as Map?)?.cast<String, dynamic>(),
+    clientMessageId: m['client_message_id'] as String?,
   );
 }
 
