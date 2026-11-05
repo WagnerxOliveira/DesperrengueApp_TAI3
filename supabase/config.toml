@@ -438,3 +438,8 @@ verify_jwt = false
 import_map = "./functions/pix-webhook/deno.json"
 entrypoint = "./functions/pix-webhook/index.ts"
 
+[functions.geocode-job]
+# O JWT do usuario e validado DENTRO da funcao (admin.auth.getUser); so cliente dono ou profissional contratado.
+verify_jwt = false
+import_map = "./functions/geocode-job/deno.json"
+entrypoint = "./functions/geocode-job/index.ts"
