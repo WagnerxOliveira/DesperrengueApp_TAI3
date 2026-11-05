@@ -15,6 +15,8 @@ import '../../shared/presentation/theme_picker.dart';
 import 'carteira_cliente_screen.dart';
 import 'client_setup_screen.dart';
 import 'client_shell.dart';
+import 'detalhe_servico_cliente_screen.dart';
+import 'historico_servicos_cliente_screen.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/app_tokens.dart';
 
@@ -81,7 +83,9 @@ class _List extends StatelessWidget {
       itemBuilder: (context, i) {
         final j = jobs[i];
         return AppCard(
-          onTap: () => openClientJob(context, j.id),
+          onTap: () => j.status == JobStatus.completed || j.status == JobStatus.canceled
+              ? openClientServiceDetail(context, j.id) // encerrados: dossiê + conversa arquivada
+              : openClientJob(context, j.id),
           child: Row(
             children: [
               CircleAvatar(
@@ -156,6 +160,12 @@ class ClientProfileTab extends StatelessWidget {
           title: 'Minha carteira',
           subtitle: 'Saldo, valor em garantia e extrato',
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CarteiraClienteScreen())),
+        ),
+        _Tile(
+          icon: Icons.history_rounded,
+          title: 'Histórico de serviços',
+          subtitle: 'Reveja serviços concluídos, fotos e conversas',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HistoricoServicosClienteScreen())),
         ),
         _Tile(
           icon: Icons.support_agent_rounded,
