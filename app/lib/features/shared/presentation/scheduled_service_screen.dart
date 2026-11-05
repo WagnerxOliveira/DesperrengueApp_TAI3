@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/models/geocode_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/scheduling_service.dart';
@@ -34,6 +36,7 @@ class SchedulingDeps {
     required this.address,
     required this.clientCard,
     required this.peer,
+    required this.geocode,
   });
 
   final SchedulingBackend backend;
@@ -44,6 +47,9 @@ class SchedulingDeps {
 
   /// Nome/foto do profissional (visão do cliente).
   final Future<({String name, String? avatar})?> Function(String providerId) peer;
+
+  /// Geocodificação (Nominatim) feita no celular do CLIENTE; o servidor não consegue (403 em datacenter).
+  final Future<GeocodeHit?> Function(String addressLine, String? summary) geocode;
 
   factory SchedulingDeps.live() {
     final jobs = JobService();
@@ -65,6 +71,7 @@ class SchedulingDeps {
         final p = await ProviderService().byId(id);
         return p == null ? null : (name: friendlyName(p.fullName, fallback: 'Profissional'), avatar: p.avatarUrl);
       },
+      geocode: (line, summary) => GeocodingService().geocode(line, summary: summary),
     );
   }
 }
@@ -122,7 +129,8 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   Future<void> _bootstrap() async {
     // Relógio do servidor primeiro: sem ele a UI cairia no relógio do celular (adulterável).
     unawaited(_clock.sync().then((_) => mounted ? setState(() {}) : null).catchError((_) {}));
-    unawaited(_loadPeerAndAddress());
+    // O endereço vem primeiro: o cliente precisa dele para geocodificar o destino.
+    await _loadPeerAndAddress();
     await _loadDestination();
     if (widget.asProvider) await _startLocation();
   }
@@ -153,10 +161,14 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   Future<void> _loadDestination() async {
     try {
       var d = await _deps.backend.destination(job.id);
-      if (d == null) {
-        // Sem coordenadas: o servidor geocodifica (Nominatim) e guarda em cache.
-        await _deps.backend.ensureGeocoded(job.id);
-        d = await _deps.backend.destination(job.id);
+      final line = _address?['address_line'] as String?;
+      if (d == null && !widget.asProvider && line != null) {
+        // Sem ponto salvo: o app do CLIENTE geocodifica (Nominatim) e registra com a qualidade do
+        // resultado. O servidor não confia no profissional para isso.
+        final hit = await _deps.geocode(line, job.addressSummary);
+        if (hit != null) {
+          d = await _deps.backend.setLocation(job.id, hit.lat, hit.lng, source: 'client_geocode', precision: hit.precision.wire);
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -236,7 +248,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     final d = _dest;
     if (widget.asProvider) {
       if (d == null) {
-        showSnack(context, _destLoading ? 'Localizando o endereço…' : 'Ainda não localizamos o endereço no mapa.', error: !_destLoading);
+        showSnack(context, _destLoading ? 'Localizando o endereço…' : 'O cliente ainda não confirmou o local no mapa. Peça a ele pelo chat.', error: !_destLoading);
         return;
       }
       await MapaRotaServicoModal.show(
@@ -446,7 +458,7 @@ class _AddressCard extends StatelessWidget {
     final tk = context.tk;
     final needsPin = !asProvider && (destination == null || destination!.needsClientPin);
     final hint = asProvider
-        ? (loading ? 'Localizando no mapa…' : 'Toque para ver o mapa e a rota')
+        ? (loading ? 'Localizando no mapa…' : (destination == null ? 'Aguardando o cliente confirmar o local no mapa' : 'Toque para ver o mapa e a rota'))
         : (needsPin ? 'Confirmar o local exato no mapa' : 'Local confirmado no mapa ✓ (toque para ajustar)');
     return AppCard(
       onTap: onTap,
@@ -520,7 +532,7 @@ class _Checklist extends StatelessWidget {
       GeoGateState.noPosition => (Icons.gps_not_fixed_rounded, tk.warningInk, 'Aguardando o sinal de GPS…'),
       GeoGateState.lowAccuracy => (Icons.gps_not_fixed_rounded, tk.warningInk, 'Sinal de GPS fraco. Vá para um local aberto.'),
       GeoGateState.permissionDenied => (Icons.location_off_rounded, tk.danger, 'Localização desativada. Ative para liberar o início.'),
-      GeoGateState.noDestination => (Icons.search_rounded, tk.warningInk, 'Localizando o endereço do cliente no mapa…'),
+      GeoGateState.noDestination => (Icons.search_rounded, tk.warningInk, 'O cliente ainda não confirmou o local no mapa. Peça a ele pelo chat.'),
       GeoGateState.imprecise => (Icons.edit_location_alt_outlined, tk.warningInk, 'Endereço impreciso no mapa. Peça ao cliente para confirmar o local.'),
     };
 

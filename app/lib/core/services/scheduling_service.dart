@@ -22,13 +22,11 @@ abstract class SchedulingBackend {
   /// Destino do serviço (ou null se ainda não foi localizado).
   Future<JobDestination?> destination(String jobId);
 
-  /// Pede ao servidor para geocodificar o endereço (Nominatim) quando não há coordenadas.
-  Future<void> ensureGeocoded(String jobId);
-
   Future<StartResult> startJob(String jobId, {GeoFix? position, bool simulate = false});
 
-  /// Cliente confirma o pino exato no mapa.
-  Future<JobDestination?> setLocation(String jobId, double lat, double lng);
+  /// Só o CLIENTE dono grava o destino: client_pin (pino confirmado no mapa, sempre vence) ou
+  /// client_geocode (geocodificação do app, com a qualidade house/street/locality).
+  Future<JobDestination?> setLocation(String jobId, double lat, double lng, {String source = 'client_pin', String precision = 'house'});
 }
 
 class SupabaseSchedulingBackend implements SchedulingBackend {
@@ -45,15 +43,6 @@ class SupabaseSchedulingBackend implements SchedulingBackend {
   Future<JobDestination?> destination(String jobId) async {
     final r = await _client.rpc('job_destination', params: {'p_job': jobId});
     return JobDestination.fromMap((r as Map?)?.cast<String, dynamic>());
-  }
-
-  @override
-  Future<void> ensureGeocoded(String jobId) async {
-    try {
-      await _client.functions.invoke('geocode-job', body: {'job_id': jobId});
-    } catch (_) {
-      // Melhor esforço: sem geocodificação o cliente ainda pode confirmar o pino no mapa.
-    }
   }
 
   @override
@@ -78,8 +67,8 @@ class SupabaseSchedulingBackend implements SchedulingBackend {
   }
 
   @override
-  Future<JobDestination?> setLocation(String jobId, double lat, double lng) async {
-    final r = await _client.rpc('set_job_location', params: {'p_job': jobId, 'p_lat': lat, 'p_lng': lng});
+  Future<JobDestination?> setLocation(String jobId, double lat, double lng, {String source = 'client_pin', String precision = 'house'}) async {
+    final r = await _client.rpc('set_job_location', params: {'p_job': jobId, 'p_lat': lat, 'p_lng': lng, 'p_source': source, 'p_precision': precision});
     return JobDestination.fromMap((r as Map?)?.cast<String, dynamic>());
   }
 }

@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -158,6 +161,11 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         photoPaths: paths,
       );
 
+      // Sem coordenadas no pedido: o app do cliente geocodifica (Nominatim) e registra o ponto em
+      // segundo plano. O serviço agendado pede depois a confirmação do pino no mapa.
+      if ((_override != null ? _override!.latitude : widget.profile.latitude) == null && _currentAddress.isNotEmpty) {
+        unawaited(registerGeocodedLocation(jobId: jobId, addressLine: _currentAddress, summary: _summary));
+      }
       if (_provider != null) {
         final n = await _jobs.invite(jobId, [_provider!.id]);
         if (n == 0) throw 'Não foi possível convidar o profissional. Tente outro.';

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:desperrengue_app/core/models/geocode_models.dart';
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/scheduling_models.dart';
 import 'package:desperrengue_app/core/services/scheduling_service.dart';
@@ -41,7 +42,7 @@ class FakeBackend implements SchedulingBackend {
   FakeBackend({this.dest, DateTime? serverNow}) : serverNow = serverNow ?? DateTime.now();
   JobDestination? dest;
   DateTime serverNow;
-  int geocodeCalls = 0;
+  final saved = <({double lat, double lng, String source, String precision})>[];
   final starts = <({GeoFix? pos, bool simulate})>[];
   Object? startError;
   JobDestination? pinned;
@@ -53,9 +54,6 @@ class FakeBackend implements SchedulingBackend {
   Future<JobDestination?> destination(String jobId) async => dest;
 
   @override
-  Future<void> ensureGeocoded(String jobId) async => geocodeCalls++;
-
-  @override
   Future<StartResult> startJob(String jobId, {GeoFix? position, bool simulate = false}) async {
     starts.add((pos: position, simulate: simulate));
     if (startError != null) throw startError!;
@@ -63,19 +61,27 @@ class FakeBackend implements SchedulingBackend {
   }
 
   @override
-  Future<JobDestination?> setLocation(String jobId, double lat, double lng) async {
-    pinned = JobDestination(lat: lat, lng: lng, precision: DestinationPrecision.exact, radiusM: 100, source: 'client_pin');
+  Future<JobDestination?> setLocation(String jobId, double lat, double lng, {String source = 'client_pin', String precision = 'house'}) async {
+    saved.add((lat: lat, lng: lng, source: source, precision: precision));
+    pinned = JobDestination(
+      lat: lat,
+      lng: lng,
+      precision: source == 'client_pin' ? DestinationPrecision.exact : DestinationPrecision.parse(precision),
+      radiusM: source == 'client_pin' || precision == 'house' ? 100 : (precision == 'street' ? 250 : 0),
+      source: source,
+    );
     return pinned;
   }
 }
 
-SchedulingDeps deps(FakeBackend b, {StreamController<GeoFix>? gps, LocationAccess access = LocationAccess.granted}) => SchedulingDeps(
+SchedulingDeps deps(FakeBackend b, {StreamController<GeoFix>? gps, LocationAccess access = LocationAccess.granted, GeocodeHit? hit}) => SchedulingDeps(
       backend: b,
       requestLocation: () async => access,
       positions: () => (gps ?? StreamController<GeoFix>()).stream,
       address: (_) async => {'address_line': 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG', 'reference': 'Portão azul'},
       clientCard: (_) async => {'full_name': 'Carla Souza'},
       peer: (_) async => (name: 'Paulo Eletricista', avatar: null),
+      geocode: (_, _) async => hit,
     );
 
 Widget wrap(Widget child, {Size? size}) => MaterialApp(theme: AppTheme.resolve(null, Brightness.light), home: child);
@@ -381,15 +387,16 @@ void main() {
       expect(backend.starts.single.simulate, isTrue);
     });
 
-    testWidgets('sem coordenadas: pede ao servidor para geocodificar (Nominatim)', (t) async {
+    testWidgets('sem coordenadas: o profissional NÃO geocodifica (só o cliente) e vê o aviso', (t) async {
       t.view.physicalSize = const Size(1080, 6000);
       t.view.devicePixelRatio = 2.75;
       addTearDown(t.view.reset);
       final backend = FakeBackend(dest: null);
-      await t.pumpWidget(wrap(ScheduledServiceScreen(job: jobAt(DateTime.now()), asProvider: true, deps: deps(backend))));
+      const hit = GeocodeHit(lat: -21.78, lng: -46.56, precision: DestinationPrecision.street);
+      await t.pumpWidget(wrap(ScheduledServiceScreen(job: jobAt(DateTime.now()), asProvider: true, deps: deps(backend, hit: hit))));
       await pumpLoaded(t);
-      expect(backend.geocodeCalls, 1);
-      expect(find.textContaining('Localizando o endereço do cliente'), findsOneWidget);
+      expect(backend.saved, isEmpty);
+      expect(find.textContaining('cliente ainda não confirmou o local'), findsWidgets);
     });
 
     testWidgets('localização negada: avisa e oferece ativar', (t) async {
@@ -416,6 +423,20 @@ void main() {
       expect(find.textContaining('Como o início é protegido'), findsOneWidget);
       expect(find.textContaining('Valor retido em custódia: R\$ 150,00'), findsOneWidget);
       expect(find.text('Chat com o profissional'), findsOneWidget);
+    });
+
+    testWidgets('sem coordenadas: o CLIENTE geocodifica e registra com a qualidade do resultado', (t) async {
+      t.view.physicalSize = const Size(1080, 6000);
+      t.view.devicePixelRatio = 2.75;
+      addTearDown(t.view.reset);
+      final backend = FakeBackend(dest: null);
+      const hit = GeocodeHit(lat: -21.781, lng: -46.561, precision: DestinationPrecision.street);
+      await t.pumpWidget(wrap(ScheduledServiceScreen(job: jobAt(DateTime.now()), asProvider: false, deps: deps(backend, hit: hit))));
+      await pumpLoaded(t);
+      expect(backend.saved, hasLength(1));
+      expect(backend.saved.single.source, 'client_geocode');
+      expect(backend.saved.single.precision, 'street');
+      expect(find.text('Confirmar o local exato no mapa'), findsOneWidget); // ainda convida a confirmar o pino
     });
 
     testWidgets('endereço mostra o convite para confirmar o pino quando o ponto é aproximado', (t) async {
