@@ -72,7 +72,7 @@ end $$;
 do $$
 declare
   ids uuid[]; c uuid; c2 uuid; p1 uuid; p2 uuid; p3 uuid;
-  jm uuid; jap uuid; jst uuid; jsim uuid; jsim2 uuid; jem uuid; jx uuid; jy uuid; jr uuid; jh uuid; jb uuid;
+  jm uuid; jap uuid; jg uuid; jg2 uuid; jst uuid; jsim uuid; jsim2 uuid; jem uuid; jx uuid; jy uuid; jr uuid; jh uuid; jb uuid;
   lat0 constant double precision := -23.5505;  lng0 constant double precision := -46.6333;   -- destino A
   lat1 constant double precision := -23.5605;                                                 -- pino B (1,11 km ao sul de A)
   v jsonb; d jsonb; r text; s text; n int; n0 int; n1 int; v_pin text; sf timestamptz; rid uuid;
@@ -294,6 +294,114 @@ begin
   perform pg_temp.t((select status = 'in_progress' and abs(start_distance_m - 150) < 2 from public.jobs where id = jst),
                     'a ~150 m inicia no destino "street" (raio 250); serviço atrasado (1 h) também pode iniciar');
 
+  -- ===== GEOCODIFICAÇÃO FEITA PELO CLIENTE (client_geocode) + notificação confirm_location =====
+  jg  := pg_temp.paid(c, p1, 100, now() + interval '10 minutes');
+  jg2 := pg_temp.paid(c, p1, 100, now() + interval '10 minutes');
+  perform pg_temp.t((select count(*) from public.notifications where user_id = c and kind = 'confirm_location' and job_id = jg) = 1,
+                    'pagar serviço agendado notifica o CLIENTE para confirmar o local (confirm_location)');
+  perform pg_temp.t((select count(*) from public.notifications where user_id = c and kind = 'confirm_location' and job_id = jm) = 1,
+                    'confirm_location também foi criada no pagamento do serviço principal (1 por serviço)');
+  perform pg_temp.t((select count(*) from public.notifications where user_id = p1 and kind = 'confirm_location' and job_id in (jg, jm)) = 0,
+                    'o profissional NÃO recebe confirm_location (é pedido ao cliente)');
+  -- quem não é o cliente dono não grava geocodificação
+  perform pg_temp.login(p1);
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'client_geocode', 'house'));
+  perform pg_temp.t(starts_with(r, 'P0001:'), 'profissional contratado não grava client_geocode (recusado)');
+  reset role;
+  perform pg_temp.login(p2);
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'client_geocode', 'house'));
+  perform pg_temp.t(starts_with(r, 'P0001:'), 'outro profissional (terceiro) não grava client_geocode (recusado)');
+  reset role;
+  perform pg_temp.login(c2);
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'client_geocode', 'street'));
+  perform pg_temp.t(starts_with(r, 'P0001:'), 'outro cliente não grava client_geocode (recusado)');
+  reset role;
+  perform pg_temp.t(not exists (select 1 from public.job_geo where job_id = jg), 'as tentativas recusadas não criaram job_geo');
+  -- validações de origem/precisão
+  perform pg_temp.login(c);
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'nominatim', 'house'));
+  perform pg_temp.t(r = '22023:Origem de localização inválida.', 'origem inválida (nominatim) -> 22023 (' || r || ')');
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'foo', 'house'));
+  perform pg_temp.t(starts_with(r, '22023:'), 'origem inválida (foo) -> 22023');
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'client_geocode', 'bogus'));
+  perform pg_temp.t(r = '22023:Precisão inválida.', 'precisão inválida em client_geocode -> 22023 (' || r || ')');
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, lat0, lng0, 'client_geocode', 'exact'));
+  perform pg_temp.t(starts_with(r, '22023:'), 'precisão "exact" não existe para client_geocode -> 22023');
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg, 100, lng0, 'client_geocode', 'house'));
+  perform pg_temp.t(starts_with(r, '22023:'), 'coordenadas inválidas com client_geocode -> 22023');
+  reset role;
+  perform pg_temp.t(not exists (select 1 from public.job_geo where job_id = jg), 'entradas inválidas não gravaram job_geo');
+  -- geocodificação "street": raio 250 m
+  perform pg_temp.login(c);
+  v := public.set_job_location(jg, lat0, lng0, 'client_geocode', 'street');
+  reset role;
+  perform pg_temp.t(v ->> 'source' = 'client_geocode' and v ->> 'precision' = 'street' and (v ->> 'radius_m')::int = 250,
+                    'client_geocode/street grava o destino com raio 250 (' || (v ->> 'source') || '/' || (v ->> 'precision') || ')');
+  perform pg_temp.t((select source = 'client_geocode' and precision_level = 'street' and lat = lat0 and lng = lng0 from public.job_geo where job_id = jg),
+                    'job_geo guarda source client_geocode e precisão street');
+  perform pg_temp.login(p1);
+  r := pg_temp.ts(jg, lat0 + 0.0027, lng0, 10, false);
+  perform pg_temp.t(r = 'P0001:START_TOO_FAR|300|250', 'geocodificação street: a ~300 m -> START_TOO_FAR|300|250 (' || r || ')');
+  reset role;
+  -- "locality": impreciso demais
+  perform pg_temp.login(c);
+  v := public.set_job_location(jg, lat0, lng0, 'client_geocode', 'locality');
+  reset role;
+  perform pg_temp.t(v ->> 'precision' = 'locality' and (v ->> 'radius_m')::int = 0, 'client_geocode/locality: raio 0');
+  perform pg_temp.t((select count(*) from public.job_geo where job_id = jg) = 1 and (select precision_level from public.job_geo where job_id = jg) = 'locality',
+                    'nova geocodificação atualiza o mesmo job_geo (sem duplicar)');
+  perform pg_temp.login(p1);
+  r := pg_temp.ts(jg, lat0, lng0, 10, false);
+  perform pg_temp.t(r = 'P0001:START_DESTINATION_IMPRECISE', 'geocodificação locality -> START_DESTINATION_IMPRECISE (' || r || ')');
+  reset role;
+  -- "house": raio 100 m
+  perform pg_temp.login(c);
+  v := public.set_job_location(jg, lat0, lng0, 'client_geocode', 'house');
+  reset role;
+  perform pg_temp.t(v ->> 'source' = 'client_geocode' and v ->> 'precision' = 'house' and (v ->> 'radius_m')::int = 100,
+                    'client_geocode/house: raio 100 e origem client_geocode');
+  perform pg_temp.login(p1);
+  r := pg_temp.ts(jg, lat0 + 0.00135, lng0, 10, false);
+  perform pg_temp.t(r = 'P0001:START_TOO_FAR|150|100', 'geocodificação house: a ~150 m -> START_TOO_FAR|150|100 (' || r || ')');
+  reset role;
+  -- pino do cliente sobrescreve a geocodificação; geocodificação posterior NÃO sobrescreve o pino
+  perform pg_temp.login(c);
+  v := public.set_job_location(jg, lat1, lng0);
+  reset role;
+  perform pg_temp.t(v ->> 'source' = 'client_pin' and v ->> 'precision' = 'exact' and (v ->> 'radius_m')::int = 100,
+                    'client_pin posterior sobrescreve a geocodificação (precision exact, raio 100)');
+  perform pg_temp.t((select source = 'client_pin' and precision_level = 'house' and lat = lat1 from public.job_geo where job_id = jg),
+                    'job_geo agora é client_pin/house no ponto do pino');
+  perform pg_temp.login(c);
+  v := public.set_job_location(jg, lat0, lng0, 'client_geocode', 'street');
+  reset role;
+  perform pg_temp.t(v ->> 'source' = 'client_pin' and (v ->> 'lat')::double precision = lat1, 'client_geocode posterior devolve o destino do pino (não sobrescreve)');
+  perform pg_temp.t((select source = 'client_pin' and precision_level = 'house' and lat = lat1 and lng = lng0 from public.job_geo where job_id = jg),
+                    'job_geo continua com o pino (client_geocode NÃO sobrescreveu)');
+  perform pg_temp.login(c);
+  v := public.set_job_location(jg, lat1, lng0, 'client_pin', 'street');
+  reset role;
+  perform pg_temp.t((select precision_level from public.job_geo where job_id = jg) = 'house' and v ->> 'precision' = 'exact',
+                    'client_pin força precisão house (ignora a precisão informada)');
+  -- início real com geocodificação street
+  perform pg_temp.login(c);
+  perform public.set_job_location(jg2, lat0, lng0, 'client_geocode', 'street');
+  reset role;
+  perform pg_temp.login(p1);
+  r := pg_temp.ts(jg2, lat0 + 0.0027, lng0, 10, false);
+  perform pg_temp.t(r = 'P0001:START_TOO_FAR|300|250', 'client_geocode/street: ~300 m recusado (START_TOO_FAR|300|250)');
+  v := public.start_job(jg2, lat0 + 0.00135, lng0, 10, false);   -- ~150 m
+  reset role;
+  perform pg_temp.t((select status = 'in_progress' and not start_simulated and abs(start_distance_m - 150) < 2 from public.jobs where id = jg2),
+                    'client_geocode/street: início a ~150 m aceito (raio 250), start_distance_m ~150');
+  perform pg_temp.login(c);
+  r := pg_temp.try(format('select public.set_job_location(%L, %s, %s, %L, %L)', jg2, lat1, lng0, 'client_geocode', 'house'));
+  r := r || '|' || pg_temp.try(format('select public.set_job_location(%L, %s, %s)', jg2, lat1, lng0));
+  reset role;
+  perform pg_temp.t(r ~ '^P0001:.*\|P0001:', 'após in_progress, client_geocode e client_pin são recusados');
+  perform pg_temp.t((select source = 'client_geocode' and precision_level = 'street' and lat = lat0 from public.job_geo where job_id = jg2),
+                    'após in_progress o job_geo segue como estava');
+
   -- ===== MODO SIMULADO (checkin_sandbox) =====
   jsim := pg_temp.paid(c, p1, 100, now() + interval '3 days');
   jsim2 := pg_temp.paid(c, p1, 100, now() + interval '3 days');
@@ -333,6 +441,8 @@ begin
   reset role;
   perform pg_temp.t((select status = 'in_progress' and started_at is not null and provider_id = p2 and not start_simulated from public.jobs where id = jem),
                     'emergência aceita vai direto a in_progress com started_at');
+  perform pg_temp.t(not exists (select 1 from public.notifications where kind = 'confirm_location' and job_id = jem),
+                    'emergência NÃO gera confirm_location (nem ao pagar nem ao aceitar)');
   perform pg_temp.login(p2);
   r := pg_temp.ts(jem, null, null, null, true);
   perform pg_temp.t(r = 'P0001:START_INVALID_STATE', 'start_job numa emergência em andamento é recusado');

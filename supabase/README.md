@@ -13,7 +13,7 @@ Uma **mesma conta pode ser cliente e profissional** (`profiles.is_client` / `is_
 | `provider_portfolio`, `provider_certificates` | Fotos de trabalhos (públicas) e cofre de certificados (privado). |
 | `kyc_submissions` | Dados sensíveis do KYC. Leitura só do dono/admin; **escrita só por RPC**. |
 | `jobs` | Demanda. `urgency` (`scheduled`/`emergency`), `visibility` (`open`/`direct`), `status`, `payment_status`, `quote_count`. |
-| `job_geo` | Destino geocodificado/pino do cliente (`precision_level`, `source`); **privado** (só cliente dono e profissional contratado leem); escrita só por `service_role` (Edge Function `geocode-job`) e pela RPC `set_job_location` ([ADR-0019](../docs/adr/0019-agendamento-geofence-chat-dossies.md)). |
+| `job_geo` | Destino geocodificado/pino do cliente (`precision_level`, `source`); **privado** (só cliente dono e profissional contratado leem); escrita só pela RPC `set_job_location` (cliente dono: `client_pin` ou `client_geocode`) ([ADR-0019](../docs/adr/0019-agendamento-geofence-chat-dossies.md)). |
 | `job_addresses` | Endereço completo: **só o dono e o profissional contratado** enxergam. O resumo público (bairro/cidade) fica em `jobs.address_summary`. |
 | `job_invites` | Convite cliente → profissional (até 3 por pedido). Expira em 2 h (agendado) ou 5 min (emergência). |
 | `quotes` | Orçamentos (máx. 3 ativos por demanda, 1 por profissional). Cada profissional só vê o próprio. |
@@ -69,7 +69,7 @@ open ──(cliente aceita orçamento)──▶ awaiting_payment ──(pagament
 | `my_client_wallet()` · `create_topup(centavos, chave)` · `simulate_pix_payment(topup)` | cliente | Saldo e custódia, recarga Pix idempotente e **simulação de 1 toque** (só com `app_settings.pix_sandbox = 'true'`) |
 | `confirm_topup(txid, centavos, ref)` | **só `service_role`** | Núcleo do webhook Pix (idempotente; valida o valor) |
 | `start_job(job, lat, lng, accuracy, simulate)` | profissional contratado | **Dupla trava**: relógio do servidor (≥ agenda − 15 min) e Haversine ≤ raio (100 m / 250 m rua); `simulate` só com `checkin_sandbox='true'`. Grava `started_at`/`start_distance_m` |
-| `job_destination(job)` · `set_job_location(job, lat, lng)` · `server_time()` | partes · cliente dono · autenticado | Destino do serviço; pino confirmado pelo cliente (antes de iniciar); hora do servidor |
+| `job_destination(job)` · `set_job_location(job, lat, lng, source, precision)` · `server_time()` | partes · cliente dono · autenticado | Destino do serviço; o **cliente** grava o pino (`client_pin`) ou a geocodificação do app (`client_geocode` + `house/street/locality`); um pino nunca é sobrescrito; hora do servidor |
 | `chat_counterpart(job, provider)` | participante | Nome/foto/especialidade do interlocutor (nunca e-mail) |
 | `provider_job_dossier(job)` · `client_job_dossier(job)` · `my_received_reviews()` | profissional contratado · cliente dono · profissional | Dossiês privados (financeiro só para o profissional); avaliações recebidas reveladas, com `job_id` |
 | `account_deletion_status()` | autenticado | Trava da exclusão: saldo, custódia, serviços em andamento |
@@ -98,7 +98,7 @@ O link **não carrega credencial**: o app apenas reconsulta o status no servidor
 
 ## Migrations
 
-Em `migrations/`, aplicadas em ordem (15 até aqui). Sem Docker, aplique com a Management API do CLI:
+Em `migrations/`, aplicadas em ordem (16 até aqui). Sem Docker, aplique com a Management API do CLI:
 
 ```bash
 supabase db query --linked -f supabase/migrations/<arquivo>.sql
@@ -129,6 +129,5 @@ Para rotacionar o segredo do webhook, gere um novo valor, atualize o Vault (`vau
 ```bash
 supabase functions deploy enviar-email-aprovacao --use-api --no-verify-jwt
 supabase functions deploy excluir-conta --no-verify-jwt   # o JWT do usuário é validado dentro da função
-supabase functions deploy geocode-job --no-verify-jwt     # JWT validado dentro da função (admin.auth.getUser)
 supabase functions deploy pix-webhook --no-verify-jwt     # autenticada pelo header x-webhook-secret (PIX_WEBHOOK_SECRET)
 ```
