@@ -78,3 +78,9 @@ GeocodeHit? parseNominatimSearch(Object? body) {
   }
   return GeocodeHit(lat: lat, lng: lng, precision: p, display: '${r['display_name'] ?? ''}');
 }
+
+/// Geocodificador de endereço (Nominatim, cascata de alta precisão…). Interface para injetar fakes.
+abstract class AddressGeocoder {
+  /// [cep] (opcional) melhora a precisão: dá o ponto da rua mesmo quando o OSM não tem o número.
+  Future<GeocodeHit?> geocode(String addressLine, {String? summary, String? cep});
+}

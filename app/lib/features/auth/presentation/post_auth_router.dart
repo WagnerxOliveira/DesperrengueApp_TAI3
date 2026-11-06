@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -79,8 +80,8 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
   Widget build(BuildContext context) {
     final profile = _profile;
     if (profile == null) {
-      if (_loading) return const Scaffold(body: LoadingView());
-      return Scaffold(
+      if (_loading) return const AppScaffold(body: LoadingView());
+      return AppScaffold(
         body: ErrorView(
           message: 'Não foi possível carregar o seu perfil.\nVerifique a conexão e tente novamente.',
           onRetry: () {
@@ -197,7 +198,7 @@ class _EnrollRunnerState extends State<_EnrollRunner> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return Scaffold(
+      return AppScaffold(
         body: ErrorView(message: _error!, onRetry: _run),
         bottomNavigationBar: SafeArea(
           child: TextButton(
@@ -207,7 +208,7 @@ class _EnrollRunnerState extends State<_EnrollRunner> {
         ),
       );
     }
-    return const Scaffold(
+    return const AppScaffold(
       body: LoadingView(message: 'Preparando sua conta...'),
     );
   }

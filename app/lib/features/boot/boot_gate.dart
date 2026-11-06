@@ -1,3 +1,4 @@
+import '../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -51,7 +52,7 @@ class _BootGateState extends ConsumerState<BootGate> {
   @override
   Widget build(BuildContext context) {
     if (_failed) {
-      return Scaffold(
+      return AppScaffold(
         backgroundColor: AnimatedSplashScreen.navy,
         body: SafeArea(
           child: Center(

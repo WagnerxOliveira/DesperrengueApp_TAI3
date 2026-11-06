@@ -50,7 +50,7 @@ void main() {
     });
   });
 
-  group('OrderBuckets (4 abas)', () {
+  group('OrderBuckets (3 abas + mediação no Suporte)', () {
     test('separa em Em Andamento / Concluídos / Cancelados / Em Mediação', () {
       final b = OrderBuckets.from([
         job('1', JobStatus.open),
@@ -83,7 +83,34 @@ void main() {
       final l = computeClientAchievements(const ClientAchievementInput(jobs: []));
       expect(l, hasLength(6));
       expect(l.every((p) => !p.unlocked), isTrue);
-      expect(l.every((p) => p.fraction == 0), isTrue);
+      expect(l.every((p) => p.fractionToNext == 0 && p.unlockedCount == 0), isTrue);
+    });
+
+    test('22 medalhas no total; níveis ordenados e com títulos únicos', () {
+      expect(kClientMedalTotal, 22);
+      for (final d in kClientAchievements) {
+        final th = d.levels.map((l) => l.threshold).toList();
+        expect(th, orderedEquals([...th]..sort()), reason: d.name);
+        expect(th.toSet(), hasLength(th.length), reason: d.name);
+        expect(d.levels.map((l) => l.title).toSet(), hasLength(d.levels.length), reason: d.name);
+      }
+    });
+
+    test('níveis: 12 pedidos = bronze+prata+ouro, próximo é 25 e a barra anda entre 10 e 25', () {
+      final jobs = [for (var i = 0; i < 12; i++) job('p$i', JobStatus.open)];
+      final p = of(computeClientAchievements(ClientAchievementInput(jobs: jobs)), ClientAchievementCode.firstOrder);
+      expect(p.unlockedCount, 3);
+      expect(p.highest!.threshold, 10);
+      expect(p.next!.threshold, 25);
+      expect(p.fractionToNext, closeTo(2 / 15, 1e-9));
+    });
+
+    test('categoria completa: sem próximo e barra cheia', () {
+      final jobs = [for (var i = 0; i < 50; i++) job('p$i', JobStatus.open)];
+      final p = of(computeClientAchievements(ClientAchievementInput(jobs: jobs)), ClientAchievementCode.firstOrder);
+      expect(p.next, isNull);
+      expect(p.fractionToNext, 1);
+      expect(p.unlockedCount, p.def.levels.length);
     });
 
     test('1º Pedido: publicar já desbloqueia (não precisa concluir)', () {
@@ -96,7 +123,7 @@ void main() {
       final partial = computeClientAchievements(const ClientAchievementInput(jobs: [], profileSteps: 2));
       final v = of(partial, ClientAchievementCode.verifiedClient);
       expect(v.unlocked, isFalse);
-      expect(v.fraction, 0.5);
+      expect(v.fractionToNext, 0.5);
       final full = computeClientAchievements(const ClientAchievementInput(jobs: [], profileSteps: 4));
       expect(of(full, ClientAchievementCode.verifiedClient).unlocked, isTrue);
     });
@@ -146,7 +173,7 @@ void main() {
       expect(g.unlocked, isTrue);
       final l2 = computeClientAchievements(ClientAchievementInput(jobs: jobs.take(2).toList()));
       expect(of(l2, ClientAchievementCode.secureWallet).unlocked, isFalse);
-      expect(of(l2, ClientAchievementCode.secureWallet).fraction, closeTo(2 / 3, 1e-9));
+      expect(of(l2, ClientAchievementCode.secureWallet).fractionToNext, closeTo(2 / 3, 1e-9));
     });
 
     test('Cliente Fidelidade: 5+ concluídos', () {
@@ -156,7 +183,8 @@ void main() {
       final p = of(computeClientAchievements(ClientAchievementInput(jobs: six)), ClientAchievementCode.loyalClient);
       expect(p.unlocked, isTrue);
       expect(p.shown, 5); // exibição limitada à meta
-      expect(p.fraction, 1.0);
+      expect(p.unlockedCount, 1);
+      expect(p.fractionToNext, closeTo(0.2, 1e-9)); // 6 entre 5 e 10
     });
 
     test('passagem única: 20.000 pedidos calculam rápido', () {

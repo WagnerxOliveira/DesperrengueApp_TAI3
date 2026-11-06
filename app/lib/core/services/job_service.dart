@@ -120,6 +120,18 @@ class JobService {
       .order('created_at', ascending: false)
       .map((rows) => rows.map(Job.fromMap).toList());
 
+  /// Serviços em mediação em que o usuário participa (como cliente OU como profissional).
+  /// Alimenta a seção "Mediações" de Perfil > Ajuda e suporte: só existe quando há uma aberta.
+  Future<List<Job>> fetchMyDisputes() async {
+    final me = uid;
+    final rows = await _client
+        .from('jobs')
+        .select()
+        .eq('status', 'disputed')
+        .or('client_id.eq.$me,provider_id.eq.$me')
+        .order('created_at', ascending: false);
+    return rows.map(Job.fromMap).toList();
+  }
   /// Quantos pedidos do cliente estão em aberto aguardando orçamentos agora.
   /// Alimenta o contador "1º, 2º, 3º" da revisão do pedido.
   Future<int> countMyOpenRequests() async => countOpenRequests(await fetchMyJobs());

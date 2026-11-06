@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -51,7 +52,7 @@ class NotificationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final service = SocialService();
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text('Notificações'),
         actions: [

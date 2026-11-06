@@ -5,6 +5,58 @@ import 'package:desperrengue_app/core/utils/smart_transcript_formatter.dart';
 String f(String raw, {List<String>? segments}) => SmartTranscriptFormatter.format(raw, segments: segments);
 
 void main() {
+  group('SmartTranscriptFormatter — sem duplicar (bug do microfone no Android)', () {
+    test('o relato duplicado do cliente vira UMA frase', () {
+      expect(
+        f('Preciso de um eletricista para consertar um disjuntor. Preciso de um eletricista para consertar um disjuntor.'),
+        'Preciso de um eletricista para consertar um disjuntor.',
+      );
+    });
+
+    test('duplicado sem pontuação nem maiúsculas (como o reconhecedor entrega)', () {
+      expect(
+        f('preciso de um eletricista para consertar um disjuntor preciso de um eletricista para consertar um disjuntor'),
+        'Preciso de um eletricista para consertar um disjuntor.',
+      );
+    });
+
+    test('segmentos repetidos (parcial + final) colapsam', () {
+      expect(f('', segments: ['a torneira vaza', 'a torneira vaza']), 'A torneira vaza.');
+      expect(f('', segments: ['preciso de um eletricista para consertar um disjuntor', 'Preciso de um eletricista para consertar um disjuntor.']), 'Preciso de um eletricista para consertar um disjuntor.');
+    });
+
+    test('frases diferentes se mantêm; só a repetição imediata some', () {
+      expect(
+        f('a torneira vaza. a torneira vaza. a pia está entupida.'),
+        'A torneira vaza. A pia está entupida.',
+      );
+      // Repetição NÃO adjacente pode ser intencional (ênfase): fica.
+      expect(f('a torneira vaza. a pia está entupida. a torneira vaza.'), 'A torneira vaza. A pia está entupida. A torneira vaza.');
+    });
+
+    test('repetir palavras curtas (2 ou menos) é fala natural e não é cortado', () {
+      expect(f('muito muito calor'), 'Muito muito calor.');
+    });
+  });
+
+  group('SmartTranscriptFormatter — português falado vira escrito', () {
+    test('"pra" → "para", "tá" → "está", "vc" → "você"', () {
+      expect(f('preciso trocar pra amanhã'), 'Preciso trocar para amanhã.');
+      expect(f('a luz tá piscando'), 'A luz está piscando.');
+      expect(f('vc consegue vir hoje'), 'Você consegue vir hoje?');
+    });
+
+    test('saudação e agradecimento ganham pontuação própria', () {
+      expect(f('olá preciso de um encanador'), 'Olá, preciso de um encanador.');
+      expect(f('preciso trocar um chuveiro queimado obrigado'), 'Preciso trocar um chuveiro queimado. Obrigado.');
+      expect(f('preciso de ajuda obrigado'), 'Preciso de ajuda obrigado.', reason: 'relato curto demais para separar');
+    });
+
+    test('"por favor" e "por exemplo" ficam entre vírgulas', () {
+      expect(f('preciso de um orçamento por favor'), contains(', por favor'));
+    });
+  });
+
   group('SmartTranscriptFormatter', () {
     test('vazio e só espaço devolvem vazio', () {
       expect(f(''), '');
@@ -34,7 +86,7 @@ void main() {
       expect(f('vocês conseguem vir amanhã'), 'Vocês conseguem vir amanhã?');
       expect(f('quanto custa a visita'), 'Quanto custa a visita?');
       expect(f('tem como trocar hoje'), 'Tem como trocar hoje?');
-      expect(f('dá pra consertar sem quebrar a parede'), 'Dá pra consertar sem quebrar a parede?');
+      expect(f('dá pra consertar sem quebrar a parede'), 'Dá para consertar sem quebrar a parede?');
       expect(f('fica pronto hoje né'), 'Fica pronto hoje né?');
     });
 

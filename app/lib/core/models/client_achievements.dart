@@ -1,10 +1,13 @@
 /// Conquistas (gamificação) do CLIENTE — modelo puro e testável.
 ///
-/// Diferente das conquistas do profissional (persistidas no banco), estas são calculadas em
-/// **uma única passagem O(N)** sobre o histórico de pedidos que já está em memória: nenhuma
-/// consulta extra por conquista, e o resultado é sempre consistente com os pedidos exibidos.
+/// Mesmo "estilo troféu" das conquistas do profissional: cada conquista é uma categoria com
+/// níveis (bronze → diamante). Diferente do profissional (persistido no banco), estas são
+/// calculadas em **uma única passagem O(N)** sobre o histórico de pedidos que já está em
+/// memória: nenhuma consulta extra por conquista e o resultado é sempre consistente com os
+/// pedidos exibidos.
 library;
 
+import 'achievements.dart' show AchievementTier;
 import 'marketplace_models.dart';
 import 'user_profile.dart';
 import '../utils/tag_normalizer.dart';
@@ -19,31 +22,44 @@ enum ClientAchievementCode {
   loyalClient,
 }
 
-/// Definição estática (textos e metas).
+/// Um nível (medalha) de uma conquista.
+class ClientLevel {
+  const ClientLevel(this.threshold, this.tier, this.title);
+
+  /// Quantidade necessária da métrica.
+  final int threshold;
+  final AchievementTier tier;
+
+  /// Nome curto da medalha ("Boas-vindas ao Desperrengue", "10 pedidos realizados").
+  final String title;
+}
+
+/// Definição estática (textos, métrica e níveis).
 class ClientAchievementDef {
   const ClientAchievementDef({
     required this.code,
-    required this.title,
     required this.name,
+    required this.title,
     required this.description,
-    required this.goal,
     required this.unit,
+    required this.levels,
   });
 
   final ClientAchievementCode code;
 
-  /// Nome do selo ("Boas-vindas ao Desperrengue").
-  final String title;
-
   /// Nome da conquista ("1º Pedido Realizado").
   final String name;
+
+  /// Selo do 1º nível ("Boas-vindas ao Desperrengue").
+  final String title;
   final String description;
 
-  /// Quantidade necessária para desbloquear.
-  final int goal;
-
-  /// Unidade do contador ("pedidos", "categorias"…), usada em "2/3 categorias".
+  /// Unidade da métrica ("pedidos", "categorias"…), usada em "2/3 categorias".
   final String unit;
+  final List<ClientLevel> levels;
+
+  /// Meta do 1º nível: desbloqueia a conquista.
+  int get goal => levels.first.threshold;
 }
 
 const List<ClientAchievementDef> kClientAchievements = [
@@ -51,51 +67,80 @@ const List<ClientAchievementDef> kClientAchievements = [
     code: ClientAchievementCode.firstOrder,
     name: '1º Pedido Realizado',
     title: 'Boas-vindas ao Desperrengue',
-    description: 'Publique ou conclua o seu primeiro serviço.',
-    goal: 1,
-    unit: 'pedido',
+    description: 'Publique ou conclua o seu primeiro serviço e siga pedindo: cada pedido conta.',
+    unit: 'pedidos',
+    levels: [
+      ClientLevel(1, AchievementTier.bronze, '1º pedido realizado'),
+      ClientLevel(5, AchievementTier.silver, '5 pedidos realizados'),
+      ClientLevel(10, AchievementTier.gold, '10 pedidos realizados'),
+      ClientLevel(25, AchievementTier.platinum, '25 pedidos realizados'),
+      ClientLevel(50, AchievementTier.diamond, '50 pedidos realizados'),
+    ],
   ),
   ClientAchievementDef(
     code: ClientAchievementCode.verifiedClient,
     name: 'Cliente Verificado',
     title: 'Identidade Confirmada',
     description: 'Complete o perfil: nome, telefone, endereço e cadastro de cliente.',
-    goal: 4,
-    unit: 'itens',
+    unit: 'itens do perfil',
+    levels: [ClientLevel(4, AchievementTier.gold, 'Identidade confirmada')],
   ),
   ClientAchievementDef(
     code: ClientAchievementCode.collaborativeReviewer,
     name: 'Avaliador Colaborativo',
     title: 'Voz da Comunidade',
-    description: 'Avalie os profissionais após a conclusão do serviço.',
-    goal: 1,
-    unit: 'avaliação',
+    description: 'Avalie os profissionais depois de cada serviço concluído: você ajuda quem vem depois.',
+    unit: 'avaliações',
+    levels: [
+      ClientLevel(1, AchievementTier.bronze, 'Voz da Comunidade'),
+      ClientLevel(5, AchievementTier.silver, '5 avaliações feitas'),
+      ClientLevel(10, AchievementTier.gold, '10 avaliações feitas'),
+      ClientLevel(25, AchievementTier.platinum, '25 avaliações feitas'),
+    ],
   ),
   ClientAchievementDef(
     code: ClientAchievementCode.homeMaster,
     name: 'Mestre do Lar',
     title: 'Multicategorias',
-    description: 'Solicite serviços em 3 ou mais categorias diferentes.',
-    goal: 3,
+    description: 'Solicite serviços em categorias diferentes: do chuveiro ao jardim.',
     unit: 'categorias',
+    levels: [
+      ClientLevel(3, AchievementTier.bronze, '3 categorias diferentes'),
+      ClientLevel(5, AchievementTier.silver, '5 categorias diferentes'),
+      ClientLevel(8, AchievementTier.gold, '8 categorias diferentes'),
+      ClientLevel(12, AchievementTier.platinum, '12 categorias diferentes'),
+    ],
   ),
   ClientAchievementDef(
     code: ClientAchievementCode.secureWallet,
     name: 'Pagamento 100% Seguro',
     title: 'Guardião da Carteira',
-    description: 'Conclua 3 serviços com pagamento custodiado, sem nenhuma contestação.',
-    goal: 3,
+    description: 'Conclua serviços com o pagamento protegido em custódia e sem nenhuma contestação.',
     unit: 'serviços seguros',
+    levels: [
+      ClientLevel(3, AchievementTier.bronze, '3 serviços 100% seguros'),
+      ClientLevel(10, AchievementTier.silver, '10 serviços 100% seguros'),
+      ClientLevel(25, AchievementTier.gold, '25 serviços 100% seguros'),
+    ],
   ),
   ClientAchievementDef(
     code: ClientAchievementCode.loyalClient,
     name: 'Cliente Fidelidade',
     title: 'VIP Desperrengue',
-    description: 'Tenha 5 ou mais serviços concluídos com sucesso.',
-    goal: 5,
+    description: 'Conclua serviços com sucesso. Quanto mais você usa, maior a sua medalha.',
     unit: 'serviços',
+    levels: [
+      ClientLevel(5, AchievementTier.bronze, '5 serviços concluídos'),
+      ClientLevel(10, AchievementTier.silver, '10 serviços concluídos'),
+      ClientLevel(25, AchievementTier.gold, '25 serviços concluídos'),
+      ClientLevel(50, AchievementTier.platinum, '50 serviços concluídos'),
+      ClientLevel(100, AchievementTier.diamond, '100 serviços concluídos'),
+    ],
   ),
 ];
+
+/// Total de medalhas (soma dos níveis de todas as conquistas).
+int get kClientMedalTotal => kClientAchievements.fold(0, (a, d) => a + d.levels.length);
 
 /// Estado de uma conquista para o usuário.
 class ClientAchievementProgress {
@@ -103,14 +148,37 @@ class ClientAchievementProgress {
 
   final ClientAchievementDef def;
 
-  /// Valor atual do contador (pode passar da meta; [shown] limita a exibição).
+  /// Valor atual da métrica (pode passar da meta).
   final int current;
 
+  /// Conquista desbloqueada = 1º nível alcançado.
   bool get unlocked => current >= def.goal;
+
+  /// Níveis (medalhas) já conquistados.
+  List<ClientLevel> get unlockedLevels => [for (final l in def.levels) if (current >= l.threshold) l];
+  int get unlockedCount => unlockedLevels.length;
+
+  /// Maior nível conquistado (null = nenhum).
+  ClientLevel? get highest => unlockedLevels.isEmpty ? null : unlockedLevels.last;
+
+  /// Próximo nível a conquistar (null = categoria completa).
+  ClientLevel? get next {
+    for (final l in def.levels) {
+      if (current < l.threshold) return l;
+    }
+    return null;
+  }
+
+  /// Valor exibido na meta do 1º nível ("2/3"): nunca passa da meta.
   int get shown => current > def.goal ? def.goal : current;
 
-  /// 0..1 para a barra de progresso.
-  double get fraction => def.goal == 0 ? 1 : (shown / def.goal).clamp(0.0, 1.0);
+  /// 0..1 rumo ao PRÓXIMO nível (1 quando a categoria está completa).
+  double get fractionToNext {
+    final n = next;
+    if (n == null) return 1;
+    final prev = highest?.threshold ?? 0;
+    return ((current - prev) / (n.threshold - prev)).clamp(0.0, 1.0);
+  }
 }
 
 /// Dados de entrada (já em memória).

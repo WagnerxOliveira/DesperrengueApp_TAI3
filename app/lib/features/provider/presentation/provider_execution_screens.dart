@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -89,7 +90,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
     final net = price - price * 0.12;
     final clientName = (_client?['full_name'] as String?) ?? 'Cliente';
     final me = Supabase.instance.client.auth.currentUser!.id;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
         title: const BrandLogo(),
@@ -207,7 +208,7 @@ class WarrantyIntroScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Garantia e Portfólio')),
       body: ListView(
         padding: const EdgeInsets.all(24),
@@ -376,7 +377,7 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
   Widget build(BuildContext context) {
     final count = _slots.where((s) => _items.containsKey(s.$1)).length;
     final done = count == 4;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Evidências do serviço')),
       body: _loading
           ? const LoadingView()
@@ -566,7 +567,7 @@ class _ReleasePaymentScreenState extends State<ReleasePaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Liberar pagamento')),
       body: Column(
         children: [
@@ -657,7 +658,7 @@ class SafetyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Garantia e segurança')),
       body: ListView(
         padding: const EdgeInsets.all(24),
@@ -695,7 +696,7 @@ class MediationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Mediação em andamento'), automaticallyImplyLeading: true),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: SocialService().myTickets(),
@@ -793,7 +794,7 @@ class _PaidSuccessScreenState extends State<PaidSuccessScreen> {
     // Blindagem de layout: SafeArea + rolagem + SliverFillRemaining(hasScrollBody: false)
     // mantêm os botões 100% visíveis em telas baixas e com barra de botões/gestos.
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(automaticallyImplyLeading: false, title: const BrandLogo()),
       body: SafeArea(
         top: true,
@@ -944,7 +945,7 @@ class _RateClientScreenState extends State<RateClientScreen> {
   Widget build(BuildContext context) {
     final negative = ReviewTags.isNegative(_rating);
     final rep = _reputation;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Avaliar cliente')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -1018,7 +1019,7 @@ class ThanksScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(automaticallyImplyLeading: false, title: const BrandLogo()),
       body: ReviewThanksView(
         isProvider: true,

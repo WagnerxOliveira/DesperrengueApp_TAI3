@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -40,7 +41,7 @@ class _HistoricoServicosClienteScreenState extends State<HistoricoServicosClient
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       backgroundColor: context.tk.surface,
       appBar: AppBar(title: const Text('Histórico de serviços')),
       body: FutureBuilder<List<Job>>(

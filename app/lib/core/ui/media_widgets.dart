@@ -25,11 +25,58 @@ IconData categoryIcon(String name) {
       return Icons.layers_rounded;
     case 'Marcenaria':
       return Icons.carpenter_rounded;
+    case 'Ar-condicionado':
+      return Icons.ac_unit_rounded;
+    case 'Pequenos Reparos':
+      return Icons.build_circle_rounded;
+    case 'Jardinagem':
+      return Icons.yard_rounded;
+    case 'Dedetização':
+      return Icons.pest_control_rounded;
+    case 'Vidraceiro':
+      return Icons.window_rounded;
+    case 'Serralheria':
+      return Icons.fence_rounded;
+    case 'Telhados e Calhas':
+      return Icons.roofing_rounded;
+    case 'Impermeabilização':
+      return Icons.water_damage_rounded;
+    case 'Desentupidora':
+      return Icons.plumbing_rounded;
+    case 'Piscina':
+      return Icons.pool_rounded;
+    case 'Eletrodomésticos':
+      return Icons.kitchen_rounded;
+    case 'TV e Antenas':
+      return Icons.tv_rounded;
+    case 'Câmeras e Alarmes':
+      return Icons.videocam_rounded;
+    case 'Portões e Interfones':
+      return Icons.garage_rounded;
+    case 'Energia Solar':
+      return Icons.solar_power_rounded;
+    case 'Gás e Aquecedores':
+      return Icons.local_fire_department_rounded;
+    case 'Pisos e Revestimentos':
+      return Icons.grid_view_rounded;
+    case 'Cortinas e Persianas':
+      return Icons.curtains_rounded;
+    case 'Estofados e Tapetes':
+      return Icons.weekend_rounded;
+    case 'Mudanças e Fretes':
+      return Icons.local_shipping_rounded;
+    case 'Informática e Redes':
+      return Icons.computer_rounded;
+    case 'Cuidador de Idosos':
+      return Icons.elderly_rounded;
+    case 'Babá':
+      return Icons.child_care_rounded;
+    case 'Pet Care':
+      return Icons.pets_rounded;
     default:
       return Icons.handyman_rounded;
   }
 }
-
 Color categoryColor(String name) {
   for (final c in kCategories) {
     if (c.name == name) return Color(c.colorValue);

@@ -3,7 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../core/models/address_data.dart';
+import '../../../core/models/geocode_models.dart';
+import '../../../core/models/scheduling_models.dart';
 import '../../../core/services/address_lookup.dart';
+import '../../../core/services/precise_geocoder.dart';
+import '../../shared/presentation/service_map_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/ui/app_tokens.dart';
 
@@ -19,19 +23,39 @@ Future<AddressData?> lookupCep(String cep) => AddressLookup().byCep(cep);
 /// * "Usar minha localização atual" captura o GPS, descobre o endereço e
 ///   preenche os campos (o número fica por conta do usuário).
 class AddressForm extends StatefulWidget {
-  const AddressForm({super.key, required this.onChanged, this.initial});
+  const AddressForm({
+    super.key,
+    required this.onChanged,
+    this.initial,
+    @visibleForTesting this.lookup,
+    @visibleForTesting this.geocoder,
+    @visibleForTesting this.pinPicker,
+  });
 
   final ValueChanged<AddressData> onChanged;
   final AddressData? initial;
+
+  /// Injetáveis nos testes (padrão: serviços reais).
+  final AddressLookup? lookup;
+  final AddressGeocoder? geocoder;
+  final PinPicker? pinPicker;
 
   @override
   State<AddressForm> createState() => _AddressFormState();
 }
 
+/// Abre o mapa para o cliente marcar o ponto exato (padrão: [LocationPickerSheet.show]).
+typedef PinPicker = Future<Object?> Function(
+  BuildContext context, {
+  required JobDestination? initial,
+  required Future<void> Function(double lat, double lng) onConfirm,
+  String? addressLine,
+});
+
 enum _Auto { idle, loading, done, notFound }
 
 class _AddressFormState extends State<AddressForm> {
-  final _lookup = AddressLookup();
+  late final AddressLookup _lookup = widget.lookup ?? AddressLookup();
   late final TextEditingController _cep;
   late final TextEditingController _street;
   late final TextEditingController _number;
@@ -45,6 +69,16 @@ class _AddressFormState extends State<AddressForm> {
   double? _lat;
   double? _lng;
   bool _loadingGps = false;
+
+  /// O cliente confirmou o ponto exato no mapa (ou veio do GPS).
+  bool _pinConfirmed = false;
+
+  /// O ponto atual veio do GPS (mais confiável que qualquer geocodificação).
+  bool _gpsPin = false;
+  bool _locatingPin = false;
+
+  /// Evita que escrever nos campos por código invalide o ponto confirmado.
+  bool _applying = false;
   _Auto _auto = _Auto.idle;
 
   /// Último CEP consultado (evita consultar de novo o mesmo valor).
@@ -68,10 +102,21 @@ class _AddressFormState extends State<AddressForm> {
     _lng = a.longitude;
     // Endereço já preenchido (rascunho): não sobrescrever com nova consulta.
     if (a.street.isNotEmpty) _lastCep = AddressLookup.onlyDigits(a.cep);
+    // O ponto só vale para o endereço em que foi marcado: mexeu na rua/cidade/CEP, descarta.
+    // (Registrado ANTES do _emit para o pai receber as coordenadas já zeradas.)
+    for (final c in [_cep, _street, _city, _uf]) {
+      c.addListener(_invalidatePin);
+    }
+    _number.addListener(() {
+      if (!_gpsPin) _invalidatePin();
+    });
     for (final c in _all) {
       c.addListener(_emit);
     }
     _cep.addListener(_onCepChanged);
+    for (final c in [_street, _number, _city]) {
+      c.addListener(_refreshPinButton);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _emit());
   }
 
@@ -98,6 +143,27 @@ class _AddressFormState extends State<AddressForm> {
         longitude: _lng,
       ));
 
+  bool _lastCanPlace = false;
+
+  void _refreshPinButton() {
+    final can = _canPlacePin;
+    if (can != _lastCanPlace && mounted) {
+      _lastCanPlace = can;
+      setState(() {});
+    }
+  }
+
+  void _invalidatePin() {
+    if (_applying || (_lat == null && !_pinConfirmed)) return;
+    _lat = null;
+    _lng = null;
+    _gpsPin = false;
+    if (_pinConfirmed) {
+      _pinConfirmed = false;
+      if (mounted) setState(() {});
+    }
+  }
+
   void _onCepChanged() {
     final digits = AddressLookup.onlyDigits(_cep.text);
     if (digits.length == 8) {
@@ -108,16 +174,29 @@ class _AddressFormState extends State<AddressForm> {
   }
 
   /// Aplica o endereço encontrado nos campos (mantém o número digitado).
-  void _apply(AddressData a, {bool keepNumber = true}) {
-    _street.text = a.street;
-    _neighborhood.text = a.neighborhood;
-    _city.text = a.city;
-    _uf.text = a.uf;
-    if (a.latitude != null) {
+  ///
+  /// [useCoords] = false para CEP: as coordenadas devolvidas por CEP são do centro do CEP/bairro
+  /// (chegam a quilômetros do endereço real) e NÃO devem virar o pino do serviço.
+  void _apply(AddressData a, {bool keepNumber = true, bool useCoords = true}) {
+    _applying = true;
+    try {
+      _street.text = a.street;
+      _neighborhood.text = a.neighborhood;
+      _city.text = a.city;
+      _uf.text = a.uf;
+      if (!keepNumber) _number.text = '';
+    } finally {
+      _applying = false;
+    }
+    if (useCoords && a.latitude != null) {
       _lat = a.latitude;
       _lng = a.longitude;
+    } else {
+      _lat = null;
+      _lng = null;
+      _pinConfirmed = false;
+      _gpsPin = false;
     }
-    if (!keepNumber) _number.text = '';
     _emit();
   }
 
@@ -135,7 +214,7 @@ class _AddressFormState extends State<AddressForm> {
       setState(() => _auto = _Auto.notFound);
       return;
     }
-    _apply(found);
+    _apply(found, useCoords: false);
     setState(() => _auto = _Auto.done);
     // Cursor direto no que falta: número (ou rua, se o CEP for genérico).
     (found.street.isEmpty ? _streetFocus : _numberFocus).requestFocus();
@@ -157,18 +236,29 @@ class _AddressFormState extends State<AddressForm> {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
       );
-      _lat = pos.latitude;
-      _lng = pos.longitude;
       final found = await _lookup.byCoordinates(pos.latitude, pos.longitude);
       if (!mounted) return;
       if (found == null) {
+        _lat = pos.latitude;
+        _lng = pos.longitude;
         _emit();
         showSnack(context, 'Localização capturada, mas não achamos o endereço. Digite o CEP.', error: true);
         return;
       }
       _lastCep = found.cep; // evita nova consulta ao preencher o CEP abaixo
-      _cep.text = found.cep;
-      _apply(found);
+      _applying = true;
+      try {
+        _cep.text = found.cep;
+      } finally {
+        _applying = false;
+      }
+      _apply(found, useCoords: false);
+      // O GPS do aparelho é o ponto mais fiel que existe: vale como pino confirmado.
+      _lat = pos.latitude;
+      _lng = pos.longitude;
+      _pinConfirmed = true;
+      _gpsPin = true;
+      _emit();
       setState(() => _auto = _Auto.done);
       showSnack(context, 'Endereço preenchido! Confira e informe o número.');
       _numberFocus.requestFocus();
@@ -177,6 +267,90 @@ class _AddressFormState extends State<AddressForm> {
     } finally {
       if (mounted) setState(() => _loadingGps = false);
     }
+  }
+
+  bool get _canPlacePin =>
+      _street.text.trim().isNotEmpty && _number.text.trim().isNotEmpty && _city.text.trim().isNotEmpty;
+
+  String get _fullLine {
+    final n = _number.text.trim();
+    final head = [_street.text.trim(), if (n.isNotEmpty) n].join(', ');
+    return [head, _neighborhood.text.trim(), _city.text.trim(), _uf.text.trim().toUpperCase()]
+        .where((s) => s.isNotEmpty)
+        .join(' - ');
+  }
+
+  /// Abre o mapa com o pino no endereço digitado para o cliente ajustar na porta da casa.
+  Future<void> _confirmPin() async {
+    if (!_canPlacePin) {
+      showSnack(context, 'Preencha rua, número e cidade para marcar o ponto no mapa.', error: true);
+      return;
+    }
+    setState(() => _locatingPin = true);
+    JobDestination? initial;
+    try {
+      if (_lat != null && _lng != null) {
+        initial = JobDestination(
+            lat: _lat!, lng: _lng!, precision: DestinationPrecision.street, radiusM: 0, source: 'client_pin');
+      } else {
+        final hit = await (widget.geocoder ?? PreciseGeocoder()).geocode(_fullLine, cep: _cep.text);
+        if (hit != null) {
+          initial = JobDestination(
+              lat: hit.lat, lng: hit.lng, precision: hit.precision, radiusM: 0, source: 'client_geocode');
+        }
+      }
+    } catch (_) {
+      // Sem internet/serviço: o mapa abre no centro padrão e o cliente arrasta.
+    }
+    if (!mounted) return;
+    setState(() => _locatingPin = false);
+    await (widget.pinPicker ?? LocationPickerSheet.show)(
+      context,
+      initial: initial,
+      addressLine: _fullLine,
+      onConfirm: (lat, lng) async {
+        if (!mounted) return;
+        setState(() {
+          _lat = lat;
+          _lng = lng;
+          _pinConfirmed = true;
+          _gpsPin = false;
+        });
+        _emit();
+      },
+    );
+  }
+
+  Widget _pinSection(Color accent) {
+    if (_pinConfirmed) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: _StatusLine(
+                icon: Icons.pin_drop_rounded,
+                text: 'Ponto exato confirmado no mapa.',
+                color: context.tk.success,
+              ),
+            ),
+            TextButton(key: const Key('pin-adjust'), onPressed: _locatingPin ? null : _confirmPin, child: const Text('Ajustar')),
+          ],
+        ),
+      );
+    }
+    if (!_canPlacePin) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: OutlinedButton.icon(
+        key: const Key('pin-confirm'),
+        onPressed: _locatingPin ? null : _confirmPin,
+        icon: _locatingPin
+            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            : Icon(Icons.pin_drop_outlined, color: accent),
+        label: Text(_locatingPin ? 'Localizando o endereço...' : 'Confirmar o ponto exato no mapa'),
+      ),
+    );
   }
 
   Widget _cepStatus() {
@@ -292,6 +466,7 @@ class _AddressFormState extends State<AddressForm> {
             ),
           ],
         ),
+        _pinSection(accent),
         const SizedBox(height: 12),
         TextField(
           controller: _reference,

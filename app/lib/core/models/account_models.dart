@@ -1,3 +1,33 @@
+/// O que será excluído: só o perfil de cliente, só o de profissional ou a conta inteira.
+enum DeletionScope {
+  client('client'),
+  provider('provider'),
+  all('all');
+
+  const DeletionScope(this.wire);
+  final String wire;
+
+  static DeletionScope parse(String? v) => DeletionScope.values.firstWhere((s) => s.wire == v, orElse: () => DeletionScope.all);
+}
+
+/// Resposta da Edge Function `excluir-conta`.
+class DeletionResult {
+  const DeletionResult({required this.scope, required this.accountRemoved});
+
+  final DeletionScope scope;
+
+  /// true = a conta (login) foi apagada; false = só um perfil saiu e a conta segue com o outro.
+  final bool accountRemoved;
+
+  factory DeletionResult.fromMap(Map<String, dynamic> m, {DeletionScope fallback = DeletionScope.all}) {
+    final scope = m['scope'] is String ? DeletionScope.parse(m['scope'] as String) : fallback;
+    return DeletionResult(
+      scope: scope,
+      accountRemoved: m['account_removed'] is bool ? m['account_removed'] as bool : scope == DeletionScope.all,
+    );
+  }
+}
+
 /// Estado financeiro/operacional que decide se a conta pode ser excluída
 /// (`account_deletion_status`). O servidor repete a mesma checagem ao excluir.
 class DeletionStatus {

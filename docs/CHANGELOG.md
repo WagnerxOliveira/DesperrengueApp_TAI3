@@ -14,6 +14,23 @@ Categorias: **Adicionado** · **Alterado** · **Descontinuado** · **Removido** 
 
 ### Adicionado
 
+**Rodada de UX do cliente e do profissional (categorias, voz, mapa, tema escuro, exclusão por perfil)**
+- **33 categorias** (antes 9): Ar-condicionado, Jardinagem, Dedetização, Vidraceiro, Serralheria, Impermeabilização, Piscina, Energia Solar, Pet Care… A grade do painel mostra as principais e **"Ver todas (33)"** abre a lista com **busca por nome ou profissão** ("jardineiro" → Jardinagem). O profissional escolhe entre as mesmas categorias. `norm_tag` (SQL) e `kTagAliases` (Dart) ganharam dezenas de sinônimos e um **teste de paridade** (`tag_alias_parity_test.dart`) falha se divergirem; o índice GIN foi reconstruído (migration `20261107120000`).
+- **Raio de alcance por barra de arrastar** (1 km … 100 km e "Toda a região"), igual ao do profissional.
+- **Conquistas do cliente no mesmo estilo do profissional**: tela "Minhas conquistas" com resumo, medalhas por nível (bronze → diamante) e "Próxima:" com barra de progresso (22 medalhas).
+- **Foto de perfil**: toque abre em tela cheia e pergunta *"Deseja alterar esta foto?"*.
+- **Meus Pedidos com 3 abas** (Em Andamento, Concluídos, Cancelados). **Em mediação** passou para *Perfil → Ajuda e suporte* e **só aparece quando há mediação** (cliente e profissional).
+- **Tela "Pedido publicado!"** redesenhada (voltar discreto, resumo, linha do tempo, vagas de orçamento, cancelar discreto).
+- **Tema escuro** grafite-azulado (`#0E1218`, superfícies em degraus, destaque laranja/azul legíveis): contraste WCAG verificado por teste.
+- **Exclusão de conta por perfil**: quem é Cliente e Profissional escolhe excluir só a conta atual ou as duas; o Dossiê (PDF, agora com gráficos de lucro/economia e detalhe dos serviços) cobre **apenas** o que foi excluído (migration `20261107100000`, Edge Function `excluir-conta` v4, `scoped_deletion_smoke.sql`).
+- **Voz sem duplicar e com português correto**: cada sessão de escuta ocupa um único "slot" (parcial → final nunca soma), repetições são fundidas, linguagem falada ("pra", "tá", "vc") vira escrita, e ao parar a gravação o texto passa pelo **LanguageTool** (API gratuita, só correções cosméticas: caixa, acento e pontuação; falhou → mantém o texto local).
+- **Localização exata**: cascata ViaCEP → Photon + AwesomeAPI(CEP) → Nominatim com validação de cidade/UF (acabou o "Rua Padre José Geraldi" em Embu das Artes) e **pino fixo no centro do mapa** para o cliente arrastar até a porta (também no cadastro de endereço). Pedidos antigos com ponto aproximado são refinados automaticamente (só para melhor) e o dossiê informa `geo_precision`/`geo_source`.
+
+### Corrigido
+- **Botões cortados pela barra de navegação do Android** em todas as telas: `AppScaffold` aplica a área segura inferior e a lista continua rolando até o último item.
+- Cabeçalhos da barra de raio e do resumo do pedido estouravam em telas estreitas.
+- A tela de espera reabria a conexão Realtime a cada segundo (streams recriados a cada `build`).
+
 **Serviço agendado, geofence, chat e dossiês (ADR-0019)**
 - **Novo estado `scheduled`**: o pagamento deixa o serviço *agendado* (sem cronômetro nem "Finalizar"). Só `start_job` leva a `in_progress`, com **dupla trava no servidor**: relógio do servidor (≥ 15 min antes do horário) e **Haversine ≤ 100 m** do endereço (250 m se o ponto veio só da rua). Evidência/PIN/conclusão seguem exigindo `in_progress`, então não é possível finalizar um serviço que não começou.
 - **Pré-serviço agendado** (cliente e profissional): código, data/hora, custódia, descrição, fotos, endereço interativo e **checklist de liberação** (✓/⏳ data e horário · ✓/📍 no local, com a distância atual) e botão *Iniciar serviço (ativar cronômetro)*; botão de homologação **"🧪 Simular dia/hora e GPS no local"** (`checkin_sandbox`).

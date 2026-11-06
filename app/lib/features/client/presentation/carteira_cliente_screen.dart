@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,7 +58,7 @@ class _CarteiraClienteScreenState extends ConsumerState<CarteiraClienteScreen> {
   Widget build(BuildContext context) {
     final wallet = ref.watch(walletProvider);
     final statement = ref.watch(statementProvider);
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Minha carteira')),
       body: ValueListenableBuilder<bool>(
         valueListenable: PrivacyMode.instance.hidden,

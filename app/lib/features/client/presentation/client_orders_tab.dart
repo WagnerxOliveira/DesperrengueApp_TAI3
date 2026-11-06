@@ -16,12 +16,14 @@ import 'carteira_cliente_screen.dart';
 import 'client_setup_screen.dart';
 import '../../../core/utils/order_utils.dart';
 import '../../shared/presentation/achievement_widgets.dart';
+import '../../shared/presentation/profile_photo_viewer.dart';
 import 'detalhe_servico_cliente_screen.dart';
 import 'historico_servicos_cliente_screen.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/app_tokens.dart';
 
-/// Aba "Meus Pedidos": Em Andamento / Concluídos / Cancelados / Em Mediação.
+/// Aba "Meus Pedidos": Em Andamento / Concluídos / Cancelados. Pedidos em mediação ficam em
+/// Perfil > Ajuda e suporte, só enquanto houver uma mediação aberta.
 class ClientOrdersTab extends StatefulWidget {
   const ClientOrdersTab({super.key, @visibleForTesting this.jobsStream, @visibleForTesting this.onOpen});
 
@@ -78,7 +80,6 @@ class OrdersTabs extends StatelessWidget {
       (OrderTab.inProgress, 'Em Andamento', 'Você não tem pedidos em andamento.', 'Peça um orçamento na aba Início.'),
       (OrderTab.completed, 'Concluídos', 'Nenhum serviço concluído ainda.', 'Os serviços finalizados ficam guardados aqui.'),
       (OrderTab.canceled, 'Cancelados', 'Nenhum pedido cancelado.', 'Pedidos cancelados aparecem aqui com data e motivo.'),
-      (OrderTab.mediation, 'Em Mediação', 'Nenhum pedido em mediação.', 'Se algo der errado em um serviço, ele aparece aqui até a equipe resolver.'),
     ];
     return DefaultTabController(
       length: tabs.length,
@@ -96,7 +97,7 @@ class OrdersTabs extends StatelessWidget {
                   child: Badge(
                     isLabelVisible: buckets.of(tab).isNotEmpty,
                     label: Text('${buckets.of(tab).length}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
-                    backgroundColor: tab == OrderTab.mediation ? context.tk.danger : context.tk.clientAccent,
+                    backgroundColor: context.tk.clientAccent,
                     textColor: Colors.white,
                     offset: const Offset(10, -8),
                     child: FittedBox(
@@ -187,7 +188,7 @@ class ClientProfileTab extends StatelessWidget {
         const SizedBox(height: 18),
         Row(
           children: [
-            UserAvatar(url: profile.avatarUrl, name: profile.fullName, radius: 36),
+            EditableAvatar(url: profile.avatarUrl, name: profile.fullName, radius: 36),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -201,8 +202,6 @@ class ClientProfileTab extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 22),
-        ClientAchievementsSection(profile: profile),
         const SizedBox(height: 22),
         _Tile(
           icon: Icons.place_outlined,
@@ -223,6 +222,12 @@ class ClientProfileTab extends StatelessWidget {
           title: 'Histórico de serviços',
           subtitle: 'Reveja serviços concluídos, fotos e conversas',
           onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HistoricoServicosClienteScreen())),
+        ),
+        _Tile(
+          icon: Icons.emoji_events_rounded,
+          title: 'Minhas conquistas',
+          subtitle: 'Troféus por pedidos, avaliações e mais',
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientAchievementsScreen(profile: profile))),
         ),
         _Tile(
           icon: Icons.support_agent_rounded,

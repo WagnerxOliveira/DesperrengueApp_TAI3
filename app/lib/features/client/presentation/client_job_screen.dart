@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import '../../../core/models/marketplace_models.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import 'order_tracking_screen.dart';
@@ -56,12 +59,12 @@ class _ClientJobScreenState extends State<ClientJobScreen> {
       stream: _stream,
       builder: (context, snap) {
         if (snap.hasError) {
-          return Scaffold(appBar: AppBar(), body: const ErrorView(message: 'Não foi possível carregar o pedido.'));
+          return AppScaffold(appBar: AppBar(), body: const ErrorView(message: 'Não foi possível carregar o pedido.'));
         }
         if (!snap.hasData) {
           return snap.connectionState == ConnectionState.waiting
-              ? Scaffold(appBar: AppBar(), body: const LoadingView())
-              : Scaffold(appBar: AppBar(), body: const ErrorView(message: 'Pedido não encontrado.'));
+              ? AppScaffold(appBar: AppBar(), body: const LoadingView())
+              : AppScaffold(appBar: AppBar(), body: const ErrorView(message: 'Pedido não encontrado.'));
         }
         final job = snap.data!;
         _maybeShowMatch(job);
@@ -89,9 +92,13 @@ class _ClientJobScreenState extends State<ClientJobScreen> {
 // ============================================================ aguardando orçamento
 
 class WaitingQuotesScreen extends StatefulWidget {
-  const WaitingQuotesScreen({super.key, required this.job});
+  const WaitingQuotesScreen({super.key, required this.job, @visibleForTesting this.quotesStream, @visibleForTesting this.invitesStream});
 
   final Job job;
+
+  /// Injetáveis nos testes (padrão: Realtime do Supabase).
+  final Stream<List<Quote>>? quotesStream;
+  final Stream<List<JobInvite>>? invitesStream;
 
   @override
   State<WaitingQuotesScreen> createState() => _WaitingQuotesScreenState();
@@ -102,6 +109,11 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
   final _providers = ProviderService();
   Timer? _tick;
   Map<String, ProviderCard> _cards = {};
+
+  // Assinados UMA vez (o cronômetro redesenha a tela a cada segundo: recriar o stream a cada
+  // build reabriria a conexão Realtime o tempo todo).
+  late final Stream<List<Quote>> _quotes = (widget.quotesStream ?? _jobs.streamQuotes(widget.job.id));
+  late final Stream<List<JobInvite>> _invites = (widget.invitesStream ?? _jobs.streamInvites(widget.job.id));
 
   @override
   void initState() {
@@ -168,36 +180,49 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
   @override
   Widget build(BuildContext context) {
     final job = widget.job;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30), tooltip: 'Minimizar', onPressed: () => Navigator.maybePop(context)),
+        // Voltar discreto (seta fina) em vez do "minimizar": sempre volta para onde o cliente estava.
+        leading: IconButton(
+          key: const ValueKey('waiting-back'),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          tooltip: 'Voltar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
         title: const BrandLogo(),
       ),
       body: StreamBuilder<List<Quote>>(
-        stream: _jobs.streamQuotes(job.id),
+        stream: _quotes,
         builder: (context, qsnap) {
           return StreamBuilder<List<JobInvite>>(
-            stream: _jobs.streamInvites(job.id),
+            stream: _invites,
             builder: (context, isnap) {
               final quotes = qsnap.data ?? const <Quote>[];
               final invites = isnap.data ?? const <JobInvite>[];
               _loadCards([...quotes.map((q) => q.providerId), ...invites.map((i) => i.providerId)]);
               final live = invites.where((i) => i.isLive).toList();
-              final slotsLeft = (3 - invites.where((i) => i.status != 'declined' && i.status != 'expired' && i.status != 'withdrawn').length)
-                  .clamp(0, 3);
+              final slotsLeft = (3 - invites.where((i) => i.status != 'declined' && i.status != 'expired' && i.status != 'withdrawn').length).clamp(0, 3);
               final pendingQuotes = quotes.where((q) => q.status == 'pending').toList();
 
               return ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
                 children: [
-                  if (pendingQuotes.isEmpty) ..._waitingHeader(job, live, invites) else ..._quotesHeader(job, pendingQuotes),
-                  const SizedBox(height: 14),
-                  for (final q in pendingQuotes)
-                    _QuoteCard(
-                      quote: q,
-                      provider: _cards[q.providerId],
-                      job: job,
+                  _WaitingHero(job: job, live: live, invites: invites, cards: _cards, quotes: pendingQuotes),
+                  const SizedBox(height: 16),
+                  _OrderSummary(job: job),
+                  const SizedBox(height: 16),
+                  _ProgressSteps(quotes: pendingQuotes.length),
+                  const SizedBox(height: 18),
+                  _QuoteSlots(received: pendingQuotes.length),
+                  if (pendingQuotes.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    const InfoBanner(
+                      'Compare e aceite o melhor. O pagamento só acontece depois e fica retido até o serviço ser concluído.',
+                      tone: BannerTone.security,
                     ),
+                    const SizedBox(height: 14),
+                    for (final q in pendingQuotes) _QuoteCard(quote: q, provider: _cards[q.providerId], job: job),
+                  ],
                   if (job.isDirect && slotsLeft > 0 && job.status == JobStatus.open) ...[
                     const SizedBox(height: 6),
                     AppCard(
@@ -208,8 +233,8 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
                           Row(
                             children: [
                               Icon(Icons.groups_rounded, color: context.tk.clientAccent),
-                              SizedBox(width: 10),
-                              Expanded(
+                              const SizedBox(width: 10),
+                              const Expanded(
                                 child: Text('Não quer esperar? Envie o mesmo pedido para mais profissionais e compare os preços.',
                                     style: TextStyle(fontWeight: FontWeight.w600, height: 1.3)),
                               ),
@@ -224,8 +249,15 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 12),
-                  Center(child: LinkButton(label: 'Cancelar pedido', onPressed: _cancel, color: context.tk.textMuted)),
+                  const SizedBox(height: 14),
+                  Center(
+                    child: TextButton.icon(
+                      key: const ValueKey('waiting-cancel'),
+                      onPressed: _cancel,
+                      icon: Icon(Icons.close_rounded, size: 18, color: context.tk.textMuted),
+                      label: Text('Cancelar pedido', style: TextStyle(color: context.tk.textMuted, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
                 ],
               );
             },
@@ -234,53 +266,237 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
       ),
     );
   }
+}
 
-  List<Widget> _waitingHeader(Job job, List<JobInvite> live, List<JobInvite> all) {
+/// Cabeçalho: radar pulsante + título + (convite direto) contagem regressiva.
+class _WaitingHero extends StatelessWidget {
+  const _WaitingHero({required this.job, required this.live, required this.invites, required this.cards, required this.quotes});
+
+  final Job job;
+  final List<JobInvite> live;
+  final List<JobInvite> invites;
+  final Map<String, ProviderCard> cards;
+  final List<Quote> quotes;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
     final first = live.isEmpty ? null : live.first;
-    final p = first == null ? null : _cards[first.providerId];
-    final total = const Duration(hours: 2);
-    return [
-      const SizedBox(height: 8),
-      if (first != null && job.isDirect)
-        Center(
-          child: CountdownRing(remaining: first.remaining, total: total, icon: Icons.hourglass_bottom_rounded, caption: 'para responder'),
-        )
-      else
-        Center(child: Padding(padding: EdgeInsets.all(24), child: Icon(Icons.hourglass_top_rounded, size: 72, color: context.tk.clientAccent))),
-      const SizedBox(height: 18),
-      Center(
-        child: Text(
-          job.isDirect
-              ? (p == null ? 'Pedido enviado!' : 'Pedido enviado para ${p.fullName}!')
-              : 'Pedido publicado!',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+    final p = first == null ? null : cards[first.providerId];
+    final hasQuotes = quotes.isNotEmpty;
+    final title = hasQuotes
+        ? '${quotes.length} ${quotes.length == 1 ? 'orçamento recebido' : 'orçamentos recebidos'}'
+        : (job.isDirect ? (p == null ? 'Pedido enviado!' : 'Pedido enviado para ${p.fullName}!') : 'Pedido publicado!');
+    final subtitle = hasQuotes
+        ? 'Toque em "Ver orçamento" para comparar e escolher o profissional.'
+        : job.isDirect
+            ? (invites.isNotEmpty && live.isEmpty
+                ? 'O prazo do convite terminou. Você pode cancelar e tentar outro profissional.'
+                : 'Se o profissional não responder neste tempo, o convite expira automaticamente.')
+            : 'Profissionais verificados da sua região já podem ver o pedido. Você recebe até 3 orçamentos e escolhe o melhor.';
+    return Container(
+      key: const ValueKey('waiting-hero'),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tk.clientSoft, Color.alphaBlend(tk.clientAccent.withValues(alpha: tk.isDark ? 0.10 : 0.06), tk.card)],
         ),
+        border: Border.all(color: tk.clientAccent.withValues(alpha: 0.35)),
       ),
-      const SizedBox(height: 8),
-      Text(
-        job.isDirect
-            ? (all.isNotEmpty && live.isEmpty
-                  ? 'O prazo do convite terminou. Você pode cancelar e tentar outro profissional.'
-                  : 'Se o profissional não responder neste tempo, o convite expira automaticamente.')
-            : 'Profissionais verificados da região já podem ver o seu pedido. Você receberá até 3 orçamentos e escolhe o melhor.',
-        textAlign: TextAlign.center,
-        style: TextStyle(color: context.tk.textMuted, height: 1.4),
+      child: Column(
+        children: [
+          if (first != null && job.isDirect)
+            CountdownRing(remaining: first.remaining, total: const Duration(hours: 2), size: 168, icon: Icons.hourglass_bottom_rounded, caption: 'para responder')
+          else
+            PulseRadar(
+              size: 190,
+              child: Container(
+                width: 82,
+                height: 82,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [tk.clientAccent, tk.clientAccent.withValues(alpha: 0.75)]),
+                  boxShadow: [BoxShadow(color: tk.clientAccent.withValues(alpha: 0.4), blurRadius: 18, offset: const Offset(0, 6))],
+                ),
+                child: Icon(hasQuotes ? Icons.request_quote_rounded : Icons.campaign_rounded, size: 40, color: AppTokens.onColor(tk.clientAccent)),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: tk.textMuted, height: 1.4)),
+        ],
       ),
-    ];
+    );
   }
+}
 
-  List<Widget> _quotesHeader(Job job, List<Quote> quotes) => [
-    Text('${quotes.length} ${quotes.length == 1 ? 'orçamento recebido' : 'orçamentos recebidos'}',
-        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-    const SizedBox(height: 4),
-    Text(job.title, style: TextStyle(color: context.tk.textMuted)),
-    const SizedBox(height: 6),
-    const InfoBanner(
-      'Compare e aceite o melhor. O pagamento só acontece depois e fica retido até o serviço ser concluído.',
-      tone: BannerTone.security,
-    ),
-  ];
+/// Resumo do que foi pedido (categoria, texto, quando e onde).
+class _OrderSummary extends StatelessWidget {
+  const _OrderSummary({required this.job});
+
+  final Job job;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return AppCard(
+      key: const ValueKey('waiting-summary'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(radius: 20, backgroundColor: categoryColor(job.category), child: Icon(categoryIcon(job.category), size: 20, color: AppColors.ink)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(job.category, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5)),
+                    Text('${job.code} • publicado ${relativeTime(job.createdAt)}', style: TextStyle(color: tk.textMuted, fontSize: 12.5)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // O selo vai numa linha própria: em telas estreitas ao lado do título ele estourava a linha.
+          const SizedBox(height: 10),
+          const StatusChip('Aguardando Orçamento', icon: Icons.hourglass_top_rounded),
+          if (job.description.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(job.description, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4)),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 14,
+            runSpacing: 6,
+            children: [
+              if (job.scheduledFor != null) _Meta(icon: Icons.event_rounded, text: dateLong(job.scheduledFor!)),
+              if ((job.addressSummary ?? '').isNotEmpty) _Meta(icon: Icons.place_outlined, text: job.addressSummary!),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Meta extends StatelessWidget {
+  const _Meta({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: context.tk.textMuted),
+          const SizedBox(width: 5),
+          Flexible(child: Text(text, style: TextStyle(color: context.tk.textMuted, fontSize: 13, fontWeight: FontWeight.w600))),
+        ],
+      );
+}
+
+/// Linha do tempo curta: Publicado → Recebendo orçamentos → Escolha e pagamento.
+class _ProgressSteps extends StatelessWidget {
+  const _ProgressSteps({required this.quotes});
+
+  final int quotes;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final steps = [
+      ('Publicado', Icons.check_rounded, true),
+      ('Orçamentos', quotes > 0 ? Icons.check_rounded : Icons.more_horiz_rounded, quotes > 0),
+      ('Escolha e pagamento', Icons.lock_outline_rounded, false),
+    ];
+    final activeIndex = quotes > 0 ? 2 : 1;
+    return Row(
+      key: const ValueKey('waiting-steps'),
+      children: [
+        for (var i = 0; i < steps.length; i++) ...[
+          Expanded(
+            child: Column(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: steps[i].$3 ? tk.clientAccent : (i == activeIndex ? tk.clientSoft : tk.surface),
+                    border: Border.all(color: (steps[i].$3 || i == activeIndex) ? tk.clientAccent : tk.border, width: 2),
+                  ),
+                  child: Icon(steps[i].$2, size: 18, color: steps[i].$3 ? AppTokens.onColor(tk.clientAccent) : (i == activeIndex ? tk.clientAccent : tk.textMuted)),
+                ),
+                const SizedBox(height: 6),
+                Text(steps[i].$1, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: i <= activeIndex ? tk.text : tk.textMuted)),
+              ],
+            ),
+          ),
+          if (i < steps.length - 1)
+            Expanded(
+              flex: 0,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 22),
+                child: SizedBox(width: 28, child: Divider(thickness: 2, color: i < activeIndex ? tk.clientAccent : tk.border)),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+/// "Orçamentos recebidos 1/3" com 3 vagas visuais.
+class _QuoteSlots extends StatelessWidget {
+  const _QuoteSlots({required this.received});
+
+  final int received;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return AppCard(
+      key: const ValueKey('waiting-slots'),
+      child: Row(
+        children: [
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: i < received ? tk.clientAccent : Colors.transparent,
+                  border: Border.all(color: i < received ? tk.clientAccent : tk.border, width: 2),
+                ),
+                child: Icon(i < received ? Icons.request_quote_rounded : Icons.hourglass_empty_rounded, size: 20, color: i < received ? AppTokens.onColor(tk.clientAccent) : tk.textMuted),
+              ),
+            ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Orçamentos: $received de 3', style: const TextStyle(fontWeight: FontWeight.w900)),
+                Text(
+                  received == 0 ? 'Avisamos você assim que o primeiro chegar.' : 'Você pode esperar mais ou escolher agora.',
+                  style: TextStyle(fontSize: 12.5, color: tk.textMuted, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _QuoteCard extends StatelessWidget {
@@ -411,7 +627,7 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
   Widget build(BuildContext context) {
     final p = widget.provider;
     final q = widget.quote;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: Text('Orçamento recebido', style: TextStyle(color: context.tk.clientAccent))),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -539,7 +755,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget build(BuildContext context) {
     final job = widget.job;
     final price = job.agreedPrice ?? 0;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
         title: const BrandLogo(),
@@ -646,7 +862,7 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
       builder: (context, snap) {
         final live = (snap.data ?? const <JobInvite>[]).where((i) => i.isLive).toList();
         final remaining = live.isEmpty ? Duration.zero : live.first.remaining;
-        return Scaffold(
+        return AppScaffold(
           backgroundColor: context.tk.clientSoft,
           appBar: AppBar(
             backgroundColor: context.tk.clientSoft,
@@ -741,7 +957,7 @@ class _CanceledView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final refunded = job.paymentStatus == 'refunded';
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: Text(job.code)),
       body: EmptyView(
         icon: Icons.cancel_outlined,

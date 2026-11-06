@@ -8,7 +8,7 @@ import 'package:flutter/material.dart';
 /// Sem `if (isDark)` espalhado pelas telas.
 ///
 /// Escuro (Material 3 + WCAG):
-///  * fundo-base #121212 (nunca preto puro: reduz o efeito "halation");
+///  * fundo-base grafite azulado #0E1218 (nunca preto puro: reduz o efeito "halation");
 ///  * SEM sombra: profundidade por **elevação tonal** ([tonal] clareia a
 ///    superfície com uma camada branca proporcional ao nível);
 ///  * cores vibrantes passam por [desaturate] (menos saturação, mais luz) para não
@@ -48,7 +48,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
 
   final Brightness brightness;
 
-  /// Fundo da tela (claro: branco · escuro: #121212).
+  /// Fundo da tela (claro: branco · escuro: grafite azulado #0E1218).
   final Color background;
 
   /// Fundo secundário / faixas (claro: cinza-azulado · escuro: +1 nível tonal).
@@ -84,7 +84,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
   final Color clientSoft;
   final Color star;
 
-  /// Cor de sombra. No escuro é transparente: sombra some sobre #121212.
+  /// Cor de sombra. No escuro é transparente: sombra some sobre o fundo escuro.
   final Color shadow;
 
   bool get isDark => brightness == Brightness.dark;
@@ -129,38 +129,40 @@ class AppTokens extends ThemeExtension<AppTokens> {
   static final AppTokens dark = _buildDark();
 
   static AppTokens _buildDark() {
-    const base = Color(0xFF121212);
+    // Paleta "grafite azulado": base fria e profunda (#0E1218), camadas que sobem de forma
+    // sutil e bordas de 1 px visíveis — dá hierarquia sem sombra. Os acentos são vibrantes porém
+    // quentes/limpos (laranja âmbar e azul céu), com contraste >= 4,5:1 sobre o fundo.
+    const base = Color(0xFF0E1218);
     return AppTokens(
       brightness: Brightness.dark,
       background: base,
-      surface: tonal(base, 1),
-      card: tonal(base, 2),
-      raised: tonal(base, 6),
-      text: const Color(0xFFE6E8EC), // não é branco puro: menos halation
-      textMuted: const Color(0xFF9CA3AF),
-      border: tonal(base, 6),
-      brand: desaturate(const Color(0xFF3F7FC4)),
-      providerAccent: desaturate(const Color(0xFF5B8DE0)),
-      clientAccent: desaturate(const Color(0xFFF26B0F)),
-      success: desaturate(const Color(0xFF2FB67C)),
-      successSoft: const Color(0xFF14302A),
-      successInk: const Color(0xFF8FDDBB),
-      warning: desaturate(const Color(0xFFE5C566)),
-      warningSoft: const Color(0xFF3A3218),
-      warningInk: const Color(0xFFEBCB82),
-      danger: desaturate(const Color(0xFFE5484D)),
-      dangerSoft: const Color(0xFF3B1F22),
-      info: desaturate(const Color(0xFF3B8BF0)),
-      infoSoft: const Color(0xFF17283D),
-      security: desaturate(const Color(0xFF3FA3AC)),
-      securitySoft: const Color(0xFF14302F),
-      providerSoft: const Color(0xFF1B2740),
-      clientSoft: const Color(0xFF3A2416),
-      star: const Color(0xFFF2C14E),
+      surface: const Color(0xFF141A22),
+      card: const Color(0xFF1A212B),
+      raised: const Color(0xFF232C39),
+      text: const Color(0xFFEAEFF6), // não é branco puro: menos halation
+      textMuted: const Color(0xFFA3AEC0),
+      border: const Color(0xFF2B3646),
+      brand: const Color(0xFF6FA8F0),
+      providerAccent: const Color(0xFF74A7FF),
+      clientAccent: const Color(0xFFFF8F52),
+      success: const Color(0xFF3CCB8C),
+      successSoft: const Color(0xFF12322A),
+      successInk: const Color(0xFF86E3BC),
+      warning: const Color(0xFFEFCB6B),
+      warningSoft: const Color(0xFF362D14),
+      warningInk: const Color(0xFFF1D089),
+      danger: const Color(0xFFFF7A80),
+      dangerSoft: const Color(0xFF38191E),
+      info: const Color(0xFF63A5FA),
+      infoSoft: const Color(0xFF15263C),
+      security: const Color(0xFF52B7C0),
+      securitySoft: const Color(0xFF123231),
+      providerSoft: const Color(0xFF192741),
+      clientSoft: const Color(0xFF2F2018),
+      star: const Color(0xFFF4C650),
       shadow: const Color(0x00000000),
     );
   }
-
   /// Elevação tonal (Material 3): sobrepõe branco à superfície com opacidade
   /// proporcional ao nível em dp (1dp≈5% · 2dp≈7% · 4dp≈9% · 8dp≈12% · 16dp≈15%).
   static Color tonal(Color surface, int dp) {

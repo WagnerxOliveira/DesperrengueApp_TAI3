@@ -14,7 +14,10 @@
 /// espelha estas regras. Ao mudar [kTagAliases], atualize as duas pontas.
 library;
 
-/// Mapa slug-de-sinônimo → slug-canônico. Chaves já normalizadas (sem acento/minúsculas).
+/// Mapa sinônimo → slug canônico. Chaves já normalizadas (sem acento/minúsculas).
+/// O slug canônico de cada categoria do app é `normalizeTag(nome)`; sinônimos de profissões
+/// ("eletricista", "pintor"…) apontam para ele. Espelhado em `public.norm_tag` (SQL): o teste
+/// `tag_alias_parity_test.dart` falha se as duas pontas divergirem.
 const Map<String, String> kTagAliases = {
   // Elétrica
   'eletrica': 'eletrica',
@@ -57,8 +60,99 @@ const Map<String, String> kTagAliases = {
   'marceneiro': 'marcenaria',
   'carpintaria': 'marcenaria',
   'carpinteiro': 'marcenaria',
+  // Ar-condicionado
+  'ar condicionado': 'ar-condicionado',
+  'arcondicionado': 'ar-condicionado',
+  'climatizacao': 'ar-condicionado',
+  'refrigeracao': 'ar-condicionado',
+  'split': 'ar-condicionado',
+  // Pequenos Reparos
+  'marido de aluguel': 'pequenos reparos',
+  'faz tudo': 'pequenos reparos',
+  'reparos': 'pequenos reparos',
+  // Jardinagem
+  'jardineiro': 'jardinagem',
+  'paisagismo': 'jardinagem',
+  'paisagista': 'jardinagem',
+  // Dedetização
+  'dedetizador': 'dedetizacao',
+  'controle de pragas': 'dedetizacao',
+  'desinsetizacao': 'dedetizacao',
+  // Vidraceiro
+  'vidracaria': 'vidraceiro',
+  'vidros': 'vidraceiro',
+  // Serralheria
+  'serralheiro': 'serralheria',
+  'soldador': 'serralheria',
+  // Telhados e Calhas
+  'telhadista': 'telhados e calhas',
+  'telhado': 'telhados e calhas',
+  'calheiro': 'telhados e calhas',
+  'calhas': 'telhados e calhas',
+  // Impermeabilização
+  'impermeabilizador': 'impermeabilizacao',
+  // Desentupidora
+  'desentupidor': 'desentupidora',
+  'desentupimento': 'desentupidora',
+  // Piscina
+  'piscineiro': 'piscina',
+  // Eletrodomésticos
+  'assistencia tecnica': 'eletrodomesticos',
+  'conserto de geladeira': 'eletrodomesticos',
+  'tecnico de eletrodomesticos': 'eletrodomesticos',
+  // TV e Antenas
+  'antenista': 'tv e antenas',
+  'instalacao de tv': 'tv e antenas',
+  // Câmeras e Alarmes
+  'cftv': 'cameras e alarmes',
+  'alarme': 'cameras e alarmes',
+  'alarmes': 'cameras e alarmes',
+  'cameras': 'cameras e alarmes',
+  'seguranca eletronica': 'cameras e alarmes',
+  // Portões e Interfones
+  'portao eletronico': 'portoes e interfones',
+  'interfone': 'portoes e interfones',
+  'automacao de portoes': 'portoes e interfones',
+  // Energia Solar
+  'placa solar': 'energia solar',
+  'painel solar': 'energia solar',
+  'fotovoltaica': 'energia solar',
+  // Gás e Aquecedores
+  'gas': 'gas e aquecedores',
+  'aquecedor': 'gas e aquecedores',
+  'instalador de gas': 'gas e aquecedores',
+  // Pisos e Revestimentos
+  'azulejista': 'pisos e revestimentos',
+  'ladrilheiro': 'pisos e revestimentos',
+  'pisos': 'pisos e revestimentos',
+  'revestimentos': 'pisos e revestimentos',
+  // Cortinas e Persianas
+  'cortina': 'cortinas e persianas',
+  'persiana': 'cortinas e persianas',
+  // Estofados e Tapetes
+  'limpeza de estofados': 'estofados e tapetes',
+  'lavagem de sofa': 'estofados e tapetes',
+  'tapeceiro': 'estofados e tapetes',
+  // Mudanças e Fretes
+  'mudanca': 'mudancas e fretes',
+  'frete': 'mudancas e fretes',
+  'fretes': 'mudancas e fretes',
+  'carreto': 'mudancas e fretes',
+  // Informática e Redes
+  'informatica': 'informatica e redes',
+  'tecnico de informatica': 'informatica e redes',
+  'wifi': 'informatica e redes',
+  'redes': 'informatica e redes',
+  // Cuidador de Idosos
+  'cuidador': 'cuidador de idosos',
+  'cuidadora': 'cuidador de idosos',
+  // Babá
+  'nanny': 'baba',
+  // Pet Care
+  'pet sitter': 'pet care',
+  'banho e tosa': 'pet care',
+  'passeador de caes': 'pet care',
 };
-
 const Map<String, String> _accents = {
   'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
   'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',

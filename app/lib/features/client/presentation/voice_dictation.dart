@@ -4,20 +4,24 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../core/services/speech_service.dart';
+import '../../../core/services/text_refine_service.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/utils/smart_transcript_formatter.dart';
 
 enum VoiceState { idle, starting, listening, unavailable }
 
-/// Cérebro do ditado por voz (sem widgets): **tap-to-toggle**, relato estruturado.
+/// Cérebro do ditado por voz (sem widgets): **tap-to-toggle**, relato estruturado e SEM duplicar.
 ///
-/// Um toque inicia a captação; outro toque encerra. Enquanto ouve, o motor pode "fechar" a
-/// sessão sozinho em pausas longas — nesse caso reabre automaticamente até o cliente tocar
-/// de novo. Cada trecho final vira um segmento; o [SmartTranscriptFormatter] organiza tudo
-/// (pontuação, capitalização, perguntas) direto no [text] do formulário, que continua
-/// editável.
+/// Um toque inicia a captação; outro encerra. Enquanto ouve, o motor pode "fechar" a sessão
+/// sozinho em pausas longas — o app reabre até o cliente tocar de novo.
+///
+/// **Por que o texto duplicava**: os motores de voz (Android/Web) entregam o MESMO trecho várias
+/// vezes — parciais crescentes, o resultado final e, às vezes, de novo ao parar/reabrir. Antes cada
+/// resultado final virava um segmento novo ("Preciso de um eletricista. Preciso de um eletricista.").
+/// Agora cada sessão de escuta ocupa UM "slot" que é SUBSTITUÍDO a cada resultado (parcial ou final),
+/// e na montagem final trechos repetidos/cumulativos entre sessões são fundidos.
 class VoiceDictationController extends ChangeNotifier {
-  VoiceDictationController({required this.engine, required this.text, this.maxLength = 500});
+  VoiceDictationController({required this.engine, required this.text, this.maxLength = 500, this.refiner});
 
   final SpeechEngine engine;
 
@@ -25,16 +29,30 @@ class VoiceDictationController extends ChangeNotifier {
   final TextEditingController text;
   final int maxLength;
 
+  /// Revisão final opcional (acentos/maiúsculas/pontuação), depois de parar a gravação.
+  final TextRefiner? refiner;
+
   VoiceState state = VoiceState.idle;
   double level = 0;
   String? message;
 
+  /// `true` enquanto o texto está sendo aperfeiçoado pelo revisor (rede).
+  bool refining = false;
+
   bool _initialized = false;
   bool _wantListening = false;
   bool _restarting = false;
+  bool _disposed = false;
   String _base = '';
-  final List<String> _segments = [];
-  String _partial = '';
+  String _lastRendered = '';
+  String _lastSpoken = '';
+  int _refineToken = 0;
+
+  /// O slot corrente já recebeu um resultado FINAL (o trecho está "fechado").
+  bool _slotFinal = false;
+
+  /// Um slot por sessão de escuta; o último é o da sessão corrente.
+  final List<String> _sessions = [];
 
   bool get isListening => state == VoiceState.listening || state == VoiceState.starting;
 
@@ -55,14 +73,18 @@ class VoiceDictationController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _refineToken++; // invalida qualquer revisão em andamento
+    refining = false;
     _base = text.text;
-    _segments.clear();
-    _partial = '';
+    _lastRendered = text.text;
+    _sessions.clear();
     _wantListening = true;
     await _listen();
   }
 
   Future<void> _listen() async {
+    _sessions.add(''); // nova sessão = novo slot
+    _slotFinal = false;
     try {
       await engine.listen(onResult: _onResult, onLevel: _onLevel);
       state = VoiceState.listening;
@@ -71,7 +93,7 @@ class VoiceDictationController extends ChangeNotifier {
       state = VoiceState.unavailable;
       message = 'Não foi possível iniciar a gravação. Tente novamente ou digite o relato.';
     }
-    notifyListeners();
+    _notify();
   }
 
   Future<void> stop() async {
@@ -80,31 +102,40 @@ class VoiceDictationController extends ChangeNotifier {
     try {
       await engine.stop();
     } catch (_) {}
-    // Frase em andamento que o motor não chegou a finalizar também entra no texto.
-    if (_partial.trim().isNotEmpty) {
-      _segments.add(_partial.trim());
-      _partial = '';
-    }
     level = 0;
     state = VoiceState.idle;
     _render();
-    notifyListeners();
+    _notify();
+    unawaited(_refine());
   }
 
   void _onResult(String words, bool isFinal) {
-    if (words.trim().isEmpty) return;
-    if (isFinal) {
-      _segments.add(words.trim());
-      _partial = '';
-    } else {
-      _partial = words.trim();
+    final w = words.trim();
+    if (w.isEmpty || _sessions.isEmpty) return;
+    // Resultado atrasado depois de parar: só vale se o cliente ainda não mexeu no texto.
+    if (!_wantListening && text.text != _lastRendered) return;
+    final cur = _sessions.last;
+    if (cur.isNotEmpty && _slotFinal) {
+      // O trecho já está fechado. Só repetição/pedaço tardio do mesmo trecho NÃO soma e NÃO encolhe;
+      // uma fala realmente nova (motores contínuos) abre um slot novo.
+      final kc = _key(cur);
+      final kw = _key(w);
+      if (kc.contains(kw)) return;
+      if (!kw.contains(kc)) {
+        _sessions.add(w);
+        _slotFinal = isFinal;
+        _render();
+        return;
+      }
     }
+    _sessions[_sessions.length - 1] = w; // SUBSTITUI o slot (parcial → final nunca soma)
+    _slotFinal = isFinal;
     _render();
   }
 
   void _onLevel(double l) {
     level = l;
-    notifyListeners();
+    _notify();
   }
 
   void _onStatus(String status) {
@@ -113,7 +144,7 @@ class VoiceDictationController extends ChangeNotifier {
       _restarting = true;
       Future<void>.delayed(const Duration(milliseconds: 200), () async {
         _restarting = false;
-        if (_wantListening) await _listen();
+        if (_wantListening && !_disposed) await _listen();
       });
     }
   }
@@ -126,21 +157,82 @@ class VoiceDictationController extends ChangeNotifier {
       state = VoiceState.unavailable;
       message = 'O reconhecimento de voz parou ($error). O que foi captado já está no texto.';
       _render();
-      notifyListeners();
+      _notify();
     }
   }
 
+  // ------------------------------------------------------------------- montagem
+
+  /// Funde as sessões: repetidas somem; uma sessão que é continuação (cumulativa) da anterior a substitui.
+  @visibleForTesting
+  static List<String> mergeSessions(Iterable<String> sessions) {
+    final out = <String>[];
+    for (final raw in sessions) {
+      final s = raw.trim();
+      if (s.isEmpty) continue;
+      if (out.isEmpty) {
+        out.add(s);
+        continue;
+      }
+      final prev = _key(out.last);
+      final cur = _key(s);
+      if (cur == prev || prev.contains(cur)) continue; // repetição / pedaço do que já temos
+      if (cur.contains(prev)) {
+        out[out.length - 1] = s; // a nova sessão já traz a anterior inteira
+        continue;
+      }
+      out.add(s);
+    }
+    return out;
+  }
+
+  /// Chave de comparação: minúsculas, sem pontuação, espaços colapsados.
+  static String _key(String s) => s.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+
   /// Escreve no campo o texto digitado antes + o relato falado, já estruturado.
   void _render() {
-    final parts = [..._segments, if (_partial.isNotEmpty) _partial];
-    final spoken = SmartTranscriptFormatter.format('', segments: parts);
-    var out = SmartTranscriptFormatter.append(_base, spoken);
+    _lastSpoken = SmartTranscriptFormatter.format('', segments: mergeSessions(_sessions));
+    _write(SmartTranscriptFormatter.append(_base, _lastSpoken));
+  }
+
+  void _write(String value) {
+    var out = value;
     if (out.length > maxLength) out = out.substring(0, maxLength);
+    _lastRendered = out;
     text.value = TextEditingValue(text: out, selection: TextSelection.collapsed(offset: out.length));
+  }
+
+  /// Revisão final (acentos, maiúsculas, pontuação) sem sobrescrever o que o cliente editou.
+  Future<void> _refine() async {
+    final r = refiner;
+    final spoken = _lastSpoken;
+    if (r == null || spoken.trim().length < 8) return;
+    final token = ++_refineToken;
+    refining = true;
+    _notify();
+    String refined;
+    try {
+      refined = await r.refine(spoken);
+    } catch (_) {
+      refined = spoken;
+    }
+    if (_disposed || token != _refineToken) return;
+    refining = false;
+    final untouched = text.text == _lastRendered; // o cliente não mexeu enquanto revisávamos
+    if (untouched && refined.trim().isNotEmpty && refined != spoken) {
+      _lastSpoken = refined;
+      _write(SmartTranscriptFormatter.append(_base, refined));
+    }
+    _notify();
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _wantListening = false;
     if (engine.isListening) {
       unawaited(engine.stop().catchError((Object _) {}));
@@ -151,13 +243,16 @@ class VoiceDictationController extends ChangeNotifier {
 
 /// Bloco "Falar o que aconteceu": tutorial curto + microfone tap-to-toggle + ondas sonoras.
 class VoiceDictationPanel extends StatefulWidget {
-  const VoiceDictationPanel({super.key, required this.textController, this.maxLength = 500, this.engine, this.onChanged});
+  const VoiceDictationPanel({super.key, required this.textController, this.maxLength = 500, this.engine, this.refiner, this.onChanged});
 
   final TextEditingController textController;
   final int maxLength;
 
   /// Injetável nos testes (padrão: [PlatformSpeechEngine]).
   final SpeechEngine? engine;
+
+  /// Injetável nos testes (padrão: [LanguageToolRefiner]).
+  final TextRefiner? refiner;
 
   /// Avisa o formulário quando o texto muda por voz (para revalidar o botão "Avançar").
   final VoidCallback? onChanged;
@@ -171,6 +266,7 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
     engine: widget.engine ?? PlatformSpeechEngine(),
     text: widget.textController,
     maxLength: widget.maxLength,
+    refiner: widget.refiner ?? LanguageToolRefiner(),
   );
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
 
@@ -253,7 +349,7 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
                             color: accent,
                             boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4))],
                           ),
-                          child: Icon(listening ? Icons.stop_rounded : Icons.mic_rounded, color: Colors.white, size: 34),
+                          child: Icon(listening ? Icons.stop_rounded : Icons.mic_rounded, color: AppTokens.onColor(accent), size: 34),
                         ),
                       ),
                     ),
@@ -263,14 +359,23 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
             ),
           ),
           const SizedBox(height: 4),
-          if (listening)
-            Center(child: SoundWaveBars(animation: _anim, level: _voice.level, color: accent)),
+          if (listening) Center(child: SoundWaveBars(animation: _anim, level: _voice.level, color: accent)),
           const SizedBox(height: 6),
           Center(
-            child: Text(
-              listening ? 'Ouvindo… toque no botão para parar' : 'Toque para falar',
-              style: TextStyle(fontWeight: FontWeight.w800, color: accent),
-            ),
+            child: _voice.refining
+                ? Row(
+                    key: const ValueKey('voice-refining'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: accent)),
+                      const SizedBox(width: 8),
+                      Text('Aperfeiçoando o texto…', style: TextStyle(fontWeight: FontWeight.w800, color: accent)),
+                    ],
+                  )
+                : Text(
+                    listening ? 'Ouvindo… toque no botão para parar' : 'Toque para falar',
+                    style: TextStyle(fontWeight: FontWeight.w800, color: accent),
+                  ),
           ),
           if (_voice.message != null) ...[
             const SizedBox(height: 8),

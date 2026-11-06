@@ -13,7 +13,7 @@ O app tinha ~500 usos de cor literal (`Colors.white`, `Color(0xFF…)`, `AppColo
 
 1. **Tokens semânticos** (`AppTokens`, uma `ThemeExtension`): `background`, `surface`, `card`, `raised`, `text`, `textMuted`, `border`, acentos e pares *soft/ink* de estado. Acesso por `context.tk.text`. **Proibido** cor literal para superfície/texto/borda/estado nas Views.
 2. **Tri-state** `Automático · Claro · Escuro` (Riverpod `ThemeModeController`), persistido em `SharedPreferences` e lido durante a splash. Seletor em Perfil → Aparência.
-3. **Escuro:** fundo-base **#121212** (não é preto puro); texto `#E6E8EC` (não é branco puro, reduz *halation*).
+3. **Escuro:** fundo-base **#0E1218** (grafite-azulado, não é preto puro; antes #121212 — revisado para dar profundidade com superfícies em degraus `#141A22 → #1A212B → #232C39`); texto `#EAEFF6` (não é branco puro, reduz *halation*). Contraste verificado em `ui_polish_test.dart` (texto ≥ 7:1, secundário ≥ 4,5:1).
 4. **Elevação tonal, não sombra:** superfícies mais altas ficam mais claras (`AppTokens.tonal`: 1dp≈5% … 24dp≈16% de branco). `cardShadow()` devolve lista vazia no escuro.
 5. **Dessaturação (anti-fadiga):** `AppTokens.desaturate` reduz a saturação e eleva a luminosidade das cores vibrantes (HSL), preservando o matiz da marca. Ícones/SVG são tingidos por token (`AppTokens.tint`).
 6. **Acessibilidade verificada, não prometida:** `test/offboarding_boot_theme_test.dart` exige contraste WCAG ≥ 4,5:1 para texto e ≥ 3:1 para acentos, em **ambos** os temas (o teste achou um cinza claro com 4,47:1, corrigido).

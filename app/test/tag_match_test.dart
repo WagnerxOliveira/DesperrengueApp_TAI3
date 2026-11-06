@@ -77,7 +77,7 @@ void main() {
 
     test('isolamento: filterByCategory descarta quem não tem a tag, para TODAS as categorias', () {
       // 1 profissional "exato" por categoria + 1 sem nenhuma tag relevante.
-      final pros = [for (final c in kCategories) prov('p-${c.name}', tags: [c.name.toLowerCase()]), prov('nada', tags: ['jardinagem'])];
+      final pros = [for (final c in kCategories) prov('p-${c.name}', tags: [c.name.toLowerCase()]), prov('nada', tags: ['astronauta'])];
       for (final c in kCategories) {
         final r = filterByCategory(pros, c.name);
         expect(r.map((p) => p.id), ['p-${c.name}'], reason: c.name);
@@ -104,7 +104,8 @@ void main() {
       expect(categoryNameForTerm('eletricista'), 'Elétrica');
       expect(categoryNameForTerm('HIDRÁULICA'), 'Encanador');
       expect(categoryNameForTerm('Encanador'), 'Encanador');
-      expect(categoryNameForTerm('jardineiro'), isNull);
+      expect(categoryNameForTerm('jardineiro'), 'Jardinagem');
+      expect(categoryNameForTerm('astronauta'), isNull);
       expect(categoryNameForTerm(''), isNull);
     });
   });
@@ -118,44 +119,55 @@ void main() {
     final semGps = prov('semgps', city: 'Santa Rita do Sapucaí - MG');
     final semGpsOutra = prov('outra', city: 'São Paulo - SP');
 
-    List<String> ids(SearchRadius r, {String? city = 'Santa Rita do Sapucaí - MG', double? lat = cLat, double? lng = cLng}) =>
-        applyRadius([perto, medio, longe, semGps, semGpsOutra], clientLat: lat, clientLng: lng, radius: r, clientCity: city)
+    List<String> ids(int? km, {String? city = 'Santa Rita do Sapucaí - MG', double? lat = cLat, double? lng = cLng}) =>
+        applyRadius([perto, medio, longe, semGps, semGpsOutra], clientLat: lat, clientLng: lng, radiusKm: km, clientCity: city)
             .map((p) => p.id)
             .toList();
 
-    test('5 / 10 / 25 / 50 km filtram pela distância real', () {
-      expect(ids(SearchRadius.km5), ['perto', 'semgps']);
-      expect(ids(SearchRadius.km10), ['perto', 'semgps']);
-      expect(ids(SearchRadius.km25), ['perto', 'medio', 'semgps']);
-      expect(ids(SearchRadius.km50), ['perto', 'medio', 'longe', 'semgps']);
+    test('1 a 100 km filtram pela distância real', () {
+      expect(ids(1), ['semgps']);
+      expect(ids(5), ['perto', 'semgps']);
+      expect(ids(10), ['perto', 'semgps']);
+      expect(ids(15), ['perto', 'medio', 'semgps']);
+      expect(ids(25), ['perto', 'medio', 'semgps']);
+      expect(ids(50), ['perto', 'medio', 'longe', 'semgps']);
     });
 
-    test('"Toda a região" nunca filtra: inclui profissional sem GPS', () {
-      expect(ids(SearchRadius.region), hasLength(5));
+    test('"Toda a região" (null) nunca filtra: inclui profissional sem GPS', () {
+      expect(ids(null), hasLength(5));
     });
 
     test('profissional sem GPS cai no fallback da cidade (nunca falso vazio)', () {
-      expect(ids(SearchRadius.km5), contains('semgps'));
-      expect(ids(SearchRadius.km5), isNot(contains('outra')));
+      expect(ids(5), contains('semgps'));
+      expect(ids(5), isNot(contains('outra')));
       // Sem cidade conhecida do cliente: não dá para descartar, entra.
-      expect(ids(SearchRadius.km5, city: null), contains('outra'));
+      expect(ids(5, city: null), contains('outra'));
     });
 
     test('cliente sem coordenadas: não filtra e não inventa distância', () {
-      final r = applyRadius([perto, longe], clientLat: null, clientLng: null, radius: SearchRadius.km5);
+      final r = applyRadius([perto, longe], clientLat: null, clientLng: null, radiusKm: 5);
       expect(r, hasLength(2));
       expect(r.every((p) => p.distanceKm == null), isTrue);
     });
 
     test('anota distanceKm calculada por Haversine', () {
-      final r = applyRadius([perto], clientLat: cLat, clientLng: cLng, radius: SearchRadius.region);
+      final r = applyRadius([perto], clientLat: cLat, clientLng: cLng, radiusKm: null);
       expect(r.single.distanceKm, closeTo(3.0, 0.1));
     });
 
-    test('rótulos do seletor', () {
-      expect(SearchRadius.values.map((r) => r.label), ['5 km', '10 km', '25 km', '50 km', 'Toda a região']);
-      expect(SearchRadius.region.isUnlimited, isTrue);
-      expect(SearchRadius.km25.km, 25);
+    test('degraus da barra: crescentes, terminam em "Toda a região"', () {
+      final finitos = kRadiusSteps.whereType<int>().toList();
+      expect(finitos, orderedEquals([...finitos]..sort()));
+      expect(finitos.toSet(), hasLength(finitos.length), reason: 'sem degraus repetidos');
+      expect(kRadiusSteps.last, isNull);
+      expect(kRadiusAllIndex, kRadiusSteps.length - 1);
+      expect(kRadiusSteps, containsAll([5, 10, 25, 50]), reason: 'mantém os valores antes oferecidos como chips');
+    });
+
+    test('rótulos', () {
+      expect(radiusLabel(5), '5 km');
+      expect(radiusLabel(100), '100 km');
+      expect(radiusLabel(null), 'Toda a região');
     });
   });
 }

@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -8,7 +9,9 @@ import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/services/scheduling_service.dart';
 import '../../../core/services/speech_service.dart';
+import '../../../core/services/text_refine_service.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -36,6 +39,7 @@ class RequestWizardScreen extends StatefulWidget {
     this.provider,
     this.category,
     @visibleForTesting this.speechEngine,
+    @visibleForTesting this.textRefiner,
     @visibleForTesting this.openRequestsCounter,
     @visibleForTesting this.mapOpener,
     @visibleForTesting this.debugStep = 0,
@@ -54,6 +58,7 @@ class RequestWizardScreen extends StatefulWidget {
 
   /// Injetáveis nos testes (padrão: microfone real / Supabase / mapa real).
   final SpeechEngine? speechEngine;
+  final TextRefiner? textRefiner;
   final Future<int> Function()? openRequestsCounter;
   final Future<void> Function(BuildContext context, String addressLine, String summary, double? lat, double? lng)? mapOpener;
 
@@ -78,6 +83,10 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
 
   /// Pedidos que o cliente já tem em aberto (para o contador 1º/2º/3º da revisão).
   int? _openRequests;
+
+  /// Ponto exato confirmado pelo cliente no mapa (vale para o pedido em criação).
+  double? _pinLat;
+  double? _pinLng;
 
   static const _hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
@@ -202,15 +211,18 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         scheduledFor: _emergency ? null : _scheduled,
         // Se o cliente escolheu OUTRO endereço, nunca herda as coordenadas do perfil (seriam de outra casa):
         // sem coordenadas, o servidor geocodifica (Nominatim) e o cliente confirma o pino no mapa.
-        latitude: _override != null ? _override!.latitude : widget.profile.latitude,
-        longitude: _override != null ? _override!.longitude : widget.profile.longitude,
+        latitude: _pinLat ?? (_override != null ? _override!.latitude : widget.profile.latitude),
+        longitude: _pinLng ?? (_override != null ? _override!.longitude : widget.profile.longitude),
         photoPaths: paths,
       );
 
       // Sem coordenadas no pedido: o app do cliente geocodifica (Nominatim) e registra o ponto em
       // segundo plano. O serviço agendado pede depois a confirmação do pino no mapa.
-      if ((_override != null ? _override!.latitude : widget.profile.latitude) == null && _currentAddress.isNotEmpty) {
-        unawaited(registerGeocodedLocation(jobId: jobId, addressLine: _currentAddress, summary: _summary));
+      if (_pinLat != null && _pinLng != null) {
+        // O cliente arrastou o mapa até a porta: grava como PINO CONFIRMADO (prevalece sobre geocodificação).
+        unawaited(SupabaseSchedulingBackend().setLocation(jobId, _pinLat!, _pinLng!, source: 'client_pin', precision: 'house').then<void>((_) {}).catchError((Object _) {}));
+      } else if ((_override != null ? _override!.latitude : widget.profile.latitude) == null && _currentAddress.isNotEmpty) {
+        unawaited(registerGeocodedLocation(jobId: jobId, addressLine: _currentAddress, summary: _summary, cep: _override?.cep));
       }
       if (_provider != null) {
         final n = await _jobs.invite(jobId, [_provider!.id]);
@@ -253,7 +265,13 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     final result = await Navigator.of(context).push<AddressData>(
       MaterialPageRoute(builder: (_) => EditAddressScreen(currentLine: widget.profile.addressLine)),
     );
-    if (result != null && mounted) setState(() => _override = result);
+    if (result != null && mounted) {
+      setState(() {
+        _override = result;
+        _pinLat = null; // outro endereço: o pino anterior não vale mais
+        _pinLng = null;
+      });
+    }
   }
 
   /// Abre o mapa interativo (OSM + GPS ao vivo) no endereço do serviço.
@@ -263,15 +281,31 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       showSnack(context, 'Informe o endereço do atendimento para ver no mapa.', error: true);
       return;
     }
-    final lat = _override != null ? _override!.latitude : widget.profile.latitude;
-    final lng = _override != null ? _override!.longitude : widget.profile.longitude;
+    final lat = _pinLat ?? (_override != null ? _override!.latitude : widget.profile.latitude);
+    final lng = _pinLng ?? (_override != null ? _override!.longitude : widget.profile.longitude);
     final opener = widget.mapOpener;
     if (opener != null) {
       await opener(context, line, _summary, lat, lng);
       return;
     }
-    await LiveLocationMapSheet.show(context, addressLine: line, summary: _summary, latitude: lat, longitude: lng);
+    await LiveLocationMapSheet.show(
+      context,
+      addressLine: line,
+      summary: _summary,
+      latitude: lat,
+      longitude: lng,
+      pinConfirmed: _pinLat != null,
+      // Ajustar o ponto aqui vale para o pedido que está sendo criado.
+      onAdjustPin: (la, ln) async {
+        if (!mounted) return;
+        setState(() {
+          _pinLat = la;
+          _pinLng = ln;
+        });
+      },
+    );
   }
+
   void _next() {
     if (_step == 0 && !_step0Valid) {
       showSnack(
@@ -298,7 +332,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) setState(() => _step--);
       },
-      child: Scaffold(
+      child: AppScaffold(
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -357,10 +391,10 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                   : kCategories))
                 ChoiceChip(
                   label: Text(c.name),
-                  avatar: Icon(categoryIcon(c.name), size: 16, color: _category == c.name ? Colors.white : context.tk.text),
+                  avatar: Icon(categoryIcon(c.name), size: 16, color: _category == c.name ? Theme.of(context).colorScheme.onPrimary : context.tk.text),
                   selected: _category == c.name,
                   showCheckmark: false,
-                  labelStyle: TextStyle(color: _category == c.name ? Colors.white : context.tk.text, fontWeight: FontWeight.w700),
+                  labelStyle: TextStyle(color: _category == c.name ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
                   onSelected: (_) => setState(() => _category = c.name),
                 ),
             ],
@@ -394,6 +428,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           textController: _description,
           maxLength: 500,
           engine: widget.speechEngine,
+          refiner: widget.textRefiner,
           onChanged: () {
             if (mounted) setState(() {});
           },
@@ -501,7 +536,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                   return ChoiceChip(
                     label: Text('${two(h)}:00', style: TextStyle(
                       decoration: disabled ? TextDecoration.lineThrough : null,
-                      color: disabled ? context.tk.textMuted : (selected ? Colors.white : context.tk.text),
+                      color: disabled ? context.tk.textMuted : (selected ? Theme.of(context).colorScheme.onPrimary : context.tk.text),
                       fontWeight: FontWeight.w700,
                     )),
                     selected: selected,

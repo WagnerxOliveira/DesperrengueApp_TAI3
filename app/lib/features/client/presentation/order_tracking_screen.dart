@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -99,7 +100,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   Widget build(BuildContext context) {
     final job = widget.job;
     final disputed = job.status == JobStatus.disputed;
-    return Scaffold(
+    return AppScaffold(
       backgroundColor: context.tk.surface,
       appBar: AppBar(
         backgroundColor: context.tk.surface,

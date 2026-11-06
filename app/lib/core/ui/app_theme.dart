@@ -114,7 +114,7 @@ class AppTheme {
         titleTextStyle: TextStyle(color: tk.text, fontSize: 18, fontWeight: FontWeight.w700),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: tk.isDark ? AppTokens.tonal(tk.background, 3) : tk.background,
+        backgroundColor: tk.isDark ? tk.surface : tk.background,
         indicatorColor: switch (mode) {
           UserMode.client => tk.clientSoft,
           UserMode.provider => tk.providerSoft,
@@ -122,6 +122,31 @@ class AppTheme {
         },
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        height: 68,
+        iconTheme: WidgetStateProperty.resolveWith(
+          (s) => IconThemeData(color: s.contains(WidgetState.selected) ? accent : tk.textMuted, size: 25),
+        ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (s) => TextStyle(
+            fontSize: 12,
+            fontWeight: s.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
+            color: s.contains(WidgetState.selected) ? tk.text : tk.textMuted,
+          ),
+        ),
+      ),
+      sliderTheme: SliderThemeData(
+        activeTrackColor: accent,
+        inactiveTrackColor: tk.isDark ? tk.raised : tk.border,
+        thumbColor: accent,
+        overlayColor: accent.withValues(alpha: 0.16),
+        valueIndicatorColor: accent,
+        valueIndicatorTextStyle: TextStyle(color: onAccent, fontWeight: FontWeight.w800),
+        trackHeight: 5,
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: accent,
+        linearTrackColor: tk.isDark ? tk.raised : tk.border,
+        circularTrackColor: tk.isDark ? tk.raised : tk.border,
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: tk.raised,

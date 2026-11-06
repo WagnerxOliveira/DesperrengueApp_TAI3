@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/profile_service.dart';
@@ -11,7 +12,7 @@ class HomeAdminScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: const Text('Administração'),
         actions: [

@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -186,7 +187,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: Text(widget.setupMode ? 'Seu perfil profissional' : 'Editar perfil'),
         automaticallyImplyLeading: !widget.setupMode,
@@ -256,7 +257,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
                         selected: _specialties.contains(c.name),
                         showCheckmark: false,
                         selectedColor: accent,
-                        labelStyle: TextStyle(color: _specialties.contains(c.name) ? Colors.white : context.tk.text, fontWeight: FontWeight.w700),
+                        labelStyle: TextStyle(color: _specialties.contains(c.name) ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
                         onSelected: (v) {
                           setState(() => v ? _specialties.add(c.name) : _specialties.remove(c.name));
                           _scheduleDraft();
@@ -356,7 +357,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Meu Portfólio'), automaticallyImplyLeading: !widget.setupMode),
       body: FutureBuilder<List<PortfolioItem>>(
         future: _future,
@@ -505,7 +506,7 @@ class _CertificatesScreenState extends State<CertificatesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Meus Certificados')),
       body: FutureBuilder<List<Certificate>>(
         future: _future,
@@ -634,7 +635,7 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Minhas avaliações')),
       body: FutureBuilder<({ProviderCard? card, List<OwnReview> reviews})>(
         future: _future,
