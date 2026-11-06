@@ -49,7 +49,7 @@ begin
    where id in (p1, p2, p3, p4);
   update public.profiles set is_provider = true where id = x;
   delete from public.provider_profiles;
-  insert into public.provider_profiles (user_id, specialties, visit_fee) select id, array['Elétrica'], 30
+  insert into public.provider_profiles (user_id, specialties, visit_fee) select id, array['Elétrica', 'Pintura'], 30
     from public.profiles where id in (p1, p2, p3, p4);
 
   -- ===== SEGURANÇA DE PERFIL =====

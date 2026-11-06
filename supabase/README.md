@@ -106,6 +106,15 @@ supabase db query --linked -f supabase/migrations/<arquivo>.sql
 
 e registre a versão em `supabase_migrations.schema_migrations`. Antes de aplicar, valide em transação com `rollback`. Com Docker, o fluxo padrão (`supabase db push`) também funciona.
 
+## Match de categoria, isolamento do pedido e dossiê (migration `20261106120000`)
+
+- `norm_tag` / `norm_tags`: normalização canônica das especialidades (sem acento/caixa, sinônimos: `Hidráulica` → `encanador`, `Eletricista` → `eletrica`…). **Espelho de `app/lib/core/utils/tag_normalizer.dart`** — ao mudar os sinônimos, altere os dois.
+- `provider_public_profiles.specialty_slugs` + índice GIN: a busca filtra por categoria na própria query (`@>`), inclusive com N tags por perfil e profissionais com 0 serviços.
+- **Pedido público só para quem atende a categoria**: `provider_matches_category()` na RLS de `jobs`, em `job_client_cards`, nas fotos do storage e no trigger `quotes_before_insert` (convidados continuam podendo orçar). O trigger `jobs_notify_area_providers` avisa os profissionais da área (`new_area_job`).
+- `jobs.canceled_at / cancel_reason / canceled_by`, preenchidos pelo trigger `jobs_stamp_cancellation`.
+- `client_job_dossier` devolve endereço completo, coordenadas, cancelamento e a contestação (`dispute`: quem abriu, motivo, andamento) para o detalhe do pedido em qualquer estado.
+- Teste: `supabase db query --linked -f supabase/tests/category_match_smoke.sql` (25 verificações).
+
 ## Teste de segurança e de fluxo
 
 ```bash

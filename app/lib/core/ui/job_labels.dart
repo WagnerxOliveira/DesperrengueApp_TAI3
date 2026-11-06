@@ -12,7 +12,7 @@ import './app_tokens.dart';
   switch (job.status) {
     case JobStatus.open:
       return (
-        label: provider ? 'Aguardando cliente' : (job.quoteCount > 0 ? '${job.quoteCount} orçamento(s)' : 'Aguardando orçamento'),
+        label: provider ? 'Aguardando cliente' : (job.quoteCount > 0 ? '${job.quoteCount} orçamento(s)' : 'Aguardando Orçamento'),
         color: context.tk.info,
         icon: Icons.hourglass_top_rounded,
       );
