@@ -5,6 +5,8 @@ import '../models/marketplace_models.dart';
 import '../models/provider_dossier_models.dart';
 import '../models/showcase_models.dart';
 import '../models/user_profile.dart';
+import '../utils/provider_filters.dart';
+import '../utils/tag_normalizer.dart';
 
 /// Diretório público de profissionais (cliente) e dados do próprio
 /// profissional (perfil, portfólio, certificados, carteira).
@@ -24,6 +26,13 @@ class ProviderService {
   /// Busca profissionais ATIVOS. [category] filtra por especialidade; [query]
   /// busca no nome/título/bio. Distância calculada no cliente.
   ///
+  /// **Filtro por categoria**: aplicado direto na query, pelo slug canônico
+  /// (`specialty_slugs @> {slug}`, índice GIN → O(log N)), então "Encanador" casa com
+  /// `encanador`, `Hidráulica`, etc. e com perfis de várias tags. Profissionais SEM
+  /// nenhum serviço concluído entram normalmente (cold-start). Se o banco ainda não tem a
+  /// coluna `specialty_slugs` (migration pendente), cai para a busca ampla e o mesmo
+  /// filtro canônico é feito aqui, em O(1) por profissional ([ProviderCard.slugs]).
+  ///
   /// Com [includeSelf] o próprio usuário (quando também é profissional) aparece
   /// na lista — só para ele se ver; contratar a si mesmo continua bloqueado.
   Future<List<ProviderCard>> search({
@@ -33,12 +42,28 @@ class ProviderService {
     double? fromLng,
     bool includeSelf = false,
   }) async {
-    var q = _client.from('provider_public_profiles').select();
-    if (category != null && category.isNotEmpty) {
-      q = q.contains('specialties', [category]);
+    final slug = canonicalTag(category);
+    List<Map<String, dynamic>> rows;
+    if (slug.isNotEmpty) {
+      try {
+        rows = (await _client
+                .from('provider_public_profiles')
+                .select()
+                .contains('specialty_slugs', [slug])
+                .order('rank_score', ascending: false)
+                .limit(100))
+            .cast<Map<String, dynamic>>();
+      } on PostgrestException {
+        rows = (await _client.from('provider_public_profiles').select().limit(300)).cast<Map<String, dynamic>>();
+      }
+    } else {
+      rows = (await _client.from('provider_public_profiles').select().order('rank_score', ascending: false).limit(100))
+          .cast<Map<String, dynamic>>();
     }
-    final rows = await q.limit(60);
     var list = rows.map(ProviderCard.fromMap).where((p) => includeSelf || p.id != uid).toList();
+    // Isolamento estrito (também no fallback e como defesa em profundidade): quem não
+    // tem a tag da categoria nunca chega à renderização. 1 Set lookup por profissional.
+    if (slug.isNotEmpty) list = filterByCategory(list, category);
 
     final term = query?.trim().toLowerCase() ?? '';
     if (term.isNotEmpty) {
@@ -49,6 +74,7 @@ class ProviderService {
     }
     return list;
   }
+
 
   Future<ProviderCard?> byId(String id) async {
     final row = await _client.from('provider_public_profiles').select().eq('id', id).maybeSingle();

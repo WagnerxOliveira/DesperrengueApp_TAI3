@@ -2,6 +2,8 @@
 /// Puros: só dependem de `dart:core`, portanto testáveis sem Supabase.
 library;
 
+import '../utils/tag_normalizer.dart';
+
 DateTime? _dt(dynamic v) => v == null ? null : DateTime.parse(v as String).toLocal();
 double? _num(dynamic v) => (v as num?)?.toDouble();
 
@@ -229,7 +231,8 @@ class ProviderCard {
     this.distanceKm,
     this.badges = const [],
     this.rankScore,
-  });
+    Set<String>? specialtySlugs,
+  }) : _slugs = specialtySlugs;
 
   final String id;
   final String fullName;
@@ -254,6 +257,15 @@ class ProviderCard {
   /// Nota de ranqueamento (Média Bayesiana) calculada no banco. Ordena a busca.
   final double? rankScore;
 
+  final Set<String>? _slugs;
+
+  /// Tags do profissional já normalizadas (slugs canônicos): `contains` é O(1).
+  /// Pré-computado em [ProviderCard.fromMap]; cartões criados à mão calculam sob demanda.
+  Set<String> get slugs => _slugs ?? canonicalTagSet(specialties);
+
+  /// `true` se o profissional atende a [category] (qualquer uma de suas N tags).
+  bool matchesCategory(String? category) => slugSetMatchesCategory(slugs, category);
+
   String get title => (headline != null && headline!.trim().isNotEmpty)
       ? headline!
       : (specialties.isNotEmpty ? specialties.first : 'Profissional');
@@ -269,28 +281,32 @@ class ProviderCard {
     specialties: specialties, hourlyRate: hourlyRate, visitFee: visitFee, ratingAvg: ratingAvg,
     ratingCount: ratingCount, jobsDone: jobsDone, accepting: accepting,
     latitude: latitude, longitude: longitude, distanceKm: km,
-    badges: badges, rankScore: rankScore,
+    badges: badges, rankScore: rankScore, specialtySlugs: slugs,
   );
 
-  factory ProviderCard.fromMap(Map<String, dynamic> m) => ProviderCard(
-    id: m['id'] as String,
-    fullName: (m['full_name'] as String?) ?? 'Profissional',
-    avatarUrl: m['avatar_url'] as String?,
-    bio: m['bio'] as String?,
-    city: m['address_city'] as String?,
-    headline: m['headline'] as String?,
-    specialties: ((m['specialties'] as List?) ?? const []).cast<String>(),
-    hourlyRate: _num(m['hourly_rate']),
-    visitFee: _num(m['visit_fee']) ?? 30,
-    ratingAvg: _num(m['rating_avg']) ?? 0,
-    ratingCount: (m['rating_count'] as num?)?.toInt() ?? 0,
-    jobsDone: (m['jobs_done'] as num?)?.toInt() ?? 0,
-    accepting: m['accepting_jobs'] != false,
-    latitude: _num(m['latitude']),
-    longitude: _num(m['longitude']),
-    badges: ((m['badges'] as List?) ?? const []).cast<String>(),
-    rankScore: _num(m['rank_score']),
-  );
+  factory ProviderCard.fromMap(Map<String, dynamic> m) {
+    final specialties = ((m['specialties'] as List?) ?? const []).cast<String>();
+    return ProviderCard(
+      id: m['id'] as String,
+      fullName: (m['full_name'] as String?) ?? 'Profissional',
+      avatarUrl: m['avatar_url'] as String?,
+      bio: m['bio'] as String?,
+      city: m['address_city'] as String?,
+      headline: m['headline'] as String?,
+      specialties: specialties,
+      hourlyRate: _num(m['hourly_rate']),
+      visitFee: _num(m['visit_fee']) ?? 30,
+      ratingAvg: _num(m['rating_avg']) ?? 0,
+      ratingCount: (m['rating_count'] as num?)?.toInt() ?? 0,
+      jobsDone: (m['jobs_done'] as num?)?.toInt() ?? 0,
+      accepting: m['accepting_jobs'] != false,
+      latitude: _num(m['latitude']),
+      longitude: _num(m['longitude']),
+      badges: ((m['badges'] as List?) ?? const []).cast<String>(),
+      rankScore: _num(m['rank_score']),
+      specialtySlugs: canonicalTagSet(specialties),
+    );
+  }
 }
 
 class ChatMessage {

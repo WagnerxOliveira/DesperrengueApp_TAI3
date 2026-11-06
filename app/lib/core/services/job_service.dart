@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/client_dossier_models.dart';
 import '../models/marketplace_models.dart';
+import '../utils/order_utils.dart';
+import '../utils/tag_normalizer.dart';
 import 'media_service.dart';
 
 /// Ciclo de vida do serviço: demanda -> convites/orçamentos -> aceite ->
@@ -117,6 +119,22 @@ class JobService {
       .eq('client_id', uid)
       .order('created_at', ascending: false)
       .map((rows) => rows.map(Job.fromMap).toList());
+
+  /// Quantos pedidos do cliente estão em aberto aguardando orçamentos agora.
+  /// Alimenta o contador "1º, 2º, 3º" da revisão do pedido.
+  Future<int> countMyOpenRequests() async => countOpenRequests(await fetchMyJobs());
+
+  /// `job_id` dos serviços que o cliente JÁ avaliou (conquista "Voz da Comunidade").
+  Future<Set<String>> myGivenReviewJobIds() async {
+    final rows = await _client.from('reviews').select('job_id').eq('reviewer_id', uid);
+    return {for (final r in rows) r['job_id'] as String};
+  }
+
+  /// `job_id` dos serviços em que o próprio usuário abriu contestação/suporte.
+  Future<Set<String>> myContestedJobIds() async {
+    final rows = await _client.from('support_tickets').select('job_id').eq('user_id', uid).not('job_id', 'is', null);
+    return {for (final r in rows) r['job_id'] as String};
+  }
 
   Future<List<Quote>> fetchQuotes(String jobId) async {
     final rows = await _client
@@ -244,7 +262,13 @@ class JobService {
   }
 
   /// Demandas abertas ao público (feed), exceto as que já orcei.
+  ///
+  /// **Isolamento por categoria**: só aparece o pedido cuja categoria o profissional atende
+  /// (match canônico por `Set` — "Encanador" ↔ `hidraulica`). Sem especialidades o feed fica
+  /// vazio (o servidor aplica a mesma regra via RLS; aqui é só a UX coerente).
   Future<List<Job>> openFeed({List<String> specialties = const []}) async {
+    if (specialties.isEmpty) return const [];
+    final mine = canonicalTagSet(specialties);
     final rows = await _client
         .from('jobs')
         .select()
@@ -253,14 +277,12 @@ class JobService {
         .neq('client_id', uid)
         .order('created_at', ascending: false)
         .limit(50);
-    var jobs = rows.map(Job.fromMap).toList();
-    if (specialties.isNotEmpty) {
-      jobs = jobs.where((j) => specialties.contains(j.category)).toList();
-    }
+    final jobs = rows.map(Job.fromMap).where((j) => slugSetMatchesCategory(mine, j.category)).toList();
     final quoted = await _client.from('quotes').select('job_id').eq('provider_id', uid);
     final quotedIds = {for (final q in quoted) q['job_id'] as String};
     return jobs.where((j) => !quotedIds.contains(j.id) && j.quoteCount < 3).toList();
   }
+
 
   /// Serviços em que o profissional é o contratado.
   Future<List<Job>> providerJobs() async {
