@@ -1,3 +1,6 @@
+import '../../../core/ui/app_scaffold.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -5,6 +8,9 @@ import 'package:video_player/video_player.dart';
 
 import '../../../core/models/client_dossier_models.dart';
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/models/scheduling_models.dart' show DestinationPrecision;
+import '../../../core/services/geocoding_service.dart';
+import '../../../core/services/scheduling_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/profile_service.dart';
@@ -64,6 +70,7 @@ class DetalheServicoClienteScreen extends StatefulWidget {
     @visibleForTesting this.imageBuilder,
     @visibleForTesting this.quotesLoader,
     @visibleForTesting this.onOpenProvider,
+    @visibleForTesting this.onSavePin,
   });
 
   final String jobId;
@@ -72,6 +79,9 @@ class DetalheServicoClienteScreen extends StatefulWidget {
   final EvidenceImageBuilder? imageBuilder;
   final QuotesLoader? quotesLoader;
   final Future<void> Function(DossierProvider provider)? onOpenProvider;
+
+  /// Grava o pino confirmado pelo cliente (padrão: RPC set_job_location como client_pin).
+  final Future<void> Function(String jobId, double lat, double lng)? onSavePin;
 
   @override
   State<DetalheServicoClienteScreen> createState() => _DetalheServicoClienteScreenState();
@@ -82,8 +92,33 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
   Future<List<DetailQuote>>? _quotesFuture;
   bool _openingChat = false;
 
-  Future<ClientDossier?> _load() =>
-      widget.dossierLoader != null ? widget.dossierLoader!(widget.jobId) : JobService().clientJobDossier(widget.jobId);
+  bool _refined = false;
+
+  Future<ClientDossier?> _load() async {
+    final d = await (widget.dossierLoader != null ? widget.dossierLoader!(widget.jobId) : JobService().clientJobDossier(widget.jobId));
+    if (d != null && widget.dossierLoader == null) unawaited(_maybeRefine(d));
+    return d;
+  }
+
+  /// O pino só pode ser ajustado enquanto o serviço ainda não começou.
+  bool _pinEditable(ClientDossier d) => const {'open', 'awaiting_payment', 'scheduled'}.contains(d.status);
+
+  /// Pedidos antigos que ficaram só com o centro da cidade ganham, sozinhos, o ponto da RUA
+  /// (cascata de alta precisão). Só melhora; nunca troca um pino confirmado.
+  Future<void> _maybeRefine(ClientDossier d) async {
+    final line = d.addressLine ?? '';
+    if (_refined || line.isEmpty || !_pinEditable(d) || d.geoSource == 'client_pin') return;
+    final weak = !d.hasCoordinates || d.geoPrecision == DestinationPrecision.locality || d.geoPrecision == DestinationPrecision.street;
+    if (!weak) return;
+    _refined = true;
+    final better = await refineGeocodedLocation(
+      jobId: d.jobId,
+      addressLine: line,
+      summary: d.addressSummary,
+      current: d.hasCoordinates ? d.geoPrecision : null,
+    );
+    if (better != null && mounted) _reload();
+  }
 
   Future<List<DetailQuote>> _loadQuotes() async {
     if (widget.quotesLoader != null) return widget.quotesLoader!(widget.jobId);
@@ -176,7 +211,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       backgroundColor: context.tk.surface,
       appBar: AppBar(title: const Text('Detalhe do serviço')),
       body: FutureBuilder<ClientDossier?>(
@@ -277,13 +312,31 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
     return [const SectionTitle('Horário'), AppCard(child: Column(children: rows))];
   }
 
+  Future<void> _defaultSavePin(String jobId, double lat, double lng) async {
+    await SupabaseSchedulingBackend().setLocation(jobId, lat, lng, source: 'client_pin', precision: 'house');
+  }
+
   Future<void> _openMap(ClientDossier d) async {
     final line = d.addressLine ?? d.addressSummary ?? '';
     if (line.isEmpty) {
       showSnack(context, 'Este pedido não tem endereço para mostrar no mapa.', error: true);
       return;
     }
-    await LiveLocationMapSheet.show(context, addressLine: line, summary: d.addressSummary, latitude: d.latitude, longitude: d.longitude);
+    await LiveLocationMapSheet.show(
+      context,
+      addressLine: line,
+      summary: d.addressSummary,
+      latitude: d.latitude,
+      longitude: d.longitude,
+      precision: d.geoPrecision,
+      pinConfirmed: d.geoSource == 'client_pin',
+      onAdjustPin: _pinEditable(d)
+          ? (lat, lng) async {
+              await (widget.onSavePin ?? _defaultSavePin)(d.jobId, lat, lng);
+              if (mounted) _reload();
+            }
+          : null,
+    );
   }
 
   List<Widget> _location(BuildContext context, ClientDossier d) {

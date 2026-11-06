@@ -160,7 +160,7 @@ class ReviewTagPills extends StatelessWidget {
               backgroundColor: tone.withValues(alpha: 0.07),
               side: BorderSide(color: tone.withValues(alpha: selected.contains(t) ? 1 : 0.35)),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-              labelStyle: TextStyle(color: selected.contains(t) ? Colors.white : context.tk.text, fontWeight: FontWeight.w700),
+              labelStyle: TextStyle(color: selected.contains(t) ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
               onSelected: (v) => onToggle(t, v),
             ),
         ],

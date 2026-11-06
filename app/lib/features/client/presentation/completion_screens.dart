@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -67,7 +68,7 @@ class _CompletionScreenState extends State<CompletionScreen> {
   @override
   Widget build(BuildContext context) {
     final job = widget.job;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
         title: const BrandLogo(),
@@ -302,7 +303,7 @@ class _RatingScreenState extends State<RatingScreen> {
     final p = widget.provider;
     final negative = ReviewTags.isNegative(_rating);
     final options = ReviewTags.options(_rating, byClient: true);
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)), title: const BrandLogo()),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -394,7 +395,7 @@ class _RatingScreenState extends State<RatingScreen> {
                   selected: _tip == v,
                   showCheckmark: false,
                   selectedColor: context.tk.clientAccent,
-                  labelStyle: TextStyle(color: _tip == v ? Colors.white : context.tk.text, fontWeight: FontWeight.w700),
+                  labelStyle: TextStyle(color: _tip == v ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
                   onSelected: (_) => setState(() => _tip = v),
                 ),
             ],
@@ -417,7 +418,7 @@ class RatingSuccessScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(automaticallyImplyLeading: false, title: const BrandLogo()),
       body: ReviewThanksView(
         isProvider: false,

@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 import 'dart:math' show Random;
 
@@ -128,7 +129,7 @@ class _AdicionarSaldoScreenState extends ConsumerState<AdicionarSaldoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Adicionar saldo')),
       body: SafeArea(
         child: AnimatedSwitcher(

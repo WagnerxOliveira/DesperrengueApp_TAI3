@@ -11,6 +11,8 @@ import 'package:desperrengue_app/core/models/scheduling_models.dart';
 import 'package:desperrengue_app/core/models/geocode_models.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/services/speech_service.dart';
+import 'package:desperrengue_app/core/services/text_refine_service.dart';
+import 'package:desperrengue_app/core/utils/provider_filters.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/ui/image_picking.dart';
 import 'package:desperrengue_app/features/client/presentation/client_orders_tab.dart';
@@ -69,6 +71,24 @@ class FakeSpeech implements SpeechEngine {
 
   void say(String words, {bool isFinal = false}) => _onResult?.call(words, isFinal);
   void status(String s) => _onStatus?.call(s);
+}
+
+/// Revisor que não faz nada (os testes nunca chegam à rede).
+class NoRefine implements TextRefiner {
+  const NoRefine();
+  @override
+  Future<String> refine(String text) async => text;
+}
+
+/// Revisor controlável: o teste decide quando a resposta "chega".
+class SlowRefine implements TextRefiner {
+  final completer = Completer<String>();
+  int calls = 0;
+  @override
+  Future<String> refine(String text) {
+    calls++;
+    return completer.future;
+  }
 }
 
 const profile = UserProfile(
@@ -171,39 +191,44 @@ void main() {
       expect(find.textContaining('2 profissionais de Encanador'), findsOneWidget);
     });
 
-    testWidgets('seletor de raio: 5/10/25/50 km e "Toda a região"', (t) async {
+    testWidgets('raio é uma BARRA DE ARRASTAR (Slider), começa em "Toda a região" e não há mais chips', (t) async {
       await open(t, [prov('a')]);
-      for (final label in ['5 km', '10 km', '25 km', '50 km', 'Toda a região']) {
-        expect(find.text(label), findsOneWidget, reason: label);
+      expect(find.byType(Slider), findsOneWidget);
+      expect(find.byKey(const ValueKey('radius-slider')), findsOneWidget);
+      expect(t.widget<Slider>(find.byType(Slider)).divisions, kRadiusSteps.length - 1);
+      expect(find.descendant(of: find.byKey(const ValueKey('radius-value')), matching: find.text('Toda a região')), findsOneWidget);
+      for (final label in ['5 km', '10 km', '25 km', '50 km']) {
+        expect(find.text(label), findsNothing, reason: 'chips de $label foram substituídos pela barra');
       }
     });
 
-    testWidgets('raio filtra por Haversine e o vazio oferece "Ver toda a região"', (t) async {
-      // ~40 km do cliente (profile.latitude -22.25).
+    testWidgets('arrastar a barra muda o rótulo e filtra por Haversine', (t) async {
+      // ~40 km do cliente (profile.latitude -22.25) e ~3 km.
       await open(t, [prov('longe', lat: -22.25 + 0.36, lng: -45.70), prov('perto', lat: -22.25 + 0.027, lng: -45.70)]);
       expect(find.text('Prof longe'), findsOneWidget); // padrão: toda a região
-      await t.tap(find.byKey(const ValueKey('radius:km10')));
-      await t.pump();
       expect(find.text('Prof perto'), findsOneWidget);
+      await t.drag(find.byKey(const ValueKey('radius-slider')), const Offset(-4000, 0)); // vai até o mínimo (1 km)
+      await t.pump();
+      expect(find.descendant(of: find.byKey(const ValueKey('radius-value')), matching: find.text('1 km')), findsOneWidget);
       expect(find.text('Prof longe'), findsNothing);
-      await t.tap(find.byKey(const ValueKey('radius:km5')));
-      await t.pump();
-      expect(find.text('Prof perto'), findsOneWidget);
+      expect(find.text('Prof perto'), findsNothing);
+      expect(find.text('Ninguém em até 1 km'), findsOneWidget);
     });
 
     testWidgets('ninguém no raio: mensagem + botão que amplia para a região inteira', (t) async {
       await open(t, [prov('longe', lat: -22.25 + 0.36, lng: -45.70)]);
-      await t.tap(find.byKey(const ValueKey('radius:km5')));
+      await t.drag(find.byKey(const ValueKey('radius-slider')), const Offset(-4000, 0));
       await t.pump();
-      expect(find.text('Ninguém em até 5 km'), findsOneWidget);
+      expect(find.text('Ninguém em até 1 km'), findsOneWidget);
       await t.tap(find.text('Ver toda a região').last);
       await t.pump();
       expect(find.text('Prof longe'), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('radius-value')), matching: find.text('Toda a região')), findsOneWidget);
     });
 
     testWidgets('profissional sem GPS entra pelo fallback da cidade (nunca falso vazio)', (t) async {
       await open(t, [prov('semgps')]);
-      await t.tap(find.byKey(const ValueKey('radius:km5')));
+      await t.drag(find.byKey(const ValueKey('radius-slider')), const Offset(-4000, 0));
       await t.pump();
       expect(find.text('Prof semgps'), findsOneWidget);
     });
@@ -225,7 +250,7 @@ void main() {
       final ctl = TextEditingController(text: initial);
       final fake = FakeSpeech(available: available);
       addTearDown(ctl.dispose);
-      await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: VoiceDictationPanel(textController: ctl, engine: fake)))));
+      await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: VoiceDictationPanel(textController: ctl, engine: fake, refiner: const NoRefine())))));
       return (ctl, fake);
     }
 
@@ -288,6 +313,82 @@ void main() {
       expect(fake.listenCalls, 2, reason: 'depois de parar não reabre');
     });
 
+    testWidgets('Android: parcial + final + final tardio da MESMA frase não duplica o texto', (t) async {
+      final (ctl, fake) = await open(t);
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      fake.say('preciso de um eletricista');
+      fake.say('preciso de um eletricista para consertar um disjuntor', isFinal: true);
+      // O Android reentrega o mesmo final ao parar:
+      fake.say('preciso de um eletricista para consertar um disjuntor', isFinal: true);
+      fake.say('Preciso de um eletricista para consertar um disjuntor', isFinal: true);
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      expect(ctl.text, 'Preciso de um eletricista para consertar um disjuntor.');
+      expect(RegExp('eletricista').allMatches(ctl.text), hasLength(1));
+    });
+
+    testWidgets('sessão reaberta que repete a anterior não duplica (pausa longa)', (t) async {
+      final (ctl, fake) = await open(t);
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      fake.say('preciso de um eletricista para consertar um disjuntor', isFinal: true);
+      fake.status('done');
+      await t.pump(const Duration(milliseconds: 400));
+      fake.say('preciso de um eletricista para consertar um disjuntor', isFinal: true);
+      fake.say('e o quadro de luz esquenta', isFinal: true);
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      expect(ctl.text, 'Preciso de um eletricista para consertar um disjuntor. E o quadro de luz esquenta.');
+    });
+
+    testWidgets('revisor (LanguageTool): mostra "Aperfeiçoando o texto…" e aplica o resultado', (t) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      final fake = FakeSpeech();
+      final slow = SlowRefine();
+      await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: VoiceDictationPanel(textController: ctl, engine: fake, refiner: slow)))));
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      fake.say('o chuveiro nao esquenta', isFinal: true);
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      expect(slow.calls, 1);
+      expect(find.byKey(const ValueKey('voice-refining')), findsOneWidget);
+      expect(ctl.text, 'O chuveiro nao esquenta.', reason: 'texto local já aparece enquanto o revisor trabalha');
+      slow.completer.complete('O chuveiro não esquenta.');
+      await t.pump();
+      await t.pump();
+      expect(ctl.text, 'O chuveiro não esquenta.');
+      expect(find.byKey(const ValueKey('voice-refining')), findsNothing);
+    });
+
+    testWidgets('revisor que falha/devolve vazio: mantém o texto local', (t) async {
+      final ctl = TextEditingController();
+      addTearDown(ctl.dispose);
+      final fake = FakeSpeech();
+      final slow = SlowRefine();
+      await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: VoiceDictationPanel(textController: ctl, engine: fake, refiner: slow)))));
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      fake.say('a torneira esta vazando', isFinal: true);
+      await t.tap(find.byKey(const ValueKey('voice-mic')));
+      await t.pump();
+      slow.completer.complete('');
+      await t.pump();
+      await t.pump();
+      expect(ctl.text, 'A torneira esta vazando.');
+    });
+
+    test('mergeSessions: repetição some, cumulativa substitui, nova fala soma', () {
+      expect(VoiceDictationController.mergeSessions(['preciso de um eletricista', 'preciso de um eletricista']), ['preciso de um eletricista']);
+      expect(VoiceDictationController.mergeSessions(['preciso de um eletricista', 'Preciso de um eletricista para o disjuntor']), ['Preciso de um eletricista para o disjuntor']);
+      expect(VoiceDictationController.mergeSessions(['o chuveiro queimou', 'e o disjuntor desarma']), ['o chuveiro queimou', 'e o disjuntor desarma']);
+      expect(VoiceDictationController.mergeSessions(['preciso de um eletricista para o disjuntor', 'preciso de um eletricista']), ['preciso de um eletricista para o disjuntor'], reason: 'pedaço tardio não encolhe');
+      expect(VoiceDictationController.mergeSessions(['', '  ', 'a torneira vaza']), ['a torneira vaza']);
+      expect(VoiceDictationController.mergeSessions(const []), isEmpty);
+    });
+
     testWidgets('microfone indisponível/negado: avisa e deixa digitar', (t) async {
       final (_, fake) = await open(t, available: false);
       await t.tap(find.byKey(const ValueKey('voice-mic')));
@@ -305,6 +406,7 @@ void main() {
         profile: profile,
         category: category,
         speechEngine: FakeSpeech(),
+        textRefiner: const NoRefine(),
         openRequestsCounter: () async => open,
         mapOpener: mapOpener,
         debugStep: step,
@@ -501,7 +603,7 @@ void main() {
   });
 
   // ============================================================ MÓDULO 5: pedidos
-  group('Meus Pedidos: 4 abas', () {
+  group('Meus Pedidos: 3 abas (mediação fica em Perfil → Ajuda e suporte)', () {
     final jobs = [
       job('open1', JobStatus.open, title: 'Pedido novo'),
       job('sched1', JobStatus.scheduled, title: 'Agendado X'),
@@ -521,11 +623,13 @@ void main() {
       return opened;
     }
 
-    testWidgets('quatro abas: Em Andamento, Concluídos, Cancelados e Em Mediação', (t) async {
+    testWidgets('só três abas: Em Andamento, Concluídos e Cancelados', (t) async {
       await openTab(t);
-      for (final label in ['Em Andamento', 'Concluídos', 'Cancelados', 'Em Mediação']) {
+      for (final label in ['Em Andamento', 'Concluídos', 'Cancelados']) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
+      expect(find.text('Em Mediação'), findsNothing);
+      expect(find.byType(Tab), findsNWidgets(3));
     });
 
     testWidgets('Em Andamento: pedido recém-criado mostra "Aguardando Orçamento"', (t) async {
@@ -537,37 +641,24 @@ void main() {
       expect(find.text('Disputa X'), findsNothing, reason: 'mediação não fica em andamento');
     });
 
-    testWidgets('cada aba lista só o seu status', (t) async {
+    testWidgets('cada aba lista só o seu status; mediação não aparece em nenhuma', (t) async {
       await openTab(t);
       await t.tap(find.text('Concluídos'));
       await t.pumpAndSettle();
       expect(find.text('Concluído X'), findsOneWidget);
       expect(find.text('Pedido novo'), findsNothing);
+      expect(find.text('Disputa X'), findsNothing);
       await t.tap(find.text('Cancelados'));
       await t.pumpAndSettle();
       expect(find.text('Cancelado X'), findsOneWidget);
-      await t.tap(find.text('Em Mediação'));
-      await t.pumpAndSettle();
-      expect(find.text('Disputa X'), findsOneWidget);
-      expect(find.text('Em mediação'), findsOneWidget); // chip do card
+      expect(find.text('Disputa X'), findsNothing);
     });
 
-    testWidgets('clicar em qualquer pedido abre o detalhe (inclusive mediação)', (t) async {
+    testWidgets('clicar em um pedido abre o detalhe', (t) async {
       final opened = await openTab(t);
       await t.tap(find.text('Pedido novo'));
       await t.pump();
-      await t.tap(find.text('Em Mediação'));
-      await t.pumpAndSettle();
-      await t.tap(find.text('Disputa X'));
-      await t.pump();
-      expect(opened.map((j) => j.id), ['open1', 'disp1']);
-    });
-
-    testWidgets('aba de mediação vazia tem estado vazio explicativo', (t) async {
-      await openTab(t, list: [job('open1', JobStatus.open)]);
-      await t.tap(find.text('Em Mediação'));
-      await t.pumpAndSettle();
-      expect(find.text('Nenhum pedido em mediação.'), findsOneWidget);
+      expect(opened.map((j) => j.id), ['open1']);
     });
   });
 
@@ -717,10 +808,10 @@ void main() {
   });
 
   // ======================================================= MÓDULO 6: conquistas
-  group('ClientAchievementsSection', () {
+  group('ClientAchievementsScreen (mesmo estilo do profissional)', () {
     Future<void> open(WidgetTester t, ClientAchievementInput input) async {
-      bigScreen(t);
-      await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: ClientAchievementsSection(profile: profile, loader: () async => input)))));
+      bigScreen(t, h: 9000);
+      await t.pumpWidget(host(ClientAchievementsScreen(profile: profile, loader: () async => input)));
       await t.pump();
       await t.pump();
     }
@@ -738,39 +829,40 @@ void main() {
           createdAt: DateTime(2026, 10, 1),
         );
 
-    testWidgets('mostra as 6 conquistas; bloqueadas com barra de progresso', (t) async {
+    testWidgets('resumo + um cartão por conquista, com medalhas por nível e "Próxima:"', (t) async {
       await open(t, ClientAchievementInput(jobs: [done('a')], profileSteps: 2));
+      expect(find.text('Minhas conquistas'), findsOneWidget);
+      expect(find.text('Conquistas desbloqueadas'), findsOneWidget);
+      expect(find.text('de $kClientMedalTotal'), findsOneWidget);
       for (final d in kClientAchievements) {
-        expect(find.text(d.name), findsOneWidget, reason: d.name);
-        expect(find.byKey(ValueKey('client-ach:${d.code.name}')), findsOneWidget);
+        expect(find.byKey(ValueKey('client-ach:${d.code.name}')), findsOneWidget, reason: d.name);
       }
-      expect(find.byKey(const ValueKey('client-ach-count')), findsOneWidget);
-      expect(find.text('1 de 6'), findsOneWidget); // só o 1º pedido
-      expect(find.text('Desbloqueada!'), findsOneWidget);
-      expect(find.text('2/4 itens'), findsOneWidget);
-      expect(find.text('1/5 serviços'), findsOneWidget);
-      expect(find.byType(LinearProgressIndicator), findsNWidgets(1 + 5)); // resumo + 5 bloqueadas
+      // 1 pedido concluído = só a 1ª medalha de "1º Pedido" (bronze).
+      expect(find.text('1º pedido realizado'), findsOneWidget);
+      expect(find.text('Próxima: 5 pedidos realizados'), findsOneWidget);
+      expect(find.text('1 / 5 pedidos'), findsOneWidget);
+      expect(find.text('2 / 4 itens do perfil'), findsOneWidget);
+      expect(find.byType(MedalTile), findsWidgets);
     });
 
-    testWidgets('todas desbloqueadas', (t) async {
-      final jobs = [
-        done('a', cat: 'Elétrica'),
-        done('b', cat: 'Pintura'),
-        done('c', cat: 'Encanador'),
-        done('d'),
-        done('e'),
-      ];
-      await open(t, ClientAchievementInput(jobs: jobs, profileSteps: 4, reviewedJobIds: {'a'}));
-      expect(find.text('6 de 6'), findsOneWidget);
-      expect(find.text('Desbloqueada!'), findsNWidgets(6));
-    });
-
-    testWidgets('toque abre o detalhe da conquista', (t) async {
+    testWidgets('cliente novo: nada desbloqueado e dica de como começar', (t) async {
       await open(t, const ClientAchievementInput(jobs: []));
-      await t.tap(find.byKey(const ValueKey('client-ach:homeMaster')));
+      expect(find.text('0'), findsWidgets);
+      expect(find.textContaining('desbloquear as primeiras'), findsOneWidget);
+    });
+
+    testWidgets('categoria completa mostra "Categoria completa!"', (t) async {
+      await open(t, ClientAchievementInput(jobs: [for (var i = 0; i < 50; i++) done('c$i')]));
+      expect(find.text('Categoria completa!'), findsWidgets);
+    });
+
+    testWidgets('toque na medalha abre o detalhe com o progresso', (t) async {
+      await open(t, const ClientAchievementInput(jobs: []));
+      await t.ensureVisible(find.byKey(const ValueKey('client-ach:homeMaster')));
+      await t.tap(find.text('3 categorias diferentes'));
       await t.pumpAndSettle();
-      expect(find.text('Solicite serviços em 3 ou mais categorias diferentes.'), findsOneWidget);
       expect(find.text('Progresso: 0/3 categorias'), findsOneWidget);
+      expect(find.text('Solicite serviços em categorias diferentes: do chuveiro ao jardim.'), findsOneWidget);
     });
   });
 }

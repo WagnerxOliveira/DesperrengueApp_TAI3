@@ -7,10 +7,10 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/scheduling_models.dart';
-import '../../../core/services/geocoding_service.dart';
+import '../../../core/services/precise_geocoder.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/utils/geo.dart';
-import 'service_map_widgets.dart' show MapAttribution, buildTileLayer;
+import 'service_map_widgets.dart' show LocationPickerSheet, MapAttribution, buildTileLayer;
 
 /// Fonte da posição do usuário em tempo real (produção: `geolocator`).
 typedef UserPositionStream = Stream<GeoFix> Function();
@@ -51,6 +51,9 @@ class LiveLocationMapSheet extends StatefulWidget {
     this.summary,
     this.latitude,
     this.longitude,
+    this.precision,
+    this.pinConfirmed = false,
+    this.onAdjustPin,
     this.positionStream,
     this.resolver,
     this.tileLayer,
@@ -61,7 +64,16 @@ class LiveLocationMapSheet extends StatefulWidget {
 
   /// Coordenadas já conhecidas do endereço (evita geocodificar de novo).
   final double? latitude;
-  final double? longitude;
+    final double? longitude;
+
+  /// Qualidade do ponto conhecido (rua/bairro = aproximado). Padrão: casa.
+  final DestinationPrecision? precision;
+
+  /// O cliente já confirmou o pino exato no mapa.
+  final bool pinConfirmed;
+
+  /// Só o DONO do pedido passa isto: habilita "Ajustar o ponto exato" (arrasta o mapa até a porta).
+  final Future<void> Function(double lat, double lng)? onAdjustPin;
 
   /// Injetáveis (testes).
   final UserPositionStream? positionStream;
@@ -74,6 +86,9 @@ class LiveLocationMapSheet extends StatefulWidget {
     String? summary,
     double? latitude,
     double? longitude,
+    DestinationPrecision? precision,
+    bool pinConfirmed = false,
+    Future<void> Function(double lat, double lng)? onAdjustPin,
   }) =>
       showModalBottomSheet<void>(
         context: context,
@@ -82,7 +97,15 @@ class LiveLocationMapSheet extends StatefulWidget {
         showDragHandle: true,
         builder: (_) => FractionallySizedBox(
           heightFactor: 0.92,
-          child: LiveLocationMapSheet(addressLine: addressLine, summary: summary, latitude: latitude, longitude: longitude),
+          child: LiveLocationMapSheet(
+            addressLine: addressLine,
+            summary: summary,
+            latitude: latitude,
+            longitude: longitude,
+            precision: precision,
+            pinConfirmed: pinConfirmed,
+            onAdjustPin: onAdjustPin,
+          ),
         ),
       );
 
@@ -94,7 +117,8 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
   final _map = MapController();
   StreamSubscription<GeoFix>? _sub;
   LatLng? _dest;
-  DestinationPrecision _precision = DestinationPrecision.house;
+  late DestinationPrecision _precision = widget.precision ?? DestinationPrecision.house;
+  late bool _pinConfirmed = widget.pinConfirmed;
   GeoFix? _me;
   String? _gpsNote;
   bool _resolving = false;
@@ -117,7 +141,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
   Future<void> _resolveDestination() async {
     setState(() => _resolving = true);
     try {
-      final resolver = widget.resolver ?? ((line, summary) => GeocodingService().geocode(line, summary: summary));
+      final resolver = widget.resolver ?? ((line, summary) => PreciseGeocoder().geocode(line, summary: summary));
       final hit = await resolver(widget.addressLine, widget.summary);
       if (!mounted) return;
       setState(() {
@@ -163,6 +187,32 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     super.dispose();
   }
 
+  /// O dono arrasta o mapa até a porta e confirma: o ponto vira "pino confirmado" no pedido.
+  Future<void> _adjustPin() async {
+    final dest = _dest;
+    final adjust = widget.onAdjustPin;
+    if (adjust == null) return;
+    final ok = await LocationPickerSheet.show(
+      context,
+      addressLine: widget.addressLine,
+      initial: dest == null
+          ? null
+          : JobDestination(lat: dest.latitude, lng: dest.longitude, precision: _precision, radiusM: 100, source: _pinConfirmed ? 'client_pin' : 'client_geocode'),
+      onConfirm: (lat, lng) async {
+        await adjust(lat, lng);
+        if (mounted) {
+          setState(() {
+            _dest = LatLng(lat, lng);
+            _precision = DestinationPrecision.house;
+            _pinConfirmed = true;
+            _destFailed = false;
+          });
+        }
+      },
+    );
+    if (ok == true && mounted) _fit();
+  }
+
   void _fit() {
     final pts = <LatLng>[?_dest, if (_me != null) LatLng(_me!.lat, _me!.lng)];
     if (pts.isEmpty) return;
@@ -184,7 +234,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     final dest = _dest;
     final me = _me;
     final meters = (dest != null && me != null) ? haversineMeters(me.lat, me.lng, dest.latitude, dest.longitude) : null;
-    final approx = _precision != DestinationPrecision.house && _precision != DestinationPrecision.exact;
+    final approx = !_pinConfirmed && _precision != DestinationPrecision.house && _precision != DestinationPrecision.exact;
     return Column(
       children: [
         Padding(
@@ -207,7 +257,10 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
         ),
         for (final note in [
           if (_destFailed) 'Não encontramos este endereço no mapa. Confira rua e número.',
-          if (!_destFailed && approx) 'Localização aproximada: o pino pode estar a algumas dezenas de metros da casa.',
+          if (!_destFailed && approx)
+            widget.onAdjustPin != null
+                ? 'Localização aproximada (pela rua/bairro). Toque em "Ajustar o ponto exato" e arraste o mapa até a sua casa.'
+                : 'Localização aproximada: o pino pode estar a algumas dezenas de metros da casa.',
           ?_gpsNote,
         ])
           Container(
@@ -279,6 +332,18 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                   ],
                 ),
                 if (_resolving) const Positioned(top: 12, left: 12, child: _Pill(label: 'Localizando endereço…', loading: true)),
+                if (widget.onAdjustPin != null && _dest != null)
+                  Positioned(
+                    left: 12,
+                    bottom: 12,
+                    child: FloatingActionButton.extended(
+                      key: const ValueKey('adjust-pin'),
+                      heroTag: 'adjust_pin',
+                      onPressed: _adjustPin,
+                      icon: Icon(_pinConfirmed ? Icons.check_circle_rounded : Icons.edit_location_alt_rounded),
+                      label: Text(_pinConfirmed ? 'Ponto confirmado · ajustar' : 'Ajustar o ponto exato'),
+                    ),
+                  ),
                 Positioned(
                   right: 10,
                   top: 10,

@@ -2,6 +2,8 @@
 /// `fromMap` tolerante a nulos/tipos soltos, porque o jsonb do banco pode evoluir.
 library;
 
+import 'scheduling_models.dart' show DestinationPrecision;
+
 DateTime? _date(dynamic v) => v is String ? DateTime.tryParse(v)?.toLocal() : null;
 double _money(dynamic v) => v is num ? v.toDouble() : (v is String ? double.tryParse(v) ?? 0 : 0);
 List<String> _strings(dynamic v) => v is List ? [for (final e in v) if (e != null) e.toString()] : const [];
@@ -153,6 +155,8 @@ class ClientDossier {
     this.addressLine,
     this.latitude,
     this.longitude,
+    this.geoPrecision,
+    this.geoSource,
     this.photoPaths = const [],
     this.provider,
     this.evidence = const [],
@@ -184,6 +188,10 @@ class ClientDossier {
   final String? addressLine;
   final double? latitude;
   final double? longitude;
+
+  /// Qualidade do ponto (exact/house/street/locality) e origem (client_pin, client_geocode…).
+  final DestinationPrecision? geoPrecision;
+  final String? geoSource;
 
   /// Cancelamento: quando e por quê.
   final DateTime? canceledAt;
@@ -289,6 +297,8 @@ class ClientDossier {
       addressLine: text(m['address_line']),
       latitude: m['latitude'] is num ? (m['latitude'] as num).toDouble() : null,
       longitude: m['longitude'] is num ? (m['longitude'] as num).toDouble() : null,
+      geoPrecision: m['geo_precision'] is String ? DestinationPrecision.parse(m['geo_precision'] as String) : null,
+      geoSource: text(m['geo_source']),
       canceledAt: _date(m['canceled_at']),
       cancelReason: text(m['cancel_reason']),
       dispute: DossierDispute.fromMap(_map(m['dispute'])),

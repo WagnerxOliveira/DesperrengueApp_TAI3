@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import '../../../core/ui/light_island.dart';
 
@@ -19,7 +20,7 @@ class VerificacaoStep6aComoFuncionaScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: Scaffold(
+    return LightIsland(child: AppScaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,

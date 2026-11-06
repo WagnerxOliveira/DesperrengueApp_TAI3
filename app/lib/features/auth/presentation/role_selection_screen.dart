@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -183,7 +184,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
         if (didPop) return;
         _mostrarModalSair();
       },
-      child: Scaffold(
+      child: AppScaffold(
         backgroundColor: tk.background,
         body: Stack(
           children: [

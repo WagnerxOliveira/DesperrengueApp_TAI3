@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -108,7 +109,7 @@ class _VerificacaoStep6FeedbackScreenState
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: Scaffold(
+    return LightIsland(child: AppScaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,

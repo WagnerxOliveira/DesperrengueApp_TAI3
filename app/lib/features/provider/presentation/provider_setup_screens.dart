@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/user_profile.dart';
@@ -43,7 +44,7 @@ class _ProviderSetupFlowState extends State<ProviderSetupFlow> {
       case 1:
         return PortfolioScreen(setupMode: true, onDone: () => setState(() => _step = 2));
       default:
-        return Scaffold(
+        return AppScaffold(
           appBar: AppBar(automaticallyImplyLeading: false, title: const BrandLogo()),
           body: ListView(
             padding: const EdgeInsets.all(24),

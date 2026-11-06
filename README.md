@@ -5,7 +5,7 @@
 ![Estágio](https://img.shields.io/badge/est%C3%A1gio-MVP%20acad%C3%AAmico-orange)
 ![Flutter](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter&logoColor=white)
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%2017-3ECF8E?logo=supabase&logoColor=white)
-![Testes](https://img.shields.io/badge/testes-273%20unit%20%C2%B7%20398%20SQL%20%C2%B7%207%20PDF-brightgreen)
+![Testes](https://img.shields.io/badge/testes-469%20unit%20%C2%B7%20577%20SQL%20%C2%B7%2017%20PDF-brightgreen)
 ![Licença](https://img.shields.io/badge/licen%C3%A7a-todos%20os%20direitos%20reservados-lightgrey)
 
 > **Cobertura de testes:** a cobertura global ainda é baixa (somente camadas puras e banco estão cobertas); números medidos, metas e plano em [TESTING.md](./docs/TESTING.md#2-estado-atual-medido). O selo de CI refere-se ao *workflow* [`ci.yml`](./.github/workflows/ci.yml).
@@ -89,7 +89,7 @@ Guia passo a passo: **[SETUP.md](./docs/SETUP.md)**.
 | `app/` | Aplicativo Flutter (`lib/`, `test/`, plataformas Android/iOS) |
 | `supabase/migrations/` | **Fonte da verdade do banco** (schema, RLS, funções, storage) |
 | `supabase/functions/` | Edge Functions (`enviar-email-aprovacao`) |
-| `supabase/tests/` | Testes SQL transacionais: segurança e fluxo (62), avaliações (30), conquistas (22), exclusão/vitrine (48) e carteira do cliente/ledger (52) |
+| `supabase/tests/` | Testes SQL transacionais: segurança e fluxo (63), avaliações (30), conquistas (22), exclusão/vitrine (48), carteira do cliente/ledger (52), agendamento (183), match de categoria (25), categorias ampliadas e ponto no dossiê (40) e exclusão por perfil (114) |
 | `supabase/functions/` | Edge Functions: `enviar-email-aprovacao` (KYC) e `excluir-conta` (offboarding LGPD + Dossiê PDF) |
 | `docs/` | **Toda a documentação**: arquitetura, SETUP, TESTING, ROADMAP, CHANGELOG, ADRs, gamificação, negócio, design e protótipos (índice em [docs/README.md](./docs/README.md)) |
 | `.github/` | Políticas da comunidade ([CONTRIBUTING](.github/CONTRIBUTING.md), [SECURITY](.github/SECURITY.md), [CODE_OF_CONDUCT](.github/CODE_OF_CONDUCT.md)), templates de PR/issue e CI |
@@ -114,7 +114,7 @@ flutter run \
   --dart-define=ABSTRACT_API_KEY=<opcional>   # validação extra de e-mail no cadastro
 ```
 
-Verificação de qualidade: `flutter analyze` e `flutter test` devem passar sem avisos. Testes do banco: `supabase db query --linked -f supabase/tests/security_smoke.sql` (também `review_system_smoke.sql`, `achievements_smoke.sql` e `offboarding_showcase_smoke.sql`; esperado: `FALHAS=0`). Dossiê PDF: `node scripts/test-dossie.mjs`. Documentação: `node scripts/check-md-links.mjs`.
+Verificação de qualidade: `flutter analyze` e `flutter test` devem passar sem avisos. Testes do banco: `supabase db query --linked -f supabase/tests/security_smoke.sql` (também `review_system_smoke.sql`, `achievements_smoke.sql`, `offboarding_showcase_smoke.sql`, `category_match_smoke.sql`, `expanded_categories_smoke.sql` e `scoped_deletion_smoke.sql`; esperado: `FALHAS=0`). Dossiê PDF: `node scripts/test-dossie.mjs`. Documentação: `node scripts/check-md-links.mjs`.
 
 ## 🔐 Segurança em resumo
 

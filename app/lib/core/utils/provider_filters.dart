@@ -5,22 +5,15 @@ import '../models/marketplace_models.dart';
 import 'geo.dart';
 import 'tag_normalizer.dart';
 
-/// Raios de alcance do seletor da tela de resultados.
-enum SearchRadius {
-  km5(5, '5 km'),
-  km10(10, '10 km'),
-  km25(25, '25 km'),
-  km50(50, '50 km'),
-  region(null, 'Toda a região');
+/// Degraus do seletor de raio (barra de arrastar), em km. O último (`null`) é "Toda a região".
+/// Mais finos perto de casa (onde a diferença importa) e mais largos até 100 km.
+const List<int?> kRadiusSteps = [1, 2, 3, 5, 7, 10, 15, 20, 25, 30, 40, 50, 75, 100, null];
 
-  const SearchRadius(this.km, this.label);
+/// Índice do degrau "Toda a região" (padrão: nunca gera falso vazio).
+final int kRadiusAllIndex = kRadiusSteps.length - 1;
 
-  /// `null` = sem limite (toda a região).
-  final int? km;
-  final String label;
-
-  bool get isUnlimited => km == null;
-}
+/// "5 km" / "Toda a região".
+String radiusLabel(int? km) => km == null ? 'Toda a região' : '$km km';
 
 /// Nome da categoria do app que corresponde a um termo digitado (aceita sinônimo:
 /// "eletricista" → "Elétrica", "hidráulica" → "Encanador"). Null se não for categoria.
@@ -55,7 +48,7 @@ List<ProviderCard> applyRadius(
   List<ProviderCard> providers, {
   required double? clientLat,
   required double? clientLng,
-  required SearchRadius radius,
+  required int? radiusKm,
   String? clientCity,
 }) {
   final hasClientPos = clientLat != null && clientLng != null;
@@ -65,12 +58,12 @@ List<ProviderCard> applyRadius(
     final hasPos = p.latitude != null && p.longitude != null;
     final km = (hasClientPos && hasPos) ? haversineMeters(clientLat, clientLng, p.latitude!, p.longitude!) / 1000.0 : null;
     final withDist = km == null ? p : p.withDistance(km);
-    if (radius.isUnlimited || !hasClientPos) {
+    if (radiusKm == null || !hasClientPos) {
       out.add(withDist);
       continue;
     }
     if (km != null) {
-      if (km <= radius.km!) out.add(withDist);
+      if (km <= radiusKm) out.add(withDist);
       continue;
     }
     // Sem coordenadas do profissional: fallback para a cidade/região padrão.

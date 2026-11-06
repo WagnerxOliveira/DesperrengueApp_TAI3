@@ -1,19 +1,19 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/job_service.dart';
-import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/notifications_screen.dart';
+import 'category_picker.dart';
 import 'client_job_screen.dart';
 import 'client_orders_tab.dart';
 import 'client_setup_screen.dart';
 import 'provider_search_screen.dart';
 import 'request_wizard.dart';
 import 'wallet_chip.dart';
-import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/app_tokens.dart';
 
 void openClientJob(BuildContext context, String jobId) {
@@ -45,7 +45,7 @@ class _ClientShellState extends State<ClientShell> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) setState(() => _index = 0);
       },
-      child: Scaffold(
+      child: AppScaffold(
         body: SafeArea(child: IndexedStack(index: _index, children: pages)),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
@@ -199,32 +199,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         ),
         const SizedBox(height: 20),
         const SectionTitle('Categorias'),
-        GridView.count(
-          crossAxisCount: 3,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 16,
-          crossAxisSpacing: 8,
-          childAspectRatio: 0.92,
-          children: [
-            for (final c in kCategories)
-              InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () => _openSearch(category: c.name),
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 33,
-                      backgroundColor: Color(c.colorValue),
-                      child: Icon(categoryIcon(c.name), size: 30, color: AppColors.ink.withValues(alpha: 0.75)),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                  ],
-                ),
-              ),
-          ],
-        ),
+        CategoryGrid(onPick: (name) => _openSearch(category: name)),
       ],
     );
   }

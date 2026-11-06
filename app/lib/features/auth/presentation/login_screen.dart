@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -131,7 +132,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // ===========================================================================
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: Scaffold(
+    return LightIsland(child: AppScaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,

@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/state/privacy_mode.dart';
 import '../../shared/presentation/achievement_widgets.dart';
+import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/delete_account_screen.dart';
 import '../../shared/presentation/showcase_widgets.dart';
 import '../../shared/presentation/theme_picker.dart';
@@ -57,7 +59,7 @@ class _ProviderShellState extends State<ProviderShell> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) setState(() => _index = 0);
       },
-      child: Scaffold(
+      child: AppScaffold(
         body: SafeArea(child: IndexedStack(index: _index, children: pages)),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
@@ -528,7 +530,7 @@ class ProviderProfileTab extends StatelessWidget {
         const SizedBox(height: 18),
         Row(
           children: [
-            UserAvatar(url: profile.avatarUrl, name: profile.fullName, radius: 36, verified: true),
+            EditableAvatar(url: profile.avatarUrl, name: profile.fullName, radius: 36, verified: true),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -549,9 +551,9 @@ class ProviderProfileTab extends StatelessWidget {
         tile(Icons.reviews_rounded, 'Minhas avaliações', 'Nota, selos e respostas aos clientes', () => push(MyReviewsScreen(profile: profile))),
         tile(Icons.emoji_events_rounded, 'Minhas conquistas', 'Troféus por serviços, avaliações e mais', () => push(AchievementsScreen(providerId: profile.id, providerName: profile.fullName, isOwner: true))),
         tile(Icons.push_pin_rounded, 'Vitrine de cases', 'Fixe seus melhores serviços no topo', () => push(const CaseCurationScreen())),
-        tile(Icons.support_agent_rounded, 'Ajuda e suporte', 'Central e chamados', () => push(const SupportCenterScreen())),
+        tile(Icons.support_agent_rounded, 'Ajuda e suporte', 'Central e chamados', () => push(const SupportCenterScreen(asProvider: true))),
         AppearanceTile(accent: context.tk.providerAccent, soft: context.tk.providerSoft),
-        tile(Icons.delete_forever_rounded, 'Excluir conta', 'Receba seu dossiê e apague seus dados', () => push(const DeleteAccountScreen())),
+        tile(Icons.delete_forever_rounded, 'Excluir conta', 'Receba seu dossiê e apague seus dados', () => push(const DeleteAccountScreen(asProvider: true))),
         const Divider(height: 32),
         InfoBanner(
           profile.isClient

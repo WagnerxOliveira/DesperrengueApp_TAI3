@@ -274,16 +274,23 @@ class ProviderService {
         'p_owner_confirmed': ownerConfirmed,
       });
 
-  Future<DeletionStatus> deletionStatus() async {
-    final r = await _client.rpc('account_deletion_status');
+  /// Pendências para excluir a conta do [scope] ('client' | 'provider' | 'all').
+  Future<DeletionStatus> deletionStatus({DeletionScope scope = DeletionScope.all}) async {
+    final r = await _client.rpc('account_deletion_status', params: {'p_scope': scope.wire});
     return DeletionStatus.fromMap(Map<String, dynamic>.from(r as Map));
   }
 
   /// Offboarding: a Edge Function envia o Dossiê de Despedida por e-mail e só então
   /// apaga os dados e a conta. Lança [DeletionBlocked] se o servidor recusar (409).
-  Future<void> deleteAccount() async {
+  ///
+  /// [scope] escolhe o que sai: só o perfil de cliente, só o de profissional ou tudo. Se o escopo
+  /// cobre todos os perfis do usuário, a conta inteira é removida; senão ela continua existindo
+  /// com o outro perfil (veja [DeletionResult.accountRemoved]). O PDF enviado cobre só o que foi excluído.
+  Future<DeletionResult> deleteAccount({DeletionScope scope = DeletionScope.all}) async {
     try {
-      await _client.functions.invoke('excluir-conta', body: {'confirm': 'EXCLUIR'});
+      final res = await _client.functions.invoke('excluir-conta', body: {'confirm': 'EXCLUIR', 'scope': scope.wire});
+      final d = res.data;
+      return DeletionResult.fromMap(d is Map ? Map<String, dynamic>.from(d) : const {}, fallback: scope);
     } on FunctionException catch (e) {
       if (e.status == 409) throw const DeletionBlocked();
       final d = e.details;

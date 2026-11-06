@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -34,21 +35,25 @@ IconData achievementIcon(String categoryCode) => switch (categoryCode) {
       AchievementTier.diamond => (top: const Color(0xFFB4EAFF), bottom: const Color(0xFF3F86FF), ink: const Color(0xFF1B49B3)),
     };
 
-/// Medalha vetorial (sem imagens externas): anel metálico + ícone da categoria.
-/// Bloqueada = cinza com cadeado.
-class AchievementMedal extends StatelessWidget {
-  const AchievementMedal({super.key, required this.achievement, this.size = 64, this.locked = false});
+/// Medalha vetorial genérica (sem imagens externas): anel metálico + ícone.
+/// Bloqueada = cinza com cadeado. Serve às conquistas do profissional e do cliente.
+class MedalBadge extends StatelessWidget {
+  const MedalBadge({super.key, required this.icon, required this.tier, this.size = 64, this.locked = false});
 
-  final Achievement achievement;
+  final IconData icon;
+  final AchievementTier tier;
   final double size;
   final bool locked;
 
   @override
   Widget build(BuildContext context) {
-    final p = tierPalette(achievement.tier);
-    final top = locked ? const Color(0xFFE5E8EE) : p.top;
-    final bottom = locked ? const Color(0xFFC3C9D3) : p.bottom;
-    final ink = locked ? const Color(0xFF9AA2AF) : p.ink;
+    final dark = context.tk.isDark;
+    final p = tierPalette(tier);
+    // Bloqueada: no claro cinza-claro; no escuro, grafite (sem "mancha" branca no tema escuro).
+    final top = locked ? (dark ? const Color(0xFF2B3444) : const Color(0xFFE5E8EE)) : p.top;
+    final bottom = locked ? (dark ? const Color(0xFF1E2531) : const Color(0xFFC3C9D3)) : p.bottom;
+    final ink = locked ? (dark ? const Color(0xFF758195) : const Color(0xFF9AA2AF)) : p.ink;
+    final face = locked && dark ? const Color(0xFF232B38) : Colors.white;
     final ring = size * 0.10;
     return SizedBox(
       width: size,
@@ -62,7 +67,7 @@ class AchievementMedal extends StatelessWidget {
               gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [top, bottom]),
               boxShadow: locked
                   ? null
-                  : [BoxShadow(color: bottom.withValues(alpha: 0.45), blurRadius: size * 0.18, offset: Offset(0, size * 0.06))],
+                  : [BoxShadow(color: bottom.withValues(alpha: dark ? 0.55 : 0.45), blurRadius: size * 0.18, offset: Offset(0, size * 0.06))],
             ),
           ),
           Container(
@@ -70,10 +75,10 @@ class AchievementMedal extends StatelessWidget {
             height: size - ring * 2,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.white, top.withValues(alpha: 0.55)]),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1),
+              gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [face, top.withValues(alpha: locked && dark ? 0.35 : 0.55)]),
+              border: Border.all(color: Colors.white.withValues(alpha: locked && dark ? 0.08 : 0.8), width: 1),
             ),
-            child: Icon(achievementIcon(achievement.category.code), size: size * 0.46, color: ink),
+            child: Icon(icon, size: size * 0.46, color: ink),
           ),
           if (locked)
             Positioned(
@@ -81,11 +86,11 @@ class AchievementMedal extends StatelessWidget {
               bottom: 0,
               child: Container(
                 padding: EdgeInsets.all(size * 0.06),
-                decoration: const BoxDecoration(color: Color(0xFF8A93A3), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: dark ? const Color(0xFF58637A) : const Color(0xFF8A93A3), shape: BoxShape.circle),
                 child: Icon(Icons.lock_rounded, size: size * 0.18, color: Colors.white),
               ),
             )
-          else if (achievement.tier == AchievementTier.diamond || achievement.tier == AchievementTier.platinum)
+          else if (tier == AchievementTier.diamond || tier == AchievementTier.platinum)
             Positioned(
               right: size * 0.02,
               top: size * 0.02,
@@ -97,11 +102,26 @@ class AchievementMedal extends StatelessWidget {
   }
 }
 
-/// Medalha + título curto (usada em listas horizontais e no perfil público).
-class AchievementTile extends StatelessWidget {
-  const AchievementTile({super.key, required this.achievement, this.size = 64, this.locked = false, this.onTap, this.width = 96});
+/// Medalha de uma conquista do profissional.
+class AchievementMedal extends StatelessWidget {
+  const AchievementMedal({super.key, required this.achievement, this.size = 64, this.locked = false});
 
   final Achievement achievement;
+  final double size;
+  final bool locked;
+
+  @override
+  Widget build(BuildContext context) =>
+      MedalBadge(icon: achievementIcon(achievement.category.code), tier: achievement.tier, size: size, locked: locked);
+}
+
+/// Medalha + título curto (listas horizontais).
+class MedalTile extends StatelessWidget {
+  const MedalTile({super.key, required this.icon, required this.tier, required this.title, this.size = 64, this.locked = false, this.onTap, this.width = 96});
+
+  final IconData icon;
+  final AchievementTier tier;
+  final String title;
   final double size;
   final double width;
   final bool locked;
@@ -116,10 +136,10 @@ class AchievementTile extends StatelessWidget {
         width: width,
         child: Column(
           children: [
-            AchievementMedal(achievement: achievement, size: size, locked: locked),
+            MedalBadge(icon: icon, tier: tier, size: size, locked: locked),
             const SizedBox(height: 6),
             Text(
-              achievement.title,
+              title,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
@@ -130,6 +150,28 @@ class AchievementTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Medalha + título de uma conquista do profissional (usada no perfil público).
+class AchievementTile extends StatelessWidget {
+  const AchievementTile({super.key, required this.achievement, this.size = 64, this.locked = false, this.onTap, this.width = 96});
+
+  final Achievement achievement;
+  final double size;
+  final double width;
+  final bool locked;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => MedalTile(
+        icon: achievementIcon(achievement.category.code),
+        tier: achievement.tier,
+        title: achievement.title,
+        size: size,
+        width: width,
+        locked: locked,
+        onTap: onTap,
+      );
 }
 
 /// Detalhe da conquista (bottom sheet).
@@ -260,7 +302,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: Text(widget.isOwner ? 'Minhas conquistas' : 'Conquistas de ${widget.providerName.split(' ').first}')),
       body: FutureBuilder<({List<({String code, DateTime unlockedAt})> unlocked, Map<String, int>? counts})>(
         future: _future,
@@ -291,11 +333,13 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.unlocked, required this.total, required this.last});
+  const _Summary({required this.unlocked, required this.total, this.last, this.lastTitle, this.emptyHint});
 
   final int unlocked;
   final int total;
   final Achievement? last;
+  final String? lastTitle;
+  final String? emptyHint;
 
   @override
   Widget build(BuildContext context) {
@@ -332,7 +376,7 @@ class _Summary extends StatelessWidget {
                 const Text('Conquistas desbloqueadas', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                 const SizedBox(height: 4),
                 Text(
-                  last == null ? 'Conclua serviços e receba avaliações para desbloquear as primeiras.' : 'Mais recente: ${last!.title}',
+                  (last == null && lastTitle == null) ? (emptyHint ?? 'Conclua serviços e receba avaliações para desbloquear as primeiras.') : 'Mais recente: ${last?.title ?? lastTitle}',
                   style: TextStyle(color: context.tk.textMuted, height: 1.35, fontSize: 13),
                 ),
               ],
@@ -633,11 +677,11 @@ class NewAchievementsBanner extends StatelessWidget {
 
 
 // ============================================================================
-// Conquistas do CLIENTE (gamificação) — perfil do cliente
+// Conquistas do CLIENTE — mesmo estilo das conquistas do profissional
 // ============================================================================
 
 /// Carrega o que as conquistas do cliente precisam (produção: pedidos + avaliações dadas +
-/// contestações). Falhas parciais viram "vazio" para nunca derrubar o perfil.
+/// contestações). Falhas parciais viram "vazio" para nunca derrubar a tela.
 typedef ClientAchievementsLoader = Future<ClientAchievementInput> Function();
 
 Future<ClientAchievementInput> loadClientAchievementInput(UserProfile profile) async {
@@ -670,29 +714,19 @@ IconData clientAchievementIcon(ClientAchievementCode c) => switch (c) {
       ClientAchievementCode.loyalClient => Icons.workspace_premium_rounded,
     };
 
-/// Cores vivas de cada conquista desbloqueada: (topo, base).
-(Color, Color) clientAchievementColors(ClientAchievementCode c) => switch (c) {
-      ClientAchievementCode.firstOrder => (const Color(0xFFFF9A4D), const Color(0xFFF2620F)),
-      ClientAchievementCode.verifiedClient => (const Color(0xFF5AA9FF), const Color(0xFF2563EB)),
-      ClientAchievementCode.collaborativeReviewer => (const Color(0xFFB48CFF), const Color(0xFF7C3AED)),
-      ClientAchievementCode.homeMaster => (const Color(0xFF4FD6A0), const Color(0xFF0E9F6E)),
-      ClientAchievementCode.secureWallet => (const Color(0xFF4FD1E0), const Color(0xFF0E7490)),
-      ClientAchievementCode.loyalClient => (const Color(0xFFFFD66B), const Color(0xFFD59A0A)),
-    };
-
-/// Seção "Conquistas" do perfil do cliente: resumo + 6 cartões (vivos quando desbloqueados;
-/// cinza com barra de progresso quando bloqueados).
-class ClientAchievementsSection extends StatefulWidget {
-  const ClientAchievementsSection({super.key, required this.profile, @visibleForTesting this.loader});
+/// "Minhas conquistas" do CLIENTE: resumo + um cartão por conquista com as medalhas de cada
+/// nível (bronze → diamante) e a barra rumo à próxima — igual à tela do profissional.
+class ClientAchievementsScreen extends StatefulWidget {
+  const ClientAchievementsScreen({super.key, required this.profile, @visibleForTesting this.loader});
 
   final UserProfile profile;
   final ClientAchievementsLoader? loader;
 
   @override
-  State<ClientAchievementsSection> createState() => _ClientAchievementsSectionState();
+  State<ClientAchievementsScreen> createState() => _ClientAchievementsScreenState();
 }
 
-class _ClientAchievementsSectionState extends State<ClientAchievementsSection> {
+class _ClientAchievementsScreenState extends State<ClientAchievementsScreen> {
   late Future<ClientAchievementInput> _future = _load();
 
   Future<ClientAchievementInput> _load() => widget.loader != null ? widget.loader!() : loadClientAchievementInput(widget.profile);
@@ -701,60 +735,37 @@ class _ClientAchievementsSectionState extends State<ClientAchievementsSection> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<ClientAchievementInput>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const SizedBox(height: 80, child: LoadingView());
-        }
-        if (snap.hasError) {
-          return Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(onPressed: _reload, icon: const Icon(Icons.refresh_rounded), label: const Text('Não foi possível carregar as conquistas. Tentar de novo')),
-          );
-        }
-        final progress = computeClientAchievements(snap.data!);
-        final unlocked = progress.where((p) => p.unlocked).length;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return AppScaffold(
+      appBar: AppBar(title: const Text('Minhas conquistas')),
+      body: FutureBuilder<ClientAchievementInput>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) return const LoadingView();
+          if (snap.hasError) return ErrorView(message: 'Não foi possível carregar as conquistas.', onRetry: _reload);
+          final progress = computeClientAchievements(snap.data!);
+          final unlocked = progress.fold<int>(0, (a, p) => a + p.unlockedCount);
+          final last = progress.where((p) => p.highest != null).fold<ClientLevel?>(null, (best, p) {
+            final h = p.highest!;
+            return best == null || h.tier.index >= best.tier.index ? h : best;
+          });
+          return RefreshIndicator(
+            onRefresh: () async => _reload(),
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
               children: [
-                const Icon(Icons.emoji_events_rounded, size: 22),
-                const SizedBox(width: 8),
-                const Expanded(child: Text('Minhas conquistas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
-                Text('$unlocked de ${progress.length}', key: const ValueKey('client-ach-count'), style: TextStyle(fontWeight: FontWeight.w900, color: context.tk.clientAccent)),
+                _Summary(unlocked: unlocked, total: kClientMedalTotal, last: null, lastTitle: last?.title, emptyHint: 'Faça pedidos, avalie e complete o perfil para desbloquear as primeiras.'),
+                const SizedBox(height: 14),
+                for (final p in progress) ClientAchievementCard(progress: p),
               ],
             ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: progress.isEmpty ? 0 : unlocked / progress.length,
-                minHeight: 8,
-                color: context.tk.clientAccent,
-                backgroundColor: context.tk.border,
-              ),
-            ),
-            const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, c) {
-                final w = (c.maxWidth - 12) / 2;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [for (final p in progress) SizedBox(width: w, child: ClientAchievementCard(progress: p))],
-                );
-              },
-            ),
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
 
-/// Cartão de uma conquista do cliente.
+/// Cartão de uma conquista do cliente: ícone, nome, "x/y níveis", medalhas e a próxima meta.
 class ClientAchievementCard extends StatelessWidget {
   const ClientAchievementCard({super.key, required this.progress});
 
@@ -762,77 +773,70 @@ class ClientAchievementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tk = context.tk;
     final def = progress.def;
-    final (top, bottom) = clientAchievementColors(def.code);
-    final unlocked = progress.unlocked;
-    final fg = unlocked ? Colors.white : tk.text;
-    final muted = unlocked ? Colors.white.withValues(alpha: 0.9) : tk.textMuted;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: ValueKey('client-ach:${def.code.name}'),
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => _showDetail(context),
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: unlocked ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [top, bottom]) : null,
-            color: unlocked ? null : tk.card,
-            border: Border.all(color: unlocked ? bottom : tk.border),
-            boxShadow: unlocked ? [BoxShadow(color: bottom.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 5))] : null,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final tk = context.tk;
+    final next = progress.next;
+    final accent = Theme.of(context).colorScheme.primary;
+    return AppCard(
+      key: ValueKey('client-ach:${def.code.name}'),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: unlocked ? Colors.white.withValues(alpha: 0.25) : tk.surface,
-                      border: Border.all(color: unlocked ? Colors.white.withValues(alpha: 0.7) : tk.border, width: 2),
-                    ),
-                    child: Icon(clientAchievementIcon(def.code), size: 24, color: unlocked ? Colors.white : tk.textMuted),
-                  ),
-                  const Spacer(),
-                  Icon(unlocked ? Icons.check_circle_rounded : Icons.lock_rounded, size: 20, color: unlocked ? Colors.white : tk.textMuted),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(def.name, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5, height: 1.2, color: fg)),
-              const SizedBox(height: 2),
-              Text(def.title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: muted)),
-              const SizedBox(height: 10),
-              if (unlocked)
-                Text('Desbloqueada!', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12.5, color: fg))
-              else ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: progress.fraction,
-                    minHeight: 7,
-                    color: bottom,
-                    backgroundColor: tk.border,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text('${progress.shown}/${def.goal} ${def.unit}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: tk.textMuted)),
-              ],
+              Icon(clientAchievementIcon(def.code), size: 20, color: accent),
+              const SizedBox(width: 8),
+              Expanded(child: Text(def.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
+              Text('${progress.unlockedCount}/${def.levels.length}', style: TextStyle(fontWeight: FontWeight.w800, color: tk.textMuted)),
             ],
           ),
-        ),
+          const SizedBox(height: 2),
+          Text(def.title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: tk.textMuted)),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 124,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: def.levels.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 4),
+              itemBuilder: (_, i) {
+                final l = def.levels[i];
+                final isUnlocked = progress.current >= l.threshold;
+                return MedalTile(
+                  icon: clientAchievementIcon(def.code),
+                  tier: l.tier,
+                  title: l.title,
+                  size: 54,
+                  width: 84,
+                  locked: !isUnlocked,
+                  onTap: () => _showLevelDetail(context, progress, l, isUnlocked),
+                );
+              },
+            ),
+          ),
+          if (next != null) ...[
+            const SizedBox(height: 10),
+            Text('Próxima: ${next.title}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(value: progress.fractionToNext, minHeight: 8, color: accent, backgroundColor: tk.border),
+            ),
+            const SizedBox(height: 4),
+            Text('${progress.current} / ${next.threshold} ${def.unit}', style: TextStyle(fontSize: 12, color: tk.textMuted)),
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text('Categoria completa!', style: TextStyle(fontWeight: FontWeight.w900, color: tk.successInk)),
+            ),
+        ],
       ),
     );
   }
 
-  void _showDetail(BuildContext context) {
-    final def = progress.def;
-    final (top, bottom) = clientAchievementColors(def.code);
-    final unlocked = progress.unlocked;
+  void _showLevelDetail(BuildContext context, ClientAchievementProgress p, ClientLevel l, bool unlocked) {
+    final def = p.def;
     showModalBottomSheet<void>(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
@@ -842,28 +846,25 @@ class ClientAchievementCard extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: unlocked
-                      ? LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [top, bottom])
-                      : const LinearGradient(colors: [Color(0xFFE5E8EE), Color(0xFFC3C9D3)]),
-                ),
-                child: Icon(clientAchievementIcon(def.code), size: 48, color: unlocked ? Colors.white : const Color(0xFF8A93A3)),
-              ),
+              MedalBadge(icon: clientAchievementIcon(def.code), tier: l.tier, size: 110, locked: !unlocked),
               const SizedBox(height: 14),
-              Text(def.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
-              StatusChip(def.title, color: unlocked ? bottom : ctx.tk.textMuted),
+              Text(l.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 6),
+              StatusChip('${def.name} • ${l.tier.label}', color: unlocked ? tierPalette(l.tier).ink : ctx.tk.textMuted),
               const SizedBox(height: 12),
               Text(def.description, textAlign: TextAlign.center, style: TextStyle(color: ctx.tk.textMuted, height: 1.4)),
               const SizedBox(height: 14),
-              Text(
-                unlocked ? 'Conquista desbloqueada!' : 'Progresso: ${progress.shown}/${def.goal} ${def.unit}',
-                style: TextStyle(fontWeight: FontWeight.w800, color: unlocked ? ctx.tk.successInk : ctx.tk.text),
-              ),
+              if (unlocked)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: ctx.tk.success, size: 20),
+                    const SizedBox(width: 6),
+                    Text('Conquista desbloqueada!', style: TextStyle(fontWeight: FontWeight.w800, color: ctx.tk.successInk)),
+                  ],
+                )
+              else
+                Text('Progresso: ${p.current}/${l.threshold} ${def.unit}', style: const TextStyle(fontWeight: FontWeight.w800)),
             ],
           ),
         ),

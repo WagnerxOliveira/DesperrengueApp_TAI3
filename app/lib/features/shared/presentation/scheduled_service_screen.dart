@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -280,7 +281,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     final price = job.agreedPrice ?? 0;
     final net = price - price * 0.12;
     final gate = _gate;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
         title: const BrandLogo(),

@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -212,7 +213,7 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Case de sucesso')),
       body: FutureBuilder<CaseDetail?>(
         future: _future,
@@ -474,7 +475,7 @@ class _CaseCurationScreenState extends State<CaseCurationScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Gerenciar vitrine')),
       body: FutureBuilder<List<CaseHistoryItem>>(
         future: _future,

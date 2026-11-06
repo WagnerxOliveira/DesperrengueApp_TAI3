@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -28,11 +29,11 @@ class ProviderJobScreen extends StatelessWidget {
     return StreamBuilder<Job?>(
       stream: jobs.streamJob(jobId),
       builder: (context, snap) {
-        if (snap.hasError) return Scaffold(appBar: AppBar(), body: const ErrorView(message: 'Não foi possível carregar o serviço.'));
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) return Scaffold(appBar: AppBar(), body: const LoadingView());
+        if (snap.hasError) return AppScaffold(appBar: AppBar(), body: const ErrorView(message: 'Não foi possível carregar o serviço.'));
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) return AppScaffold(appBar: AppBar(), body: const LoadingView());
         final job = snap.data;
         if (job == null) {
-          return Scaffold(
+          return AppScaffold(
             appBar: AppBar(),
             body: const EmptyView(
               icon: Icons.lock_outline_rounded,
@@ -100,7 +101,7 @@ class _UnavailableScreen extends StatelessWidget {
   final String message;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => AppScaffold(
     appBar: AppBar(title: const BrandLogo()),
     body: EmptyView(
       icon: Icons.info_outline_rounded,
@@ -265,7 +266,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
     final net = v - v * _feePct / 100;
     final full = job.quoteCount >= 3;
     final blocked = _inviteDead || full;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Detalhes do chamado')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -434,7 +435,7 @@ class _AwaitingResponseScreenState extends State<AwaitingResponseScreen> {
   @override
   Widget build(BuildContext context) {
     final inv = _invite;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.maybePop(context)),
         title: const Text('Aguardando resposta'),
@@ -529,7 +530,7 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
   Widget build(BuildContext context) {
     final job = widget.job;
     final live = widget.invite?.isLive ?? false;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Emergência')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -592,7 +593,7 @@ class _WaitingPaymentScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Orçamento aceito!')),
       body: ListView(
         padding: const EdgeInsets.all(24),

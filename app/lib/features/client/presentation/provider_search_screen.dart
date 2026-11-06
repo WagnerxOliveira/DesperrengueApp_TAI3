@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -49,7 +50,8 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
   late final TextEditingController _controller = TextEditingController(text: widget.query ?? widget.category ?? '');
   late Future<List<ProviderCard>> _future;
   _Sort _sort = _Sort.nearest;
-  SearchRadius _radius = SearchRadius.region;
+  int _radiusIdx = kRadiusAllIndex;
+  int? get _radiusKm => kRadiusSteps[_radiusIdx];
   String? _category;
 
   @override
@@ -109,7 +111,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
   Widget build(BuildContext context) {
     final title = _controller.text.trim().isEmpty ? 'Profissionais' : _controller.text.trim();
     final category = _effectiveCategory;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(
         title: TextField(
           controller: _controller,
@@ -146,7 +148,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
             all,
             clientLat: widget.profile.latitude,
             clientLng: widget.profile.longitude,
-            radius: _radius,
+            radiusKm: _radiusKm,
             clientCity: widget.profile.addressCity,
           ));
           return ListView(
@@ -154,10 +156,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
             children: [
               Text('Resultados para "$title"', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
               const SizedBox(height: 10),
-              _RadiusSelector(
-                selected: _radius,
-                onChanged: (r) => setState(() => _radius = r),
-              ),
+              RadiusSlider(index: _radiusIdx, onChanged: (i) => setState(() => _radiusIdx = i)),
               const SizedBox(height: 10),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -170,7 +169,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
                           label: Text(label),
                           selected: _sort == s,
                           onSelected: (_) => setState(() => _sort = s),
-                          labelStyle: TextStyle(color: _sort == s ? Colors.white : context.tk.text, fontWeight: FontWeight.w700),
+                          labelStyle: TextStyle(color: _sort == s ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
                           showCheckmark: false,
                         ),
                       ),
@@ -181,7 +180,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
               if (list.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: _radius.isUnlimited
+                  child: _radiusKm == null
                       ? const EmptyView(
                           icon: Icons.person_search_rounded,
                           title: 'Nenhum profissional encontrado',
@@ -189,13 +188,13 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
                         )
                       : EmptyView(
                           icon: Icons.radar_rounded,
-                          title: 'Ninguém em até ${_radius.label}',
+                          title: 'Ninguém em até ${radiusLabel(_radiusKm)}',
                           subtitle: all.isEmpty
                               ? 'Ainda estamos crescendo na sua região. Publique o pedido para receber orçamentos assim que alguém se cadastrar.'
                               : 'Há ${all.length} ${all.length == 1 ? 'profissional' : 'profissionais'} fora desse raio. Amplie a busca para ver todos.',
                           action: all.isEmpty
                               ? null
-                              : PrimaryButton(label: 'Ver toda a região', onPressed: () => setState(() => _radius = SearchRadius.region)),
+                              : PrimaryButton(label: 'Ver toda a região', onPressed: () => setState(() => _radiusIdx = kRadiusAllIndex)),
                         ),
                 )
               else ...[
@@ -203,7 +202,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     '${list.length} ${list.length == 1 ? 'profissional' : 'profissionais'}'
-                    '${category != null ? ' de $category' : ''} • ${_radius.label}',
+                    '${category != null ? ' de $category' : ''} • ${radiusLabel(_radiusKm)}',
                     style: TextStyle(color: context.tk.textMuted, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -246,42 +245,54 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
   }
 }
 
-/// Seletor visual do raio de alcance (geofencing dinâmico).
-class _RadiusSelector extends StatelessWidget {
-  const _RadiusSelector({required this.selected, required this.onChanged});
+/// Raio de alcance como **barra de arrastar** (mesmo padrão do "Raio de atendimento" do
+/// profissional): arrasta de 1 km até 100 km; o último degrau é "Toda a região".
+class RadiusSlider extends StatelessWidget {
+  const RadiusSlider({super.key, required this.index, required this.onChanged});
 
-  final SearchRadius selected;
-  final ValueChanged<SearchRadius> onChanged;
+  final int index;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final km = kRadiusSteps[index];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.radar_rounded, size: 18, color: context.tk.clientAccent),
+            Icon(Icons.radar_rounded, size: 18, color: tk.clientAccent),
             const SizedBox(width: 6),
-            const Text('Raio de alcance', style: TextStyle(fontWeight: FontWeight.w800)),
+            const Flexible(
+              child: Text('Raio de alcance', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(width: 8),
+            const Spacer(),
+            Container(
+              key: const ValueKey('radius-value'),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(color: tk.clientSoft, borderRadius: BorderRadius.circular(20)),
+              child: Text(radiusLabel(km), style: TextStyle(fontWeight: FontWeight.w900, color: tk.clientAccent)),
+            ),
           ],
         ),
-        const SizedBox(height: 6),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
+        Slider(
+          key: const ValueKey('radius-slider'),
+          value: index.toDouble(),
+          min: 0,
+          max: (kRadiusSteps.length - 1).toDouble(),
+          divisions: kRadiusSteps.length - 1,
+          label: radiusLabel(km),
+          onChanged: (v) => onChanged(v.round()),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              for (final r in SearchRadius.values)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    key: ValueKey('radius:${r.name}'),
-                    label: Text(r.label),
-                    selected: selected == r,
-                    showCheckmark: false,
-                    onSelected: (_) => onChanged(r),
-                    labelStyle: TextStyle(color: selected == r ? Colors.white : context.tk.text, fontWeight: FontWeight.w700),
-                  ),
-                ),
+              Text('1 km', style: TextStyle(fontSize: 11.5, color: tk.textMuted)),
+              Text('Toda a região', style: TextStyle(fontSize: 11.5, color: tk.textMuted)),
             ],
           ),
         ),

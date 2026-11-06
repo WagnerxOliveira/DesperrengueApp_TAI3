@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import 'auth_gate.dart';
@@ -44,7 +45,7 @@ class _CadastroSucessoRoutingScreenState
     // PopScope bloqueia o gesto de voltar (swipe ou botão nativo do Android) durante o carregamento
     return LightIsland(child: PopScope(
       canPop: false,
-      child: Scaffold(
+      child: AppScaffold(
         backgroundColor: Colors.white,
         body: Center(
           child: Padding(

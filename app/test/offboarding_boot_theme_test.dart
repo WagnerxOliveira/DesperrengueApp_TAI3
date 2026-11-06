@@ -36,8 +36,8 @@ UserProfile profile({bool client = false, bool provider = false, bool clientDone
 
 void main() {
   group('Design tokens (WCAG)', () {
-    test('modo escuro usa fundo #121212 e sem sombra', () {
-      expect(AppTokens.dark.background, const Color(0xFF121212));
+    test('modo escuro usa o grafite-azulado #0E1218 e sem sombra', () {
+      expect(AppTokens.dark.background, const Color(0xFF0E1218));
       expect(AppTokens.dark.cardShadow(), isEmpty);
       expect(AppTokens.light.cardShadow(), isNotEmpty);
     });
@@ -111,7 +111,7 @@ void main() {
     test('resolve devolve tema claro/escuro por modo, com cache', () {
       final dark = AppTheme.resolve(UserMode.provider, Brightness.dark);
       final light = AppTheme.resolve(UserMode.provider, Brightness.light);
-      expect(dark.scaffoldBackgroundColor, const Color(0xFF121212));
+      expect(dark.scaffoldBackgroundColor, const Color(0xFF0E1218));
       expect(light.scaffoldBackgroundColor, Colors.white);
       expect(dark.extension<AppTokens>()!.isDark, isTrue);
       expect(identical(dark, AppTheme.resolve(UserMode.provider, Brightness.dark)), isTrue);
@@ -135,7 +135,7 @@ void main() {
         }),
       ));
       expect(seen.isDark, isTrue);
-      expect(seen.background, const Color(0xFF121212));
+      expect(seen.background, const Color(0xFF0E1218));
     });
   });
 
@@ -527,7 +527,7 @@ void main() {
       await pump(tester, profile(client: true, clientDone: true), mode: ThemeMode.dark);
       expect(tester.takeException(), isNull);
       final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-      expect(scaffold.backgroundColor, const Color(0xFF121212));
+      expect(scaffold.backgroundColor, const Color(0xFF0E1218));
     });
   });
 }

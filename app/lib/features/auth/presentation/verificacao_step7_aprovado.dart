@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -64,7 +65,7 @@ class _VerificacaoStep7AprovadoScreenState
     // Força a barra de status do celular a ficar escura, combinando com o fundo branco
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
 
-    return LightIsland(child: Scaffold(
+    return LightIsland(child: AppScaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(

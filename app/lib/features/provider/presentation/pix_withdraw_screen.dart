@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -78,7 +79,7 @@ class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Scaffold(
+    return AppScaffold(
       appBar: AppBar(title: const Text('Transferir via Pix')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),

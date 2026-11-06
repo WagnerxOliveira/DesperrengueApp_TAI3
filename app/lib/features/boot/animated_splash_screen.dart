@@ -1,3 +1,4 @@
+import '../../core/ui/app_scaffold.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -80,7 +81,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return AppScaffold(
       backgroundColor: AnimatedSplashScreen.navy,
       body: Center(
         // O AnimatedBuilder só reconstrói o que muda; o símbolo e os confetes

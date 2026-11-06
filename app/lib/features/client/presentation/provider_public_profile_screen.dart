@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -39,7 +40,7 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
   @override
   Widget build(BuildContext context) {
     final p = widget.provider;
-    return Scaffold(
+    return AppScaffold(
       backgroundColor: context.tk.card,
       body: CustomScrollView(
         slivers: [

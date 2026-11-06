@@ -317,25 +317,39 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
   }
 }
 
-/// O CLIENTE confirma o local exato do serviço no mapa (toque ou GPS). O servidor passa a
-/// validar a presença do profissional contra este ponto (raio de 100 m).
+/// O CLIENTE confirma o local exato do serviço no mapa. O servidor passa a validar a presença do
+/// profissional contra este ponto (raio de 100 m).
+///
+/// Como nos apps de entrega: o pino fica FIXO no centro da tela e o cliente ARRASTA o mapa até a
+/// porta da casa (mais preciso e fácil que tocar com o dedo). Também aceita um toque no mapa e o
+/// botão "Usar minha localização" (GPS) para quem está em casa.
 class LocationPickerSheet extends StatefulWidget {
-  const LocationPickerSheet({super.key, required this.initial, required this.onConfirm});
+  const LocationPickerSheet({super.key, required this.initial, required this.onConfirm, this.addressLine, this.tileLayer});
 
   final JobDestination? initial;
   final Future<void> Function(double lat, double lng) onConfirm;
+
+  /// Endereço que o cliente informou (mostrado no topo para ele conferir).
+  final String? addressLine;
+
+  /// Injetável nos testes (padrão: [buildTileLayer]).
+  final Widget? tileLayer;
 
   static Future<bool?> show(
     BuildContext context, {
     required JobDestination? initial,
     required Future<void> Function(double lat, double lng) onConfirm,
+    String? addressLine,
   }) =>
       showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
         showDragHandle: true,
-        builder: (_) => FractionallySizedBox(heightFactor: 0.92, child: LocationPickerSheet(initial: initial, onConfirm: onConfirm)),
+        builder: (_) => FractionallySizedBox(
+          heightFactor: 0.92,
+          child: LocationPickerSheet(initial: initial, onConfirm: onConfirm, addressLine: addressLine),
+        ),
       );
 
   @override
@@ -351,11 +365,18 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
   // Centro do Brasil como último recurso; normalmente há um destino aproximado ou o GPS.
   static const _fallback = LatLng(-21.7900318, -46.5647928);
 
+  LatLng get _start => widget.initial == null ? _fallback : LatLng(widget.initial!.lat, widget.initial!.lng);
+
   @override
   void initState() {
     super.initState();
-    final i = widget.initial;
-    if (i != null) _pin = LatLng(i.lat, i.lng);
+    _pin = _start;
+  }
+
+  @override
+  void dispose() {
+    _map.dispose();
+    super.dispose();
   }
 
   Future<void> _useMyLocation() async {
@@ -371,7 +392,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       final ll = LatLng(p.latitude, p.longitude);
       if (!mounted) return;
       setState(() => _pin = ll);
-      _map.move(ll, 18);
+      _map.move(ll, 19);
     } catch (_) {
       if (mounted) showSnack(context, 'Não foi possível obter a localização.', error: true);
     } finally {
@@ -406,8 +427,13 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
             children: [
               const Text('Confirme o local do serviço', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
+              if ((widget.addressLine ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(widget.addressLine!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
               Text(
-                'Toque no mapa sobre a sua casa. O profissional só consegue iniciar o serviço quando estiver a menos de 100 m deste ponto.',
+                'Arraste o mapa até deixar o pino em cima da sua casa. O profissional só consegue iniciar o serviço quando estiver a menos de 100 m deste ponto.',
                 style: TextStyle(color: tk.textMuted, fontSize: 13, height: 1.3),
               ),
             ],
@@ -419,22 +445,35 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
             child: Stack(
               children: [
                 FlutterMap(
+                  key: const ValueKey('pin-map'),
                   mapController: _map,
                   options: MapOptions(
-                    initialCenter: _pin ?? _fallback,
-                    initialZoom: _pin == null ? 13 : 17,
+                    initialCenter: _start,
+                    initialZoom: widget.initial == null ? 13 : (widget.initial!.precision == DestinationPrecision.locality ? 15 : 18),
                     minZoom: 3,
                     maxZoom: 19,
-                    onTap: (_, ll) => setState(() => _pin = ll),
+                    // Arrastar/zoom → o pino acompanha o CENTRO do mapa.
+                    onPositionChanged: (camera, hasGesture) {
+                      if (hasGesture) setState(() => _pin = camera.center);
+                    },
+                    onTap: (_, ll) {
+                      setState(() => _pin = ll);
+                      _map.move(ll, _map.camera.zoom);
+                    },
                   ),
                   children: [
-                    buildTileLayer(context),
-                    MarkerLayer(markers: [
-                      if (_pin != null)
-                        Marker(point: _pin!, width: 44, height: 44, alignment: Alignment.topCenter, child: Icon(Icons.location_on_rounded, size: 42, color: tk.danger)),
-                    ]),
+                    widget.tileLayer ?? buildTileLayer(context),
                     const MapAttribution(),
                   ],
+                ),
+                // Pino fixo no centro (a ponta do pino = centro exato do mapa).
+                IgnorePointer(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 44),
+                      child: Icon(Icons.location_on_rounded, key: const ValueKey('center-pin'), size: 48, color: tk.danger),
+                    ),
+                  ),
                 ),
                 Positioned(
                   right: 10,

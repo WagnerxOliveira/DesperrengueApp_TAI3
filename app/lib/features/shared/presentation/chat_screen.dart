@@ -1,3 +1,4 @@
+import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -423,7 +424,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     final readOnly = _readOnly;
-    return Scaffold(
+    return AppScaffold(
       backgroundColor: context.tk.surface,
       appBar: AppBar(
         title: _title(),
@@ -536,7 +537,7 @@ class _Bubble extends StatelessWidget {
     final message = item.message;
     final mine = item.mine;
     final failed = item.status == ChatItemStatus.failed;
-    final fg = failed ? context.tk.danger : (mine ? Colors.white : context.tk.text);
+    final fg = failed ? context.tk.danger : (mine ? Theme.of(context).colorScheme.onPrimary : context.tk.text);
     final meta = failed ? context.tk.danger : (mine ? Colors.white70 : context.tk.textMuted);
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
