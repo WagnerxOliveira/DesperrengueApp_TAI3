@@ -277,6 +277,16 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
       context,
       initial: _dest,
       addressLine: line,
+      onAddressResolved: (addr) {
+        if (mounted) {
+          setState(() {
+            _address = {
+              ...?_address,
+              'address_line': addr.fullLine,
+            };
+          });
+        }
+      },
       onConfirm: (lat, lng) async {
         final d = await _deps.backend.setLocation(job.id, lat, lng);
         if (mounted) setState(() => _dest = d);

@@ -384,4 +384,121 @@ void main() {
       expect(calls, 0);
     });
   });
+
+  group('reverseGeocode — atualização automática do endereço ao mover o pino', () {
+    test('parseNominatimReverse extrai rua, número, bairro, cidade, UF e CEP', () {
+      final r = PreciseGeocoder.parseNominatimReverse(
+        {
+          'address': {
+            'road': 'Rua Padre José Geraldi',
+            'house_number': '203',
+            'suburb': 'Maria Imaculada',
+            'city': 'Poços de Caldas',
+            'state': 'Minas Gerais',
+            'postcode': '37701-110',
+          },
+        },
+        lat: -21.80271,
+        lng: -46.60281,
+      );
+      expect(r, isNotNull);
+      expect(r!.street, 'Rua Padre José Geraldi');
+      expect(r.number, '203');
+      expect(r.neighborhood, 'Maria Imaculada');
+      expect(r.city, 'Poços de Caldas');
+      expect(r.uf, 'MG');
+      expect(r.cep, '37701110');
+      expect(r.fullLine, 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG');
+      expect(r.summary, 'Maria Imaculada, Poços de Caldas - MG');
+    });
+
+    test('parsePhotonReverse extrai endereço do GeoJSON do Photon', () {
+      final r = PreciseGeocoder.parsePhotonReverse(
+        {
+          'features': [
+            {
+              'properties': {
+                'street': 'Rua Padre José Geraldi',
+                'housenumber': '203',
+                'district': 'Maria Imaculada',
+                'city': 'Poços de Caldas',
+                'state': 'Minas Gerais',
+                'postcode': '37701-110',
+              },
+            },
+          ],
+        },
+        lat: -21.80271,
+        lng: -46.60281,
+      );
+      expect(r, isNotNull);
+      expect(r!.fullLine, 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG');
+    });
+
+    test('reverseGeocode combina Nominatim + Photon e corrige o endereço antigo', () async {
+      final g = PreciseGeocoder(
+        client: MockClient((req) async {
+          if (req.url.host == 'nominatim.openstreetmap.org') {
+            return json({
+              'address': {
+                'road': 'Rua Padre José Geraldi',
+                'house_number': '203',
+                'suburb': 'Maria Imaculada',
+                'city': 'Poços de Caldas',
+                'ISO3166-2-lvl4': 'BR-MG',
+                'postcode': '37701-110',
+              },
+            });
+          }
+          return json({'features': []});
+        }),
+        fallback: _Geo(null),
+      );
+      final rev = await g.reverseGeocode(
+        -21.80271,
+        -46.60281,
+        fallbackLine: 'Avenida Padre Cletus Francis Cox, 1661 - Jardim Country Club, Poços de Caldas - MG',
+      );
+      expect(rev, isNotNull);
+      expect(rev!.street, 'Rua Padre José Geraldi');
+      expect(rev.number, '203');
+      expect(rev.neighborhood, 'Maria Imaculada');
+      expect(rev.fullLine, 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG');
+    });
+  });
+
+  group('parseOsrmRoute — seleciona o caminho mais curto entre as alternativas', () {
+    test('escolhe a rota com menor distância (distanceM) entre as alternativas do OSRM', () {
+      final route = parseOsrmRoute({
+        'code': 'Ok',
+        'routes': [
+          {
+            'distance': 2400,
+            'duration': 300,
+            'geometry': {
+              'coordinates': [
+                [-46.59495, -21.79509],
+                [-46.60000, -21.80000],
+                [-46.60281, -21.80271],
+              ],
+            },
+          },
+          {
+            'distance': 1350,
+            'duration': 210,
+            'geometry': {
+              'coordinates': [
+                [-46.59495, -21.79509],
+                [-46.60281, -21.80271],
+              ],
+            },
+          },
+        ],
+      });
+      expect(route, isNotNull);
+      expect(route!.distanceM, 1350);
+      expect(route.durationS, 210);
+      expect(route.points, hasLength(2));
+    });
+  });
 }

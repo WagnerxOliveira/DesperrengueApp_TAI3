@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/models/address_data.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
@@ -243,6 +244,22 @@ class ClientProfileTab extends StatelessWidget {
               summary: profile.addressCity,
               latitude: profile.latitude,
               longitude: profile.longitude,
+              onAddressChanged: (addr) async {
+                final updated = AddressData(
+                  cep: addr.cep,
+                  street: addr.street,
+                  number: addr.number,
+                  neighborhood: addr.neighborhood,
+                  city: addr.city,
+                  uf: addr.uf,
+                  latitude: addr.lat,
+                  longitude: addr.lng,
+                );
+                try {
+                  await saveProfileAddress(updated);
+                } catch (_) {}
+              },
+              onAdjustPin: (lat, lng) async {},
             );
           },
         ),

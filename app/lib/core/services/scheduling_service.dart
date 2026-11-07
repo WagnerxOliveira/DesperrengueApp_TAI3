@@ -109,9 +109,9 @@ class RoutingService {
     required double toLat,
     required double toLng,
   }) async {
-    // OSRM espera lng,lat (GeoJSON), nesta ordem.
+    // OSRM espera lng,lat (GeoJSON), nesta ordem. alternatives=true permite escolher o caminho mais curto.
     final uri = Uri.parse(
-      'https://router.project-osrm.org/route/v1/driving/$fromLng,$fromLat;$toLng,$toLat?overview=full&geometries=geojson',
+      'https://router.project-osrm.org/route/v1/driving/$fromLng,$fromLat;$toLng,$toLat?alternatives=true&overview=full&geometries=geojson',
     );
     try {
       final res = await _client.get(uri, headers: const {'User-Agent': 'Desperrengue/1.0 (suporte@desperrengue.tech)'}).timeout(timeout);

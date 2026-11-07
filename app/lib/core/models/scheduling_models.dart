@@ -153,13 +153,29 @@ class RouteInfo {
   Duration get eta => Duration(seconds: durationS.round());
 }
 
-/// Resposta do OSRM (`/route/v1/driving/...?overview=full&geometries=geojson`).
+/// Resposta do OSRM (`/route/v1/driving/...?alternatives=true&overview=full&geometries=geojson`).
+/// Seleciona sempre o caminho MAIS CURTO em distância pelas ruas.
 /// GeoJSON usa [lng, lat] — invertido aqui para (lat, lng).
 RouteInfo? parseOsrmRoute(Map<String, dynamic>? json) {
   if (json == null || json['code'] != 'Ok') return null;
   final routes = json['routes'];
   if (routes is! List || routes.isEmpty) return null;
-  final r = routes.first as Map<String, dynamic>;
+  Map<String, dynamic>? bestRoute;
+  double bestDistance = double.infinity;
+  double bestDuration = double.infinity;
+  for (final candidate in routes.whereType<Map>()) {
+    final map = candidate.cast<String, dynamic>();
+    final coords = ((map['geometry'] as Map<String, dynamic>?)?['coordinates'] as List?) ?? const [];
+    if (coords.isEmpty) continue;
+    final dist = (map['distance'] as num?)?.toDouble() ?? double.infinity;
+    final dur = (map['duration'] as num?)?.toDouble() ?? double.infinity;
+    if (bestRoute == null || dist < bestDistance || (dist == bestDistance && dur < bestDuration)) {
+      bestRoute = map;
+      bestDistance = dist;
+      bestDuration = dur;
+    }
+  }
+  final r = bestRoute ?? (routes.first as Map).cast<String, dynamic>();
   final coords = ((r['geometry'] as Map<String, dynamic>?)?['coordinates'] as List?) ?? const [];
   final pts = <({double lat, double lng})>[
     for (final c in coords)
