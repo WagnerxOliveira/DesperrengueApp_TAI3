@@ -275,7 +275,8 @@ class _AddressFormState extends State<AddressForm> {
   String get _fullLine {
     final n = _number.text.trim();
     final head = [_street.text.trim(), if (n.isNotEmpty) n].join(', ');
-    return [head, _neighborhood.text.trim(), _city.text.trim(), _uf.text.trim().toUpperCase()]
+    final place = [_neighborhood.text.trim(), _city.text.trim()].where((s) => s.isNotEmpty).join(', ');
+    return [head, place, _uf.text.trim().toUpperCase()]
         .where((s) => s.isNotEmpty)
         .join(' - ');
   }

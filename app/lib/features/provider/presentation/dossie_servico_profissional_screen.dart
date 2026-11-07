@@ -13,6 +13,7 @@ import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/chat_screen.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/review_widgets.dart';
 
 /// Carrega o dossiê de um serviço (padrão: RPC `provider_job_dossier`).
@@ -304,7 +305,16 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
           ),
           if (d.fullAddress.isNotEmpty) ...[
             const SizedBox(height: 14),
-            _LabeledText(icon: Icons.place_rounded, label: 'Endereço atendido', text: d.fullAddress),
+            _LabeledText(
+              icon: Icons.place_rounded,
+              label: 'Endereço atendido',
+              text: d.fullAddress,
+              onTap: () => LiveLocationMapSheet.show(
+                context,
+                addressLine: d.fullAddress,
+                summary: d.addressSummary,
+              ),
+            ),
           ],
           const SizedBox(height: 14),
           _LabeledText(icon: Icons.description_rounded, label: 'Descrição original do pedido', text: d.description ?? 'Sem descrição.'),
@@ -470,17 +480,18 @@ class _MoneyRow extends StatelessWidget {
 }
 
 class _LabeledText extends StatelessWidget {
-  const _LabeledText({required this.icon, required this.label, required this.text, this.muted = false});
+  const _LabeledText({required this.icon, required this.label, required this.text, this.muted = false, this.onTap});
 
   final IconData icon;
   final String label;
   final String text;
   final bool muted;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Row(
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 20, color: tk.providerAccent),
@@ -492,10 +503,35 @@ class _LabeledText extends StatelessWidget {
               Text(label, style: TextStyle(color: tk.textMuted, fontSize: 12.5, fontWeight: FontWeight.w700)),
               const SizedBox(height: 2),
               Text(text, style: TextStyle(height: 1.4, color: muted ? tk.textMuted : null)),
+              if (onTap != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.map_outlined, size: 14, color: tk.providerAccent),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        'Toque para ver no mapa',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: tk.providerAccent),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
+        if (onTap != null) Icon(Icons.chevron_right_rounded, color: tk.textMuted),
       ],
+    );
+    if (onTap == null) return row;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: row,
+      ),
     );
   }
 }

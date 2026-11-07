@@ -19,6 +19,7 @@ import '../../../core/state/privacy_mode.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/delete_account_screen.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/showcase_widgets.dart';
 import '../../shared/presentation/theme_picker.dart';
 import '../../shared/presentation/notifications_screen.dart';
@@ -494,7 +495,16 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
                           runSpacing: 6,
                           children: [
                             StatusChip(j.category, color: context.tk.providerAccent),
-                            if (j.addressSummary != null) StatusChip(j.addressSummary!, color: context.tk.textMuted, icon: Icons.place_rounded),
+                            if (j.addressSummary != null)
+                              InkWell(
+                                borderRadius: BorderRadius.circular(20),
+                                onTap: () => LiveLocationMapSheet.show(
+                                  context,
+                                  addressLine: j.addressSummary!,
+                                  summary: j.addressSummary,
+                                ),
+                                child: StatusChip(j.addressSummary!, color: context.tk.info, icon: Icons.place_rounded),
+                              ),
                             StatusChip('${j.quoteCount}/3 orçamentos', color: j.quoteCount >= 2 ? context.tk.warningInk : context.tk.info),
                           ],
                         ),

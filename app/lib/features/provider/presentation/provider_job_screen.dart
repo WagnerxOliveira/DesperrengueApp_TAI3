@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/state/smart_triage_controller.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -121,8 +122,26 @@ class ClientCardTile extends StatelessWidget {
   final String jobId;
   final String? subtitle;
 
+  Future<void> _openAddressOnMap(BuildContext context) async {
+    final sub = subtitle?.trim() ?? '';
+    if (sub.isEmpty) return;
+    String line = sub;
+    try {
+      final addr = await JobService().jobAddress(jobId);
+      final full = (addr?['address_line'] as String?)?.trim();
+      if (full != null && full.isNotEmpty) line = full;
+    } catch (_) {}
+    if (!context.mounted) return;
+    await LiveLocationMapSheet.show(
+      context,
+      addressLine: line,
+      summary: sub,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasAddress = (subtitle ?? '').trim().isNotEmpty;
     return FutureBuilder<Map<String, dynamic>?>(
       future: JobService().clientCard(jobId),
       builder: (context, snap) {
@@ -136,7 +155,31 @@ class ClientCardTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                  Text(subtitle ?? 'Cliente', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
+                  if (hasAddress)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () => _openAddressOnMap(context),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.place_outlined, size: 15, color: context.tk.providerAccent),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                subtitle!,
+                                style: TextStyle(color: context.tk.providerAccent, fontSize: 13, fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.map_outlined, size: 14, color: context.tk.providerAccent),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Text('Cliente', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
                   if (snap.data?['client_id'] is String) _ClientReputationChip(snap.data!['client_id'] as String),
                 ],
               ),
@@ -302,7 +345,16 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
             children: [
               StatusChip(job.category, color: context.tk.providerAccent),
               if (job.scheduledFor != null) StatusChip(dateShort(job.scheduledFor!), color: context.tk.info, icon: Icons.calendar_month_rounded),
-              if (job.addressSummary != null) StatusChip(job.addressSummary!, color: context.tk.textMuted, icon: Icons.place_rounded),
+              if (job.addressSummary != null)
+                InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => LiveLocationMapSheet.show(
+                    context,
+                    addressLine: job.addressSummary!,
+                    summary: job.addressSummary,
+                  ),
+                  child: StatusChip(job.addressSummary!, color: context.tk.info, icon: Icons.place_rounded),
+                ),
             ],
           ),
           const SizedBox(height: 14),

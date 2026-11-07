@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/widgets.dart';
@@ -371,6 +372,21 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
   void initState() {
     super.initState();
     _pin = _start;
+    if (widget.initial == null && widget.tileLayer == null && (widget.addressLine ?? '').trim().isNotEmpty) {
+      _resolveAddress();
+    }
+  }
+
+  Future<void> _resolveAddress() async {
+    try {
+      final hit = await PreciseGeocoder().geocode(widget.addressLine!);
+      if (!mounted || hit == null) return;
+      final ll = LatLng(hit.lat, hit.lng);
+      setState(() => _pin = ll);
+      try {
+        _map.move(ll, hit.precision == DestinationPrecision.locality ? 15 : 18);
+      } catch (_) {}
+    } catch (_) {}
   }
 
   @override

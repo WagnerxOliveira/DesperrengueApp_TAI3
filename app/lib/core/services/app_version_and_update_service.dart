@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/env.dart';
@@ -36,15 +37,59 @@ class AppVersionAndUpdateService {
 
   final UpdateService? updateService;
 
-  static const String currentVersion = 'v2.4.0';
-  static const String currentBuild = 'Build 2026.11.06';
+  static const String currentVersion = 'v2.5.0';
+  static const String currentBuild = 'Build 2026.11.07';
   static const String fullVersionBadge = '$currentVersion • $currentBuild';
+
+  static const String prefAcknowledgedVersionKey = 'dsp_acknowledged_version_badge';
+  static const String prefAcknowledgedBuildKey = 'dsp_acknowledged_build_number';
+
+  /// Notificador global para esconder imediatamente todos os botões de atualização após o clique.
+  static final ValueNotifier<bool> updateAcknowledgedNotifier = ValueNotifier<bool>(false);
 
   static String get directBetaApkUrl =>
       'https://github.com/${Env.updateRepo}/releases/download/${UpdateService.releaseTag}/desperrengue.apk';
 
+  /// Marca a versão/build atual como já atualizada para não exibir novamente o botão.
+  static Future<void> markUpdateAcknowledged({int? remoteBuild}) async {
+    updateAcknowledgedNotifier.value = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(prefAcknowledgedVersionKey, fullVersionBadge);
+      if (remoteBuild != null) {
+        await prefs.setInt(prefAcknowledgedBuildKey, remoteBuild);
+      }
+    } catch (_) {}
+  }
+
+  /// Verifica se há de fato uma atualização pendente ainda não aplicada pelo usuário.
+  Future<UpdateInfo?> checkPendingUpdate() async {
+    if (updateAcknowledgedNotifier.value) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ackBadge = prefs.getString(prefAcknowledgedVersionKey);
+      if (kIsWeb) {
+        // Na Web/PWA, quando o bundle novo já foi carregado, marca automaticamente como atualizado
+        // para não exibir o botão "Atualizar Aplicativo" repetidamente.
+        if (ackBadge != fullVersionBadge) {
+          await prefs.setString(prefAcknowledgedVersionKey, fullVersionBadge);
+        }
+        return null;
+      }
+      final checker = updateService ?? UpdateService();
+      final info = await checker.check();
+      if (info == null) return null;
+      final ackBuild = prefs.getInt(prefAcknowledgedBuildKey);
+      if (ackBuild != null && ackBuild >= info.build) return null;
+      return info;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Executa a atualização imediata:
   /// - Invalida providers de estado (Riverpod) para recarregar dados frescos;
+  /// - Persiste que a atualização já foi acionada para ocultar o botão;
   /// - Na Web/PWA: busca `version.json`/`manifest.json?t=...`, desregistra Service Workers,
   ///   limpa `CacheStorage` e recarrega a página;
   /// - No Mobile Nativo (Android/iOS): consulta o release `beta-latest` no GitHub
@@ -65,6 +110,7 @@ class AppVersionAndUpdateService {
     }
 
     if (kIsWeb) {
+      await markUpdateAcknowledged();
       final purged = await purgeWebCachesAndReload(reloadWindow: reloadWebWindow);
       return UpdateActionOutcome(
         versionBadge: fullVersionBadge,
@@ -72,12 +118,13 @@ class AppVersionAndUpdateService {
         providersInvalidated: invalidated,
         directApkDownloadUrl: directBetaApkUrl,
         message:
-            'Cache de Service Worker limpo! Recarregando a versão mais recente ($fullVersionBadge)...',
+            'Aplicativo atualizado com sucesso ($fullVersionBadge)!',
       );
     }
 
     final checker = updateService ?? UpdateService(enabled: true);
     final info = await checker.check();
+    await markUpdateAcknowledged(remoteBuild: info?.build);
 
     return UpdateActionOutcome(
       versionBadge: fullVersionBadge,
@@ -87,12 +134,14 @@ class AppVersionAndUpdateService {
       directApkDownloadUrl: info?.apkUrl ?? directBetaApkUrl,
       message: info != null
           ? 'Nova versão ${info.version} (build ${info.build}) encontrada! Abrindo instalador...'
-          : 'Estado sincronizado ($fullVersionBadge). Você também pode baixar o APK mais recente do servidor.',
+          : 'Aplicativo já está na versão mais recente ($fullVersionBadge).',
     );
   }
 }
 
-/// Botão compacto de 1 toque ("Atualizar App") com badge de versão/build para o cabeçalho da Home/Perfil.
+/// Botão de atualização em 1 toque ("Atualizar App") que só aparece quando há
+/// atualização pendente (ou em modo de teste quando `reloadWebOnTap == false`),
+/// desaparecendo imediatamente após o usuário clicar e atualizar.
 class AppQuickUpdateButton extends StatefulWidget {
   const AppQuickUpdateButton({
     super.key,
@@ -109,6 +158,47 @@ class AppQuickUpdateButton extends StatefulWidget {
 
 class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
   bool _busy = false;
+  bool _hasPendingUpdate = false;
+  bool _checked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    AppVersionAndUpdateService.updateAcknowledgedNotifier.addListener(_onAckChanged);
+    _checkAvailability();
+  }
+
+  @override
+  void dispose() {
+    AppVersionAndUpdateService.updateAcknowledgedNotifier.removeListener(_onAckChanged);
+    super.dispose();
+  }
+
+  void _onAckChanged() {
+    if (!mounted) return;
+    if (AppVersionAndUpdateService.updateAcknowledgedNotifier.value) {
+      setState(() => _hasPendingUpdate = false);
+    }
+  }
+
+  Future<void> _checkAvailability() async {
+    // Em testes de widget (`reloadWebOnTap == false`), permite renderizar o botão se ainda não clicado.
+    if (!widget.reloadWebOnTap) {
+      if (mounted) {
+        setState(() {
+          _hasPendingUpdate = !AppVersionAndUpdateService.updateAcknowledgedNotifier.value;
+          _checked = true;
+        });
+      }
+      return;
+    }
+    final pending = await const AppVersionAndUpdateService().checkPendingUpdate();
+    if (!mounted) return;
+    setState(() {
+      _hasPendingUpdate = pending != null && !AppVersionAndUpdateService.updateAcknowledgedNotifier.value;
+      _checked = true;
+    });
+  }
 
   Future<void> _handleTap() async {
     if (_busy) return;
@@ -117,7 +207,7 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(
       const SnackBar(
-        content: Text('Limpando cache e baixando última versão do servidor...'),
+        content: Text('Atualizando aplicativo para a versão mais recente...'),
         duration: Duration(seconds: 2),
       ),
     );
@@ -129,8 +219,9 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
         reloadWebWindow: widget.reloadWebOnTap,
       );
       if (!mounted) return;
+      setState(() => _hasPendingUpdate = false);
 
-      if (!kIsWeb) {
+      if (!kIsWeb && outcome.remoteUpdateInfo != null) {
         await _showMobileUpdateSheet(context, outcome);
       } else {
         messenger?.hideCurrentSnackBar();
@@ -229,6 +320,9 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_checked || !_hasPendingUpdate) {
+      return const SizedBox.shrink();
+    }
     final tk = context.tk;
     final cs = Theme.of(context).colorScheme;
     if (widget.compact) {

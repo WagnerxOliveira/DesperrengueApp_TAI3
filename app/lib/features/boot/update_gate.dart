@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/services/app_version_and_update_service.dart';
 import '../../core/services/update_service.dart';
 import '../../core/ui/app_tokens.dart';
 
@@ -13,7 +15,7 @@ import '../../core/ui/app_tokens.dart';
 /// "tempo real" que o Android permite fora da Play Store: o sistema NÃO deixa um app
 /// instalar atualização sozinho, então o usuário confirma com 2 toques.
 ///
-/// "Depois" esconde o aviso daquela versão até a próxima abertura do app.
+/// "Depois" ou "Atualizar" persiste o build reconhecido para não exibir novamente a mesma versão.
 /// Desativado (não faz nada) em builds sem `BETA_UPDATES`.
 class UpdateGate extends StatefulWidget {
   const UpdateGate({
@@ -50,8 +52,28 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (widget.check == null) {
+      _loadPersistedDismissedBuild();
+    }
     _first = Timer(widget.initialDelay, _run);
     _periodic = Timer.periodic(widget.interval, (_) => _run());
+  }
+
+  Future<void> _loadPersistedDismissedBuild() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getInt(AppVersionAndUpdateService.prefAcknowledgedBuildKey);
+      if (saved != null && mounted) {
+        setState(() => _dismissedBuild = saved);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistDismissedBuild(int build) async {
+    if (widget.check != null) return;
+    try {
+      await AppVersionAndUpdateService.markUpdateAcknowledged(remoteBuild: build);
+    } catch (_) {}
   }
 
   @override
@@ -69,6 +91,9 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
 
   Future<void> _run() async {
     _last = DateTime.now();
+    if (widget.check == null) {
+      await _loadPersistedDismissedBuild();
+    }
     final info = await _check();
     if (!mounted) return;
     if (info?.build != _info?.build) setState(() => _info = info);
@@ -79,6 +104,15 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
     final open = widget.openUrl ?? (String u) => launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
     try {
       await open(info.apkUrl);
+      if (widget.openUrl == null) {
+        await _persistDismissedBuild(info.build);
+        if (mounted) {
+          setState(() {
+            _dismissedBuild = info.build;
+            _downloading = false;
+          });
+        }
+      }
     } catch (_) {
       if (mounted) setState(() => _downloading = false);
     }
@@ -87,7 +121,7 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final info = _info;
-    final show = info != null && info.build != _dismissedBuild;
+    final show = info != null && (_dismissedBuild == null || info.build > _dismissedBuild!);
     return Stack(
       children: [
         widget.child,
@@ -99,10 +133,13 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
             child: _UpdateBanner(
               info: info,
               downloading: _downloading,
-              onLater: () => setState(() {
-                _dismissedBuild = info.build;
-                _downloading = false;
-              }),
+              onLater: () {
+                _persistDismissedBuild(info.build);
+                setState(() {
+                  _dismissedBuild = info.build;
+                  _downloading = false;
+                });
+              },
               onUpdate: () => _update(info),
             ),
           ),

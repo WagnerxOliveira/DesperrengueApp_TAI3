@@ -7,6 +7,7 @@ import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/notifications_screen.dart';
 import 'category_picker.dart';
 import 'client_job_screen.dart';
@@ -100,6 +101,22 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
     );
   }
 
+  Future<void> _openAddressMap() async {
+    final raw = widget.profile.addressLine ?? '';
+    if (raw.trim().isEmpty) {
+      await _editAddress();
+      return;
+    }
+    final line = raw.split(' | ').first.trim();
+    await LiveLocationMapSheet.show(
+      context,
+      addressLine: line,
+      summary: widget.profile.addressCity,
+      latitude: widget.profile.latitude,
+      longitude: widget.profile.longitude,
+    );
+  }
+
   String get _addressLabel {
     final line = widget.profile.addressLine;
     if (line == null || line.isEmpty) return 'Adicionar endereço';
@@ -109,6 +126,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
 
   @override
   Widget build(BuildContext context) {
+    final hasAddress = (widget.profile.addressLine ?? '').trim().isNotEmpty;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
@@ -127,21 +145,42 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         Text('Olá, ${widget.profile.firstName}! 👋',
             style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: context.tk.brand)),
         const SizedBox(height: 4),
-        InkWell(
-          onTap: _editAddress,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.place_rounded, size: 18, color: context.tk.clientAccent),
-                const SizedBox(width: 4),
-                Flexible(child: Text(_addressLabel, style: const TextStyle(fontWeight: FontWeight.w600))),
-                const Icon(Icons.keyboard_arrow_down_rounded),
-              ],
+        Row(
+          children: [
+            Expanded(
+              child: InkWell(
+                onTap: hasAddress ? _openAddressMap : _editAddress,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.place_rounded, size: 18, color: context.tk.clientAccent),
+                      const SizedBox(width: 4),
+                      Flexible(child: Text(_addressLabel, style: const TextStyle(fontWeight: FontWeight.w600))),
+                      const SizedBox(width: 4),
+                      Icon(
+                        hasAddress ? Icons.map_outlined : Icons.keyboard_arrow_down_rounded,
+                        size: 17,
+                        color: context.tk.clientAccent,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+            if (hasAddress)
+              TextButton.icon(
+                onPressed: _editAddress,
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+                icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+                label: const Text('Trocar', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+              ),
+          ],
         ),
         const SizedBox(height: 14),
         Row(

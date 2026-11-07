@@ -18,6 +18,7 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
@@ -153,26 +154,50 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(12)),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.place_outlined, color: context.tk.providerAccent),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_address ?? 'Carregando endereço...', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3)),
-                            if (_reference != null && _reference!.isNotEmpty)
-                              Padding(padding: const EdgeInsets.only(top: 4), child: Text('Ref: $_reference', style: TextStyle(color: context.tk.textMuted, fontSize: 13))),
-                          ],
+                InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    final line = _address ?? job.addressSummary ?? '';
+                    if (line.isEmpty) return;
+                    LiveLocationMapSheet.show(
+                      context,
+                      addressLine: line,
+                      summary: job.addressSummary,
+                    );
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.place_outlined, color: context.tk.providerAccent),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_address ?? job.addressSummary ?? 'Carregando endereço...', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3)),
+                              if (_reference != null && _reference!.isNotEmpty)
+                                Padding(padding: const EdgeInsets.only(top: 4), child: Text('Ref: $_reference', style: TextStyle(color: context.tk.textMuted, fontSize: 13))),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [
+                                  Icon(Icons.map_outlined, size: 15, color: context.tk.providerAccent),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    'Toque para ver no mapa',
+                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: context.tk.providerAccent),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                        Icon(Icons.chevron_right_rounded, color: context.tk.textMuted),
+                      ],
+                    ),
                   ),
                 ),
                 if (job.scheduledFor != null) ...[

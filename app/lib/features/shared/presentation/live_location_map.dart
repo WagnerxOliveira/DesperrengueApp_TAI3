@@ -40,7 +40,7 @@ class LocationUnavailable implements Exception {
 }
 
 /// Mapa interativo (OpenStreetMap + GPS em tempo real) do endereço do serviço, aberto a
-/// partir da seção "Localização" da Revisão e do detalhe do pedido.
+/// partir de qualquer endereço clicável no aplicativo.
 ///
 /// Mostra o marcador exato do endereço (coordenadas já conhecidas ou geocodificadas) e a
 /// posição VIVA do usuário, com círculo de precisão e distância em linha reta.
@@ -64,7 +64,7 @@ class LiveLocationMapSheet extends StatefulWidget {
 
   /// Coordenadas já conhecidas do endereço (evita geocodificar de novo).
   final double? latitude;
-    final double? longitude;
+  final double? longitude;
 
   /// Qualidade do ponto conhecido (rua/bairro = aproximado). Padrão: casa.
   final DestinationPrecision? precision;
@@ -132,13 +132,18 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     super.initState();
     if (widget.latitude != null && widget.longitude != null) {
       _dest = LatLng(widget.latitude!, widget.longitude!);
+      // Em produção, se o pino ainda não foi confirmado manualmente, geocodifica o endereço
+      // para garantir que o mapa centralize exatamente na rua/número do endereço clicado.
+      if (!widget.pinConfirmed && widget.tileLayer == null) {
+        _resolveDestination(keepExistingOnNull: true);
+      }
     } else {
       _resolveDestination();
     }
     _startGps();
   }
 
-  Future<void> _resolveDestination() async {
+  Future<void> _resolveDestination({bool keepExistingOnNull = false}) async {
     setState(() => _resolving = true);
     try {
       final resolver = widget.resolver ?? ((line, summary) => PreciseGeocoder().geocode(line, summary: summary));
@@ -146,15 +151,23 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
       if (!mounted) return;
       setState(() {
         if (hit == null) {
-          _destFailed = true;
+          if (!keepExistingOnNull && _dest == null) {
+            _destFailed = true;
+          }
         } else {
           _dest = LatLng(hit.lat, hit.lng);
           _precision = hit.precision;
+          _destFailed = false;
         }
       });
       _fit();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fit();
+      });
     } catch (_) {
-      if (mounted) setState(() => _destFailed = true);
+      if (mounted && !keepExistingOnNull && _dest == null) {
+        setState(() => _destFailed = true);
+      }
     } finally {
       if (mounted) setState(() => _resolving = false);
     }
@@ -213,14 +226,21 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     if (ok == true && mounted) _fit();
   }
 
-  void _fit() {
-    final pts = <LatLng>[?_dest, if (_me != null) LatLng(_me!.lat, _me!.lng)];
-    if (pts.isEmpty) return;
+  void _fit({bool includeMe = false}) {
+    final dest = _dest;
+    final me = _me;
+    if (dest == null && me == null) return;
     try {
-      if (pts.length == 1) {
-        _map.move(pts.first, 17);
-      } else {
-        _map.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: const EdgeInsets.all(64), maxZoom: 17));
+      if (dest != null) {
+        final nearMe = me != null && haversineMeters(me.lat, me.lng, dest.latitude, dest.longitude) <= 1200;
+        if ((includeMe || nearMe) && me != null) {
+          final pts = <LatLng>[dest, LatLng(me.lat, me.lng)];
+          _map.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: const EdgeInsets.all(64), maxZoom: 17));
+        } else {
+          _map.move(dest, 17);
+        }
+      } else if (me != null) {
+        _map.move(LatLng(me.lat, me.lng), 16);
       }
       _fitted = true;
     } catch (_) {
@@ -244,11 +264,15 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
               Icon(Icons.place_rounded, color: tk.clientAccent),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  widget.addressLine,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                child: InkWell(
+                  onTap: dest == null ? null : () => _fit(includeMe: false),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Text(
+                    widget.addressLine,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
                 ),
               ),
               IconButton(tooltip: 'Fechar', onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close_rounded)),
@@ -349,7 +373,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                   top: 10,
                   child: FloatingActionButton.small(
                     heroTag: 'live_fit',
-                    onPressed: _fit,
+                    onPressed: () => _fit(includeMe: true),
                     tooltip: 'Enquadrar endereço e minha posição',
                     child: const Icon(Icons.center_focus_strong_rounded),
                   ),

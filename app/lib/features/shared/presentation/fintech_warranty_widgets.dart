@@ -6,6 +6,7 @@ import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/utils/format.dart';
+import 'live_location_map.dart';
 
 /// Card de Transparência do Split Inteligente (Carteira A: Mão de Obra vs Carteira B: Peças 0%).
 class SmartSplitTransparencyCard extends StatelessWidget {
@@ -912,6 +913,47 @@ class PropertyPassportView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          if (passport.propertyAddress.trim().isNotEmpty) ...[
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => LiveLocationMapSheet.show(
+                context,
+                addressLine: passport.propertyAddress,
+              ),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.place_rounded, size: 18, color: tk.clientAccent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            passport.propertyAddress,
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: tk.text),
+                          ),
+                          Text(
+                            'Toque para ver o endereço no mapa',
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: tk.clientAccent),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.map_outlined, size: 18, color: tk.clientAccent),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Expanded(

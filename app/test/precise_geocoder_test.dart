@@ -65,6 +65,41 @@ http.Response json(Object body) => http.Response.bytes(utf8.encode(jsonEncode(bo
 void main() {
   final parts = parseAddressLine(_line);
 
+  group('parseAddressLine — todos os formatos de endereço do app', () {
+    test('remove sufixo "| Ref: ..." e extrai rua, número, bairro, cidade e UF', () {
+      final p = parseAddressLine('Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG | Ref: Perto da igreja');
+      expect(p.street, 'Rua Padre José Geraldi');
+      expect(p.number, '203');
+      expect(p.hood, 'Maria Imaculada');
+      expect(p.city, 'Poços de Caldas');
+      expect(p.uf, 'MG');
+    });
+
+    test('suporta formato de 4 partes com hífens (Rua, N - Bairro - Cidade - UF)', () {
+      final p = parseAddressLine('Rua Padre José Geraldi, 203 - Maria Imaculada - Poços de Caldas - MG');
+      expect(p.street, 'Rua Padre José Geraldi');
+      expect(p.number, '203');
+      expect(p.hood, 'Maria Imaculada');
+      expect(p.city, 'Poços de Caldas');
+      expect(p.uf, 'MG');
+    });
+
+    test('suporta resumo de 2 partes (Bairro, Cidade - UF) e fallback via summary', () {
+      final p1 = parseAddressLine('Maria Imaculada, Poços de Caldas - MG');
+      expect(p1.street, '');
+      expect(p1.hood, 'Maria Imaculada');
+      expect(p1.city, 'Poços de Caldas');
+      expect(p1.uf, 'MG');
+
+      final p2 = parseAddressLine('Rua Padre José Geraldi, 203 - Maria Imaculada', summary: 'Poços de Caldas, MG');
+      expect(p2.street, 'Rua Padre José Geraldi');
+      expect(p2.number, '203');
+      expect(p2.hood, 'Maria Imaculada');
+      expect(p2.city, 'Poços de Caldas');
+      expect(p2.uf, 'MG');
+    });
+  });
+
   group('cityMatches (nunca aceitar outra cidade)', () {
     test('mesma cidade/UF casa; outra cidade ou outra UF não', () {
       expect(PreciseGeocoder.cityMatches(parts, 'Rua X, Poços de Caldas, Minas Gerais'), isTrue);

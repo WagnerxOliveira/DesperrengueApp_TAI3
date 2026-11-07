@@ -7,6 +7,7 @@ import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/smart_triage_models.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/services/scheduling_service.dart';
 import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/media_widgets.dart';
@@ -14,6 +15,7 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/chat_screen.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
 import '../../../core/ui/app_tokens.dart';
@@ -172,6 +174,18 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           const SizedBox(height: 12),
           AppCard(
             radius: 18,
+            onTap: () {
+              final line = _address ?? job.addressSummary ?? '';
+              if (line.isEmpty) return;
+              LiveLocationMapSheet.show(
+                context,
+                addressLine: line,
+                summary: job.addressSummary,
+                onAdjustPin: (lat, lng) async {
+                  await SupabaseSchedulingBackend().setLocation(job.id, lat, lng, source: 'client_pin', precision: 'house');
+                },
+              );
+            },
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -187,9 +201,21 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           padding: const EdgeInsets.only(top: 4),
                           child: Text('Ref: $_reference', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
                         ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(Icons.map_outlined, size: 15, color: context.tk.clientAccent),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Toque para ver no mapa',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: context.tk.clientAccent),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
+                Icon(Icons.chevron_right_rounded, color: context.tk.textMuted),
               ],
             ),
           ),

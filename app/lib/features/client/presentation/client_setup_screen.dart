@@ -6,21 +6,46 @@ import 'package:flutter/material.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/draft_store.dart';
+import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/widgets.dart';
 import 'address_form.dart';
 import '../../../core/ui/app_tokens.dart';
 
-/// Salva o endereço no perfil (colunas liberadas por GRANT) e sincroniza.
-Future<void> saveProfileAddress(AddressData a) async {
+/// Salva o endereço no perfil (colunas liberadas por GRANT), geocodificando automaticamente
+/// caso o cliente ainda não tenha marcado o pino exato, e sincroniza.
+Future<AddressData> saveProfileAddress(AddressData a) async {
+  var lat = a.latitude;
+  var lng = a.longitude;
+  if ((lat == null || lng == null) && a.fullLine.isNotEmpty) {
+    try {
+      final hit = await PreciseGeocoder().geocode(a.fullLine, summary: a.summary, cep: a.cep);
+      if (hit != null) {
+        lat = hit.lat;
+        lng = hit.lng;
+      }
+    } catch (_) {}
+  }
   final line = a.reference.isEmpty ? a.fullLine : '${a.fullLine} | Ref: ${a.reference}';
   await ProfileService().updateProfile({
     'address_line': line,
     'address_city': a.cityUf,
-    'latitude': ?a.latitude,
-    'longitude': ?a.longitude,
+    'latitude': lat,
+    'longitude': lng,
   });
   AppSession.instance.refreshProfile();
+  return AddressData(
+    cep: a.cep,
+    street: a.street,
+    number: a.number,
+    complement: a.complement,
+    neighborhood: a.neighborhood,
+    city: a.city,
+    uf: a.uf,
+    reference: a.reference,
+    latitude: lat,
+    longitude: lng,
+  );
 }
 
 /// "Editar Localização" (protótipo 14.jpg).
@@ -44,8 +69,8 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
     }
     setState(() => _saving = true);
     try {
-      await saveProfileAddress(_address);
-      if (mounted) Navigator.pop(context, _address);
+      final saved = await saveProfileAddress(_address);
+      if (mounted) Navigator.pop(context, saved);
     } catch (e) {
       if (mounted) showSnack(context, friendlyError(e), error: true);
     } finally {
@@ -171,13 +196,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         'full_name': _name.text.trim().isEmpty ? widget.profile.fullName : _name.text.trim(),
         if (_phone.text.trim().isNotEmpty) 'phone': _phone.text.trim(),
       });
-      final line = _address.reference.isEmpty ? _address.fullLine : '${_address.fullLine} | Ref: ${_address.reference}';
-      await service.updateProfile({
-        'address_line': line,
-        'address_city': _address.cityUf,
-        'latitude': ?_address.latitude,
-        'longitude': ?_address.longitude,
-      });
+      await saveProfileAddress(_address);
       await service.completeSetup(UserMode.client);
       _saveTimer?.cancel();
       await DraftStore.clear(_draftKey);

@@ -8,8 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/scheduling_models.dart';
-import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/job_service.dart';
+import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_tokens.dart';
@@ -19,6 +19,7 @@ import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../../core/utils/names.dart';
 import 'chat_screen.dart';
+import 'live_location_map.dart';
 import 'service_map_widgets.dart';
 import 'smart_triage_widgets.dart';
 import '../../../core/state/smart_triage_controller.dart';
@@ -51,7 +52,7 @@ class SchedulingDeps {
   /// Nome/foto do profissional (visão do cliente).
   final Future<({String name, String? avatar})?> Function(String providerId) peer;
 
-  /// Geocodificação (Nominatim) feita no celular do CLIENTE; o servidor não consegue (403 em datacenter).
+  /// Geocodificação feita no celular do CLIENTE; o servidor não consegue (403 em datacenter).
   final Future<GeocodeHit?> Function(String addressLine, String? summary) geocode;
 
   factory SchedulingDeps.live() {
@@ -74,7 +75,7 @@ class SchedulingDeps {
         final p = await ProviderService().byId(id);
         return p == null ? null : (name: friendlyName(p.fullName, fallback: 'Profissional'), avatar: p.avatarUrl);
       },
-      geocode: (line, summary) => GeocodingService().geocode(line, summary: summary),
+      geocode: (line, summary) => PreciseGeocoder().geocode(line, summary: summary),
     );
   }
 }
@@ -249,15 +250,20 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
 
   Future<void> _onAddressTap() async {
     final d = _dest;
+    final addressLabel = (_address?['address_line'] as String?) ?? (job.addressSummary ?? 'Endereço do cliente');
     if (widget.asProvider) {
       if (d == null) {
-        showSnack(context, _destLoading ? 'Localizando o endereço…' : 'O cliente ainda não confirmou o local no mapa. Peça a ele pelo chat.', error: !_destLoading);
+        await LiveLocationMapSheet.show(
+          context,
+          addressLine: addressLabel,
+          summary: job.addressSummary,
+        );
         return;
       }
       await MapaRotaServicoModal.show(
         context,
         destination: d,
-        addressLabel: (_address?['address_line'] as String?) ?? (job.addressSummary ?? 'Endereço do cliente'),
+        addressLabel: addressLabel,
         position: _pos,
       );
     } else {
@@ -266,9 +272,11 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   }
 
   Future<void> _pickLocation() async {
+    final line = (_address?['address_line'] as String?) ?? job.addressSummary;
     final ok = await LocationPickerSheet.show(
       context,
       initial: _dest,
+      addressLine: line,
       onConfirm: (lat, lng) async {
         final d = await _deps.backend.setLocation(job.id, lat, lng);
         if (mounted) setState(() => _dest = d);
@@ -494,7 +502,7 @@ class _AddressCard extends StatelessWidget {
     final tk = context.tk;
     final needsPin = !asProvider && (destination == null || destination!.needsClientPin);
     final hint = asProvider
-        ? (loading ? 'Localizando no mapa…' : (destination == null ? 'Aguardando o cliente confirmar o local no mapa' : 'Toque para ver o mapa e a rota'))
+        ? (loading ? 'Localizando no mapa…' : (destination == null ? 'Toque para abrir o endereço no mapa' : 'Toque para ver o mapa e a rota'))
         : (needsPin ? 'Confirmar o local exato no mapa' : 'Local confirmado no mapa ✓ (toque para ajustar)');
     return AppCard(
       onTap: onTap,

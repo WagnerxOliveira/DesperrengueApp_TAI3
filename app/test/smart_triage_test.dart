@@ -85,7 +85,7 @@ void main() {
     });
   });
 
-  group('ETAPA 2 — Motor de Triagem Multimodal (7 Matrizes Técnicas)', () {
+  group('ETAPA 2 — Motor de Triagem Multimodal (7 Matrizes Técnicas + 33 Categorias)', () {
     const svc = SmartTriageService.instance;
 
     test('1. Hidráulica / Encanamento: cano estourado e vazamento', () {
@@ -163,6 +163,47 @@ void main() {
       expect(res.suggestedCategoryName, 'Marcenaria');
       expect(res.urgencyLevel, UrgencyLevel.high);
       expect(res.probableMaterials.first.name, contains('Dobradiça caneco 35mm'));
+    });
+
+    test('8. Pintura: respeita categoria Pintura, lista insumos de pintura e NUNCA exibe Primeiros Socorros do Imóvel', () {
+      final res = svc.analyze(
+        rawText: 'Preciso pintar a sala de estar e o corredor do apartamento',
+        currentCategory: 'Pintura',
+      );
+      expect(res.suggestedCategoryName, 'Pintura');
+      expect(res.hasEmergencyContainment, isFalse);
+      expect(res.containmentGuide, isNull);
+      expect(
+        res.probableMaterials.map((m) => m.name).join(' '),
+        allOf(
+          contains('Tinta Acrílica'),
+          contains('Massa Corrida'),
+          contains('Rolo de Lã Antigota'),
+        ),
+      );
+      expect(
+        res.probableMaterials.map((m) => m.name).join(' '),
+        isNot(contains('Dobradiça')),
+      );
+    });
+
+    test('9. Todas as 33 categorias de kCategories retornam diagnóstico coerente com a categoria escolhida pelo cliente', () {
+      for (final cat in kCategories) {
+        final res = svc.analyze(
+          rawText: 'Preciso contratar serviço profissional na minha residência.',
+          currentCategory: cat.name,
+        );
+        expect(
+          res.suggestedCategoryName,
+          cat.name,
+          reason: 'Categoria selecionada ${cat.name} deve ser respeitada',
+        );
+        expect(
+          res.probableMaterials,
+          isNotEmpty,
+          reason: 'Categoria ${cat.name} deve listar materiais/insumos',
+        );
+      }
     });
   });
 

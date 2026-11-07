@@ -5,10 +5,12 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/state/smart_triage_controller.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -342,6 +344,24 @@ class _OrderSummary extends StatelessWidget {
 
   final Job job;
 
+  Future<void> _openAddressOnMap(BuildContext context) async {
+    String line = job.addressSummary ?? '';
+    try {
+      final addr = await JobService().jobAddress(job.id);
+      final full = (addr?['address_line'] as String?)?.trim();
+      if (full != null && full.isNotEmpty) line = full;
+    } catch (_) {}
+    if (line.isEmpty || !context.mounted) return;
+    await LiveLocationMapSheet.show(
+      context,
+      addressLine: line,
+      summary: job.addressSummary,
+      onAdjustPin: (lat, lng) async {
+        await SupabaseSchedulingBackend().setLocation(job.id, lat, lng, source: 'client_pin', precision: 'house');
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
@@ -378,7 +398,12 @@ class _OrderSummary extends StatelessWidget {
             runSpacing: 6,
             children: [
               if (job.scheduledFor != null) _Meta(icon: Icons.event_rounded, text: dateLong(job.scheduledFor!)),
-              if ((job.addressSummary ?? '').isNotEmpty) _Meta(icon: Icons.place_outlined, text: job.addressSummary!),
+              if ((job.addressSummary ?? '').isNotEmpty)
+                _Meta(
+                  icon: Icons.place_outlined,
+                  text: job.addressSummary!,
+                  onTap: () => _openAddressOnMap(context),
+                ),
             ],
           ),
         ],
@@ -388,20 +413,37 @@ class _OrderSummary extends StatelessWidget {
 }
 
 class _Meta extends StatelessWidget {
-  const _Meta({required this.icon, required this.text});
+  const _Meta({required this.icon, required this.text, this.onTap});
 
   final IconData icon;
   final String text;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: context.tk.textMuted),
-          const SizedBox(width: 5),
-          Flexible(child: Text(text, style: TextStyle(color: context.tk.textMuted, fontSize: 13, fontWeight: FontWeight.w600))),
+  Widget build(BuildContext context) {
+    final color = onTap != null ? context.tk.clientAccent : context.tk.textMuted;
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 5),
+        Flexible(child: Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: onTap != null ? FontWeight.w700 : FontWeight.w600))),
+        if (onTap != null) ...[
+          const SizedBox(width: 4),
+          Icon(Icons.map_outlined, size: 14, color: color),
         ],
-      );
+      ],
+    );
+    if (onTap == null) return row;
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        child: row,
+      ),
+    );
+  }
 }
 
 /// Linha do tempo curta: Publicado → Recebendo orçamentos → Escolha e pagamento.

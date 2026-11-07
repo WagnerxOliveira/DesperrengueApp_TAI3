@@ -12,6 +12,7 @@ import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/delete_account_screen.dart';
+import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/support_screens.dart';
 import '../../shared/presentation/theme_picker.dart';
 import 'carteira_cliente_screen.dart';
@@ -219,9 +220,31 @@ class ClientProfileTab extends StatelessWidget {
           icon: Icons.place_outlined,
           title: 'Meu endereço',
           subtitle: (profile.addressLine ?? 'Adicionar endereço').split(' | ').first,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => EditAddressScreen(currentLine: profile.addressLine)),
-          ),
+          trailing: (profile.addressLine ?? '').trim().isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Editar endereço',
+                  icon: Icon(Icons.edit_location_alt_outlined, color: context.tk.clientAccent),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => EditAddressScreen(currentLine: profile.addressLine)),
+                  ),
+                ),
+          onTap: () {
+            final raw = profile.addressLine ?? '';
+            if (raw.trim().isEmpty) {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => EditAddressScreen(currentLine: profile.addressLine)),
+              );
+              return;
+            }
+            LiveLocationMapSheet.show(
+              context,
+              addressLine: raw.split(' | ').first.trim(),
+              summary: profile.addressCity,
+              latitude: profile.latitude,
+              longitude: profile.longitude,
+            );
+          },
         ),
         _Tile(
           icon: Icons.account_balance_wallet_rounded,
@@ -294,12 +317,13 @@ class ClientProfileTab extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  const _Tile({required this.icon, required this.title, required this.subtitle, required this.onTap, this.trailing});
 
   final IconData icon;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -311,7 +335,7 @@ class _Tile extends StatelessWidget {
       ),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      trailing: trailing ?? const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
     );
   }
