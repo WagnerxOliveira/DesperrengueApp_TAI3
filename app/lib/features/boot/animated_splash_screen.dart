@@ -128,39 +128,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     RepaintBoundary(
-                      child: Transform.scale(
-                        scale: 0.85 + 0.15 * draw,
-                        child: Opacity(
-                          opacity: draw.clamp(0.0, 1.0),
-                          child: Container(
-                            width: 150,
-                            height: 150,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(34),
-                              boxShadow: glow > 0.01
-                                  ? [
-                                      BoxShadow(
-                                        color: const Color(0xFF7FB2FF).withValues(alpha: 0.45 * glow),
-                                        blurRadius: 28 * glow,
-                                        spreadRadius: 4 * glow,
-                                      ),
-                                    ]
-                                  : null,
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(34),
-                              child: Image.asset(
-                                'assets/splash/logo.png',
-                                width: 150,
-                                height: 150,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => CustomPaint(
-                                  painter: SplashSymbolPainter(draw: draw, glow: glow),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
+                      child: SizedBox(
+                        width: 150,
+                        height: 150,
+                        child: CustomPaint(painter: SplashSymbolPainter(draw: draw, glow: glow)),
                       ),
                     ),
                     const SizedBox(height: 18),
