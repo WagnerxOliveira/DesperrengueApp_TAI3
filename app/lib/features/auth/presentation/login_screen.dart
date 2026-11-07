@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cadastro_dados_basicos.dart';
-import 'auth_gate.dart';
+import 'auth_gate.dart';
 import '../../../core/ui/light_island.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -150,7 +150,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset(
+                      'assets/splash/logo.png',
+                      width: 84,
+                      height: 84,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'Desperrengue',
                   style: TextStyle(

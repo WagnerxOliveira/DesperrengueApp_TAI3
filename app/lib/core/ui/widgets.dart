@@ -624,7 +624,7 @@ class EmptyView extends StatelessWidget {
   }
 }
 
-/// Logo textual usado nos app bars dos protótipos.
+/// Logo oficial usado nos app bars.
 class BrandLogo extends StatelessWidget {
   const BrandLogo({super.key, this.size = 20});
 
@@ -633,11 +633,21 @@ class BrandLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
+    final boxSize = size + 8;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.handyman_rounded, color: accent, size: size + 2),
-        const SizedBox(width: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(boxSize * 0.24),
+          child: Image.asset(
+            'assets/splash/logo.png',
+            width: boxSize,
+            height: boxSize,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Icon(Icons.handyman_rounded, color: accent, size: size + 2),
+          ),
+        ),
+        const SizedBox(width: 8),
         Text(
           'Desperrengue',
           style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: size, letterSpacing: -0.3),
