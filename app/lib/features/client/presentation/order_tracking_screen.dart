@@ -4,12 +4,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/models/smart_triage_models.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/chat_screen.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
 import '../../../core/ui/app_tokens.dart';
 
@@ -25,23 +28,43 @@ class OrderTrackingScreen extends StatefulWidget {
 }
 
 class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
-  final _jobs = JobService();
+  late final _jobs = JobService();
   ProviderCard? _provider;
   String? _address;
   String? _reference;
   String? _pin;
   List<Map<String, dynamic>> _evidence = const [];
   Timer? _poll;
+  late SmartTriageResult _triage = JobTriageStore.instance.resolveForJob(widget.job);
 
   @override
   void initState() {
     super.initState();
+    JobTriageStore.instance.addListener(_onTriageChanged);
     _loadStatic();
     _poll = Timer.periodic(const Duration(seconds: 10), (_) => _loadEvidence());
   }
 
+  void _onTriageChanged() {
+    if (!mounted) return;
+    setState(() => _triage = JobTriageStore.instance.resolveForJob(widget.job));
+  }
+
+  void _toggleContainmentStep(int stepNumber) {
+    final updated = JobTriageStore.instance.toggleContainmentStepForJob(widget.job, stepNumber);
+    maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(widget.job.id, updated);
+    if (mounted) setState(() => _triage = updated);
+  }
+
+  void _toggleMaterial(String materialId) {
+    final updated = JobTriageStore.instance.toggleMaterialForJob(widget.job, materialId);
+    maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(widget.job.id, updated);
+    if (mounted) setState(() => _triage = updated);
+  }
+
   @override
   void dispose() {
+    JobTriageStore.instance.removeListener(_onTriageChanged);
     _poll?.cancel();
     super.dispose();
   }
@@ -112,6 +135,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         children: [
           Text('Acompanhe seu Pedido', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: context.tk.brand)),
           const SizedBox(height: 12),
+          if (_triage.hasEmergencyContainment) ...[
+            EmergencyContainmentBanner(
+              guide: _triage.containmentGuide!,
+              onToggleStep: _toggleContainmentStep,
+            ),
+            const SizedBox(height: 12),
+          ],
           if (disputed) ...[
             const InfoBanner(
               'Abrimos um chamado e nossa equipe está analisando. O pagamento permanece retido até a decisão.',
@@ -160,6 +190,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: 12),
+          SmartTriageCard(
+            result: _triage,
+            selectedCategory: job.category,
+            onToggleMaterial: _toggleMaterial,
           ),
           if (job.status == JobStatus.inProgress && _pin != null) ...[
             const SizedBox(height: 12),

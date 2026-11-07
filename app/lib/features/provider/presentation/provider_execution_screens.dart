@@ -20,7 +20,9 @@ import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
+import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 
 /// Volta até a tela raiz do serviço (ProviderJobScreen) que reage ao stream.
@@ -184,6 +186,13 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                   label: const Text('Chat com o cliente'),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          ValueListenableBuilder(
+            valueListenable: JobTriageStore.instance,
+            builder: (context, _, _) => ProviderTriageBriefCard(
+              result: JobTriageStore.instance.resolveForJob(job),
             ),
           ),
         ],

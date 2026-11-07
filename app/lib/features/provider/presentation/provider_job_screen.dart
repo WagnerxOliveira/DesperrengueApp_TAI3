@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/ui/app_theme.dart';
@@ -303,6 +305,13 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
               if (job.addressSummary != null) StatusChip(job.addressSummary!, color: context.tk.textMuted, icon: Icons.place_rounded),
             ],
           ),
+          const SizedBox(height: 14),
+          ValueListenableBuilder(
+            valueListenable: JobTriageStore.instance,
+            builder: (context, _, _) => ProviderTriageBriefCard(
+              result: JobTriageStore.instance.resolveForJob(job),
+            ),
+          ),
           const SizedBox(height: 18),
           const Text('Qual o seu orçamento para resolver isso?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, height: 1.25)),
           const SizedBox(height: 10),
@@ -555,6 +564,13 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [ClientCardTile(jobId: job.id, subtitle: job.addressSummary), const SizedBox(height: 10), Text(job.description, style: const TextStyle(height: 1.45))],
+            ),
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder(
+            valueListenable: JobTriageStore.instance,
+            builder: (context, _, _) => ProviderTriageBriefCard(
+              result: JobTriageStore.instance.resolveForJob(job),
             ),
           ),
           const SizedBox(height: 12),

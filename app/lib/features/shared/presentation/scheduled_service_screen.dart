@@ -20,6 +20,8 @@ import '../../../core/utils/geo.dart';
 import '../../../core/utils/names.dart';
 import 'chat_screen.dart';
 import 'service_map_widgets.dart';
+import 'smart_triage_widgets.dart';
+import '../../../core/state/smart_triage_controller.dart';
 
 /// Botão de homologação "Simular dia/hora e GPS no local". O servidor também precisa estar com
 /// `app_settings.checkin_sandbox = 'true'` (em produção: `--dart-define=CHECKIN_SANDBOX=false`
@@ -406,6 +408,39 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
             onPressed: _openChat,
             icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
             label: Text(widget.asProvider ? 'Chat com o cliente' : 'Chat com o profissional'),
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder(
+            valueListenable: JobTriageStore.instance,
+            builder: (context, _, _) {
+              final triage = JobTriageStore.instance.resolveForJob(job);
+              if (widget.asProvider) {
+                return ProviderTriageBriefCard(result: triage);
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (triage.hasEmergencyContainment) ...[
+                    EmergencyContainmentBanner(
+                      guide: triage.containmentGuide!,
+                      onToggleStep: (step) {
+                        final updated = JobTriageStore.instance.toggleContainmentStepForJob(job, step);
+                        maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(job.id, updated);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  SmartTriageCard(
+                    result: triage,
+                    selectedCategory: job.category,
+                    onToggleMaterial: (materialId) {
+                      final updated = JobTriageStore.instance.toggleMaterialForJob(job, materialId);
+                      maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(job.id, updated);
+                    },
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),

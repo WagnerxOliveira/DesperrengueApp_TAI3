@@ -243,7 +243,15 @@ class VoiceDictationController extends ChangeNotifier {
 
 /// Bloco "Falar o que aconteceu": tutorial curto + microfone tap-to-toggle + ondas sonoras.
 class VoiceDictationPanel extends StatefulWidget {
-  const VoiceDictationPanel({super.key, required this.textController, this.maxLength = 500, this.engine, this.refiner, this.onChanged});
+  const VoiceDictationPanel({
+    super.key,
+    required this.textController,
+    this.maxLength = 500,
+    this.engine,
+    this.refiner,
+    this.onChanged,
+    this.onSpeechCompleted,
+  });
 
   final TextEditingController textController;
   final int maxLength;
@@ -257,6 +265,9 @@ class VoiceDictationPanel extends StatefulWidget {
   /// Avisa o formulário quando o texto muda por voz (para revalidar o botão "Avançar").
   final VoidCallback? onChanged;
 
+  /// Disparado quando a gravação de voz encerra com texto válido (para acionar triagem IA).
+  final VoidCallback? onSpeechCompleted;
+
   @override
   State<VoiceDictationPanel> createState() => _VoiceDictationPanelState();
 }
@@ -269,6 +280,7 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
     refiner: widget.refiner ?? LanguageToolRefiner(),
   );
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+  bool _wasListening = false;
 
   @override
   void initState() {
@@ -277,12 +289,17 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
   }
 
   void _onVoice() {
-    if (_voice.isListening) {
+    final nowListening = _voice.isListening;
+    if (nowListening) {
       if (!_anim.isAnimating && !MediaQuery.disableAnimationsOf(context)) _anim.repeat();
     } else {
       _anim.stop();
       _anim.value = 0;
+      if (_wasListening && widget.textController.text.trim().isNotEmpty) {
+        widget.onSpeechCompleted?.call();
+      }
     }
+    _wasListening = nowListening;
     widget.onChanged?.call();
     if (mounted) setState(() {});
   }

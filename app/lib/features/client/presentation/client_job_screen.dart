@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -890,6 +892,21 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
               Center(
                 child: CountdownRing(remaining: remaining, total: const Duration(minutes: 5), size: 110, icon: null),
               ),
+              Builder(builder: (context) {
+                final triage = JobTriageStore.instance.resolveForJob(widget.job);
+                if (!triage.hasEmergencyContainment) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: EmergencyContainmentBanner(
+                    guide: triage.containmentGuide!,
+                    onToggleStep: (step) {
+                      final updated = JobTriageStore.instance.toggleContainmentStepForJob(widget.job, step);
+                      maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(widget.job.id, updated);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                );
+              }),
               const SizedBox(height: 14),
               Text('Pode sair do app se quiser, nós avisaremos assim que ele responder.',
                   textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted)),
