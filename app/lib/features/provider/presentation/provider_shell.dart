@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
@@ -25,6 +26,7 @@ import '../../shared/presentation/theme_picker.dart';
 import '../../shared/presentation/notifications_screen.dart';
 import '../../shared/presentation/support_screens.dart';
 import 'provider_job_screen.dart';
+import 'provider_portfolio_widgets.dart';
 import 'provider_profile_screens.dart';
 import 'wallet_tab.dart';
 import '../../../core/ui/app_tokens.dart';
@@ -496,14 +498,31 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
                           children: [
                             StatusChip(j.category, color: context.tk.providerAccent),
                             if (j.addressSummary != null)
-                              InkWell(
-                                borderRadius: BorderRadius.circular(20),
-                                onTap: () => LiveLocationMapSheet.show(
-                                  context,
-                                  addressLine: j.addressSummary!,
-                                  summary: j.addressSummary,
-                                ),
-                                child: StatusChip(j.addressSummary!, color: context.tk.info, icon: Icons.place_rounded),
+                              Builder(
+                                builder: (context) {
+                                  final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
+                                    fullAddressLine: j.addressSummary,
+                                    addressSummary: j.addressSummary,
+                                    scheduledDate: j.scheduledFor,
+                                    status: j.status,
+                                    isEmergency: j.isEmergency,
+                                  );
+                                  return InkWell(
+                                    borderRadius: BorderRadius.circular(20),
+                                    onTap: privacy.isUnlocked
+                                        ? () => LiveLocationMapSheet.show(
+                                              context,
+                                              addressLine: j.addressSummary!,
+                                              summary: j.addressSummary,
+                                            )
+                                        : null,
+                                    child: StatusChip(
+                                      privacy.primaryTitle,
+                                      color: privacy.isUnlocked ? context.tk.info : context.tk.warningInk,
+                                      icon: privacy.isUnlocked ? Icons.place_rounded : Icons.radar_rounded,
+                                    ),
+                                  );
+                                },
                               ),
                             StatusChip('${j.quoteCount}/3 orçamentos', color: j.quoteCount >= 2 ? context.tk.warningInk : context.tk.info),
                           ],
@@ -564,7 +583,8 @@ class ProviderProfileTab extends StatelessWidget {
         const AppQuickUpdateButton(compact: false),
         const SizedBox(height: 14),
         tile(Icons.edit_rounded, 'Editar perfil', 'Foto, bio, especialidades e preços', () => push(const EditProviderProfileScreen())),
-        tile(Icons.photo_library_rounded, 'Meu portfólio', 'Fotos dos seus trabalhos', () => push(const PortfolioScreen())),
+        tile(Icons.photo_library_rounded, 'Meu portfólio', '3 últimos via PIN + destaques do Histórico', () => push(const PortfolioScreen())),
+        tile(Icons.history_edu_rounded, 'Histórico de Serviços Prestados', 'Registro permanente validado com PIN do cliente', () => push(const ProviderFullHistoryScreen())),
         tile(Icons.workspace_premium_rounded, 'Meus certificados', 'Cofre de qualificações', () => push(const CertificatesScreen())),
         tile(Icons.reviews_rounded, 'Minhas avaliações', 'Nota, selos e respostas aos clientes', () => push(MyReviewsScreen(profile: profile))),
         tile(Icons.emoji_events_rounded, 'Minhas conquistas', 'Troféus por serviços, avaliações e mais', () => push(AchievementsScreen(providerId: profile.id, providerName: profile.fullName, isOwner: true))),

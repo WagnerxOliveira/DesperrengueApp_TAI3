@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/provider_service.dart';
@@ -252,6 +253,13 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     final d = _dest;
     final addressLabel = (_address?['address_line'] as String?) ?? (job.addressSummary ?? 'Endereço do cliente');
     if (widget.asProvider) {
+      final unlocked = isServiceDayUnlocked(
+        job.scheduledFor,
+        status: job.status,
+        isEmergency: job.isEmergency,
+        now: _clock.now(),
+      );
+      if (!unlocked) return;
       if (d == null) {
         await LiveLocationMapSheet.show(
           context,
@@ -266,7 +274,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
         addressLabel: addressLabel,
         position: _pos,
       );
-    } else {
+    } else if (widget.deps != null) {
       await _pickLocation();
     }
   }
@@ -407,15 +415,34 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          // ---- endereço interativo
-          _AddressCard(
-            line: (_address?['address_line'] as String?) ?? job.addressSummary ?? 'Carregando endereço…',
-            reference: _address?['reference'] as String?,
-            asProvider: widget.asProvider,
-            destination: _dest,
-            loading: _destLoading,
-            onTap: _onAddressTap,
-          ),
+          // ---- endereço (com trava temporal de privacidade para o profissional e somente leitura para o cliente)
+          if (widget.asProvider)
+            ProviderPrivacyAddressCard(
+              view: AccurateGeoRoutingService.resolveProviderAddressView(
+                fullAddressLine: (_address?['address_line'] as String?) ?? job.addressSummary,
+                addressSummary: job.addressSummary,
+                scheduledDate: job.scheduledFor,
+                status: job.status,
+                isEmergency: job.isEmergency,
+                now: _clock.now(),
+                destLat: _dest?.lat,
+                destLng: _dest?.lng,
+                providerLat: _pos.value?.lat,
+                providerLng: _pos.value?.lng,
+              ),
+              reference: _address?['reference'] as String?,
+              onOpenMapRoute: _onAddressTap,
+            )
+          else
+            _AddressCard(
+              line: (_address?['address_line'] as String?) ?? job.addressSummary ?? 'Carregando endereço…',
+              reference: _address?['reference'] as String?,
+              asProvider: false,
+              destination: _dest,
+              loading: _destLoading,
+              allowTestPin: widget.deps != null,
+              onTap: _onAddressTap,
+            ),
           const SizedBox(height: 12),
           if (widget.asProvider)
             _Checklist(gate: gate, scheduledFor: job.scheduledFor, onEnableLocation: _startLocation)
@@ -498,6 +525,7 @@ class _AddressCard extends StatelessWidget {
     required this.destination,
     required this.loading,
     required this.onTap,
+    this.allowTestPin = false,
   });
 
   final String line;
@@ -506,16 +534,17 @@ class _AddressCard extends StatelessWidget {
   final JobDestination? destination;
   final bool loading;
   final VoidCallback onTap;
+  final bool allowTestPin;
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final needsPin = !asProvider && (destination == null || destination!.needsClientPin);
-    final hint = asProvider
-        ? (loading ? 'Localizando no mapa…' : (destination == null ? 'Toque para abrir o endereço no mapa' : 'Toque para ver o mapa e a rota'))
-        : (needsPin ? 'Confirmar o local exato no mapa' : 'Local confirmado no mapa ✓ (toque para ajustar)');
+    final needsPin = allowTestPin && !asProvider && (destination == null || destination!.needsClientPin);
+    final hint = needsPin
+        ? 'Confirmar o local exato no mapa'
+        : 'Endereço registrado para o atendimento';
     return AppCard(
-      onTap: onTap,
+      onTap: needsPin ? onTap : null,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -531,15 +560,26 @@ class _AddressCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(asProvider ? Icons.map_outlined : Icons.edit_location_alt_outlined, size: 16, color: needsPin ? tk.warningInk : tk.info),
-                    const SizedBox(width: 6),
-                    Flexible(child: Text(hint, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: needsPin ? tk.warningInk : tk.info))),
+                    if (needsPin) ...[
+                      Icon(Icons.edit_location_alt_outlined, size: 16, color: tk.warningInk),
+                      const SizedBox(width: 6),
+                    ],
+                    Flexible(
+                      child: Text(
+                        hint,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: needsPin ? FontWeight.w700 : FontWeight.w500,
+                          color: needsPin ? tk.warningInk : tk.textMuted,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: tk.textMuted),
+          if (needsPin) Icon(Icons.chevron_right_rounded, color: tk.textMuted),
         ],
       ),
     );

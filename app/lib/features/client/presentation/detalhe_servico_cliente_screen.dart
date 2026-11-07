@@ -343,11 +343,12 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
     final tk = context.tk;
     final line = d.addressLine ?? d.addressSummary ?? '';
     if (line.isEmpty) return const [];
+    final allowTestPin = widget.onSavePin != null;
     return [
       const SectionTitle('Localização'),
       AppCard(
         key: const ValueKey('detail-location'),
-        onTap: () => _openMap(d),
+        onTap: allowTestPin ? () => _openMap(d) : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -365,11 +366,13 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
                     children: [
                       Text(line, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35)),
                       const SizedBox(height: 2),
-                      Text('Toque para ver no mapa', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: tk.clientAccent)),
+                      Text(
+                        'Endereço registrado para o atendimento',
+                        style: TextStyle(fontSize: 12, color: tk.textMuted),
+                      ),
                     ],
                   ),
                 ),
-                Icon(Icons.map_rounded, color: tk.clientAccent),
               ],
             ),
           ],

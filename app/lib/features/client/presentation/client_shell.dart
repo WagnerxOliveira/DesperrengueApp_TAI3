@@ -1,14 +1,12 @@
 import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/models/address_data.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
-import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/notifications_screen.dart';
 import 'category_picker.dart';
 import 'client_job_screen.dart';
@@ -102,40 +100,6 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
     );
   }
 
-  Future<void> _openAddressMap() async {
-    final raw = widget.profile.addressLine ?? '';
-    if (raw.trim().isEmpty) {
-      await _editAddress();
-      return;
-    }
-    final line = raw.split(' | ').first.trim();
-    await LiveLocationMapSheet.show(
-      context,
-      addressLine: line,
-      summary: widget.profile.addressCity,
-      latitude: widget.profile.latitude,
-      longitude: widget.profile.longitude,
-      onAddressChanged: (addr) async {
-        final updated = AddressData(
-          cep: addr.cep,
-          street: addr.street,
-          number: addr.number,
-          neighborhood: addr.neighborhood,
-          city: addr.city,
-          uf: addr.uf,
-          latitude: addr.lat,
-          longitude: addr.lng,
-        );
-        try {
-          await saveProfileAddress(updated);
-        } catch (_) {}
-      },
-      onAdjustPin: (lat, lng) async {
-        // Quando o cliente ajusta apenas o pino, saveProfileAddress já é disparado por onAddressChanged.
-      },
-    );
-  }
-
   String get _addressLabel {
     final line = widget.profile.addressLine;
     if (line == null || line.isEmpty) return 'Adicionar endereço';
@@ -168,7 +132,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
           children: [
             Expanded(
               child: InkWell(
-                onTap: hasAddress ? _openAddressMap : _editAddress,
+                onTap: hasAddress ? null : _editAddress,
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 4),
@@ -178,12 +142,14 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                       Icon(Icons.place_rounded, size: 18, color: context.tk.clientAccent),
                       const SizedBox(width: 4),
                       Flexible(child: Text(_addressLabel, style: const TextStyle(fontWeight: FontWeight.w600))),
-                      const SizedBox(width: 4),
-                      Icon(
-                        hasAddress ? Icons.map_outlined : Icons.keyboard_arrow_down_rounded,
-                        size: 17,
-                        color: context.tk.clientAccent,
-                      ),
+                      if (!hasAddress) ...[
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 17,
+                          color: context.tk.clientAccent,
+                        ),
+                      ],
                     ],
                   ),
                 ),

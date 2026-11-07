@@ -15,6 +15,7 @@ import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
 import '../../../core/state/anti_bypass_fintech_controller.dart';
+import '../../../core/state/provider_portfolio_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 
 /// "Serviço Concluído!" (protótipo 06): resumo + avaliar / relatar problema.
@@ -315,6 +316,14 @@ class _RatingScreenState extends State<RatingScreen> {
         tags: _tags.toList(),
         tip: _tip,
         photoPaths: paths,
+      );
+      // Sincroniza reativamente a avaliação do cliente tanto no Meu Portfólio
+      // quanto no Histórico de Serviços Prestados do profissional.
+      ProviderPortfolioStore.instance.syncClientEvaluationToHistoryAndPortfolio(
+        orderId: widget.job.id,
+        rating: _rating.toDouble(),
+        comment: _comment.text,
+        praiseTags: _tags.toList(),
       );
       final status = await SocialService().reviewStatus(widget.job.id);
       if (!mounted) return;
