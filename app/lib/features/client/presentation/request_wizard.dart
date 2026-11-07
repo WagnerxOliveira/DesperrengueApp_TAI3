@@ -4,6 +4,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/models/smart_triage_models.dart';
+import '../../../core/services/smart_triage_service.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/job_service.dart';
@@ -88,6 +92,10 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   double? _pinLat;
   double? _pinLng;
 
+  /// Resultado da Triagem Inteligente Multimodal + Contenção de Emergência em 60s.
+  SmartTriageResult? _triage;
+  bool _analyzingTriage = false;
+
   static const _hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
   ProviderCard? get _provider => widget.provider;
@@ -170,6 +178,74 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     if (img != null && mounted) setState(() => _images.add(img));
   }
 
+  /// Executa a Triagem Inteligente Multimodal (descrição + transcrição de voz + anexos).
+  void _runSmartTriage({bool silentIfEmpty = false}) {
+    final raw = _description.text.trim();
+    if (raw.length < 4 && _images.isEmpty && _category == null) {
+      if (!silentIfEmpty) {
+        showSnack(context, 'Descreva ou fale o que aconteceu para a IA diagnosticar.', error: true);
+      }
+      return;
+    }
+    setState(() => _analyzingTriage = true);
+    final attachments = _images.map((i) => i.name).toList();
+    final container = maybeProviderContainer(context);
+    SmartTriageResult result;
+    if (container != null) {
+      result = container.read(smartTriageControllerProvider.notifier).analyzeDraft(
+            rawText: raw,
+            mediaAttachments: attachments,
+            currentCategory: _category,
+          );
+    } else {
+      result = SmartTriageService.instance.analyze(
+        rawText: raw,
+        mediaAttachments: attachments,
+        currentCategory: _category,
+      );
+      if (_triage != null) {
+        final owned = {
+          for (final m in _triage!.probableMaterials)
+            if (m.clientAlreadyHasIt) m.id,
+        };
+        result = result.copyWith(
+          probableMaterials: [
+            for (final m in result.probableMaterials)
+              m.copyWith(clientAlreadyHasIt: owned.contains(m.id)),
+          ],
+        );
+      }
+    }
+    setState(() {
+      _triage = result;
+      _analyzingTriage = false;
+      if (_category == null && kCategories.any((c) => c.name == result.suggestedCategoryName)) {
+        _category = result.suggestedCategoryName;
+      }
+    });
+  }
+
+  void _toggleMaterial(String materialId) {
+    final current = _triage;
+    if (current == null) return;
+    final updated = current.toggleMaterial(materialId);
+    maybeProviderContainer(context)?.read(smartTriageControllerProvider.notifier).setResult(updated);
+    setState(() => _triage = updated);
+  }
+
+  void _toggleContainmentStep(int stepNumber) {
+    final current = _triage;
+    if (current == null) return;
+    final updated = current.toggleContainmentStep(stepNumber);
+    maybeProviderContainer(context)?.read(smartTriageControllerProvider.notifier).setResult(updated);
+    setState(() => _triage = updated);
+  }
+
+  void _applySuggestedCategory(String suggestedName) {
+    if (!kCategories.any((c) => c.name == suggestedName)) return;
+    setState(() => _category = suggestedName);
+  }
+
   Future<void> _submit() async {
     if (_provider?.id == widget.profile.id) {
       showSnack(context, 'Você não pode solicitar um serviço a si mesmo.', error: true);
@@ -229,6 +305,17 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         if (n == 0) throw 'Não foi possível convidar o profissional. Tente outro.';
       }
       if (_emergency) await _jobs.requestEmergency(jobId, 'wallet');
+
+      final finalTriage = _triage ??
+          SmartTriageService.instance.analyze(
+            rawText: text,
+            mediaAttachments: _images.map((i) => i.name).toList(),
+            currentCategory: _category,
+          );
+      JobTriageStore.instance.saveForJob(jobId, finalTriage);
+      if (mounted) {
+        maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(jobId, finalTriage);
+      }
 
       if (!mounted) return;
       final nav = Navigator.of(context);
@@ -318,6 +405,9 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     if (_step == 1 && !_step1Valid) {
       showSnack(context, _emergency ? 'Confirme que está ciente das condições.' : 'Escolha data e horário.', error: true);
       return;
+    }
+    if (_triage == null && _description.text.trim().isNotEmpty) {
+      _runSmartTriage(silentIfEmpty: true);
     }
     setState(() => _step++);
   }
@@ -432,6 +522,11 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           onChanged: () {
             if (mounted) setState(() {});
           },
+          onSpeechCompleted: () {
+            if (mounted && _description.text.trim().length >= 6) {
+              _runSmartTriage(silentIfEmpty: true);
+            }
+          },
         ),
         const SizedBox(height: 16),
         Text.rich(TextSpan(children: [
@@ -444,6 +539,28 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
             style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
         const SizedBox(height: 10),
         MediaPickerRow(images: _images, onAdd: _addImage, onRemove: (i) => setState(() => _images.removeAt(i))),
+        const SizedBox(height: 16),
+        SmartTriageTriggerBar(
+          hasResult: _triage != null,
+          analyzing: _analyzingTriage,
+          onTrigger: _runSmartTriage,
+        ),
+        if (_triage != null) ...[
+          if (_triage!.hasEmergencyContainment) ...[
+            const SizedBox(height: 14),
+            EmergencyContainmentBanner(
+              guide: _triage!.containmentGuide!,
+              onToggleStep: _toggleContainmentStep,
+            ),
+          ],
+          const SizedBox(height: 14),
+          SmartTriageCard(
+            result: _triage!,
+            selectedCategory: _category,
+            onApplyCategory: _applySuggestedCategory,
+            onToggleMaterial: _toggleMaterial,
+          ),
+        ],
       ],
     );
   }
@@ -667,6 +784,22 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
             ],
           ),
         ),
+        if (_triage != null) ...[
+          if (_triage!.hasEmergencyContainment) ...[
+            const SizedBox(height: 16),
+            EmergencyContainmentBanner(
+              guide: _triage!.containmentGuide!,
+              onToggleStep: _toggleContainmentStep,
+            ),
+          ],
+          const SizedBox(height: 16),
+          SmartTriageCard(
+            result: _triage!,
+            selectedCategory: _category,
+            onApplyCategory: _applySuggestedCategory,
+            onToggleMaterial: _toggleMaterial,
+          ),
+        ],
         if (_emergency && p != null) ...[
           const SizedBox(height: 18),
           const Text('Resumo financeiro', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
