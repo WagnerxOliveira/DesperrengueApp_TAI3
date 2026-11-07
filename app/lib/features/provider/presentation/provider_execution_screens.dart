@@ -20,8 +20,10 @@ import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
+import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
+import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 
@@ -194,6 +196,49 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
             builder: (context, _, _) => ProviderTriageBriefCard(
               result: JobTriageStore.instance.resolveForJob(job),
             ),
+          ),
+          const SizedBox(height: 14),
+          ValueListenableBuilder(
+            valueListenable: FintechLedgerStore.instance,
+            builder: (context, _, _) {
+              final dossier = FintechLedgerStore.instance.resolveForJob(
+                job,
+                addressOverride: _address ?? job.addressSummary,
+              );
+              return Column(
+                children: [
+                  SmartSplitTransparencyCard(
+                    dossier: dossier,
+                    isProviderView: true,
+                    onAddMaterialReceipt: () => FintechLedgerStore.instance.addMaterialReceipt(
+                      orderId: job.id,
+                      materialDescription: 'Peça de Reposição Técnica (${job.category})',
+                      storeName: 'Distribuidora Técnica Autorizada',
+                      fiscalReceiptNumber: 'NFC-e #001.${DateTime.now().millisecond.toString().padLeft(3, '0')}',
+                      receiptTotalAmount: 65.00,
+                      approvedByClient: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ForensicCheckInOutCard(
+                    dossier: dossier,
+                    isProviderView: true,
+                    onAddCheckInPhoto: () => FintechLedgerStore.instance.addCheckInPhoto(
+                      orderId: job.id,
+                      imagePathOrUrl: 'forensic://checkin/provider/${DateTime.now().millisecondsSinceEpoch}',
+                      captionOrTechnicalNote: 'Foto Antes (Check-in): Diagnóstico inicial no local.',
+                    ),
+                    onAddCheckOutPhoto: () => FintechLedgerStore.instance.addCheckOutPhoto(
+                      orderId: job.id,
+                      imagePathOrUrl: 'forensic://checkout/provider/${DateTime.now().millisecondsSinceEpoch}',
+                      captionOrTechnicalNote: 'Foto Depois (Check-out): Reparo finalizado e testado.',
+                    ),
+                    onOpenThreeLayerWarranty: () =>
+                        WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
+                  ),
+                ],
+              );
+            },
           ),
         ],
       ),

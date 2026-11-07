@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
+import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -210,6 +211,11 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                 ],
               ),
               const SizedBox(height: 6),
+              const Align(
+                alignment: Alignment.centerRight,
+                child: AppQuickUpdateButton(compact: true),
+              ),
+              const SizedBox(height: 4),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: online,
@@ -544,7 +550,9 @@ class ProviderProfileTab extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
+        const AppQuickUpdateButton(compact: false),
+        const SizedBox(height: 14),
         tile(Icons.edit_rounded, 'Editar perfil', 'Foto, bio, especialidades e preços', () => push(const EditProviderProfileScreen())),
         tile(Icons.photo_library_rounded, 'Meu portfólio', 'Fotos dos seus trabalhos', () => push(const PortfolioScreen())),
         tile(Icons.workspace_premium_rounded, 'Meus certificados', 'Cofre de qualificações', () => push(const CertificatesScreen())),

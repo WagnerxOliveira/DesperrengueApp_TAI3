@@ -10,9 +10,11 @@ import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/achievement_widgets.dart';
+import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
+import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 
 /// "Serviço Concluído!" (protótipo 06): resumo + avaliar / relatar problema.
@@ -130,6 +132,32 @@ class _CompletionScreenState extends State<CompletionScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                ValueListenableBuilder(
+                  valueListenable: FintechLedgerStore.instance,
+                  builder: (context, _, _) {
+                    final dossier = FintechLedgerStore.instance.resolveForJob(job);
+                    return Column(
+                      children: [
+                        ForensicCheckInOutCard(
+                          dossier: dossier,
+                          onAddCheckInPhoto: () => FintechLedgerStore.instance.addCheckInPhoto(
+                            orderId: job.id,
+                            imagePathOrUrl: 'forensic://checkin/done/${DateTime.now().millisecondsSinceEpoch}',
+                            captionOrTechnicalNote: 'Foto Antes registrada no dossiê.',
+                          ),
+                          onAddCheckOutPhoto: () => FintechLedgerStore.instance.addCheckOutPhoto(
+                            orderId: job.id,
+                            imagePathOrUrl: 'forensic://checkout/done/${DateTime.now().millisecondsSinceEpoch}',
+                            captionOrTechnicalNote: 'Foto Depois confirmada na conclusão.',
+                          ),
+                          onOpenThreeLayerWarranty: () =>
+                              WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  },
+                ),
                 if (_reviewStatus == 'revealed')
                   const InfoBanner('Obrigado! Sua avaliação ajuda toda a comunidade.', tone: BannerTone.success, title: 'Avaliação enviada')
                 else if (_reviewStatus == 'waiting')

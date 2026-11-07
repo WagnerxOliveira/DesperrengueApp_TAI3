@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
+import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
+import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/job_labels.dart';
 import '../../../core/ui/media_widgets.dart';
@@ -202,7 +204,17 @@ class ClientProfileTab extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 16),
+        const AppQuickUpdateButton(compact: false),
+        const SizedBox(height: 16),
+        _Tile(
+          icon: Icons.home_work_rounded,
+          title: 'Prontuário da Casa (Passaporte)',
+          subtitle: 'Histórico auditado e PDF para vistoria/seguradora',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const PropertyPassportScreen()),
+          ),
+        ),
         _Tile(
           icon: Icons.place_outlined,
           title: 'Meu endereço',

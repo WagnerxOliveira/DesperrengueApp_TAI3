@@ -7,11 +7,13 @@ import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/smart_triage_models.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/chat_screen.dart';
+import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
 import '../../../core/ui/app_tokens.dart';
@@ -196,6 +198,49 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             result: _triage,
             selectedCategory: job.category,
             onToggleMaterial: _toggleMaterial,
+          ),
+          const SizedBox(height: 12),
+          ValueListenableBuilder(
+            valueListenable: FintechLedgerStore.instance,
+            builder: (context, _, _) {
+              final dossier = FintechLedgerStore.instance.resolveForJob(
+                job,
+                addressOverride: _address ?? job.addressSummary,
+              );
+              return Column(
+                children: [
+                  SmartSplitTransparencyCard(
+                    dossier: dossier,
+                    onToggleMaterialApproval: (ticketId) => FintechLedgerStore.instance
+                        .toggleMaterialReceiptApproval(orderId: job.id, ticketId: ticketId),
+                    onAddMaterialReceipt: () => FintechLedgerStore.instance.addMaterialReceipt(
+                      orderId: job.id,
+                      materialDescription: 'Peça Adicional Homologada (${job.category})',
+                      storeName: 'Loja de Materiais Credenciada',
+                      fiscalReceiptNumber: 'NFC-e #000.${DateTime.now().millisecond.toString().padLeft(3, '0')}',
+                      receiptTotalAmount: 45.00,
+                      approvedByClient: true,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ForensicCheckInOutCard(
+                    dossier: dossier,
+                    onAddCheckInPhoto: () => FintechLedgerStore.instance.addCheckInPhoto(
+                      orderId: job.id,
+                      imagePathOrUrl: 'forensic://checkin/client/${DateTime.now().millisecondsSinceEpoch}',
+                      captionOrTechnicalNote: 'Registro antes da execução confirmado no local.',
+                    ),
+                    onAddCheckOutPhoto: () => FintechLedgerStore.instance.addCheckOutPhoto(
+                      orderId: job.id,
+                      imagePathOrUrl: 'forensic://checkout/client/${DateTime.now().millisecondsSinceEpoch}',
+                      captionOrTechnicalNote: 'Serviço concluído e testado com sucesso.',
+                    ),
+                    onOpenThreeLayerWarranty: () =>
+                        WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
+                  ),
+                ],
+              );
+            },
           ),
           if (job.status == JobStatus.inProgress && _pin != null) ...[
             const SizedBox(height: 12),

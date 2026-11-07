@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -113,8 +114,10 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
       children: [
         Row(
           children: [
-            const BrandLogo(size: 22),
+            const BrandLogo(size: 20),
             const Spacer(),
+            const AppQuickUpdateButton(compact: true),
+            const SizedBox(width: 6),
             const WalletChip(),
             const SizedBox(width: 4),
             UnreadBell(onOpenJob: (c, id) => openClientJob(c, id)),
