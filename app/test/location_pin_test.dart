@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -8,6 +9,8 @@ import 'package:http/testing.dart';
 import 'package:desperrengue_app/core/models/geocode_models.dart';
 import 'package:desperrengue_app/core/models/scheduling_models.dart';
 import 'package:desperrengue_app/core/services/address_lookup.dart';
+import 'package:desperrengue_app/core/services/precise_geocoder.dart';
+import 'package:desperrengue_app/core/services/scheduling_service.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/features/client/presentation/address_form.dart';
 import 'package:desperrengue_app/features/shared/presentation/live_location_map.dart';
@@ -34,14 +37,52 @@ class _Geo implements AddressGeocoder {
   }
 }
 
+class _FakeRouting extends RoutingService {
+  _FakeRouting(this.result);
+  final RouteInfo? result;
+  @override
+  Future<RouteInfo?> route({required double fromLat, required double fromLng, required double toLat, required double toLng}) async => result;
+}
+
 const _tiles = SizedBox.shrink(); // sem rede nos testes
 
 void main() {
+  // ---------------------------------------------------------------- buildTileLayer (OSM padrão)
+  group('buildTileLayer (sempre usa OpenStreetMap com ruas e nomes de ruas)', () {
+    testWidgets('usa tile.openstreetmap.org tanto no tema claro quanto no escuro (nunca cartocdn)', (t) async {
+      late TileLayer lightLayer;
+      late TileLayer darkLayer;
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.resolve(null, Brightness.light),
+        home: Builder(builder: (ctx) {
+          lightLayer = buildTileLayer(ctx) as TileLayer;
+          return const SizedBox.shrink();
+        }),
+      ));
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.resolve(null, Brightness.dark),
+        home: Builder(builder: (ctx) {
+          darkLayer = buildTileLayer(ctx) as TileLayer;
+          return const SizedBox.shrink();
+        }),
+      ));
+      expect(lightLayer.urlTemplate, 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+      expect(darkLayer.urlTemplate, 'https://tile.openstreetmap.org/{z}/{x}/{y}.png');
+      expect(darkLayer.urlTemplate, isNot(contains('carto')));
+    });
+  });
+
   // ---------------------------------------------------------------- LocationPickerSheet
   group('LocationPickerSheet (pino fixo no centro; arraste o mapa)', () {
     const initial = JobDestination(lat: -21.8027, lng: -46.6028, precision: DestinationPrecision.street, radiusM: 250, source: 'client_geocode');
 
-    Future<List<(double, double)>> open(WidgetTester t, {JobDestination? start = initial, Future<void> Function(double, double)? onConfirm}) async {
+    Future<List<(double, double)>> open(
+      WidgetTester t, {
+      JobDestination? start = initial,
+      Future<void> Function(double, double)? onConfirm,
+      Future<ReversedAddress?> Function(double lat, double lng, {String? fallbackLine})? reverseGeocoder,
+      ValueChanged<ReversedAddress>? onAddressResolved,
+    }) async {
       tall(t, h: 3000);
       final confirmed = <(double, double)>[];
       await t.pumpWidget(host(Builder(
@@ -54,6 +95,8 @@ void main() {
                     initial: start,
                     addressLine: 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG',
                     tileLayer: _tiles,
+                    reverseGeocoder: reverseGeocoder,
+                    onAddressResolved: onAddressResolved,
                     onConfirm: onConfirm ?? (la, ln) async => confirmed.add((la, ln)),
                   ),
                 ),
@@ -95,6 +138,33 @@ void main() {
       await t.pumpAndSettle();
       expect(c, hasLength(1));
       expect((c.single.$1 - (-21.8027)).abs() + (c.single.$2 - (-46.6028)).abs(), greaterThan(1e-6), reason: 'o centro do mapa andou');
+    });
+
+    testWidgets('arrastar o mapa atualiza automaticamente o endereço via geocodificação reversa', (t) async {
+      ReversedAddress? resolved;
+      await open(
+        t,
+        reverseGeocoder: (la, ln, {fallbackLine}) async => ReversedAddress(
+          street: 'Rua Assis Figueiredo',
+          number: '1200',
+          neighborhood: 'Centro',
+          city: 'Poços de Caldas',
+          uf: 'MG',
+          cep: '37701000',
+          lat: la,
+          lng: ln,
+        ),
+        onAddressResolved: (addr) => resolved = addr,
+      );
+      await t.drag(find.byKey(const ValueKey('pin-map')), const Offset(-160, 90));
+      await t.pump(const Duration(milliseconds: 500));
+      await t.pumpAndSettle();
+      expect(find.textContaining('Rua Assis Figueiredo, 1200 - Centro, Poços de Caldas - MG'), findsOneWidget);
+      await t.tap(find.text('Confirmar este local'));
+      await t.pumpAndSettle();
+      expect(resolved, isNotNull);
+      expect(resolved!.street, 'Rua Assis Figueiredo');
+      expect(resolved!.number, '1200');
     });
 
     testWidgets('sem ponto inicial abre numa região padrão e ainda assim é confirmável', (t) async {
@@ -268,23 +338,31 @@ void main() {
     });
   });
 
-  // ---------------------------------------------------------------- LiveLocationMapSheet: ajustar o pino
-  group('LiveLocationMapSheet: ponto aproximado e "Ajustar o ponto exato"', () {
-    Future<List<(double, double)>> open(WidgetTester t, {DestinationPrecision? precision, bool pinConfirmed = false, bool withAdjust = true}) async {
+  // ---------------------------------------------------------------- LiveLocationMapSheet: ajustar o pino e menor rota
+  group('LiveLocationMapSheet: ponto aproximado, "Ajustar o ponto exato" e menor caminho', () {
+    Future<List<(double, double)>> open(
+      WidgetTester t, {
+      DestinationPrecision? precision,
+      bool pinConfirmed = false,
+      bool withAdjust = true,
+      RoutingService? routing,
+      Stream<GeoFix>? gpsStream,
+    }) async {
       tall(t, h: 3000);
       final adjusted = <(double, double)>[];
-      final gps = StreamController<GeoFix>();
+      final gps = StreamController<GeoFix>.broadcast();
       addTearDown(gps.close);
       await t.pumpWidget(host(Scaffold(
         body: LiveLocationMapSheet(
           addressLine: 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG',
-          latitude: -21.79,
-          longitude: -46.56,
+          latitude: -21.80271,
+          longitude: -46.60281,
           precision: precision,
           pinConfirmed: pinConfirmed,
           onAdjustPin: withAdjust ? (la, ln) async => adjusted.add((la, ln)) : null,
-          positionStream: () => gps.stream,
+          positionStream: () => gpsStream ?? gps.stream,
           resolver: (_, _) async => null,
+          routing: routing,
           tileLayer: _tiles,
         ),
       )));
@@ -307,6 +385,28 @@ void main() {
     testWidgets('pino já confirmado não mostra o aviso de aproximado', (t) async {
       await open(t, precision: DestinationPrecision.exact, pinConfirmed: true);
       expect(find.textContaining('aproximad', findRichText: true), findsNothing);
+    });
+
+    testWidgets('quando há GPS e destino, desenha o menor caminho pelas ruas e mostra distância + tempo', (t) async {
+      final gps = StreamController<GeoFix>.broadcast();
+      addTearDown(gps.close);
+      await open(
+        t,
+        precision: DestinationPrecision.exact,
+        pinConfirmed: true,
+        gpsStream: gps.stream,
+        routing: _FakeRouting(const RouteInfo(
+          distanceM: 1350,
+          durationS: 240,
+          points: [(lat: -21.79509, lng: -46.59495), (lat: -21.80000, lng: -46.60000), (lat: -21.80271, lng: -46.60281)],
+        )),
+      );
+      gps.add(const GeoFix(-21.79509, -46.59495, accuracyM: 12));
+      await t.pump();
+      await t.pump();
+      expect(find.byKey(const ValueKey('live-route-polyline')), findsOneWidget);
+      expect(find.byKey(const ValueKey('shortest-route-summary')), findsOneWidget);
+      expect(find.textContaining('Menor caminho pelas ruas:'), findsOneWidget);
     });
   });
 }

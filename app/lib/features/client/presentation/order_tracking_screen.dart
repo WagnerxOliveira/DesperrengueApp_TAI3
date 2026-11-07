@@ -181,6 +181,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 context,
                 addressLine: line,
                 summary: job.addressSummary,
+                onAddressChanged: (addr) {
+                  if (mounted) {
+                    setState(() => _address = addr.fullLine);
+                  }
+                },
                 onAdjustPin: (lat, lng) async {
                   await SupabaseSchedulingBackend().setLocation(job.id, lat, lng, source: 'client_pin', precision: 'house');
                 },

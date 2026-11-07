@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/scheduling_models.dart';
 import '../../../core/services/precise_geocoder.dart';
+import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/utils/geo.dart';
 import 'service_map_widgets.dart' show LocationPickerSheet, MapAttribution, buildTileLayer;
@@ -39,11 +41,12 @@ class LocationUnavailable implements Exception {
   String toString() => message;
 }
 
-/// Mapa interativo (OpenStreetMap + GPS em tempo real) do endereço do serviço, aberto a
-/// partir de qualquer endereço clicável no aplicativo.
+/// Mapa interativo (OpenStreetMap Standard + GPS em tempo real + Menor Rota pelas Ruas OSRM)
+/// do endereço do serviço, aberto a partir de qualquer endereço clicável no aplicativo.
 ///
-/// Mostra o marcador exato do endereço (coordenadas já conhecidas ou geocodificadas) e a
-/// posição VIVA do usuário, com círculo de precisão e distância em linha reta.
+/// Mostra as ruas e nomes das ruas com nitidez, o marcador exato do endereço, a posição VIVA
+/// do usuário, a polilinha do caminho mais curto até o ponto de encontro e permite ajustar o
+/// pino atualizando automaticamente o endereço por geocodificação reversa.
 class LiveLocationMapSheet extends StatefulWidget {
   const LiveLocationMapSheet({
     super.key,
@@ -54,8 +57,11 @@ class LiveLocationMapSheet extends StatefulWidget {
     this.precision,
     this.pinConfirmed = false,
     this.onAdjustPin,
+    this.onAddressChanged,
     this.positionStream,
     this.resolver,
+    this.routing,
+    this.reverseGeocoder,
     this.tileLayer,
   });
 
@@ -75,9 +81,14 @@ class LiveLocationMapSheet extends StatefulWidget {
   /// Só o DONO do pedido passa isto: habilita "Ajustar o ponto exato" (arrasta o mapa até a porta).
   final Future<void> Function(double lat, double lng)? onAdjustPin;
 
+  /// Chamado quando o cliente ajusta o pino no mapa e o endereço é atualizado por geocodificação reversa.
+  final FutureOr<void> Function(ReversedAddress address)? onAddressChanged;
+
   /// Injetáveis (testes).
   final UserPositionStream? positionStream;
   final AddressResolver? resolver;
+  final RoutingService? routing;
+  final Future<ReversedAddress?> Function(double lat, double lng, {String? fallbackLine})? reverseGeocoder;
   final Widget? tileLayer;
 
   static Future<void> show(
@@ -89,6 +100,7 @@ class LiveLocationMapSheet extends StatefulWidget {
     DestinationPrecision? precision,
     bool pinConfirmed = false,
     Future<void> Function(double lat, double lng)? onAdjustPin,
+    FutureOr<void> Function(ReversedAddress address)? onAddressChanged,
   }) =>
       showModalBottomSheet<void>(
         context: context,
@@ -105,6 +117,7 @@ class LiveLocationMapSheet extends StatefulWidget {
             precision: precision,
             pinConfirmed: pinConfirmed,
             onAdjustPin: onAdjustPin,
+            onAddressChanged: onAddressChanged,
           ),
         ),
       );
@@ -115,17 +128,27 @@ class LiveLocationMapSheet extends StatefulWidget {
 
 class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
   final _map = MapController();
+  late final RoutingService _routing = widget.routing ?? RoutingService();
   StreamSubscription<GeoFix>? _sub;
+  late String _addressLine = widget.addressLine;
+  late String? _summary = widget.summary;
   LatLng? _dest;
   late DestinationPrecision _precision = widget.precision ?? DestinationPrecision.house;
   late bool _pinConfirmed = widget.pinConfirmed;
   GeoFix? _me;
+  RouteInfo? _route;
+  GeoFix? _routedFrom;
+  LatLng? _routedTo;
+  DateTime? _lastRouteAt;
+  bool _fetchingRoute = false;
   String? _gpsNote;
   bool _resolving = false;
   bool _destFailed = false;
   bool _fitted = false;
 
   static const _fallback = LatLng(-21.7900318, -46.5647928);
+
+  bool get _canRouteInEnv => widget.tileLayer == null || widget.routing != null;
 
   @override
   void initState() {
@@ -147,7 +170,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     setState(() => _resolving = true);
     try {
       final resolver = widget.resolver ?? ((line, summary) => PreciseGeocoder().geocode(line, summary: summary));
-      final hit = await resolver(widget.addressLine, widget.summary);
+      final hit = await resolver(_addressLine, _summary);
       if (!mounted) return;
       setState(() {
         if (hit == null) {
@@ -161,6 +184,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
         }
       });
       _fit();
+      _updateRoute(force: true);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _fit();
       });
@@ -183,6 +207,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
             _gpsNote = null;
           });
           if (!_fitted) _fit();
+          _updateRoute();
         },
         onError: (Object e) {
           if (mounted) setState(() => _gpsNote = e is LocationUnavailable ? e.message : 'Não foi possível acompanhar o seu GPS.');
@@ -193,6 +218,47 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     }
   }
 
+  Future<void> _updateRoute({bool force = false}) async {
+    if (!_canRouteInEnv) return;
+    final me = _me;
+    final dest = _dest;
+    if (me == null || dest == null || _fetchingRoute || !mounted) return;
+
+    final movedMe = _routedFrom == null ? double.infinity : haversineMeters(me.lat, me.lng, _routedFrom!.lat, _routedFrom!.lng);
+    final movedDest = _routedTo == null
+        ? double.infinity
+        : haversineMeters(dest.latitude, dest.longitude, _routedTo!.latitude, _routedTo!.longitude);
+    final stale = _lastRouteAt == null || DateTime.now().difference(_lastRouteAt!) > const Duration(seconds: 20);
+    if (!force && _route != null && movedMe < 40 && movedDest < 5 && !stale) return;
+
+    final firstRoute = _route == null;
+    _fetchingRoute = true;
+    try {
+      final r = await _routing.route(
+        fromLat: me.lat,
+        fromLng: me.lng,
+        toLat: dest.latitude,
+        toLng: dest.longitude,
+      );
+      if (!mounted) return;
+      setState(() {
+        _route = r ?? _route;
+        _routedFrom = me;
+        _routedTo = dest;
+        _lastRouteAt = DateTime.now();
+      });
+      if ((firstRoute || force) && r != null) {
+        final dist = haversineMeters(me.lat, me.lng, dest.latitude, dest.longitude);
+        if (dist <= 25000) {
+          _fit(includeMe: true);
+        }
+      }
+    } catch (_) {
+    } finally {
+      _fetchingRoute = false;
+    }
+  }
+
   @override
   void dispose() {
     _sub?.cancel();
@@ -200,17 +266,38 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     super.dispose();
   }
 
-  /// O dono arrasta o mapa até a porta e confirma: o ponto vira "pino confirmado" no pedido.
+  /// O dono arrasta o mapa até a porta e confirma: o ponto vira "pino confirmado" e o endereço é
+  /// atualizado automaticamente por geocodificação reversa.
   Future<void> _adjustPin() async {
     final dest = _dest;
     final adjust = widget.onAdjustPin;
     if (adjust == null) return;
+    ReversedAddress? resolvedAddr;
     final ok = await LocationPickerSheet.show(
       context,
-      addressLine: widget.addressLine,
+      addressLine: _addressLine,
+      reverseGeocoder: widget.reverseGeocoder,
       initial: dest == null
           ? null
-          : JobDestination(lat: dest.latitude, lng: dest.longitude, precision: _precision, radiusM: 100, source: _pinConfirmed ? 'client_pin' : 'client_geocode'),
+          : JobDestination(
+              lat: dest.latitude,
+              lng: dest.longitude,
+              precision: _precision,
+              radiusM: 100,
+              source: _pinConfirmed ? 'client_pin' : 'client_geocode',
+            ),
+      onAddressResolved: (addr) async {
+        resolvedAddr = addr;
+        if (mounted) {
+          setState(() {
+            _addressLine = addr.fullLine;
+            _summary = addr.summary;
+          });
+        }
+        if (widget.onAddressChanged != null) {
+          await widget.onAddressChanged!(addr);
+        }
+      },
       onConfirm: (lat, lng) async {
         await adjust(lat, lng);
         if (mounted) {
@@ -223,7 +310,16 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
         }
       },
     );
-    if (ok == true && mounted) _fit();
+    if (ok == true && mounted) {
+      if (resolvedAddr != null) {
+        setState(() {
+          _addressLine = resolvedAddr!.fullLine;
+          _summary = resolvedAddr!.summary;
+        });
+      }
+      _fit();
+      _updateRoute(force: true);
+    }
   }
 
   void _fit({bool includeMe = false}) {
@@ -232,9 +328,13 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     if (dest == null && me == null) return;
     try {
       if (dest != null) {
-        final nearMe = me != null && haversineMeters(me.lat, me.lng, dest.latitude, dest.longitude) <= 1200;
+        final nearMe = me != null && haversineMeters(me.lat, me.lng, dest.latitude, dest.longitude) <= 3500;
         if ((includeMe || nearMe) && me != null) {
-          final pts = <LatLng>[dest, LatLng(me.lat, me.lng)];
+          final pts = <LatLng>[
+            dest,
+            LatLng(me.lat, me.lng),
+            ...?_route?.points.map((e) => LatLng(e.lat, e.lng)),
+          ];
           _map.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: const EdgeInsets.all(64), maxZoom: 17));
         } else {
           _map.move(dest, 17);
@@ -248,6 +348,12 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     }
   }
 
+  Future<void> _openExternalNav(Uri uri) async {
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
@@ -255,6 +361,16 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     final me = _me;
     final meters = (dest != null && me != null) ? haversineMeters(me.lat, me.lng, dest.latitude, dest.longitude) : null;
     final approx = !_pinConfirmed && _precision != DestinationPrecision.house && _precision != DestinationPrecision.exact;
+
+    final routePoints = <LatLng>[
+      if (_route != null && _route!.points.length >= 2)
+        for (final p in _route!.points) LatLng(p.lat, p.lng)
+      else if (me != null && dest != null) ...[
+        LatLng(me.lat, me.lng),
+        dest,
+      ],
+    ];
+
     return Column(
       children: [
         Padding(
@@ -268,7 +384,8 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                   onTap: dest == null ? null : () => _fit(includeMe: false),
                   borderRadius: BorderRadius.circular(8),
                   child: Text(
-                    widget.addressLine,
+                    _addressLine,
+                    key: const ValueKey('live-map-address-line'),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800),
@@ -317,6 +434,19 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                   ),
                   children: [
                     widget.tileLayer ?? buildTileLayer(context),
+                    if (routePoints.length >= 2)
+                      PolylineLayer(
+                        key: const ValueKey('live-route-polyline'),
+                        polylines: [
+                          Polyline(
+                            points: routePoints,
+                            strokeWidth: 5.5,
+                            color: const Color(0xFF2563EB),
+                            borderStrokeWidth: 2.0,
+                            borderColor: Colors.white,
+                          ),
+                        ],
+                      ),
                     if (me != null && me.accuracyM != null)
                       CircleLayer(circles: [
                         CircleMarker(
@@ -371,11 +501,25 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                 Positioned(
                   right: 10,
                   top: 10,
-                  child: FloatingActionButton.small(
-                    heroTag: 'live_fit',
-                    onPressed: () => _fit(includeMe: true),
-                    tooltip: 'Enquadrar endereço e minha posição',
-                    child: const Icon(Icons.center_focus_strong_rounded),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FloatingActionButton.small(
+                        heroTag: 'live_fit',
+                        onPressed: () => _fit(includeMe: true),
+                        tooltip: 'Enquadrar caminho completo',
+                        child: const Icon(Icons.center_focus_strong_rounded),
+                      ),
+                      if (dest != null) ...[
+                        const SizedBox(height: 8),
+                        FloatingActionButton.small(
+                          heroTag: 'live_focus_dest',
+                          onPressed: () => _fit(includeMe: false),
+                          tooltip: 'Focar no ponto de encontro',
+                          child: const Icon(Icons.place_rounded),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ],
@@ -387,6 +531,30 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_route != null) ...[
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: tk.clientAccent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.route_rounded, size: 18, color: tk.clientAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Menor caminho pelas ruas: ${formatMeters(_route!.distanceM)} · ~${formatEta(_route!.eta)}',
+                          key: const ValueKey('shortest-route-summary'),
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: tk.text),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               Row(
                 children: [
                   Icon(Icons.my_location_rounded, color: me == null ? tk.textMuted : tk.info, size: 20),
@@ -406,11 +574,41 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                 ],
               ),
               const SizedBox(height: 2),
-              Text(
-                dest == null
-                    ? 'Marcador do endereço indisponível no momento.'
-                    : '${dest.latitude.toStringAsFixed(5)}, ${dest.longitude.toStringAsFixed(5)}',
-                style: TextStyle(fontSize: 12, color: tk.textMuted),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      dest == null
+                          ? 'Marcador do endereço indisponível no momento.'
+                          : '${dest.latitude.toStringAsFixed(5)}, ${dest.longitude.toStringAsFixed(5)}',
+                      style: TextStyle(fontSize: 12, color: tk.textMuted),
+                    ),
+                  ),
+                  if (dest != null && widget.tileLayer == null) ...[
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      ),
+                      onPressed: () => _openExternalNav(
+                        Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${dest.latitude},${dest.longitude}&travelmode=driving'),
+                      ),
+                      icon: const Icon(Icons.navigation_rounded, size: 15),
+                      label: const Text('Maps', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      ),
+                      onPressed: () => _openExternalNav(
+                        Uri.parse('https://waze.com/ul?ll=${dest.latitude},${dest.longitude}&navigate=yes'),
+                      ),
+                      icon: const Icon(Icons.alt_route_rounded, size: 15),
+                      label: const Text('Waze', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -422,21 +620,29 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
 
 class _Pill extends StatelessWidget {
   const _Pill({required this.label, this.loading = false});
-
   final String label;
   final bool loading;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: context.tk.card, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: context.tk.shadow, blurRadius: 6)]),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (loading) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-            if (loading) const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: tk.card.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: [BoxShadow(color: tk.shadow, blurRadius: 8)],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading) ...[
+            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(width: 8),
           ],
-        ),
-      );
+          Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
 }

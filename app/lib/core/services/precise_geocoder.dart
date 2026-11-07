@@ -9,6 +9,56 @@ import '../utils/geo.dart';
 import '../utils/tag_normalizer.dart' show normalizeTag;
 import 'geocoding_service.dart';
 
+/// Endereço completo obtido por geocodificação reversa (coordenadas -> rua, número, bairro, cidade, UF e CEP).
+class ReversedAddress {
+  const ReversedAddress({
+    required this.street,
+    required this.number,
+    required this.neighborhood,
+    required this.city,
+    required this.uf,
+    this.cep = '',
+    required this.lat,
+    required this.lng,
+  });
+
+  final String street;
+  final String number;
+  final String neighborhood;
+  final String city;
+  final String uf;
+  final String cep;
+  final double lat;
+  final double lng;
+
+  /// Formato canônico usado em todo o app: "Rua X, 123 - Bairro, Cidade - UF".
+  String get fullLine {
+    final streetPart = street.trim().isEmpty
+        ? (neighborhood.trim().isNotEmpty ? neighborhood.trim() : city.trim())
+        : (number.trim().isEmpty ? street.trim() : '${street.trim()}, ${number.trim()}');
+    final placePart = [
+      if (neighborhood.trim().isNotEmpty && street.trim().isNotEmpty) neighborhood.trim(),
+      if (city.trim().isNotEmpty) city.trim(),
+    ].join(', ');
+    final blocks = [
+      if (streetPart.isNotEmpty) streetPart,
+      if (placePart.isNotEmpty) placePart,
+      if (uf.trim().isNotEmpty) uf.trim().toUpperCase(),
+    ];
+    return blocks.join(' - ');
+  }
+
+  /// Resumo público ("Bairro, Cidade - UF" ou "Cidade - UF").
+  String get summary {
+    final place = [
+      if (neighborhood.trim().isNotEmpty) neighborhood.trim(),
+      if (city.trim().isNotEmpty) city.trim(),
+    ].join(', ');
+    if (uf.trim().isEmpty) return place;
+    return place.isEmpty ? uf.trim().toUpperCase() : '$place - ${uf.trim().toUpperCase()}';
+  }
+}
+
 /// Geocodificação de ALTA PRECISÃO para endereços brasileiros, só com serviços gratuitos e sem
 /// chave, em cascata e com validação:
 ///
@@ -61,6 +111,161 @@ class PreciseGeocoder implements AddressGeocoder {
     }
     if (best == null) return null;
     return GeocodeHit(lat: best.lat, lng: best.lng, precision: best.precision, display: best.display);
+  }
+
+  /// Geocodificação reversa (lat, lng -> endereço estruturado) usando cascata gratuita
+  /// Nominatim Reverse + Photon Reverse, atualizando rua, número, bairro, cidade e UF quando o
+  /// cliente move o pino em "Ajustar o ponto exato".
+  Future<ReversedAddress?> reverseGeocode(
+    double lat,
+    double lng, {
+    String? fallbackLine,
+  }) async {
+    final fallbackParts = fallbackLine == null ? null : parseAddressLine(fallbackLine);
+    final nominatimUri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
+      'format': 'jsonv2',
+      'lat': '$lat',
+      'lon': '$lng',
+      'zoom': '18',
+      'addressdetails': '1',
+      'accept-language': 'pt-BR',
+    });
+    final photonUri = Uri.https('photon.komoot.io', '/reverse', {
+      'lat': '$lat',
+      'lon': '$lng',
+    });
+
+    final responses = await Future.wait([
+      _getJson(nominatimUri),
+      _getJson(photonUri),
+    ]);
+
+    final nom = parseNominatimReverse(responses[0], lat: lat, lng: lng);
+    final pho = parsePhotonReverse(responses[1], lat: lat, lng: lng);
+    if (nom == null && pho == null) return null;
+
+    final street = (nom?.street.isNotEmpty == true ? nom!.street : pho?.street) ?? '';
+    var number = (nom?.number.isNotEmpty == true ? nom!.number : pho?.number) ?? '';
+    final neighborhood = (nom?.neighborhood.isNotEmpty == true ? nom!.neighborhood : pho?.neighborhood) ??
+        (fallbackParts?.hood ?? '');
+    final city = (nom?.city.isNotEmpty == true ? nom!.city : pho?.city) ??
+        (fallbackParts?.city ?? '');
+    final uf = (nom?.uf.isNotEmpty == true ? nom!.uf : pho?.uf) ??
+        (fallbackParts?.uf ?? '');
+    final cep = (nom?.cep.isNotEmpty == true ? nom!.cep : pho?.cep) ?? '';
+
+    if (street.isEmpty && city.isEmpty) return null;
+
+    // Se o pino permaneceu na mesma rua e o OSM não possui o número do lote mapeado naquele ponto,
+    // preserva o número informado pelo cliente; se mudou de rua e o OSM não tem número, usa 'S/N'.
+    if (number.isEmpty) {
+      if (fallbackParts != null &&
+          fallbackParts.number.isNotEmpty &&
+          fallbackParts.street.isNotEmpty &&
+          normalizeTag(street) == normalizeTag(fallbackParts.street)) {
+        number = fallbackParts.number;
+      } else {
+        number = 'S/N';
+      }
+    }
+
+    return ReversedAddress(
+      street: street.isNotEmpty ? street : (fallbackParts?.street ?? ''),
+      number: number,
+      neighborhood: neighborhood,
+      city: city,
+      uf: uf,
+      cep: cep,
+      lat: lat,
+      lng: lng,
+    );
+  }
+
+  /// Interpreta resposta do Nominatim `/reverse?format=jsonv2&addressdetails=1`.
+  static ReversedAddress? parseNominatimReverse(Object? body, {required double lat, required double lng}) {
+    if (body is! Map) return null;
+    final addr = (body['address'] as Map?)?.cast<String, dynamic>() ?? const {};
+    if (addr.isEmpty) return null;
+    final street = _firstNonEmpty([
+      addr['road'],
+      addr['pedestrian'],
+      addr['residential'],
+      addr['street'],
+      addr['footway'],
+      addr['path'],
+      body['name'],
+    ]);
+    final number = _firstNonEmpty([addr['house_number'], addr['street_number']]);
+    final neighborhood = _firstNonEmpty([
+      addr['suburb'],
+      addr['neighbourhood'],
+      addr['quarter'],
+      addr['city_district'],
+      addr['district'],
+      addr['residential'],
+    ]);
+    final city = _firstNonEmpty([
+      addr['city'],
+      addr['town'],
+      addr['municipality'],
+      addr['village'],
+      addr['county'],
+    ]);
+    var uf = '';
+    final iso = '${addr['ISO3166-2-lvl4'] ?? ''}'.trim();
+    if (iso.length >= 2 && iso.contains('-')) {
+      uf = iso.split('-').last.toUpperCase();
+    }
+    if (uf.length != 2) {
+      uf = ufCodeFromStateName('${addr['state'] ?? ''}');
+    }
+    final cep = _digits('${addr['postcode'] ?? ''}');
+    if (street.isEmpty && city.isEmpty) return null;
+    return ReversedAddress(
+      street: street,
+      number: number,
+      neighborhood: neighborhood,
+      city: city,
+      uf: uf,
+      cep: cep,
+      lat: lat,
+      lng: lng,
+    );
+  }
+
+  /// Interpreta resposta do Photon `/reverse?lat=...&lon=...`.
+  static ReversedAddress? parsePhotonReverse(Object? body, {required double lat, required double lng}) {
+    final features = body is Map ? body['features'] : null;
+    if (features is! List || features.isEmpty) return null;
+    final first = features.first;
+    if (first is! Map) return null;
+    final props = (first['properties'] as Map?)?.cast<String, dynamic>() ?? const {};
+    if (props.isEmpty) return null;
+    final street = _firstNonEmpty([props['street'], props['name']]);
+    final number = _firstNonEmpty([props['housenumber']]);
+    final neighborhood = _firstNonEmpty([props['district'], props['locality'], props['suburb']]);
+    final city = _firstNonEmpty([props['city'], props['town'], props['village'], props['county']]);
+    final uf = ufCodeFromStateName('${props['state'] ?? ''}');
+    final cep = _digits('${props['postcode'] ?? ''}');
+    if (street.isEmpty && city.isEmpty) return null;
+    return ReversedAddress(
+      street: street,
+      number: number,
+      neighborhood: neighborhood,
+      city: city,
+      uf: uf,
+      cep: cep,
+      lat: lat,
+      lng: lng,
+    );
+  }
+
+  static String _firstNonEmpty(List<Object?> values) {
+    for (final v in values) {
+      final s = '${v ?? ''}'.trim();
+      if (s.isNotEmpty) return s;
+    }
+    return '';
   }
 
   // ------------------------------------------------------------------ escolha
@@ -205,6 +410,19 @@ class GeocodeCandidate {
 
 /// UF → nome do estado ("MG" → "Minas Gerais").
 String ufFullName(String uf) => _ufNames[uf.trim().toUpperCase()] ?? '';
+
+/// Nome do estado (ou sigla) → UF de 2 letras ("Minas Gerais" → "MG").
+String ufCodeFromStateName(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.length == 2 && _ufNames.containsKey(trimmed.toUpperCase())) {
+    return trimmed.toUpperCase();
+  }
+  final norm = normalizeTag(trimmed);
+  for (final entry in _ufNames.entries) {
+    if (normalizeTag(entry.value) == norm) return entry.key;
+  }
+  return '';
+}
 
 const Map<String, String> _ufNames = {
   'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas', 'BA': 'Bahia', 'CE': 'Ceará',

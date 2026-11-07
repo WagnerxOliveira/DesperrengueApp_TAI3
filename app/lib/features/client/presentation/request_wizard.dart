@@ -361,7 +361,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     }
   }
 
-  /// Abre o mapa interativo (OSM + GPS ao vivo) no endereço do serviço.
+  /// Abre o mapa interativo (OSM + GPS ao vivo + menor rota pelas ruas) no endereço do serviço.
   Future<void> _openMap() async {
     final line = _currentAddress;
     if (line.isEmpty) {
@@ -382,13 +382,33 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       latitude: lat,
       longitude: lng,
       pinConfirmed: _pinLat != null,
-      // Ajustar o ponto aqui vale para o pedido que está sendo criado.
+      // Ajustar o ponto aqui vale para o pedido que está sendo criado e atualiza o endereço automaticamente.
       onAdjustPin: (la, ln) async {
         if (!mounted) return;
         setState(() {
           _pinLat = la;
           _pinLng = ln;
         });
+      },
+      onAddressChanged: (addr) async {
+        if (!mounted) return;
+        final updated = AddressData(
+          cep: addr.cep.isNotEmpty ? addr.cep : (_override?.cep ?? ''),
+          street: addr.street,
+          number: addr.number,
+          neighborhood: addr.neighborhood,
+          city: addr.city,
+          uf: addr.uf,
+          reference: _reference,
+          latitude: addr.lat,
+          longitude: addr.lng,
+        );
+        setState(() {
+          _override = updated;
+          _pinLat = addr.lat;
+          _pinLng = addr.lng;
+        });
+        unawaited(saveProfileAddress(updated).then<void>((_) {}, onError: (_) {}));
       },
     );
   }
@@ -967,4 +987,3 @@ class _QuoteInfoCard extends StatelessWidget {
     );
   }
 }
-

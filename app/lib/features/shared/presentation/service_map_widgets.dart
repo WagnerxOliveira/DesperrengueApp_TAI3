@@ -14,15 +14,11 @@ import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/geo.dart';
 
-/// Camada de blocos 100 % gratuita: OpenStreetMap no claro e CARTO "Dark Matter" no escuro.
-/// (Ambos exigem a atribuição exibida em [MapAttribution].)
+/// Camada de blocos 100% gratuita e sem chave de API: OpenStreetMap Standard (mostra ruas,
+/// nomes de ruas, números, bairros e pontos de referência nitidamente no tema claro e escuro).
 Widget buildTileLayer(BuildContext context) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
   return TileLayer(
-    urlTemplate: dark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: dark ? const ['a', 'b', 'c', 'd'] : const [],
+    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     userAgentPackageName: 'br.com.desperrengue.app',
     maxNativeZoom: 19,
   );
@@ -33,15 +29,14 @@ class MapAttribution extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
     return Align(
       alignment: Alignment.bottomRight,
       child: Container(
         margin: const EdgeInsets.all(4),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(color: context.tk.card.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(6)),
+        decoration: BoxDecoration(color: context.tk.card.withValues(alpha: 0.88), borderRadius: BorderRadius.circular(6)),
         child: Text(
-          dark ? '© OpenStreetMap · © CARTO' : '© OpenStreetMap contributors',
+          '© OpenStreetMap contributors',
           style: TextStyle(fontSize: 10, color: context.tk.textMuted),
         ),
       ),
@@ -212,9 +207,9 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
                         PolylineLayer(polylines: [
                           Polyline(
                             points: [for (final e in _route!.points) LatLng(e.lat, e.lng)],
-                            strokeWidth: 5,
-                            color: tk.providerAccent,
-                            borderStrokeWidth: 1.5,
+                            strokeWidth: 5.5,
+                            color: const Color(0xFF2563EB),
+                            borderStrokeWidth: 2,
                             borderColor: Colors.white,
                           ),
                         ]),
@@ -276,7 +271,7 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
                   Expanded(
                     child: Text(
                       _route != null
-                          ? '${formatMeters(_route!.distanceM)} · chegada em ${formatEta(_route!.eta)}'
+                          ? 'Menor caminho: ${formatMeters(_route!.distanceM)} · chegada em ${formatEta(_route!.eta)}'
                           : straight != null
                               ? '${formatMeters(straight)} em linha reta'
                               : 'Aguardando o seu GPS…',
@@ -324,23 +319,38 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
 /// Como nos apps de entrega: o pino fica FIXO no centro da tela e o cliente ARRASTA o mapa até a
 /// porta da casa (mais preciso e fácil que tocar com o dedo). Também aceita um toque no mapa e o
 /// botão "Usar minha localização" (GPS) para quem está em casa.
+/// Ao mover o pino, faz geocodificação reversa automática para atualizar rua, número e bairro.
 class LocationPickerSheet extends StatefulWidget {
-  const LocationPickerSheet({super.key, required this.initial, required this.onConfirm, this.addressLine, this.tileLayer});
+  const LocationPickerSheet({
+    super.key,
+    required this.initial,
+    required this.onConfirm,
+    this.onAddressResolved,
+    this.addressLine,
+    this.tileLayer,
+    this.reverseGeocoder,
+  });
 
   final JobDestination? initial;
   final Future<void> Function(double lat, double lng) onConfirm;
+  final FutureOr<void> Function(ReversedAddress address)? onAddressResolved;
 
-  /// Endereço que o cliente informou (mostrado no topo para ele conferir).
+  /// Endereço que o cliente informou (mostrado no topo e atualizado ao arrastar o pino).
   final String? addressLine;
 
   /// Injetável nos testes (padrão: [buildTileLayer]).
   final Widget? tileLayer;
 
+  /// Injetável nos testes (padrão: [PreciseGeocoder.reverseGeocode]).
+  final Future<ReversedAddress?> Function(double lat, double lng, {String? fallbackLine})? reverseGeocoder;
+
   static Future<bool?> show(
     BuildContext context, {
     required JobDestination? initial,
     required Future<void> Function(double lat, double lng) onConfirm,
+    FutureOr<void> Function(ReversedAddress address)? onAddressResolved,
     String? addressLine,
+    Future<ReversedAddress?> Function(double lat, double lng, {String? fallbackLine})? reverseGeocoder,
   }) =>
       showModalBottomSheet<bool>(
         context: context,
@@ -349,7 +359,13 @@ class LocationPickerSheet extends StatefulWidget {
         showDragHandle: true,
         builder: (_) => FractionallySizedBox(
           heightFactor: 0.92,
-          child: LocationPickerSheet(initial: initial, onConfirm: onConfirm, addressLine: addressLine),
+          child: LocationPickerSheet(
+            initial: initial,
+            onConfirm: onConfirm,
+            onAddressResolved: onAddressResolved,
+            addressLine: addressLine,
+            reverseGeocoder: reverseGeocoder,
+          ),
         ),
       );
 
@@ -360,13 +376,21 @@ class LocationPickerSheet extends StatefulWidget {
 class _LocationPickerSheetState extends State<LocationPickerSheet> {
   final _map = MapController();
   LatLng? _pin;
+  late String _currentAddressLine = widget.addressLine ?? '';
+  ReversedAddress? _resolvedAddress;
+  Timer? _reverseTimer;
+  int _reverseSeq = 0;
+  bool _reversing = false;
+  bool _pinMoved = false;
   bool _busy = false;
   bool _locating = false;
 
-  // Centro do Brasil como último recurso; normalmente há um destino aproximado ou o GPS.
+  // Centro de Poços de Caldas como último recurso; normalmente há um destino aproximado ou o GPS.
   static const _fallback = LatLng(-21.7900318, -46.5647928);
 
   LatLng get _start => widget.initial == null ? _fallback : LatLng(widget.initial!.lat, widget.initial!.lng);
+
+  bool get _canReverseInEnv => widget.tileLayer == null || widget.reverseGeocoder != null;
 
   @override
   void initState() {
@@ -389,8 +413,48 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
     } catch (_) {}
   }
 
+  void _scheduleReverseGeocode(LatLng target) {
+    _pinMoved = true;
+    if (!_canReverseInEnv) return;
+    _reverseTimer?.cancel();
+    _reverseTimer = Timer(const Duration(milliseconds: 350), () {
+      _runReverseGeocode(target);
+    });
+  }
+
+  Future<ReversedAddress?> _runReverseGeocode(LatLng target) async {
+    if (!_canReverseInEnv) return null;
+    final seq = ++_reverseSeq;
+    if (mounted) setState(() => _reversing = true);
+    try {
+      final fn = widget.reverseGeocoder ??
+          (double la, double ln, {String? fallbackLine}) =>
+              PreciseGeocoder().reverseGeocode(la, ln, fallbackLine: fallbackLine);
+      final rev = await fn(
+        target.latitude,
+        target.longitude,
+        fallbackLine: _currentAddressLine.isNotEmpty ? _currentAddressLine : widget.addressLine,
+      );
+      if (!mounted || seq != _reverseSeq) return rev;
+      if (rev != null && rev.fullLine.trim().isNotEmpty) {
+        setState(() {
+          _resolvedAddress = rev;
+          _currentAddressLine = rev.fullLine;
+        });
+      }
+      return rev;
+    } catch (_) {
+      return null;
+    } finally {
+      if (mounted && seq == _reverseSeq) {
+        setState(() => _reversing = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
+    _reverseTimer?.cancel();
     _map.dispose();
     super.dispose();
   }
@@ -407,8 +471,12 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       final p = await Geolocator.getCurrentPosition();
       final ll = LatLng(p.latitude, p.longitude);
       if (!mounted) return;
-      setState(() => _pin = ll);
+      setState(() {
+        _pin = ll;
+        _pinMoved = true;
+      });
       _map.move(ll, 19);
+      await _runReverseGeocode(ll);
     } catch (_) {
       if (mounted) showSnack(context, 'Não foi possível obter a localização.', error: true);
     } finally {
@@ -419,9 +487,16 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
   Future<void> _confirm() async {
     final pin = _pin;
     if (pin == null || _busy) return;
+    _reverseTimer?.cancel();
     setState(() => _busy = true);
     try {
+      if (_pinMoved && _resolvedAddress == null && _canReverseInEnv) {
+        await _runReverseGeocode(pin);
+      }
       await widget.onConfirm(pin.latitude, pin.longitude);
+      if (_resolvedAddress != null && widget.onAddressResolved != null) {
+        await widget.onAddressResolved!(_resolvedAddress!);
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -443,13 +518,31 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
             children: [
               const Text('Confirme o local do serviço', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
               const SizedBox(height: 4),
-              if ((widget.addressLine ?? '').isNotEmpty)
+              if (_currentAddressLine.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(widget.addressLine!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  child: Row(
+                    children: [
+                      Icon(Icons.place_rounded, size: 18, color: tk.clientAccent),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _currentAddressLine,
+                          key: const ValueKey('picker-address-line'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      if (_reversing) ...[
+                        const SizedBox(width: 8),
+                        const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                      ],
+                    ],
+                  ),
                 ),
               Text(
-                'Arraste o mapa até deixar o pino em cima da sua casa. O profissional só consegue iniciar o serviço quando estiver a menos de 100 m deste ponto.',
+                'Arraste o mapa até deixar o pino em cima da sua casa. O endereço é atualizado automaticamente e o profissional só consegue iniciar o serviço a menos de 100 m deste ponto.',
                 style: TextStyle(color: tk.textMuted, fontSize: 13, height: 1.3),
               ),
             ],
@@ -468,13 +561,17 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                     initialZoom: widget.initial == null ? 13 : (widget.initial!.precision == DestinationPrecision.locality ? 15 : 18),
                     minZoom: 3,
                     maxZoom: 19,
-                    // Arrastar/zoom → o pino acompanha o CENTRO do mapa.
+                    // Arrastar/zoom → o pino acompanha o CENTRO do mapa e atualiza o endereço.
                     onPositionChanged: (camera, hasGesture) {
-                      if (hasGesture) setState(() => _pin = camera.center);
+                      if (hasGesture) {
+                        setState(() => _pin = camera.center);
+                        _scheduleReverseGeocode(camera.center);
+                      }
                     },
                     onTap: (_, ll) {
                       setState(() => _pin = ll);
                       _map.move(ll, _map.camera.zoom);
+                      _scheduleReverseGeocode(ll);
                     },
                   ),
                   children: [

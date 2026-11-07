@@ -1,6 +1,7 @@
 import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/models/address_data.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_version_and_update_service.dart';
@@ -114,6 +115,24 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
       summary: widget.profile.addressCity,
       latitude: widget.profile.latitude,
       longitude: widget.profile.longitude,
+      onAddressChanged: (addr) async {
+        final updated = AddressData(
+          cep: addr.cep,
+          street: addr.street,
+          number: addr.number,
+          neighborhood: addr.neighborhood,
+          city: addr.city,
+          uf: addr.uf,
+          latitude: addr.lat,
+          longitude: addr.lng,
+        );
+        try {
+          await saveProfileAddress(updated);
+        } catch (_) {}
+      },
+      onAdjustPin: (lat, lng) async {
+        // Quando o cliente ajusta apenas o pino, saveProfileAddress já é disparado por onAddressChanged.
+      },
     );
   }
 

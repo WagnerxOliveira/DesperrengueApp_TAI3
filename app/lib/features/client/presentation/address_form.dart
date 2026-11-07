@@ -305,10 +305,46 @@ class _AddressFormState extends State<AddressForm> {
     }
     if (!mounted) return;
     setState(() => _locatingPin = false);
-    await (widget.pinPicker ?? LocationPickerSheet.show)(
+    if (widget.pinPicker != null) {
+      await widget.pinPicker!(
+        context,
+        initial: initial,
+        addressLine: _fullLine,
+        onConfirm: (lat, lng) async {
+          if (!mounted) return;
+          setState(() {
+            _lat = lat;
+            _lng = lng;
+            _pinConfirmed = true;
+            _gpsPin = false;
+          });
+          _emit();
+        },
+      );
+      return;
+    }
+    await LocationPickerSheet.show(
       context,
       initial: initial,
       addressLine: _fullLine,
+      onAddressResolved: (addr) {
+        if (!mounted) return;
+        _applying = true;
+        try {
+          if (addr.street.isNotEmpty) _street.text = addr.street;
+          if (addr.number.isNotEmpty) _number.text = addr.number;
+          if (addr.neighborhood.isNotEmpty) _neighborhood.text = addr.neighborhood;
+          if (addr.city.isNotEmpty) _city.text = addr.city;
+          if (addr.uf.isNotEmpty) _uf.text = addr.uf;
+          if (addr.cep.length == 8) {
+            _lastCep = addr.cep;
+            _cep.text = addr.cep;
+          }
+        } finally {
+          _applying = false;
+        }
+        _emit();
+      },
       onConfirm: (lat, lng) async {
         if (!mounted) return;
         setState(() {
