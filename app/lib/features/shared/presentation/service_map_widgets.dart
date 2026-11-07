@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_tokens.dart';
@@ -287,7 +288,15 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
                     child: OutlinedButton.icon(
                       onPressed: () => _openExternal(
                         context,
-                        Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${dest.lat},${dest.lng}&travelmode=driving'),
+                        Uri.parse(
+                          AccurateGeoRoutingService.buildGoogleMapsNavigationUrl(
+                            originLat: p?.lat,
+                            originLng: p?.lng,
+                            fullFormattedAddress: widget.addressLabel,
+                            destLat: dest.lat,
+                            destLng: dest.lng,
+                          ),
+                        ),
                       ),
                       icon: const Icon(Icons.navigation_rounded, size: 18),
                       label: const Text('Google Maps'),

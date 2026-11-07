@@ -37,8 +37,8 @@ class AppVersionAndUpdateService {
 
   final UpdateService? updateService;
 
-  static const String currentVersion = 'v2.6.0';
-  static const String currentBuild = 'Build 2026.11.07.2';
+  static const String currentVersion = 'v2.7.0';
+  static const String currentBuild = 'Build 2026.11.07.3';
   static const String fullVersionBadge = '$currentVersion • $currentBuild';
 
   static const String prefAcknowledgedVersionKey = 'dsp_acknowledged_version_badge';

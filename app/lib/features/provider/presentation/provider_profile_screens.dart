@@ -17,6 +17,7 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/review_widgets.dart';
 import 'dossie_servico_profissional_screen.dart';
+import 'provider_portfolio_widgets.dart';
 import '../../../core/ui/app_tokens.dart';
 
 /// Editar Perfil (protótipo P02): foto, título, bio, especialidades, preços.
@@ -324,10 +325,20 @@ class PortfolioScreen extends StatefulWidget {
 
 class _PortfolioScreenState extends State<PortfolioScreen> {
   final _providers = ProviderService();
-  late Future<List<PortfolioItem>> _future = _providers.portfolio(_providers.uid);
+  late Future<List<PortfolioItem>> _future = _loadSafe();
   bool _uploading = false;
 
-  void _reload() => setState(() { _future = _providers.portfolio(_providers.uid); });
+  Future<List<PortfolioItem>> _loadSafe() async {
+    try {
+      return await _providers.portfolio(_providers.uid);
+    } catch (_) {
+      return const <PortfolioItem>[];
+    }
+  }
+
+  void _reload() => setState(() {
+        _future = _loadSafe();
+      });
 
   Future<void> _add() async {
     final img = await pickImage(context);
@@ -362,7 +373,6 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       body: FutureBuilder<List<PortfolioItem>>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
           final items = snap.data ?? const [];
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
@@ -371,8 +381,15 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                 const StepperBar(total: 3, current: 2),
                 const SizedBox(height: 16),
               ],
-              Text('Mostre a qualidade do seu trabalho para atrair mais clientes.', style: TextStyle(color: context.tk.textMuted, fontSize: 15, height: 1.4)),
-              const SizedBox(height: 16),
+              const ProviderSmartPortfolioSection(isOwner: true),
+              const SizedBox(height: 22),
+              const Text(
+                'Galeria de Fotos Complementares',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              ),
+              const SizedBox(height: 4),
+              Text('Mostre a qualidade do seu trabalho para atrair mais clientes.', style: TextStyle(color: context.tk.textMuted, fontSize: 14, height: 1.4)),
+              const SizedBox(height: 12),
               GridView.count(
                 crossAxisCount: 2,
                 shrinkWrap: true,

@@ -771,7 +771,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         ),
         AppCard(
           key: const ValueKey('location-card'),
-          onTap: hasAddress ? _openMap : null,
+          onTap: (hasAddress && widget.mapOpener != null) ? _openMap : null,
           child: Row(
             children: [
               CircleAvatar(
@@ -790,14 +790,20 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                     if (hasAddress) ...[
                       const SizedBox(height: 4),
                       Text(
-                        'Toque para ver no mapa em tempo real',
-                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: context.tk.clientAccent),
+                        widget.mapOpener != null
+                            ? 'Toque para ver no mapa em tempo real'
+                            : 'Endereço registrado para o atendimento',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: widget.mapOpener != null ? FontWeight.w700 : FontWeight.w500,
+                          color: widget.mapOpener != null ? context.tk.clientAccent : context.tk.textMuted,
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (hasAddress) ...[
+              if (hasAddress && widget.mapOpener != null) ...[
                 const SizedBox(width: 8),
                 Icon(Icons.map_rounded, color: context.tk.clientAccent),
               ],

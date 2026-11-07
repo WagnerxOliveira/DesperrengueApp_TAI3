@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/achievements.dart';
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/social_service.dart';
@@ -25,6 +26,7 @@ import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
 import '../../../core/state/anti_bypass_fintech_controller.dart';
+import '../../../core/state/provider_portfolio_controller.dart';
 import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 
@@ -154,9 +156,16 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () {
+                ProviderPrivacyAddressCard(
+                  view: AccurateGeoRoutingService.resolveProviderAddressView(
+                    fullAddressLine: _address ?? job.addressSummary,
+                    addressSummary: job.addressSummary,
+                    scheduledDate: job.scheduledFor,
+                    status: job.status,
+                    isEmergency: true,
+                  ),
+                  reference: _reference,
+                  onOpenMapRoute: () {
                     final line = _address ?? job.addressSummary ?? '';
                     if (line.isEmpty) return;
                     LiveLocationMapSheet.show(
@@ -165,40 +174,6 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                       summary: job.addressSummary,
                     );
                   },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(12)),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.place_outlined, color: context.tk.providerAccent),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_address ?? job.addressSummary ?? 'Carregando endereço...', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3)),
-                              if (_reference != null && _reference!.isNotEmpty)
-                                Padding(padding: const EdgeInsets.only(top: 4), child: Text('Ref: $_reference', style: TextStyle(color: context.tk.textMuted, fontSize: 13))),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Icon(Icons.map_outlined, size: 15, color: context.tk.providerAccent),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    'Toque para ver no mapa',
-                                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: context.tk.providerAccent),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.chevron_right_rounded, color: context.tk.textMuted),
-                      ],
-                    ),
-                  ),
                 ),
                 if (job.scheduledFor != null) ...[
                   const SizedBox(height: 10),
@@ -631,6 +606,13 @@ class _ReleasePaymentScreenState extends State<ReleasePaymentScreen> {
     setState(() => _busy = true);
     try {
       await _jobs.completeWithPin(widget.job.id, _pin);
+      // Registra imediatamente a conclusão via PIN do cliente no Meu Portfólio (#1)
+      // e no Histórico Permanente de Serviços Prestados.
+      ProviderPortfolioStore.instance.completeJobWithPin(
+        job: widget.job,
+        validatedClientPin: _pin,
+        clientDisplayName: _clientName,
+      );
       if (mounted) _backToJob(context);
     } catch (e) {
       if (mounted) {

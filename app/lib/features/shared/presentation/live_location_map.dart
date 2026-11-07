@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_tokens.dart';
@@ -154,7 +155,28 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
   void initState() {
     super.initState();
     if (widget.latitude != null && widget.longitude != null) {
-      _dest = LatLng(widget.latitude!, widget.longitude!);
+      // Verifica se as coordenadas passadas condizem 100% com o endereço textual:
+      // se forem divergentes (ex.: centro da cidade ou pino de outra rua) e o pino não tiver
+      // sido confirmado manualmente, corrige imediatamente pelo motor determinístico.
+      final consistent = AccurateGeoRoutingService.areCoordinatesConsistentWithAddress(
+        _addressLine,
+        widget.latitude,
+        widget.longitude,
+      );
+      if (!consistent && !widget.pinConfirmed && widget.resolver == null) {
+        final exactHit = AccurateGeoRoutingService.resolveFromLocalDictionary(
+          _addressLine,
+          summary: _summary,
+        );
+        if (exactHit != null) {
+          _dest = LatLng(exactHit.lat, exactHit.lng);
+          _precision = exactHit.precision;
+        } else {
+          _dest = LatLng(widget.latitude!, widget.longitude!);
+        }
+      } else {
+        _dest = LatLng(widget.latitude!, widget.longitude!);
+      }
       // Em produção, se o pino ainda não foi confirmado manualmente, geocodifica o endereço
       // para garantir que o mapa centralize exatamente na rua/número do endereço clicado.
       if (!widget.pinConfirmed && widget.tileLayer == null) {
@@ -169,7 +191,8 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
   Future<void> _resolveDestination({bool keepExistingOnNull = false}) async {
     setState(() => _resolving = true);
     try {
-      final resolver = widget.resolver ?? ((line, summary) => PreciseGeocoder().geocode(line, summary: summary));
+      final resolver = widget.resolver ??
+          ((line, summary) => AccurateGeoRoutingService().resolveExactAddress(line, summary: summary));
       final hit = await resolver(_addressLine, _summary);
       if (!mounted) return;
       setState(() {
@@ -586,12 +609,21 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                   ),
                   if (dest != null && widget.tileLayer == null) ...[
                     TextButton.icon(
+                      key: const ValueKey('live-map-open-google-maps'),
                       style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       ),
                       onPressed: () => _openExternalNav(
-                        Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${dest.latitude},${dest.longitude}&travelmode=driving'),
+                        Uri.parse(
+                          AccurateGeoRoutingService.buildGoogleMapsNavigationUrl(
+                            originLat: me?.lat,
+                            originLng: me?.lng,
+                            fullFormattedAddress: _addressLine,
+                            destLat: dest.latitude,
+                            destLng: dest.longitude,
+                          ),
+                        ),
                       ),
                       icon: const Icon(Icons.navigation_rounded, size: 15),
                       label: const Text('Maps', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),

@@ -680,7 +680,8 @@ void main() {
       expect(find.text('Bruno Instalações'), findsOneWidget);
       expect(find.text('Horário'), findsOneWidget);
       expect(find.text('Localização'), findsOneWidget);
-      expect(find.text('Toque para ver no mapa'), findsOneWidget);
+      expect(find.text('Endereço registrado para o atendimento'), findsOneWidget);
+      expect(find.text('Toque para ver no mapa'), findsNothing);
       expect(find.text('O que você pediu'), findsOneWidget);
       expect(find.text('Fotos do seu pedido'), findsOneWidget);
       expect(find.text('Acompanhar pedido e orçamentos'), findsOneWidget);

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/state/smart_triage_controller.dart';
 import '../../shared/presentation/live_location_map.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
@@ -116,13 +117,26 @@ class _UnavailableScreen extends StatelessWidget {
 }
 
 /// Cartão do cliente (nome curto antes da contratação, completo depois).
+/// Respeita a Trava Temporal de Privacidade: antes do dia do serviço exibe apenas
+/// o raio aproximado e a cidade, sem revelar rua/número ou abrir o mapa.
 class ClientCardTile extends StatelessWidget {
-  const ClientCardTile({super.key, required this.jobId, this.subtitle});
+  const ClientCardTile({
+    super.key,
+    required this.jobId,
+    this.subtitle,
+    this.scheduledFor,
+    this.status,
+    this.isEmergency = false,
+  });
 
   final String jobId;
   final String? subtitle;
+  final DateTime? scheduledFor;
+  final JobStatus? status;
+  final bool isEmergency;
 
-  Future<void> _openAddressOnMap(BuildContext context) async {
+  Future<void> _openAddressOnMap(BuildContext context, bool unlocked) async {
+    if (!unlocked) return;
     final sub = subtitle?.trim() ?? '';
     if (sub.isEmpty) return;
     String line = sub;
@@ -141,6 +155,13 @@ class ClientCardTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
+      fullAddressLine: subtitle,
+      addressSummary: subtitle,
+      scheduledDate: scheduledFor,
+      status: status,
+      isEmergency: isEmergency,
+    );
     final hasAddress = (subtitle ?? '').trim().isNotEmpty;
     return FutureBuilder<Map<String, dynamic>?>(
       future: JobService().clientCard(jobId),
@@ -158,22 +179,32 @@ class ClientCardTile extends StatelessWidget {
                   if (hasAddress)
                     InkWell(
                       borderRadius: BorderRadius.circular(6),
-                      onTap: () => _openAddressOnMap(context),
+                      onTap: privacy.isUnlocked ? () => _openAddressOnMap(context, true) : null,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.place_outlined, size: 15, color: context.tk.providerAccent),
+                            Icon(
+                              privacy.isUnlocked ? Icons.place_outlined : Icons.radar_rounded,
+                              size: 15,
+                              color: privacy.isUnlocked ? context.tk.providerAccent : context.tk.warningInk,
+                            ),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                subtitle!,
-                                style: TextStyle(color: context.tk.providerAccent, fontSize: 13, fontWeight: FontWeight.w700),
+                                privacy.primaryTitle,
+                                style: TextStyle(
+                                  color: privacy.isUnlocked ? context.tk.providerAccent : context.tk.textMuted,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(Icons.map_outlined, size: 14, color: context.tk.providerAccent),
+                            if (privacy.isUnlocked) ...[
+                              const SizedBox(width: 4),
+                              Icon(Icons.map_outlined, size: 14, color: context.tk.providerAccent),
+                            ],
                           ],
                         ),
                       ),
@@ -332,30 +363,54 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClientCardTile(jobId: job.id, subtitle: job.addressSummary),
+                ClientCardTile(
+                  jobId: job.id,
+                  subtitle: job.addressSummary,
+                  scheduledFor: job.scheduledFor,
+                  status: job.status,
+                  isEmergency: job.isEmergency,
+                ),
                 const SizedBox(height: 10),
                 Text(job.description, style: const TextStyle(height: 1.45)),
               ],
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              StatusChip(job.category, color: context.tk.providerAccent),
-              if (job.scheduledFor != null) StatusChip(dateShort(job.scheduledFor!), color: context.tk.info, icon: Icons.calendar_month_rounded),
-              if (job.addressSummary != null)
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => LiveLocationMapSheet.show(
-                    context,
-                    addressLine: job.addressSummary!,
-                    summary: job.addressSummary,
+          Builder(
+            builder: (context) {
+              final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
+                fullAddressLine: job.addressSummary,
+                addressSummary: job.addressSummary,
+                scheduledDate: job.scheduledFor,
+                status: job.status,
+                isEmergency: job.isEmergency,
+              );
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ProviderPrivacyAddressCard(
+                    view: privacy,
+                    onOpenMapRoute: privacy.isUnlocked && job.addressSummary != null
+                        ? () => LiveLocationMapSheet.show(
+                              context,
+                              addressLine: job.addressSummary!,
+                              summary: job.addressSummary,
+                            )
+                        : null,
                   ),
-                  child: StatusChip(job.addressSummary!, color: context.tk.info, icon: Icons.place_rounded),
-                ),
-            ],
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      StatusChip(job.category, color: context.tk.providerAccent),
+                      if (job.scheduledFor != null)
+                        StatusChip(dateShort(job.scheduledFor!), color: context.tk.info, icon: Icons.calendar_month_rounded),
+                    ],
+                  ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 14),
           ValueListenableBuilder(
@@ -615,7 +670,17 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
             borderColor: context.tk.surface,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [ClientCardTile(jobId: job.id, subtitle: job.addressSummary), const SizedBox(height: 10), Text(job.description, style: const TextStyle(height: 1.45))],
+              children: [
+                ClientCardTile(
+                  jobId: job.id,
+                  subtitle: job.addressSummary,
+                  scheduledFor: job.scheduledFor,
+                  status: job.status,
+                  isEmergency: true,
+                ),
+                const SizedBox(height: 10),
+                Text(job.description, style: const TextStyle(height: 1.45)),
+              ],
             ),
           ),
           const SizedBox(height: 12),
