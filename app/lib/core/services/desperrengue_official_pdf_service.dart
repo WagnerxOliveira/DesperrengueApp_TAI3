@@ -96,16 +96,23 @@ class DesperrengueOfficialPdfService {
         ? SecurityAndLgpdGuard.maskPhone(ownerPhone)
         : '(**) *****-0000';
 
+    final safeAddress = passport.propertyAddress.trim().isNotEmpty
+        ? SecurityAndLgpdGuard.sanitizeInput(passport.propertyAddress)
+        : 'Endereco em fase de cadastramento pelo proprietario';
+
     final lines = <String>[
       'DESPERRENGUE - PASSAPORTE OFICIAL DE MANUTENCAO DO IMOVEL (PRONTUARIO DA CASA)',
       '========================================================================',
       'ID do Passaporte      : ${passport.passportId}',
-      'Endereco Auditado     : ${SecurityAndLgpdGuard.sanitizeInput(passport.propertyAddress)}',
+      'Identificacao         : ${SecurityAndLgpdGuard.sanitizeInput(passport.propertyNickname)} (${SecurityAndLgpdGuard.sanitizeInput(passport.propertyType)})',
+      'Finalidade Oficial    : ${SecurityAndLgpdGuard.sanitizeInput(passport.passportPurpose)}',
+      'Endereco do Imovel    : $safeAddress',
       'Proprietario/Titular  : $maskedOwner | CPF/CNPJ: $maskedCpf | Tel: $maskedPhone',
       'Atualizado em (UTC)   : ${passport.updatedAt.toUtc().toIso8601String()}',
       'Score de Vistoria     : ${passport.inspectionReadinessLabel}',
+      'Sistemas Verificados  : ${passport.inspectedSystems.isEmpty ? 'Nenhum sistema assinalado' : passport.inspectedSystems.join(', ')}',
       '------------------------------------------------------------------------',
-      'INDICADORES PATRIMONIAIS E DE CONSERVACAO',
+      'INDICADORES PATRIMONIAIS E DE CONSERVACAO (ABNT NBR 5674)',
       'Total Investido no Imovel   : ${brl(passport.totalInvestedAmount)}',
       '  - Mao de Obra Certificada : ${brl(passport.totalLaborInvested)}',
       '  - Pecas com Nota Fiscal   : ${brl(passport.totalMaterialsInvested)}',
@@ -121,7 +128,7 @@ class DesperrengueOfficialPdfService {
         '    Garantia ate: ${e.warrantyExpiresAt.toUtc().toIso8601String().substring(0, 10)} | Hash Forense: ${e.forensicHash}',
       ],
       '========================================================================',
-      'Valido para comprovacao de manutencao preventiva perante imobiliarias e seguradoras.',
+      'Valido para comprovacao de manutencao preventiva perante imobiliarias (Lei 8.245/91) e seguradoras.',
     ];
 
     return _buildStandardPdfDocument(

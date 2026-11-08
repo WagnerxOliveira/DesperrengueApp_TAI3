@@ -1225,6 +1225,10 @@ class PropertyMaintenanceEntry {
 }
 
 /// Passaporte de Manutenção do Imóvel — "Prontuário da Casa" para vistoria de imobiliária/seguradora.
+///
+/// Complexidade Algorítmica:
+/// - Agregação financeira (`totalLaborInvested`, `totalMaterialsInvested`, `totalInvestedAmount`): $O(N)$ sobre `entries`.
+/// - Cálculo de prontidão ABNT NBR 5674 (`inspectionReadinessScore`): $O(N)$ no pior caso e $O(1)$ no melhor caso (quando vazio).
 @immutable
 class PropertyMaintenancePassport {
   const PropertyMaintenancePassport({
@@ -1233,6 +1237,11 @@ class PropertyMaintenancePassport {
     required this.ownerName,
     required this.updatedAt,
     required this.entries,
+    this.propertyNickname = '',
+    this.propertyType = 'Casa Residencial',
+    this.passportPurpose = 'Vistoria de Imobiliária / Entrega de Chaves',
+    this.inspectedSystems = const <String>[],
+    this.isConfiguredByClient = false,
   });
 
   final String passportId;
@@ -1240,6 +1249,11 @@ class PropertyMaintenancePassport {
   final String ownerName;
   final DateTime updatedAt;
   final List<PropertyMaintenanceEntry> entries;
+  final String propertyNickname;
+  final String propertyType;
+  final String passportPurpose;
+  final List<String> inspectedSystems;
+  final bool isConfiguredByClient;
 
   String get maskedOwnerName => SecurityAndLgpdGuard.maskClientName(ownerName);
 
@@ -1257,24 +1271,29 @@ class PropertyMaintenancePassport {
 
   int get activeWarrantiesCount => entries.where((e) => e.isWarrantyActive).length;
 
-  /// Score de prontidão para vistoria de imobiliária/seguradora (0 a 100).
+  /// Score de prontidão para vistoria de imobiliária/seguradora (0 a 100) segundo ABNT NBR 5674.
+  /// Sem dados falsos: inicia em 0/100 até que o cliente configure o imóvel ou registre serviços reais.
   int get inspectionReadinessScore {
-    if (entries.isEmpty) return 45;
-    final base = 65;
-    final perEntry = (entries.length * 10).clamp(0, 25);
+    if (entries.isEmpty && !isConfiguredByClient) return 0;
+    final configBase = (isConfiguredByClient || propertyAddress.trim().isNotEmpty) ? 35 : 20;
+    final systemsBonus = (inspectedSystems.length * 5).clamp(0, 25);
+    final entriesBonus = (entries.length * 15).clamp(0, 30);
     final warrantyBonus = activeWarrantiesCount > 0 ? 10 : 0;
-    return (base + perEntry + warrantyBonus).clamp(0, 100);
+    return (configBase + systemsBonus + entriesBonus + warrantyBonus).clamp(0, 100);
   }
 
   String get inspectionReadinessLabel {
     final s = inspectionReadinessScore;
-    if (s >= 90) {
+    if (s == 0) {
+      return 'Não iniciado (0/100) — Configure seu imóvel e registre manutenções reais';
+    }
+    if (s >= 85) {
       return 'Excelente ($s/100) — Imóvel Auditado (Apto para Vistoria/Seguradora)';
     }
-    if (s >= 75) {
+    if (s >= 60) {
       return 'Muito Bom ($s/100) — Manutenção Preventiva Comprovada';
     }
-    return 'Inicial ($s/100) — Registre serviços pelo app para elevar o score';
+    return 'Em estruturação ($s/100) — Registre manutenções reais para elevar o score';
   }
 
   PropertyMaintenancePassport copyWith({
@@ -1283,6 +1302,11 @@ class PropertyMaintenancePassport {
     String? ownerName,
     DateTime? updatedAt,
     List<PropertyMaintenanceEntry>? entries,
+    String? propertyNickname,
+    String? propertyType,
+    String? passportPurpose,
+    List<String>? inspectedSystems,
+    bool? isConfiguredByClient,
   }) {
     return PropertyMaintenancePassport(
       passportId: passportId ?? this.passportId,
@@ -1290,6 +1314,11 @@ class PropertyMaintenancePassport {
       ownerName: ownerName ?? this.ownerName,
       updatedAt: updatedAt ?? this.updatedAt,
       entries: entries ?? this.entries,
+      propertyNickname: propertyNickname ?? this.propertyNickname,
+      propertyType: propertyType ?? this.propertyType,
+      passportPurpose: passportPurpose ?? this.passportPurpose,
+      inspectedSystems: inspectedSystems ?? this.inspectedSystems,
+      isConfiguredByClient: isConfiguredByClient ?? this.isConfiguredByClient,
     );
   }
 
@@ -1299,6 +1328,11 @@ class PropertyMaintenancePassport {
         'ownerName': ownerName,
         'updatedAt': updatedAt.toUtc().toIso8601String(),
         'entries': entries.map((x) => x.toMap()).toList(),
+        'propertyNickname': propertyNickname,
+        'propertyType': propertyType,
+        'passportPurpose': passportPurpose,
+        'inspectedSystems': inspectedSystems,
+        'isConfiguredByClient': isConfiguredByClient,
       };
 
   factory PropertyMaintenancePassport.fromMap(Map<String, dynamic> map) {
@@ -1312,6 +1346,14 @@ class PropertyMaintenancePassport {
           .whereType<Map<String, dynamic>>()
           .map(PropertyMaintenanceEntry.fromMap)
           .toList(),
+      propertyNickname: (map['propertyNickname'] as String?) ?? '',
+      propertyType: (map['propertyType'] as String?) ?? 'Casa Residencial',
+      passportPurpose:
+          (map['passportPurpose'] as String?) ?? 'Vistoria de Imobiliária / Entrega de Chaves',
+      inspectedSystems: ((map['inspectedSystems'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      isConfiguredByClient: (map['isConfiguredByClient'] as bool?) ?? false,
     );
   }
 
@@ -1328,6 +1370,11 @@ class PropertyMaintenancePassport {
           other.propertyAddress == propertyAddress &&
           other.ownerName == ownerName &&
           other.updatedAt.millisecondsSinceEpoch == updatedAt.millisecondsSinceEpoch &&
+          other.propertyNickname == propertyNickname &&
+          other.propertyType == propertyType &&
+          other.passportPurpose == passportPurpose &&
+          other.isConfiguredByClient == isConfiguredByClient &&
+          listEquals(other.inspectedSystems, inspectedSystems) &&
           listEquals(other.entries, entries);
 
   @override
@@ -1336,6 +1383,11 @@ class PropertyMaintenancePassport {
         propertyAddress,
         ownerName,
         updatedAt.millisecondsSinceEpoch,
+        propertyNickname,
+        propertyType,
+        passportPurpose,
+        isConfiguredByClient,
+        Object.hashAll(inspectedSystems),
         Object.hashAll(entries),
       );
 }

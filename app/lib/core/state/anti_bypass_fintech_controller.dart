@@ -255,6 +255,72 @@ class AntiBypassFintechController extends Notifier<AntiBypassFintechGlobalState>
     return cert;
   }
 
+  /// Configura os metadados oficiais do Imóvel no Passaporte (Padrão ABNT NBR 5674) pelo cliente.
+  PropertyMaintenancePassport configurePropertyPassport({
+    required String ownerName,
+    required String propertyNickname,
+    required String propertyAddress,
+    required String propertyType,
+    required String passportPurpose,
+    required List<String> inspectedSystems,
+  }) {
+    final updated = FintechLedgerStore.instance.configurePropertyPassport(
+      ownerName: ownerName,
+      propertyNickname: propertyNickname,
+      propertyAddress: propertyAddress,
+      propertyType: propertyType,
+      passportPurpose: passportPurpose,
+      inspectedSystems: inspectedSystems,
+    );
+    state = FintechLedgerStore.instance.state;
+    return updated;
+  }
+
+  /// Registra uma manutenção real informada/homologada pelo próprio usuário cliente no Passaporte do Imóvel.
+  PropertyMaintenanceEntry registerClientMaintenanceEntry({
+    required String serviceCategoryName,
+    required String serviceTitle,
+    required String providerName,
+    required double laborAmount,
+    required double materialAmount,
+    int warrantyDurationDays = 90,
+    String? propertyAddress,
+    String? ownerName,
+  }) {
+    final entry = FintechLedgerStore.instance.registerClientMaintenanceEntry(
+      serviceCategoryName: serviceCategoryName,
+      serviceTitle: serviceTitle,
+      providerName: providerName,
+      laborAmount: laborAmount,
+      materialAmount: materialAmount,
+      warrantyDurationDays: warrantyDurationDays,
+      propertyAddress: propertyAddress,
+      ownerName: ownerName,
+    );
+    state = FintechLedgerStore.instance.state;
+    return entry;
+  }
+
+  /// Remove um registro manual inserido pelo cliente no Passaporte do Imóvel.
+  PropertyMaintenancePassport removeClientMaintenanceEntry(String entryId) {
+    final updated = FintechLedgerStore.instance.removeClientMaintenanceEntry(entryId);
+    state = FintechLedgerStore.instance.state;
+    return updated;
+  }
+
+  /// Sincroniza automaticamente o nome e o endereço real do perfil do cliente caso ainda não tenham sido configurados.
+  PropertyMaintenancePassport syncPassportOwnerAndAddress({
+    String? ownerName,
+    String? propertyAddress,
+  }) {
+    final updated = FintechLedgerStore.instance.syncPassportOwnerAndAddress(
+      ownerName: ownerName,
+      propertyAddress: propertyAddress,
+    );
+    state = FintechLedgerStore.instance.state;
+    return updated;
+  }
+
   /// Aciona ou escala uma das 3 Camadas da Garantia Desperrengue.
   WarrantyClaimTicket triggerWarrantyLayer({
     required String orderId,
@@ -296,57 +362,20 @@ class FintechLedgerStore extends ValueNotifier<AntiBypassFintechGlobalState> {
 
   static AntiBypassFintechGlobalState _createInitialSeedState() {
     final now = DateTime.now().toUtc();
-    final seedEntries = <PropertyMaintenanceEntry>[
-      PropertyMaintenanceEntry(
-        id: 'pm-seed-1',
-        orderId: 'ORD-2026-104',
-        certificateCode: 'DSP-GAR-2026-104A',
-        serviceCategoryName: 'Elétrica',
-        serviceTitle: 'Substituição de Disjuntor DR 40A e Reaperto do QDC',
-        providerName: 'Roberto Almeida (Eletricista NR-10)',
-        completedAt: now.subtract(const Duration(days: 22)),
-        warrantyExpiresAt: now.add(const Duration(days: 68)),
-        laborAmount: 160.00,
-        materialAmount: 115.00,
-        forensicHash: SecurityAndLgpdGuard.generateForensicHash(
-          orderId: 'ORD-2026-104',
-          stage: 'completed_certificate',
-          timestampIso8601: '2026-10-15T14:30:00.000Z',
-          latitude: -18.9186,
-          longitude: -48.2772,
-          amount: 275.00,
-        ),
-      ),
-      PropertyMaintenanceEntry(
-        id: 'pm-seed-2',
-        orderId: 'ORD-2026-089',
-        certificateCode: 'DSP-GAR-2026-089B',
-        serviceCategoryName: 'Hidráulica / Encanador',
-        serviceTitle: 'Troca de Reparo de Válvula Hydra e Vedação de Sifão',
-        providerName: 'Marcos Vinicius (Mestre Hidráulico)',
-        completedAt: now.subtract(const Duration(days: 45)),
-        warrantyExpiresAt: now.add(const Duration(days: 45)),
-        laborAmount: 140.00,
-        materialAmount: 85.00,
-        forensicHash: SecurityAndLgpdGuard.generateForensicHash(
-          orderId: 'ORD-2026-089',
-          stage: 'completed_certificate',
-          timestampIso8601: '2026-09-22T10:15:00.000Z',
-          latitude: -18.9186,
-          longitude: -48.2772,
-          amount: 225.00,
-        ),
-      ),
-    ];
 
     return AntiBypassFintechGlobalState(
       reserveFundBalance: 1480.00,
       propertyPassport: PropertyMaintenancePassport(
         passportId: 'PASS-IMOVEL-2026-BR01',
-        propertyAddress: 'Residência Principal — Imóvel Auditado Desperrengue',
-        ownerName: 'Wagner Oliveira',
+        propertyAddress: '',
+        ownerName: '',
+        propertyNickname: 'Residência Principal',
+        propertyType: 'Casa Residencial',
+        passportPurpose: 'Vistoria de Imobiliária / Entrega de Chaves',
+        inspectedSystems: const <String>[],
+        isConfiguredByClient: false,
         updatedAt: now,
-        entries: seedEntries,
+        entries: const <PropertyMaintenanceEntry>[],
       ),
     );
   }
@@ -766,5 +795,170 @@ class FintechLedgerStore extends ValueNotifier<AntiBypassFintechGlobalState> {
     );
     notifyListeners();
     return ticket;
+  }
+
+  /// Configura os metadados oficiais do Imóvel no Passaporte (Padrão ABNT NBR 5674) pelo cliente.
+  PropertyMaintenancePassport configurePropertyPassport({
+    required String ownerName,
+    required String propertyNickname,
+    required String propertyAddress,
+    required String propertyType,
+    required String passportPurpose,
+    required List<String> inspectedSystems,
+  }) {
+    final now = DateTime.now().toUtc();
+    final safeOwner = SecurityAndLgpdGuard.sanitizeInput(ownerName);
+    final safeNickname = SecurityAndLgpdGuard.sanitizeInput(propertyNickname);
+    final safeAddress = SecurityAndLgpdGuard.sanitizeInput(propertyAddress);
+    final safeType = SecurityAndLgpdGuard.sanitizeInput(propertyType);
+    final safePurpose = SecurityAndLgpdGuard.sanitizeInput(passportPurpose);
+    final safeSystems = inspectedSystems
+        .map(SecurityAndLgpdGuard.sanitizeInput)
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+
+    final updatedPassport = _state.propertyPassport.copyWith(
+      ownerName: safeOwner.isNotEmpty ? safeOwner : _state.propertyPassport.ownerName,
+      propertyNickname: safeNickname.isNotEmpty ? safeNickname : 'Residência Principal',
+      propertyAddress: safeAddress,
+      propertyType: safeType.isNotEmpty ? safeType : 'Casa Residencial',
+      passportPurpose: safePurpose.isNotEmpty
+          ? safePurpose
+          : 'Vistoria de Imobiliária / Entrega de Chaves',
+      inspectedSystems: safeSystems,
+      isConfiguredByClient: true,
+      updatedAt: now,
+    );
+
+    _state = _state.copyWith(propertyPassport: updatedPassport);
+    notifyListeners();
+    return updatedPassport;
+  }
+
+  /// Registra uma manutenção real informada/homologada pelo próprio usuário cliente no Passaporte do Imóvel.
+  PropertyMaintenanceEntry registerClientMaintenanceEntry({
+    required String serviceCategoryName,
+    required String serviceTitle,
+    required String providerName,
+    required double laborAmount,
+    required double materialAmount,
+    int warrantyDurationDays = 90,
+    String? propertyAddress,
+    String? ownerName,
+  }) {
+    final now = DateTime.now().toUtc();
+    final safeCategory = SecurityAndLgpdGuard.sanitizeInput(serviceCategoryName);
+    final safeTitle = SecurityAndLgpdGuard.sanitizeInput(serviceTitle);
+    final safeProvider = SecurityAndLgpdGuard.sanitizeInput(providerName);
+    final safeLabor = SecurityAndLgpdGuard.validateAmount(
+      laborAmount < 0 ? 0.0 : laborAmount,
+      fieldName: 'laborAmount',
+    );
+    final safeMaterial = SecurityAndLgpdGuard.validateAmount(
+      materialAmount < 0 ? 0.0 : materialAmount,
+      fieldName: 'materialAmount',
+    );
+    final safeDays = warrantyDurationDays.clamp(30, 1825);
+    final seq = _state.propertyPassport.entries.length + 1;
+    final seqTag = seq.toString().padLeft(3, '0');
+    final orderId = 'PASS-REG-${now.year}-$seqTag';
+    final certCode = 'DSP-PASS-${now.year}-$seqTag';
+    final total = SecurityAndLgpdGuard.roundCurrency(safeLabor + safeMaterial);
+
+    final hash = SecurityAndLgpdGuard.generateForensicHash(
+      orderId: orderId,
+      stage: 'client_verified_passport_entry',
+      timestampIso8601: now.toIso8601String(),
+      latitude: 0.0,
+      longitude: 0.0,
+      amount: total,
+    );
+
+    final entry = PropertyMaintenanceEntry(
+      id: 'pm-client-${now.microsecondsSinceEpoch}-$seq',
+      orderId: orderId,
+      certificateCode: certCode,
+      serviceCategoryName: safeCategory.isNotEmpty ? safeCategory : 'Manutenção Predial',
+      serviceTitle: safeTitle.isNotEmpty ? safeTitle : 'Serviço Registrado pelo Cliente',
+      providerName: safeProvider.isNotEmpty ? safeProvider : 'Profissional Homologado pelo Cliente',
+      completedAt: now,
+      warrantyExpiresAt: now.add(Duration(days: safeDays)),
+      laborAmount: safeLabor,
+      materialAmount: safeMaterial,
+      forensicHash: hash,
+    );
+
+    final safeAddress = propertyAddress != null
+        ? SecurityAndLgpdGuard.sanitizeInput(propertyAddress)
+        : '';
+    final safeOwner = ownerName != null
+        ? SecurityAndLgpdGuard.sanitizeInput(ownerName)
+        : '';
+
+    final updatedPassport = _state.propertyPassport.copyWith(
+      propertyAddress: safeAddress.isNotEmpty
+          ? safeAddress
+          : _state.propertyPassport.propertyAddress,
+      ownerName: safeOwner.isNotEmpty
+          ? safeOwner
+          : _state.propertyPassport.ownerName,
+      isConfiguredByClient: true,
+      updatedAt: now,
+      entries: <PropertyMaintenanceEntry>[
+        entry,
+        ..._state.propertyPassport.entries,
+      ],
+    );
+
+    _state = _state.copyWith(propertyPassport: updatedPassport);
+    notifyListeners();
+    return entry;
+  }
+
+  /// Remove um registro manual inserido pelo cliente no Passaporte do Imóvel.
+  PropertyMaintenancePassport removeClientMaintenanceEntry(String entryId) {
+    final now = DateTime.now().toUtc();
+    final filtered = _state.propertyPassport.entries
+        .where((e) => e.id != entryId)
+        .toList(growable: false);
+    final updatedPassport = _state.propertyPassport.copyWith(
+      entries: filtered,
+      updatedAt: now,
+    );
+    _state = _state.copyWith(propertyPassport: updatedPassport);
+    notifyListeners();
+    return updatedPassport;
+  }
+
+  /// Sincroniza automaticamente o nome e o endereço real do perfil do cliente caso ainda não tenham sido configurados.
+  PropertyMaintenancePassport syncPassportOwnerAndAddress({
+    String? ownerName,
+    String? propertyAddress,
+  }) {
+    final current = _state.propertyPassport;
+    final safeOwner = ownerName != null ? SecurityAndLgpdGuard.sanitizeInput(ownerName) : '';
+    final safeAddress = propertyAddress != null
+        ? SecurityAndLgpdGuard.sanitizeInput(propertyAddress)
+        : '';
+
+    final nextOwner = current.ownerName.trim().isEmpty && safeOwner.isNotEmpty
+        ? safeOwner
+        : current.ownerName;
+    final nextAddress = current.propertyAddress.trim().isEmpty && safeAddress.isNotEmpty
+        ? safeAddress
+        : current.propertyAddress;
+
+    if (nextOwner == current.ownerName && nextAddress == current.propertyAddress) {
+      return current;
+    }
+
+    final updatedPassport = current.copyWith(
+      ownerName: nextOwner,
+      propertyAddress: nextAddress,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    _state = _state.copyWith(propertyPassport: updatedPassport);
+    notifyListeners();
+    return updatedPassport;
   }
 }
