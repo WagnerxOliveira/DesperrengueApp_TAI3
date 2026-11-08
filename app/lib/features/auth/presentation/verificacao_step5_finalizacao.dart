@@ -65,7 +65,8 @@ class _VerificacaoStep5FinalizacaoScreenState
         final isDuplicate = await Isolate.run(() {
           final hFront = PerceptualHashGuard.compute64BitPerceptualHash(frontBytes);
           final hBack = PerceptualHashGuard.compute64BitPerceptualHash(backBytes);
-          return PerceptualHashGuard.isDuplicateEvidence(hFront, hBack);
+          return PerceptualHashGuard.isDuplicateDocumentFrontAndBack(frontBytes, backBytes) &&
+              PerceptualHashGuard.isDuplicateEvidence(hFront, hBack);
         });
         if (isDuplicate) {
           _mostrarErro(

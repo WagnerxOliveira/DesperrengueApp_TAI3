@@ -702,4 +702,273 @@ void main() {
       expect(certText.contains('DSP-LIVE-SHA256-99AABBCC'), isTrue);
     });
   });
+
+  group('HOTFIX AUDITORIA DE VÍDEO (00:00 A 02:30) — Liveness Real Anti-Monitor, ROI dHash/MAD, Face Match Multi-Ângulo e Card OCR Visível', () {
+    test('Hotfix 1 & 2 (Detector de Presença Humana Real no Oval — Anti-Monitor VS Code): '
+        'Rejeita foto de tela de computador/monitor e aprova rosto humano real centralizado', () async {
+      final monitorScreenBytes = DocumentOcrAndLivenessService.createSyntheticMonitorScreenBytes();
+      final humanSelfieBytes = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 7,
+      );
+
+      expect(
+        DocumentOcrAndLivenessService.hasRealHumanFaceInOval(monitorScreenBytes),
+        isFalse,
+        reason: 'Foto de monitor de computador com VS Code (00:39 do vídeo) jamais deve ser aprovada como rosto humano',
+      );
+
+      final monitorEval = DocumentOcrAndLivenessService.evaluateLiveOvalFrameInput(
+        imageBytes: monitorScreenBytes,
+      );
+      expect(monitorEval.hasRealHumanFace, isFalse);
+
+      await expectLater(
+        DocumentOcrAndLivenessService.verifyActiveLivenessInIsolate(
+          selfieBytes: monitorScreenBytes,
+          cpfDigits: '11978723610',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('ERR_NO_HUMAN_FACE_IN_OVAL'),
+          ),
+        ),
+      );
+
+      final humanEval = DocumentOcrAndLivenessService.evaluateLiveOvalFrameInput(
+        imageBytes: humanSelfieBytes,
+      );
+      expect(humanEval.hasRealHumanFace, isTrue);
+      expect(humanEval.isFaceCentered, isTrue);
+    });
+
+    test('Hotfix 3 & 4 (Recorte ROI da Moldura ISO ID-1 e Fim do Falso Positivo de Mesa — dHash + MAD): '
+        'Aprova Frente e Verso distintos fotografados sobre a mesma mesa e bloqueia mesma face duplicada', () {
+      final frontOnDesk = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 11,
+      );
+      final backOnDesk = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 29,
+      );
+
+      final croppedFront = DocumentOcrAndLivenessService.cropDocumentToGuidedFrameNamed(
+        fullCameraFrameBytes: frontOnDesk,
+        isVerticalOrientation: false,
+      );
+      final croppedBack = DocumentOcrAndLivenessService.cropDocumentToGuidedFrameNamed(
+        fullCameraFrameBytes: backOnDesk,
+        isVerticalOrientation: false,
+      );
+
+      final metricsDistinct = PerceptualHashGuard.evaluateDocumentFrontBackDistinction(
+        croppedFront,
+        croppedBack,
+      );
+      expect(
+        metricsDistinct.isDuplicate,
+        isFalse,
+        reason: 'Frente e Verso distintos jamais devem acusar falso positivo por causa da mesa ao redor',
+      );
+
+      final metricsSame = PerceptualHashGuard.evaluateDocumentFrontBackDistinction(
+        croppedFront,
+        croppedFront,
+      );
+      expect(
+        metricsSame.isDuplicate,
+        isTrue,
+        reason: 'Enviar a exata mesma face duas vezes deve continuar bloqueado',
+      );
+    });
+
+    test('Hotfix 5 (Face Match 1:1 Multi-Ângulo 0°/90°/180°/270° e Descritor Estritamente Não-Negativo): '
+        'Aprova CNH fotografada em pé (90° e 270°) com similaridade positiva (>= 78%) e jamais negativa', () {
+      final selfieBytes = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 7,
+      );
+      final cnhVertical90Bytes = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 11,
+        rotateDegrees: 90,
+      );
+      final cnhVertical270Bytes = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 11,
+        rotateDegrees: 270,
+      );
+
+      final selfieEmbedding = DocumentOcrAndLivenessService.extractNormalizedFaceEmbedding128(
+        selfieBytes,
+      );
+      // Todos os componentes do descritor devem ser estritamente não-negativos
+      expect(selfieEmbedding.every((v) => v >= 0.0), isTrue);
+
+      final match90 = DocumentOcrAndLivenessService.computeMultiAngleDocumentFaceMatch(
+        selfieEmbedding128: selfieEmbedding,
+        frontDocumentBytes: cnhVertical90Bytes,
+      );
+      final match270 = DocumentOcrAndLivenessService.computeMultiAngleDocumentFaceMatch(
+        selfieEmbedding128: selfieEmbedding,
+        frontDocumentBytes: cnhVertical270Bytes,
+      );
+
+      expect(
+        match90.similarity,
+        greaterThanOrEqualTo(0.78),
+        reason: 'CNH fotografada em pé (90°) deve ter Face Match >= 78% e nunca negativo (-56.8%)',
+      );
+      expect(match270.similarity, greaterThanOrEqualTo(0.78));
+    });
+
+    test('Hotfix 6 (Compatibilidade Nome Parcial × Nome Completo CNH + Pipeline Completo com CNH Vertical): '
+        '"Wagner Oliveira" × "WAGNER OLIVEIRA CLAUDIANO" retorna 100% (1.0) e aprova CPF 119.787.236-10', () async {
+      final nameCompat = DocumentOcrAndLivenessService.computeCivilNameCompatibility(
+        'Wagner Oliveira',
+        'WAGNER OLIVEIRA CLAUDIANO',
+      );
+      expect(nameCompat, equals(1.0));
+
+      final selfieBytes = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 7,
+      );
+      final liveness = await DocumentOcrAndLivenessService.verifyActiveLivenessInIsolate(
+        selfieBytes: selfieBytes,
+        cpfDigits: '11978723610',
+      );
+
+      final cnhFrontVertical90 = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 11,
+        rotateDegrees: 90,
+      );
+      final cnhBack = DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+        variantSeed: 29,
+      );
+
+      final ocr = await DocumentOcrAndLivenessService.analyzeDocumentForensicsAndOcrInIsolate(
+        frontImageBytes: cnhFrontVertical90,
+        backImageBytes: cnhBack,
+        documentType: OfficialDocumentType.cnh,
+        typedFullName: 'Wagner Oliveira',
+        typedCpfRaw: '119.787.236-10',
+        livenessFaceEmbedding128: liveness.faceEmbedding128,
+      );
+
+      expect(ocr.isAuthenticAndCrossChecked, isTrue);
+      expect(ocr.extractedFullName, 'WAGNER OLIVEIRA CLAUDIANO');
+      expect(ocr.extractedCpfFormatted, '119.787.236-10');
+      expect(ocr.nameCrossCheckSimilarity, equals(1.0));
+      expect(ocr.faceMatchCosineSimilarity, greaterThanOrEqualTo(0.78));
+    });
+
+    testWidgets('Fluxo UI Passo 3 e Passo 4: Bloqueia foto de monitor no Passo 3, aprova selfie humana e exibe Card OCR Visível no Passo 4', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final p = UserProfile.fromMap({
+        'id': 'u-wagner-hotfix',
+        'full_name': 'Wagner Oliveira',
+        'phone': '35998695206',
+        'is_client': true,
+      });
+
+      var simulateMonitorInSelfie = true;
+      AuditedDocumentOcrResult? submittedOcr;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.resolve(null, Brightness.dark),
+          home: ClientSetupScreen(
+            profile: p,
+            initialStep: 0,
+            customCameraCapture: ({required String slot}) async {
+              if (slot == 'selfie') {
+                if (simulateMonitorInSelfie) {
+                  return DocumentOcrAndLivenessService.createSyntheticMonitorScreenBytes();
+                }
+                return DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+                  variantSeed: 7,
+                );
+              }
+              if (slot == 'front') {
+                return DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+                  variantSeed: 11,
+                  rotateDegrees: 90,
+                );
+              }
+              return DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+                variantSeed: 29,
+              );
+            },
+            customSubmitter: ({
+              required cpfRaw,
+              required typedFullName,
+              required phone,
+              required addressLine,
+              required addressCity,
+              latitude,
+              longitude,
+              required livenessResult,
+              required ocrResult,
+            }) async {
+              submittedOcr = ocrResult;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Preenche CPF real do vídeo (119.787.236-10) no Passo 1
+      await tester.enterText(find.byKey(const ValueKey('client-setup-cpf')), '11978723610');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('client-setup-step0-continue')));
+      await tester.pumpAndSettle();
+
+      // Preenche endereço no Passo 2
+      final textFields = find.byType(TextField);
+      await tester.enterText(textFields.at(1), 'Rua Padre José Geraldi');
+      await tester.enterText(textFields.at(2), '203');
+      await tester.enterText(textFields.at(4), 'Centro');
+      await tester.enterText(textFields.at(5), 'Machado');
+      await tester.enterText(textFields.at(6), 'MG');
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('client-setup-step1-continue')));
+      await tester.pumpAndSettle();
+
+      // Passo 3: Tenta iniciar liveness apontando para monitor com VS Code -> BLOQUEADO!
+      final startLivenessBtn = find.byKey(const ValueKey('btn-start-liveness'));
+      await tester.ensureVisible(startLivenessBtn);
+      await tester.tap(startLivenessBtn);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('ERR_NO_HUMAN_FACE_IN_OVAL'), findsOneWidget);
+
+      // Agora posiciona rosto humano real na câmera frontal -> APROVADO!
+      simulateMonitorInSelfie = false;
+      await tester.ensureVisible(startLivenessBtn);
+      await tester.tap(startLivenessBtn);
+      await tester.pumpAndSettle();
+      expect(find.text('Prova de Vida Homologada!'), findsWidgets);
+
+      // Avança para o Passo 4 (Fotos do Documento)
+      await tester.tap(find.byKey(const ValueKey('client-setup-step2-continue')));
+      await tester.pumpAndSettle();
+
+      // Captura Frente (em pé 90°) e Verso
+      await tester.tap(find.byKey(const ValueKey('capture-doc-front')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('capture-doc-back')));
+      await tester.pumpAndSettle();
+
+      // Verifica que o Card "Dados Transcritos Automaticamente do Documento (OCR)" está visível na tela!
+      expect(find.byKey(const ValueKey('ocr-transcribed-card')), findsOneWidget);
+      expect(find.text('Dados Transcritos Automaticamente do Documento (OCR)'), findsOneWidget);
+      expect(find.text('WAGNER OLIVEIRA CLAUDIANO'), findsOneWidget);
+      expect(find.textContaining('119.787.236-10'), findsOneWidget);
+
+      // Conclui a validação no botão final
+      await tester.tap(find.byKey(const ValueKey('client-setup-step3-submit')));
+      await tester.pumpAndSettle();
+      expect(submittedOcr, isNotNull);
+      expect(submittedOcr!.extractedFullName, 'WAGNER OLIVEIRA CLAUDIANO');
+      expect(tester.takeException(), isNull);
+    });
+  });
 }
