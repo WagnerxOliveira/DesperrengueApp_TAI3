@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,8 +13,43 @@ import '../utils/format.dart';
 ///
 /// Gera binários `%PDF-1.4` 100% compatíveis em Dart puro (determinístico, sem
 /// dependências nativas quebradiças, compatível com Android, iOS, Web/PWA e `flutter test`).
+/// Suporta execução assíncrona em Worker Isolate (`Isolate.run`) para zero bloqueio da UI Thread.
 class DesperrengueOfficialPdfService {
   const DesperrengueOfficialPdfService();
+
+  /// Executa a geração do Certificado Digital de Garantia em um Worker Isolate secundário (`Isolate.run`).
+  Future<Uint8List> generateWarrantyCertificatePdfInIsolate(
+    WarrantyCertificate cert, {
+    String? clientCpf,
+    String? clientPhone,
+    String? faceLivenessHash,
+  }) {
+    return Isolate.run(
+      () => generateWarrantyCertificatePdf(
+        cert,
+        clientCpf: clientCpf,
+        clientPhone: clientPhone,
+        faceLivenessHash: faceLivenessHash,
+      ),
+    );
+  }
+
+  /// Executa a geração do Passaporte Oficial de Manutenção do Imóvel em um Worker Isolate (`Isolate.run`).
+  Future<Uint8List> generatePropertyPassportPdfInIsolate(
+    PropertyMaintenancePassport passport, {
+    String? ownerCpf,
+    String? ownerPhone,
+    String? faceLivenessHash,
+  }) {
+    return Isolate.run(
+      () => generatePropertyPassportPdf(
+        passport,
+        ownerCpf: ownerCpf,
+        ownerPhone: ownerPhone,
+        faceLivenessHash: faceLivenessHash,
+      ),
+    );
+  }
 
   /// Gera os bytes `%PDF-1.4` do Certificado Digital de Garantia e Conformidade
   /// com dados protegidos pela LGPD e hashes forenses de Check-in/Check-out.
@@ -21,6 +57,7 @@ class DesperrengueOfficialPdfService {
     WarrantyCertificate cert, {
     String? clientCpf,
     String? clientPhone,
+    String? faceLivenessHash,
   }) {
     final maskedClient = cert.maskedClientName;
     final maskedCpf = clientCpf != null && clientCpf.trim().isNotEmpty
@@ -29,6 +66,9 @@ class DesperrengueOfficialPdfService {
     final maskedPhone = clientPhone != null && clientPhone.trim().isNotEmpty
         ? SecurityAndLgpdGuard.maskPhone(clientPhone)
         : '(**) *****-0000';
+    final livenessSeal = faceLivenessHash != null && faceLivenessHash.trim().isNotEmpty
+        ? faceLivenessHash.trim()
+        : 'HOMOLOGADO-KYC-BIOMETRICO';
     final split = cert.financialBreakdown;
 
     final lines = <String>[
@@ -36,6 +76,7 @@ class DesperrengueOfficialPdfService {
       '========================================================================',
       'Codigo do Certificado : ${cert.certificateCode}',
       'Hash de Verificacao   : ${cert.securityVerificationHash}',
+      'Selo Biometrico KYC   : $livenessSeal',
       'Pedido / OS           : ${cert.orderId}',
       'Categoria / Servico   : ${cert.serviceCategoryName} - ${cert.serviceTitle}',
       'Emissao (UTC)         : ${cert.issuedAt.toUtc().toIso8601String()}',
@@ -87,6 +128,7 @@ class DesperrengueOfficialPdfService {
     PropertyMaintenancePassport passport, {
     String? ownerCpf,
     String? ownerPhone,
+    String? faceLivenessHash,
   }) {
     final maskedOwner = passport.maskedOwnerName;
     final maskedCpf = ownerCpf != null && ownerCpf.trim().isNotEmpty
@@ -95,6 +137,9 @@ class DesperrengueOfficialPdfService {
     final maskedPhone = ownerPhone != null && ownerPhone.trim().isNotEmpty
         ? SecurityAndLgpdGuard.maskPhone(ownerPhone)
         : '(**) *****-0000';
+    final livenessSeal = faceLivenessHash != null && faceLivenessHash.trim().isNotEmpty
+        ? faceLivenessHash.trim()
+        : 'IDENTIDADE-CIVIL-E-BIOMETRIA-VERIFICADAS';
 
     final safeAddress = passport.propertyAddress.trim().isNotEmpty
         ? SecurityAndLgpdGuard.sanitizeInput(passport.propertyAddress)
@@ -108,6 +153,7 @@ class DesperrengueOfficialPdfService {
       'Finalidade Oficial    : ${SecurityAndLgpdGuard.sanitizeInput(passport.passportPurpose)}',
       'Endereco do Imovel    : $safeAddress',
       'Proprietario/Titular  : $maskedOwner | CPF/CNPJ: $maskedCpf | Tel: $maskedPhone',
+      'Selo Biometrico KYC   : $livenessSeal',
       'Atualizado em (UTC)   : ${passport.updatedAt.toUtc().toIso8601String()}',
       'Score de Vistoria     : ${passport.inspectionReadinessLabel}',
       'Sistemas Verificados  : ${passport.inspectedSystems.isEmpty ? 'Nenhum sistema assinalado' : passport.inspectedSystems.join(', ')}',

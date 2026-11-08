@@ -1,28 +1,43 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/models/account_models.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 
-/// Saque via Pix (MVP **simulado**): o servidor recalcula o saldo, exige a
-/// declaração de titularidade e guarda só a chave MASCARADA. Em produção a chave
-/// iria direto ao provedor de pagamento, sem ficar no nosso banco.
+/// Saque via Pix com Trava de Mesma Titularidade (`Same-Holder Lock` — `RN-AF-12`)
+/// e Circuit Breaker Preventivo (`hasOpenDispute` — `RN-AF-08`).
 class PixWithdrawScreen extends StatefulWidget {
-  const PixWithdrawScreen({super.key, required this.available});
+  const PixWithdrawScreen({
+    super.key,
+    required this.available,
+    this.verifiedCpfHash,
+    this.verifiedHolderName,
+    this.hasOpenDispute = false,
+  });
 
   /// Saldo disponível mostrado ao abrir (o servidor revalida).
   final double available;
+
+  /// Hash criptográfico SHA-256 do CPF homologado via KYC/OCR (`Same-Holder Lock`).
+  final String? verifiedCpfHash;
+
+  /// Nome civil homologado via OCR do documento oficial.
+  final String? verifiedHolderName;
+
+  /// Indica se há chamado de garantia / mediação aberta (`Circuit Breaker`).
+  final bool hasOpenDispute;
 
   @override
   State<PixWithdrawScreen> createState() => _PixWithdrawScreenState();
 }
 
 class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
-  final _providers = ProviderService();
+  ProviderService? _providersOrNull;
+  ProviderService get _providers => _providersOrNull ??= ProviderService();
   final _amount = TextEditingController();
   final _key = TextEditingController();
   PixKeyType _type = PixKeyType.cpf;
@@ -33,7 +48,9 @@ class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
   @override
   void initState() {
     super.initState();
-    _amount.text = widget.available > 0 ? widget.available.toStringAsFixed(2).replaceAll('.', ',') : '';
+    _amount.text = widget.available > 0
+        ? widget.available.toStringAsFixed(2).replaceAll('.', ',')
+        : '';
   }
 
   @override
@@ -46,10 +63,24 @@ class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
   double? get _value => parseBrl(_amount.text);
 
   String? _validate() {
+    if (widget.hasOpenDispute) {
+      return 'Circuit Breaker Preventivo: Há um chamado de garantia em análise técnica. Aguarde a conclusão da mediação para sacar valores vinculados.';
+    }
     final v = _value;
     if (v == null || v <= 0) return 'Informe um valor válido.';
-    if (v > widget.available + 0.001) return 'O valor é maior que o seu saldo disponível.';
-    if (!PixKeyValidator.isValid(_type, _key.text)) return 'Chave Pix inválida para o tipo ${_type.label}.';
+    if (v > widget.available + 0.001) {
+      return 'O valor é maior que o seu saldo disponível.';
+    }
+    if (!PixKeyValidator.isValid(_type, _key.text)) {
+      return 'Chave Pix inválida para o tipo ${_type.label}.';
+    }
+    if (!PixKeyValidator.matchesVerifiedHolderCpf(
+      _type,
+      _key.text,
+      verifiedCpfHash: widget.verifiedCpfHash,
+    )) {
+      return 'Trava de Mesma Titularidade (Same-Holder Lock): A chave Pix CPF informada não pertence ao titular do documento validado.';
+    }
     if (!_owner) return 'Confirme que a chave Pix é de sua titularidade.';
     return null;
   }
@@ -65,7 +96,12 @@ class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
       _error = null;
     });
     try {
-      await _providers.requestWithdrawal(amount: _value!, keyType: _type, key: _key.text, ownerConfirmed: _owner);
+      await _providers.requestWithdrawal(
+        amount: _value!,
+        keyType: _type,
+        key: _key.text,
+        ownerConfirmed: _owner,
+      );
       if (!mounted) return;
       showSnack(context, 'Pix de ${brl(_value)} solicitado (simulado).');
       Navigator.of(context).pop(true);
@@ -84,36 +120,90 @@ class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
+          if (widget.hasOpenDispute)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 14),
+              child: InfoBanner(
+                'Há um chamado de garantia em análise técnica. O valor deste serviço permanece protegido em custódia até a conclusão da mediação.',
+                tone: BannerTone.warning,
+              ),
+            ),
           AppCard(
             color: tk.providerSoft,
-            child: Row(children: [
-              Icon(Icons.account_balance_wallet_rounded, color: tk.providerAccent),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Saldo disponível', style: TextStyle(color: tk.textMuted))),
-              Text(brl(widget.available), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: tk.providerAccent)),
-            ]),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.account_balance_wallet_rounded,
+                  color: tk.providerAccent,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Saldo disponível',
+                    style: TextStyle(color: tk.textMuted),
+                  ),
+                ),
+                Text(
+                  brl(widget.available),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: tk.providerAccent,
+                  ),
+                ),
+              ],
+            ),
           ),
+          if (widget.verifiedHolderName != null &&
+              widget.verifiedHolderName!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            InfoBanner(
+              'Titular Homologado (Same-Holder Lock): ${widget.verifiedHolderName}',
+              tone: BannerTone.security,
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _amount,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+            ],
             decoration: InputDecoration(
               labelText: 'Valor (R\$)',
-              suffixIcon: TextButton(onPressed: () => setState(() => _amount.text = widget.available.toStringAsFixed(2).replaceAll('.', ',')), child: const Text('Tudo')),
+              suffixIcon: TextButton(
+                onPressed: () => setState(
+                  () => _amount.text =
+                      widget.available.toStringAsFixed(2).replaceAll('.', ','),
+                ),
+                child: const Text('Tudo'),
+              ),
             ),
           ),
           const SizedBox(height: 16),
-          Text('Tipo de chave', style: TextStyle(fontWeight: FontWeight.w800, color: tk.text)),
+          Text(
+            'Tipo de chave',
+            style: TextStyle(fontWeight: FontWeight.w800, color: tk.text),
+          ),
           const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final t in PixKeyType.values)
-              ChoiceChip(label: Text(t.label), selected: _type == t, onSelected: (_) => setState(() => _type = t)),
-          ]),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final t in PixKeyType.values)
+                ChoiceChip(
+                  label: Text(t.label),
+                  selected: _type == t,
+                  onSelected: (_) => setState(() => _type = t),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _key,
-            keyboardType: _type == PixKeyType.email ? TextInputType.emailAddress : TextInputType.text,
+            keyboardType: _type == PixKeyType.email
+                ? TextInputType.emailAddress
+                : TextInputType.text,
             decoration: InputDecoration(labelText: 'Chave Pix (${_type.label})'),
           ),
           const SizedBox(height: 8),
@@ -122,15 +212,29 @@ class _PixWithdrawScreenState extends State<PixWithdrawScreen> {
             controlAffinity: ListTileControlAffinity.leading,
             value: _owner,
             onChanged: (v) => setState(() => _owner = v ?? false),
-            title: const Text('Declaro que esta chave Pix é de minha titularidade.', style: TextStyle(fontSize: 13.5)),
+            title: const Text(
+              'Declaro que esta chave Pix é de minha titularidade.',
+              style: TextStyle(fontSize: 13.5),
+            ),
           ),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 6), child: InfoBanner(_error!, tone: BannerTone.danger)),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: InfoBanner(_error!, tone: BannerTone.danger),
+            ),
           const SizedBox(height: 10),
-          const InfoBanner('No MVP os repasses são simulados: o saldo é debitado, mas nenhum dinheiro real é movimentado. A chave não é armazenada por inteiro.', tone: BannerTone.security),
+          const InfoBanner(
+            'No MVP os repasses são simulados: o saldo é debitado, mas nenhum dinheiro real é movimentado. A chave não é armazenada por inteiro.',
+            tone: BannerTone.security,
+          ),
         ],
       ),
       bottomNavigationBar: BottomBar(
-        child: PrimaryButton(label: 'Transferir via Pix', loading: _busy, onPressed: _busy ? null : _submit),
+        child: PrimaryButton(
+          label: 'Transferir via Pix',
+          loading: _busy,
+          onPressed: _busy ? null : _submit,
+        ),
       ),
     );
   }

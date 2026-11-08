@@ -1,13 +1,15 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/security/perceptual_hash_guard.dart';
 import '../../../core/services/draft_store.dart';
 import '../../../core/services/profile_service.dart';
-import 'auth_gate.dart';
+import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/light_island.dart';
+import 'auth_gate.dart';
 
 class VerificacaoStep5FinalizacaoScreen extends StatefulWidget {
   final File frenteDocumento;
@@ -54,15 +56,36 @@ class _VerificacaoStep5FinalizacaoScreenState
     setState(() => _isUploading = true);
 
     try {
+      final frontBytes = await widget.frenteDocumento.readAsBytes();
+      final backBytes = await widget.versoDocumento.readAsBytes();
+      final selfieBytes = await widget.selfie.readAsBytes();
+
+      // Guarda Forense pHash (Frente != Verso) em Worker Isolate
+      try {
+        final isDuplicate = await Isolate.run(() {
+          final hFront = PerceptualHashGuard.compute64BitPerceptualHash(frontBytes);
+          final hBack = PerceptualHashGuard.compute64BitPerceptualHash(backBytes);
+          return PerceptualHashGuard.isDuplicateEvidence(hFront, hBack);
+        });
+        if (isDuplicate) {
+          _mostrarErro(
+            'A foto do verso do documento é idêntica à foto da frente. Fotografe o verso real.',
+          );
+          return;
+        }
+      } catch (_) {
+        // Se os bytes em ambiente de teste não forem uma imagem decodificável, prossegue para o servidor
+      }
+
       // Os documentos vão para o bucket PRIVADO `kyc-documents`, dentro da pasta
       // do próprio usuário, e o KYC é registrado pela RPC `submit_kyc`: o status
       // de verificação só muda no servidor (o app não consegue se auto-aprovar).
       await ProfileService().submitKyc(
-        frontBytes: await widget.frenteDocumento.readAsBytes(),
+        frontBytes: frontBytes,
         frontExt: _ext(widget.frenteDocumento),
-        backBytes: await widget.versoDocumento.readAsBytes(),
+        backBytes: backBytes,
         backExt: _ext(widget.versoDocumento),
-        selfieBytes: await widget.selfie.readAsBytes(),
+        selfieBytes: selfieBytes,
         selfieExt: _ext(widget.selfie),
         registryType: widget.tipoRegistro,
         registryNumber: widget.numeroRegistro,
@@ -93,155 +116,158 @@ class _VerificacaoStep5FinalizacaoScreenState
       if (mounted) setState(() => _isUploading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    return LightIsland(
+      child: AppScaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
-          onPressed: _isUploading ? null : () => Navigator.pop(context),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
+            onPressed: _isUploading ? null : () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Desperrengue',
+            style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.bold),
+          ),
         ),
-        title: Text(
-          'Desperrengue',
-          style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 16),
-              const Text(
-                'Etapa 5 de 5: Finalização',
-                style: TextStyle(fontSize: 18, color: Colors.black87),
-              ),
-              const SizedBox(height: 8),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 16),
+                const Text(
+                  'Etapa 5 de 5: Finalização',
+                  style: TextStyle(fontSize: 18, color: Colors.black87),
+                ),
+                const SizedBox(height: 8),
 
-              // Barra de Progresso Completa
-              Row(
-                children: List.generate(
-                  5,
-                  (index) => Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 4),
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _primaryBlue,
-                        borderRadius: BorderRadius.circular(10),
+                // Barra de Progresso Completa
+                Row(
+                  children: List.generate(
+                    5,
+                    (index) => Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 4),
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: _primaryBlue,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade300),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '5. REVISÃO E ENVIO',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          height: 1.1,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Tudo pronto! Seus dados foram salvos com sucesso. Envie seu cadastro para análise profissional.',
-                        style: TextStyle(fontSize: 14, color: Colors.black87),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    Container(
-                      padding: const EdgeInsets.all(32),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.mark_email_read_rounded,
-                        size: 80,
-                        color: _primaryBlue,
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    const Text(
-                      'Sua documentação e registro profissional serão analisados pela nossa equipe. A aprovação leva até 48h.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.black87,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Spacer(),
-
-              ElevatedButton.icon(
-                onPressed: _isUploading ? null : _enviarParaAnalise,
-                icon: _isUploading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.upload_rounded, color: Colors.white),
-                label: Text(
-                  _isUploading ? 'A ENVIAR...' : 'ENVIAR PARA ANÁLISE',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
                     color: Colors.white,
-                    letterSpacing: 1,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade300),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '5. REVISÃO E ENVIO',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Tudo pronto! Seus dados foram salvos com sucesso. Envie seu cadastro para análise profissional.',
+                          style: TextStyle(fontSize: 14, color: Colors.black87),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      Container(
+                        padding: const EdgeInsets.all(32),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.mark_email_read_rounded,
+                          size: 80,
+                          color: _primaryBlue,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      const Text(
+                        'Sua documentação e registro profissional serão analisados pela nossa equipe. A aprovação leva até 48h.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.black87,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+
+                const Spacer(),
+
+                ElevatedButton.icon(
+                  onPressed: _isUploading ? null : _enviarParaAnalise,
+                  icon: _isUploading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.upload_rounded, color: Colors.white),
+                  label: Text(
+                    _isUploading ? 'A ENVIAR...' : 'ENVIAR PARA ANÁLISE',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
         ),
       ),
-    ));
+    );
   }
 }

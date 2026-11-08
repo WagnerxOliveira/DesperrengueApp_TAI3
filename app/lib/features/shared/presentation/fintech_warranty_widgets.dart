@@ -2609,3 +2609,454 @@ class _WizardProgressPill extends StatelessWidget {
     );
   }
 }
+
+
+// ============================================================================
+// COMPONENTES DE GOVERNANÇA DE GARANTIA EM 3 CAMADAS, MEDIAÇÃO E MARCO ZERO
+// (PDF 1, PDF 2 E PDF 3)
+// ============================================================================
+
+/// Stepper Vertical Interativo das 5 Fases da Mediação e Acionamento da Garantia (`PDF 1 Seção 6` e `PDF 2 Seção 5.1`),
+/// incluindo o Card de Bloqueio de Seleção Manual (`RN-AF-01`).
+class MediationFivePhaseTimeline extends StatelessWidget {
+  const MediationFivePhaseTimeline({
+    super.key,
+    this.currentPhaseIndex = 2,
+    this.originalLaborCap = 280.0,
+    this.onRequestAdditionalScopeSplit,
+  });
+
+  /// Índice de 0 a 4 representando a fase atual da máquina de estados.
+  final int currentPhaseIndex;
+  final double originalLaborCap;
+  final VoidCallback? onRequestAdditionalScopeSplit;
+
+  static const List<({String code, String title, String subtitle})> phases = [
+    (
+      code: 'PHASE_1_OPENED_AND_FROZEN',
+      title: 'Fase 1: Abertura e Congelamento Preventivo (Circuit Breaker)',
+      subtitle:
+          'O repasse em maturação (D+5) é congelado instantaneamente para proteger o saldo da garantia.',
+    ),
+    (
+      code: 'PHASE_2_FORENSIC_TRIAGE',
+      title: 'Fase 2: Triagem Forense Automatizada (GPS + pHash 64-bit)',
+      subtitle:
+          'Conferência criptográfica das fotos de Antes, Depois e Evidência do Defeito no imóvel.',
+    ),
+    (
+      code: 'PHASE_3_ORIGINAL_PROVIDER_SLA_6H',
+      title: 'Fase 3: Direito de Reparo pelo Prestador Original (SLA 6h)',
+      subtitle:
+          'O profissional original possui 6 horas para agendar o retorno técnico sem custo adicional.',
+    ),
+    (
+      code: 'PHASE_4_WARRANTY_FUND_RESCUE_DISPATCH',
+      title: 'Fase 4: Despacho Cego de Resgate (Fundo de Garantia Camada 3)',
+      subtitle:
+          'Alocação algorítmica em cascata (5 Níveis + Grafo Zero-Link) coberta até 100% da mão de obra.',
+    ),
+    (
+      code: 'PHASE_5_SETTLED_AND_CERTIFIED',
+      title: 'Fase 5: Liquidação Contábil, Clawback e Certificação',
+      subtitle:
+          'Baixa do Fundo de Garantia, compensação de Clawback e atualização do Prontuário da Casa.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      key: const ValueKey('mediation-five-phase-timeline'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tk.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: tk.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.gavel_rounded, color: tk.clientAccent),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Máquina de Estados da Mediação (5 Fases)',
+                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (int i = 0; i < phases.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    i < currentPhaseIndex
+                        ? Icons.check_circle_rounded
+                        : (i == currentPhaseIndex
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_unchecked_rounded),
+                    size: 20,
+                    color: i <= currentPhaseIndex ? tk.success : tk.textMuted,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          phases[i].title,
+                          style: TextStyle(
+                            fontWeight: i == currentPhaseIndex
+                                ? FontWeight.w900
+                                : FontWeight.w700,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          phases[i].subtitle,
+                          style: TextStyle(fontSize: 12, color: tk.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const Divider(height: 20),
+          // Card de Bloqueio de Seleção Manual (RN-AF-01)
+          Container(
+            key: const ValueKey('blind-dispatch-lock-card'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: tk.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: tk.border),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lock_person_rounded, color: tk.clientAccent, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Alocação Algorítmica Cega (RN-AF-01): Em chamados cobertos pelo Fundo de Garantia (Camada 3), o profissional socorrista é designado automaticamente pela plataforma entre especialistas verificados sem vínculo prévio (Teto: ${brl(originalLaborCap)}).',
+                    style: const TextStyle(fontSize: 12, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onRequestAdditionalScopeSplit != null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const ValueKey('btn-open-additional-scope-split'),
+                onPressed: onRequestAdditionalScopeSplit,
+                icon: const Icon(Icons.call_split_rounded, size: 18),
+                label: const Text('Incluir Serviço Adicional Fora do Escopo (Split)'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Comparador Visual Lado a Lado (`ForensicSplitViewComparator` — `PDF 2 Seção 5.1` e `PDF 3 Seção 4.2`)
+/// isolado em `RepaintBoundary` para manter 120 FPS constantes.
+class ForensicSplitViewComparator extends StatelessWidget {
+  const ForensicSplitViewComparator({
+    super.key,
+    required this.beforePhash64,
+    required this.afterPhash64,
+    this.defectPhash64,
+    required this.hammingBeforeAfter,
+    this.gpsDistanceMeters = 12.0,
+  });
+
+  final int beforePhash64;
+  final int afterPhash64;
+  final int? defectPhash64;
+  final int hammingBeforeAfter;
+  final double gpsDistanceMeters;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final bool integrityOk = hammingBeforeAfter >= 5 && gpsDistanceMeters <= 150.0;
+
+    return RepaintBoundary(
+      child: Container(
+        key: const ValueKey('forensic-split-view-comparator'),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: tk.card,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: integrityOk ? tk.success : tk.danger),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  integrityOk ? Icons.verified_rounded : Icons.warning_rounded,
+                  color: integrityOk ? tk.success : tk.danger,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Comparador Forense (Antes vs. Depois • pHash 64-bit)',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _ForensicFrameTile(
+                    label: 'Check-in (Antes)',
+                    pHashHex: '0x${beforePhash64.toUnsigned(64).toRadixString(16).toUpperCase()}',
+                    icon: Icons.camera_front_rounded,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _ForensicFrameTile(
+                    label: 'Check-out (Depois)',
+                    pHashHex: '0x${afterPhash64.toUnsigned(64).toRadixString(16).toUpperCase()}',
+                    icon: Icons.camera_rear_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Distância de Hamming: $hammingBeforeAfter bits (Mínimo exigido: >= 5) • Geofence GPS: ${gpsDistanceMeters.toStringAsFixed(1)}m (<= 150m)',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: integrityOk ? tk.successInk : tk.danger,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ForensicFrameTile extends StatelessWidget {
+  const _ForensicFrameTile({
+    required this.label,
+    required this.pHashHex,
+    required this.icon,
+  });
+
+  final String label;
+  final String pHashHex;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: tk.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tk.border),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 28, color: tk.clientAccent),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            pHashHex,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10.5,
+              color: tk.textMuted,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Modal de Conclusão por PIN de 4 Dígitos (`RN-AF-05`) e Contador Regressivo de 24h
+/// de Liberação Automática (`RN-AF-04`) isolado via `ValueListenableBuilder<Duration>`.
+class PinFourDigitApprovalCard extends StatefulWidget {
+  const PinFourDigitApprovalCard({
+    super.key,
+    required this.initialRemaining,
+    required this.onConfirmPin,
+  });
+
+  final Duration initialRemaining;
+  final ValueChanged<String> onConfirmPin;
+
+  @override
+  State<PinFourDigitApprovalCard> createState() => _PinFourDigitApprovalCardState();
+}
+
+class _PinFourDigitApprovalCardState extends State<PinFourDigitApprovalCard> {
+  late final ValueNotifier<Duration> _remainingNotifier =
+      ValueNotifier<Duration>(widget.initialRemaining);
+  final TextEditingController _pinCtrl = TextEditingController();
+  String? _pinError;
+
+  @override
+  void dispose() {
+    _remainingNotifier.dispose();
+    _pinCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submitPin() {
+    final pin = _pinCtrl.text.trim();
+    if (!RegExp(r'^\d{4}$').hasMatch(pin)) {
+      setState(() => _pinError = 'Digite exatamente os 4 dígitos do código PIN.');
+      return;
+    }
+    setState(() => _pinError = null);
+    widget.onConfirmPin(pin);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      key: const ValueKey('pin-four-digit-approval-card'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tk.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: tk.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Aprovação Presencial (PIN de 4 Dígitos) ou Liberação em 24h',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+          ),
+          const SizedBox(height: 6),
+          ValueListenableBuilder<Duration>(
+            valueListenable: _remainingNotifier,
+            builder: (context, dur, _) {
+              final hours = dur.inHours.toString().padLeft(2, '0');
+              final mins = (dur.inMinutes % 60).toString().padLeft(2, '0');
+              return Text(
+                'Liberação Automática (Auto-Release RN-AF-04) em: ${hours}h ${mins}m caso não haja contestação.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: tk.clientAccent,
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('pin-4digit-input'),
+            controller: _pinCtrl,
+            maxLength: 4,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Código PIN do Cliente (4 dígitos)',
+              hintText: '0000',
+              errorText: _pinError,
+              counterText: '',
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const ValueKey('btn-confirm-4digit-pin'),
+              onPressed: _submitPin,
+              icon: const Icon(Icons.lock_open_rounded),
+              label: const Text('Confirmar Conclusão com PIN'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Selo Oficial do Marco Zero (`RN-MZ-01` e `RN-MZ-02`) para Profissionais Âncora
+/// e Novos Especialistas com Credencial e MEI Verificados (`RTS >= 70`).
+class MarcoZeroTrustBadge extends StatelessWidget {
+  const MarcoZeroTrustBadge({
+    super.key,
+    required this.isTrustedAnchor,
+    required this.completedJobsCount,
+    required this.rtsScore,
+  });
+
+  final bool isTrustedAnchor;
+  final int completedJobsCount;
+  final double rtsScore;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    String? label;
+    if (isTrustedAnchor) {
+      label = 'Especialista Fundador Verificado';
+    } else if (completedJobsCount == 0 && rtsScore >= 70.0) {
+      label = 'Novo na Plataforma • Credencial e MEI Verificados';
+    }
+    if (label == null) return const SizedBox.shrink();
+
+    return Container(
+      key: const ValueKey('marco-zero-trust-badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: tk.success.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tk.success),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.verified_rounded, size: 15, color: tk.success),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              '$label (RTS ${rtsScore.toStringAsFixed(0)}/100)',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: tk.successInk,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
