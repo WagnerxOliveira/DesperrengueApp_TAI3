@@ -263,8 +263,152 @@ void main() {
         expect(find.text('0% DE TAXA SOBRE PEÇAS'), findsOneWidget);
         expect(find.textContaining('Atualizar'), findsWidgets);
         expect(find.text('Prontuário da Casa (Passaporte do Imóvel)'), findsOneWidget);
+        expect(find.text('Toque para ver o endereço no mapa'), findsNothing);
         expect(tester.takeException(), isNull);
       }
+    });
+  });
+
+  group('5. Passaporte Oficial de Manutenção do Imóvel (Zero Dados Fictícios + Jornada de 3 Etapas)', () {
+    test('Passaporte inicia sem dados falsos quando não há intervenções e atualiza apenas com registros reais do cliente', () {
+      final emptyPassport = PropertyMaintenancePassport(
+        passportId: 'PASS-TEST-EMPTY',
+        propertyAddress: '',
+        ownerName: '',
+        updatedAt: DateTime.utc(2026, 11, 7),
+        entries: const <PropertyMaintenanceEntry>[],
+      );
+
+      expect(emptyPassport.entries, isEmpty);
+      expect(emptyPassport.totalInvestedAmount, closeTo(0.0, 0.001));
+      expect(emptyPassport.totalLaborInvested, closeTo(0.0, 0.001));
+      expect(emptyPassport.totalMaterialsInvested, closeTo(0.0, 0.001));
+      expect(emptyPassport.inspectionReadinessScore, equals(0));
+
+      final configured = FintechLedgerStore.instance.configurePropertyPassport(
+        ownerName: 'Wagner Oliveira',
+        propertyNickname: 'Casa Principal Poços',
+        propertyAddress: 'Rua Padre José Geraldi, 203 - Poços de Caldas/MG',
+        propertyType: 'Casa Residencial',
+        passportPurpose: 'Vistoria de Imobiliária / Entrega de Chaves',
+        inspectedSystems: const <String>[
+          'Quadro Elétrico (DR / DPS / Disjuntores)',
+          'Rede Hidráulica, Registros e Vedações',
+        ],
+      );
+
+      expect(configured.isConfiguredByClient, isTrue);
+      expect(configured.propertyNickname, equals('Casa Principal Poços'));
+      expect(configured.inspectedSystems.length, equals(2));
+      expect(configured.inspectionReadinessScore, greaterThanOrEqualTo(36));
+
+      final entry = FintechLedgerStore.instance.registerClientMaintenanceEntry(
+        serviceCategoryName: 'Pintura',
+        serviceTitle: 'Pintura Acrílica Completa para Entrega de Chaves',
+        providerName: 'Ateliê Cores & Acabamentos',
+        laborAmount: 320.00,
+        materialAmount: 180.00,
+        warrantyDurationDays: 180,
+      );
+
+      expect(entry.totalInvested, closeTo(500.00, 0.001));
+      expect(entry.forensicHash.startsWith('DSP-FSH-'), isTrue);
+
+      final updatedPassport = FintechLedgerStore.instance.state.propertyPassport;
+      expect(updatedPassport.entries.any((e) => e.id == entry.id), isTrue);
+
+      final pdfBytes = const DesperrengueOfficialPdfService()
+          .generatePropertyPassportPdf(updatedPassport);
+      final pdfText = String.fromCharCodes(pdfBytes);
+      expect(pdfText.startsWith('%PDF-1.4'), isTrue);
+      expect(pdfText.contains('Casa Principal Pocos'), isTrue);
+      expect(pdfText.contains('Pintura Acrilica Completa'), isTrue);
+    });
+
+    testWidgets('PropertyPassportScreen exibe guia executivo animado e PropertyPassportWizardScreen conclui as 3 etapas efetivamente', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.resolve(null, Brightness.dark),
+            home: const PropertyPassportScreen(
+              initialOwnerName: 'Wagner Oliveira',
+              initialAddress: 'Rua Padre José Geraldi, 203 - Poços de Caldas',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verifica textos informativos e ausência de link de mapa na visão cliente
+      expect(find.text('Passaporte Oficial de Manutenção do Imóvel'), findsOneWidget);
+      expect(find.text('Para que serve o Passaporte do Imóvel?'), findsOneWidget);
+      expect(find.text('Toque para ver o endereço no mapa'), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      final listFinder = find.byType(Scrollable).first;
+      await tester.scrollUntilVisible(
+        find.text('Abrir Etapa 1'),
+        180.0,
+        scrollable: listFinder,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Como funciona (O que você precisa fazer)'), findsOneWidget);
+
+      // Abre a Etapa 1 do Wizard
+      await tester.tap(find.text('Abrir Etapa 1'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Etapa 1: Identificação e Vistoria do Imóvel'), findsOneWidget);
+
+      // Avança da Etapa 1 para a Etapa 2
+      final step1Btn = find.text('Salvar Imóvel e Avançar para Etapa 2');
+      await tester.scrollUntilVisible(
+        step1Btn,
+        180.0,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(step1Btn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Etapa 2: Registrar Manutenção Realizada no Imóvel'), findsOneWidget);
+
+      // Preenche os dados reais do cliente na Etapa 2
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Descrição do Serviço Realizado'),
+        'Revisão completa de quadro elétrico e DR',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Profissional ou Empresa Executora'),
+        'Engenharia Elétrica Sul de Minas',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Mão de Obra (R\$)'),
+        '240,00',
+      );
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Peças c/ Nota (R\$)'),
+        '110,00',
+      );
+      await tester.pumpAndSettle();
+
+      // Homologa e avança para a Etapa 3 (Conclusão Efetiva)
+      final step2Btn = find.text('Homologar Registro Real e Concluir Passaporte');
+      await tester.scrollUntilVisible(
+        step2Btn,
+        180.0,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(step2Btn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Passaporte Oficial Homologado!'), findsOneWidget);
+      expect(find.text('Visualizar e Exportar Passaporte Oficial em PDF'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

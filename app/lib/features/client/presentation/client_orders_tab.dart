@@ -212,7 +212,12 @@ class ClientProfileTab extends StatelessWidget {
           title: 'Prontuário da Casa (Passaporte)',
           subtitle: 'Histórico auditado e PDF para vistoria/seguradora',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const PropertyPassportScreen()),
+            MaterialPageRoute(
+              builder: (_) => PropertyPassportScreen(
+                initialOwnerName: profile.fullName,
+                initialAddress: (profile.addressLine ?? '').split(' | ').first,
+              ),
+            ),
           ),
         ),
         _Tile(
