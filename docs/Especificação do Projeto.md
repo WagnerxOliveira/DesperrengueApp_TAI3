@@ -137,3 +137,26 @@ stateDiagram-v2
 | `RN-KYC-01` a `RN-KYC-06` | [`20261108120000_client_kyc_biometrics_and_ocr.sql`](../supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql) (`is_valid_cpf`, `submit_client_kyc`, `idx_profiles_cpf_hash_unique`) | [`client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart), [`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart) | [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart), [`security_smoke.sql`](../supabase/tests/security_smoke.sql) |
 | Passaporte ABNT NBR 5674 | [`20261106120000_category_match_orders_dossier.sql`](../supabase/migrations/20261106120000_category_match_orders_dossier.sql), `forensic_certificates` | [`desperrengue_official_pdf_service.dart`](../app/lib/core/services/desperrengue_official_pdf_service.dart) | [`dossier_test.dart`](../app/test/dossier_test.dart), `scripts/test-dossie.mjs` |
 | Exclusão Escopada LGPD | [`20261107100000_scoped_account_deletion.sql`](../supabase/migrations/20261107100000_scoped_account_deletion.sql) (`delete_own_account_scoped`) | [`delete_account_screen.dart`](../app/lib/features/shared/presentation/delete_account_screen.dart) | [`account_screens_test.dart`](../app/test/account_screens_test.dart), [`scoped_deletion_smoke.sql`](../supabase/tests/scoped_deletion_smoke.sql) |
+
+---
+
+## 5. Modelagem Comportamental: Perfis de Usuários (Personas) e Histórias de Usuários (*User Stories*)
+
+### 5.1. Perfis Arquetípicos de Usuários (Personas)
+
+| Código | Persona Arquetípica | Perfil Socioeconômico e Operacional | Dores Estruturais Mitigadas pela Arquitetura |
+| :--- | :--- | :--- | :--- |
+| **P-01** | **Contratante Residencial (Cliente)** | Proprietário ou locatário urbano com rotina intensiva que demanda reparos emergenciais (`SOS < 60s`) ou manutenções preventivas. | Receio de admitir desconhecidos sem validação biométrica 3D na residência; insegurança quanto a vícios ocultos pós-pagamento; necessidade de comprovar manutenções perante imobiliárias e seguradoras (**ABNT NBR 5674**). |
+| **P-02** | **Especialista Técnico (Profissional)** | Eletricista (NR-10), encanador, técnico de climatização ou chaveiro autônomo/MEI com qualificação comprovada nas 33 categorias. | Rejeição a plataformas que cobram "moedas" por orçamentos sem garantia de fechamento; compressão de margem quando a comissão incide sobre peças compradas; risco de inadimplência no pós-serviço. |
+| **P-03** | **Motor Autônomo de Governança e Risco** | Subsistema automatizado de auditoria KYC, liquidação *Smart Escrow* e mediação assíncrona em *Worker Isolates* e RPCs PL/pgSQL. | Necessidade de validar identidades em tempo real a custo marginal $\text{R\$ } 0,00$, bloquear reciclagem de fotos (`dHash` 64 bits) e conter ataques de conluio sem intervenção humana manual. |
+
+### 5.2. Catálogo de Histórias de Usuários (*User Stories*)
+
+| ID | Ator | Especificação da História de Usuário (Requisito Comportamental em 3ª Pessoa) | Regra Normativa Associada |
+| :--- | :--- | :--- | :--- |
+| **US-01** | **Cliente** | O contratante realiza o onboarding com validação de CPF (Módulo 11), prova de vida em câmera frontal ao vivo (3 desafios físicos) e leitura óptica (OCR) de CNH/RG no scanner ISO ID-1 para obter selo de identidade verificada. | `RN-KYC-01` a `RN-KYC-06` |
+| **US-02** | **Cliente** | O contratante descreve uma emergência residencial utilizando ditado por voz (*Speech-to-Text*) e fotos nativas, visualizando no mapa os profissionais próximos ordenados por mérito (`1º, 2º, 3º`). | `RF-01`, `RN-MZ-02` |
+| **US-03** | **Profissional** | O especialista recebe chamados qualificados em sua janela do *Tiered Waterfall* e envia propostas gratuitamente (sem compra de moedas), segregando o valor de mão de obra ($V_{\text{MO}}$) do reembolso de peças ($V_{\text{Mat}}$ — taxa $0\%$). | `RN-CAM-02`, *Smart Split* |
+| **US-04** | **Profissional** | O especialista registra a conclusão técnica capturando fotos `Before/After` exclusivamente pela câmera traseira nativa, com validação imediata de `dHash` 64 bits ($D_H > 5$ e $\text{MAD} \ge 4,0$) e upload especulativo (`< 50 ms`). | `RN-AF-03`, `RN-AF-04` |
+| **US-05** | **Cliente** | O contratante aprova o serviço presencialmente fornecendo o PIN de 4 dígitos (liberando a liquidação imediata) ou aciona a 4ª aba *"Em Mediação"* dentro de $24\text{h}$ caso identifique falha técnica, contando com a Garantia de 3 Camadas. | `RN-CAM-01` a `RN-CAM-03` |
+| **US-06** | **Cliente** | O contratante acessa o **Prontuário da Casa (Passaporte Oficial de Manutenção do Imóvel)** sem dados fictícios e exporta o laudo PDF vetorial certificado segundo a **ABNT NBR 5674** com selo criptográfico SHA-256 (`DSP-PASS-*`). | `RF-07`, Passaporte ABNT |

@@ -189,3 +189,26 @@ A combinação da **Custódia em *Smart Escrow* ($24\text{h}$)** com a **Reserva
    $$\text{Float}_{\text{Médio}} = \text{GMV}_{\text{Diário}} \cdot \text{PMP}_{\text{Médio}}$$
 
 Esse *float* permanece segregado em contas de liquidação dedicadas, garantindo liquidez imediata tanto para os repasses diários automatizados pela RPC `process_autonomous_escrow_and_mediation_queues` quanto para o financiamento instantâneo de retrabalhos da Camada 3, sem qualquer necessidade de alavancagem bancária ou exposição a risco de crédito.
+
+---
+
+## 7. Demonstrativo de Fluxo de Caixa Projetado — Ano 1 (Mês 1 ao Mês 12)
+
+A projeção financeira mensal consolidada (cujo arquivo-fonte auditável encontra-se em [`docs/planilhas/fluxo_de_caixa_12m.csv`](planilhas/fluxo_de_caixa_12m.csv)) modela a rampa operacional do **Ano 1 (Meses 1 a 12)** com aporte inicial (*Seed Capital*) de $\text{R\$ } 2.500,00$, demonstrando que o saldo acumulado de caixa permanece estritamente positivo em todos os períodos:
+
+| Rubrica Contábil / Operacional ($\text{R\$}$) | Mês 1 | Mês 2 | Mês 3 | Mês 4 | Mês 5 | Mês 6 | Mês 7 | Mês 8 | Mês 9 | Mês 10 | Mês 11 | Mês 12 | **Total Ano 1** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Ordens de Serviço Liquidadas ($N$)** | $15$ | $25$ | $40$ | $55$ | $75$ | $95$ | $120$ | $150$ | $180$ | $210$ | $230$ | $250$ | **$1.445$** |
+| **Volume Bruto Transacionado ($\text{GMV}$)** | $2.700,00$ | $4.500,00$ | $7.200,00$ | $9.900,00$ | $13.500,00$ | $17.100,00$ | $21.600,00$ | $27.000,00$ | $32.400,00$ | $37.800,00$ | $41.400,00$ | $45.000,00$ | **$260.100,00$** |
+| $(-) \text{ Repasse Custódia Prestadores}$ | $(2.376,00)$ | $(3.960,00)$ | $(6.336,00)$ | $(8.712,00)$ | $(11.880,00)$ | $(15.048,00)$ | $(19.008,00)$ | $(23.760,00)$ | $(28.512,00)$ | $(33.264,00)$ | $(36.432,00)$ | $(39.600,00)$ | **$(228.888,00)$** |
+| **1. RECEITA BRUTA DA PLATAFORMA** | **$324,00$** | **$540,00$** | **$864,00$** | **$1.188,00$** | **$1.620,00$** | **$2.052,00$** | **$3.024,00$** | **$3.780,00$** | **$4.536,00$** | **$5.292,00$** | **$5.796,00$** | **$6.300,00$** | **$35.316,00$** |
+| **2. DEDUÇÕES E CUSTOS VARIÁVEIS** | **$(59,94)$** | **$(99,90)$** | **$(159,84)$** | **$(219,78)$** | **$(299,70)$** | **$(379,62)$** | **$(505,44)$** | **$(631,80)$** | **$(758,16)$** | **$(884,52)$** | **$(968,76)$** | **$(1.053,00)$** | **$(6.020,46)$** |
+| **3. MARGEM DE CONTRIBUIÇÃO ($1 - 2$)** | **$264,06$** | **$440,10$** | **$704,16$** | **$968,22$** | **$1.320,30$** | **$1.672,38$** | **$2.518,56$** | **$3.148,20$** | **$3.777,84$** | **$4.407,48$** | **$4.827,24$** | **$5.247,00$** | **$29.295,54$** |
+| **4. DESPESAS E CUSTOS FIXOS** | **$(1.290,00)$** | **$(600,00)$** | **$(600,00)$** | **$(800,00)$** | **$(800,00)$** | **$(800,00)$** | **$(3.150,00)$** | **$(3.150,00)$** | **$(3.450,00)$** | **$(3.650,00)$** | **$(3.950,00)$** | **$(3.950,00)$** | **$(26.190,00)$** |
+| **5. FLUXO DE CAIXA LÍQUIDO MENSAL** | **$(1.025,94)$** | **$(159,90)$** | **$104,16$** | **$168,22$** | **$520,30$** | **$872,38$** | **$(631,44)$** | **$(1,80)$** | **$327,84$** | **$757,48$** | **$877,24$** | **$1.297,00$** | **$3.105,54$** |
+| **6. SALDO ACUMULADO (Aporte $\text{R\$ } 2.500$)** | **$1.474,06$** | **$1.314,16$** | **$1.418,32$** | **$1.586,54$** | **$2.106,84$** | **$2.979,22$** | **$2.347,78$** | **$2.345,98$** | **$2.673,82$** | **$3.431,30$** | **$4.308,54$** | **$5.605,54$** | **$5.605,54$** |
+
+### 7.1. Indicadores Consolidados de Viabilidade Econômica do Ano 1
+
+1. **Suficiência de Capital Semente (*Zero Cash Burn Trap*):** Com aporte inicial de $\text{R\$ } 2.500,00$, o ponto mínimo de caixa ocorre no Mês 2 ($\text{R\$ } 1.314,16$), preservando liquidez positiva durante todos os 12 meses.
+2. **Ponto de Equilíbrio Operacional (*Break-Even*):** Atingido no **Mês 3** ($40$ ordens concluídas/mês), com recuperação integral do investimento inicial (*Payback*) no **Mês 6** ($\text{R\$ } 2.979,22$ em caixa) e **$\text{ROI} = +124,2\%$** ao final do primeiro ano ($\text{R\$ } 5.605,54$ acumulados), potencializado pelo **custo marginal de $\text{R\$ } 0,00$ em KYC e Visão Computacional *On-Device***.

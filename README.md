@@ -392,8 +392,8 @@ sequenceDiagram
 | `01` | [`docs/README.md`](docs/README.md) | Catálogo Sistemático, Taxonomia Documental e Matriz de Leitura por Perfil |
 | `02` | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Decomposição das 4 Camadas, Provas Algébricas *Big-O*, *Worker Isolates* a 120 Hz e Grafo Sem Deadlocks |
 | `03` | [`docs/Arquitetura do Sistema.md`](docs/Arquitetura%20do%20Sistema.md) | Topologia Distribuída, Dicionário de Dados SQL Completo, 9 Índices e Catálogo de RPCs |
-| `04` | [`docs/Especificação do Projeto.md`](docs/Especifica%C3%A7%C3%A3o%20do%20Projeto.md) | Requisitos `RF`/`RNF`, Regras `RN-CAM`, `RN-AF`, `RN-MZ`, `RN-KYC` e Matriz de Rastreabilidade 1:1 |
-| `05` | [`docs/Documento de Contexto.md`](docs/Documento%20de%20Contexto.md) | Seleção Adversa de Akerlof, Paradoxo da Desintermediação e Tese Econômica do Produto |
+| `04` | [`docs/Especificação do Projeto.md`](docs/Especifica%C3%A7%C3%A3o%20do%20Projeto.md) | Personas, User Stories, Requisitos `RF`/`RNF`, Regras `RN-CAM`, `RN-AF`, `RN-MZ`, `RN-KYC` e Matriz 1:1 |
+| `05` | [`docs/Documento de Contexto.md`](docs/Documento%20de%20Contexto.md) | Problema, Solução, **Lean Canvas (9 Blocos)**, Missão/Visão/Valores, Seleção Adversa de Akerlof e Anti-Bypass |
 | `06` | [`docs/Projeto de Interface.md`](docs/Projeto%20de%20Interface.md) | Sistema Visual *Quiet Luxury Dark*, Container `480px`, Wireframes Unicode e 4ª Aba *Em Mediação* |
 | `07` | [`docs/onboarding_profissional.md`](docs/onboarding_profissional.md) | Tratado de Onboarding Unificado, Equações de Visão Computacional ($YCbCr$, EAR, Yaw, Laplaciano, 128-D) |
 | `08` | [`docs/GAMIFICACAO.md`](docs/GAMIFICACAO.md) | Matemática do *Relative Trust Score* ($RTS$), Cascata de 5 Degraus e Velocidade de Liquidação |
