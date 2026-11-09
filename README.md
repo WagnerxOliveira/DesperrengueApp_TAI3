@@ -219,7 +219,7 @@ Para operar com segurança máxima desde o **Dia 1** (mesmo quando a plataforma 
 
 ## 6. Visão Computacional In-App, Biometria Facial Ao Vivo (Active Liveness) e OCR Documental
 
-Implementado em [`client_setup_screen.dart`](app/lib/features/client/presentation/client_setup_screen.dart), [`document_ocr_and_liveness_service.dart`](app/lib/core/services/document_ocr_and_liveness_service.dart), [`perceptual_hash_guard.dart`](app/lib/core/security/perceptual_hash_guard.dart) e na migração [`20261108120000_client_kyc_biometrics_and_ocr.sql`](supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql), o pipeline de validação civil e biométrica executa-se **100% *on-device* em *Worker Isolates*** (custo marginal de API externa igual a $\text{R\$ } 0,00$).
+Implementado em [`client_setup_screen.dart`](app/lib/features/client/presentation/client_setup_screen.dart), [`document_ocr_and_liveness_service.dart`](app/lib/core/services/document_ocr_and_liveness_service.dart), [`perceptual_hash_guard.dart`](app/lib/core/security/perceptual_hash_guard.dart) e na migração [`20261108120000_client_kyc_biometrics_and_ocr.sql`](supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql), o pipeline de validação civil e biométrica executa-se **100% *on-device* em *Worker Isolates*** (custo marginal de API externa igual a $\text{BRL } 0,00$).
 
 ### 6.1. Blueprint Antropométrico da Câmera Frontal Ao Vivo na Moldura Oval (*Active Liveness*)
 

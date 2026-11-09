@@ -16,7 +16,7 @@ Para eliminar esse passivo, a arquitetura contábil do **Desperrengue** opera es
 2. **Parcela de Mão de Obra do Prestador ($V_{\text{MO}} \cdot (1 - \tau_{\text{App}})$):** Mantida em conta de custódia transitória (*Escrow* de terceiros) e liquidada diretamente ao titular da execução técnica. Constitui receita tributável exclusivamente na esfera jurídica do prestador (MEI / Autônomo / Simples Nacional).
 3. **Taxa de Intermediação Digital ($\text{Receita}_{\text{BrutaApp}} = V_{\text{MO}} \cdot \tau_{\text{App}}$):** Única parcela que constitui fato gerador de receita de prestação de serviços de intermediação (Subitem 10.05 da Lista Anexa à LC nº 116/2003), sobre a qual emitem-se a NFS-e da plataforma e os tributos incidentes.
 
-### 1.1. Gráfico Vetorial da Decomposição do *Smart Split* ($\text{GMV}_{\text{Total}} = \text{R\$ } 500,00$)
+### 1.1. Gráfico Vetorial da Decomposição do *Smart Split* ($\text{GMV}_{\text{Total}} = \text{BRL } 500,00$)
 
 ```mermaid
 pie showData
@@ -31,14 +31,14 @@ pie showData
 
 ## 2. Comparativo de Eficiência Tributária: Abordagem Ingênua vs. *Smart Split* Desperrengue
 
-Considere a ordem padrão de $\text{GMV}_{\text{Total}} = \text{R\$ } 500,00$ ($V_{\text{MO}} = \text{R\$ } 300,00$, $V_{\text{Mat}} = \text{R\$ } 200,00$, $\tau_{\text{App}} = 15\% \implies \text{Receita}_{\text{BrutaApp}} = \text{R\$ } 45,00$) sob uma alíquota efetiva consolidada de tributos sobre faturamento ($\tau_{\text{Trib}} = 11,33\%$ no Simples Nacional Anexo III intermediário ou $14,25\%$ no Lucro Presumido com ISS de $5\%$, PIS $0,65\%$, COFINS $3,00\%$, IRPJ $4,80\%$ e CSLL $2,88\%$):
+Considere a ordem padrão de $\text{GMV}_{\text{Total}} = \text{BRL } 500,00$ ($V_{\text{MO}} = \text{BRL } 300,00$, $V_{\text{Mat}} = \text{BRL } 200,00$, $\tau_{\text{App}} = 15\% \implies \text{Receita}_{\text{BrutaApp}} = \text{BRL } 45,00$) sob uma alíquota efetiva consolidada de tributos sobre faturamento ($\tau_{\text{Trib}} = 11,33\%$ no Simples Nacional Anexo III intermediário ou $14,25\%$ no Lucro Presumido com ISS de $5\%$, PIS $0,65\%$, COFINS $3,00\%$, IRPJ $4,80\%$ e CSLL $2,88\%$):
 
 | Métrica Fiscal e Financeira | Modelo Ingênuo (Tributação sobre $\text{GMV}_{\text{Total}}$) | Arquitetura *Smart Split* Desperrengue (Tributação sobre $\text{Receita}_{\text{BrutaApp}}$) | Ganho de Eficiência / Economia Fiscal |
 | :--- | :---: | :---: | :---: |
-| **Base de Cálculo Tributável da Plataforma** | $\text{R\$ } 500,00$ ($100\%$ do GMV) | $\text{R\$ } 45,00$ ($15\%$ de $V_{\text{MO}}$) | **Redução de $91,0\%$ na Base** |
-| **Tributos Incidentes (Simples Anexo III — $11,33\%$)** | $\text{R\$ } 56,65$ | $\text{R\$ } 5,10$ | **Economia de $\text{R\$ } 51,55$ / Job** |
-| **Tributos Incidentes (Lucro Presumido — $16,33\%$)** | $\text{R\$ } 81,65$ | $\text{R\$ } 7,35$ | **Economia de $\text{R\$ } 74,30$ / Job** |
-| **Resultado Operacional Pós-Impostos e Pós-*Carve-Out*** | **Prejuízo de $-\text{R\$ } 16,15$** (Inviável) | **Lucro Líquido de $+\text{R\$ } 35,40$** ($78,6\%$ de margem líquida) | **Viabilização Estrutural da Operação** |
+| **Base de Cálculo Tributável da Plataforma** | $\text{BRL } 500,00$ ($100\%$ do GMV) | $\text{BRL } 45,00$ ($15\%$ de $V_{\text{MO}}$) | **Redução de $91,0\%$ na Base** |
+| **Tributos Incidentes (Simples Anexo III — $11,33\%$)** | $\text{BRL } 56,65$ | $\text{BRL } 5,10$ | **Economia de $\text{BRL } 51,55$ / Job** |
+| **Tributos Incidentes (Lucro Presumido — $16,33\%$)** | $\text{BRL } 81,65$ | $\text{BRL } 7,35$ | **Economia de $\text{BRL } 74,30$ / Job** |
+| **Resultado Operacional Pós-Impostos e Pós-*Carve-Out*** | **Prejuízo de $-\text{BRL } 16,15$** (Inviável) | **Lucro Líquido de $+\text{BRL } 35,40$** ($78,6\%$ de margem líquida) | **Viabilização Estrutural da Operação** |
 
 ---
 
@@ -86,22 +86,22 @@ O volume financeiro mantido em custódia transitória (*Smart Escrow* de $24\tex
 
 ---
 
-## 4. *Unit Economics*, Custo Zero de Onboarding ($\text{R\$ } 0,00$) e Relação $\text{LTV} / \text{CAC}$
+## 4. *Unit Economics*, Custo Zero de Onboarding ($\text{BRL } 0,00$) e Relação $\text{LTV} / \text{CAC}$
 
 Uma inovação estrutural decisiva para a rentabilidade unitária (*Unit Economics*) do **Desperrengue** é a execução integralmente local (*On-Device Edge Computing*) da cadeia de verificação de identidade (**KYC, Prova de Vida Biométrica Ativa 3D, Scanner ISO ID-1 com rotação $0^\circ..270^\circ$, Face Match 128-D e OCR de CNH/RG**):
 
-* **Bureaus Comerciais Tradicionais (Serpro / Unico / Idwall):** Cobram entre $\text{R\$ } 2,50$ e $\text{R\$ } 6,80$ por validação biométrica + OCR. Em uma plataforma com alto volume de cadastros de clientes e prestadores, esse custo inviabiliza o *onboarding* universal na ponta do cliente.
-* **Motor Nativo Desperrengue ([`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart)):** Executa Google ML Kit + `Isolate.run` diretamente na CPU/NPU do smartphone do usuário, reduzindo o **Custo Marginal de Verificação Biométrica ($\text{Custo}_{\text{KYC}}$) para exatos $\text{R\$ } 0,00$**.
+* **Bureaus Comerciais Tradicionais (Serpro / Unico / Idwall):** Cobram entre $\text{BRL } 2,50$ e $\text{BRL } 6,80$ por validação biométrica + OCR. Em uma plataforma com alto volume de cadastros de clientes e prestadores, esse custo inviabiliza o *onboarding* universal na ponta do cliente.
+* **Motor Nativo Desperrengue ([`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart)):** Executa Google ML Kit + `Isolate.run` diretamente na CPU/NPU do smartphone do usuário, reduzindo o **Custo Marginal de Verificação Biométrica ($\text{Custo}_{\text{KYC}}$) para exatos $\text{BRL } 0,00$**.
 
 | Indicador de *Unit Economics* | Parâmetro Projetado (Base Madura) | Fundamento Técnico e Operacional |
 | :--- | :---: | :--- |
-| **Ticket Médio Bruto ($\overline{\text{GMV}}$)** | $\text{R\$ } 380,00$ | Média ponderada entre serviços rápidos ($\text{R\$ } 180$) e manutenções técnicas ($\text{R\$ } 550$). |
-| **Parcela Média de Mão de Obra ($\bar{V}_{\text{MO}}$)** | $\text{R\$ } 260,00$ | Representa $\approx 68,4\%$ do GMV médio; materiais ($\text{R\$ } 120$) isentos de taxa. |
-| **Receita Líquida por Ordem ($\text{ARPU}_{\text{Job}}$)** | $\text{R\$ } 35,10$ | $13,5\%$ líquidos sobre $\bar{V}_{\text{MO}}$ (já deduzido o *Carve-Out* de $1,5\%$ do Fundo de Garantia). |
-| **Custo Marginal de Onboarding KYC** | **$\text{R\$ } 0,00$** | Processamento $100\%$ *on-device* (ML Kit Face Detection + Text Recognition v2 em *Isolates*). |
-| **Custo de Aquisição de Cliente ($\text{CAC}$)** | $\text{R\$ } 42,00$ | Aquisição orgânica alavancada pelo Passaporte do Imóvel e retenção por garantia real. |
+| **Ticket Médio Bruto ($\overline{\text{GMV}}$)** | $\text{BRL } 380,00$ | Média ponderada entre serviços rápidos ($\text{BRL } 180$) e manutenções técnicas ($\text{BRL } 550$). |
+| **Parcela Média de Mão de Obra ($\bar{V}_{\text{MO}}$)** | $\text{BRL } 260,00$ | Representa $\approx 68,4\%$ do GMV médio; materiais ($\text{BRL } 120$) isentos de taxa. |
+| **Receita Líquida por Ordem ($\text{ARPU}_{\text{Job}}$)** | $\text{BRL } 35,10$ | $13,5\%$ líquidos sobre $\bar{V}_{\text{MO}}$ (já deduzido o *Carve-Out* de $1,5\%$ do Fundo de Garantia). |
+| **Custo Marginal de Onboarding KYC** | **$\text{BRL } 0,00$** | Processamento $100\%$ *on-device* (ML Kit Face Detection + Text Recognition v2 em *Isolates*). |
+| **Custo de Aquisição de Cliente ($\text{CAC}$)** | $\text{BRL } 42,00$ | Aquisição orgânica alavancada pelo Passaporte do Imóvel e retenção por garantia real. |
 | **Frequência Anual de Pedidos** | $4,2\text{ pedidos/ano}$ | Estimulada pela gamificação do *Score de Vistoria* do imóvel e manutenções preventivas. |
 | **Tempo Médio de Retenção (*Lifespan*)** | $3,5\text{ anos}$ | *Lock-in* patrimonial gerado pelo histórico criptográfico acumulado no Prontuário da Casa. |
-| **Valor Vitalício Líquido ($\text{LTV}$)** | $\text{R\$ } 405,40$ | $\text{ARPU}_{\text{Job}} \times 4,2 \times 3,5 \times \text{Margem Líquida Pós-Impostos } (78,6\%)$. |
+| **Valor Vitalício Líquido ($\text{LTV}$)** | $\text{BRL } 405,40$ | $\text{ARPU}_{\text{Job}} \times 4,2 \times 3,5 \times \text{Margem Líquida Pós-Impostos } (78,6\%)$. |
 | **Relação $\text{LTV} / \text{CAC}$** | **$9,65\times$** | Supera em mais de $3\times$ o *benchmark* de excelência de venture capital ($3,0\times$). |
 | **Payback do $\text{CAC}$** | **$1,2\text{ ordens}$ ($\approx 3,4\text{ meses}$)** | Recuperação quase imediata já no segundo chamado residencial do cliente. |

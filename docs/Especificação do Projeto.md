@@ -148,7 +148,7 @@ stateDiagram-v2
 | :--- | :--- | :--- | :--- |
 | **P-01** | **Contratante Residencial (Cliente)** | Proprietário ou locatário urbano com rotina intensiva que demanda reparos emergenciais (`SOS < 60s`) ou manutenções preventivas. | Receio de admitir desconhecidos sem validação biométrica 3D na residência; insegurança quanto a vícios ocultos pós-pagamento; necessidade de comprovar manutenções perante imobiliárias e seguradoras (**ABNT NBR 5674**). |
 | **P-02** | **Especialista Técnico (Profissional)** | Eletricista (NR-10), encanador, técnico de climatização ou chaveiro autônomo/MEI com qualificação comprovada nas 33 categorias. | Rejeição a plataformas que cobram "moedas" por orçamentos sem garantia de fechamento; compressão de margem quando a comissão incide sobre peças compradas; risco de inadimplência no pós-serviço. |
-| **P-03** | **Motor Autônomo de Governança e Risco** | Subsistema automatizado de auditoria KYC, liquidação *Smart Escrow* e mediação assíncrona em *Worker Isolates* e RPCs PL/pgSQL. | Necessidade de validar identidades em tempo real a custo marginal $\text{R\$ } 0,00$, bloquear reciclagem de fotos (`dHash` 64 bits) e conter ataques de conluio sem intervenção humana manual. |
+| **P-03** | **Motor Autônomo de Governança e Risco** | Subsistema automatizado de auditoria KYC, liquidação *Smart Escrow* e mediação assíncrona em *Worker Isolates* e RPCs PL/pgSQL. | Necessidade de validar identidades em tempo real a custo marginal $\text{BRL } 0,00$, bloquear reciclagem de fotos (`dHash` 64 bits) e conter ataques de conluio sem intervenção humana manual. |
 
 ### 5.2. Catálogo de Histórias de Usuários (*User Stories*)
 

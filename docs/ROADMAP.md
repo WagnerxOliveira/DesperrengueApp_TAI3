@@ -51,7 +51,7 @@ gantt
 | **Fase 1** | **Unificação de Perfis, RLS e Container Responsivo (`480px`)** | Tabela única `public.profiles`, `BootGate`, `UpdateGate`, exclusão segura LGPD (`delete_own_account_scoped`) e layout *Quiet Luxury Dark*. | **CONCLUÍDO (`100%`)** |
 | **Fase 2** | **Taxonomia de 33 Categorias, Voz e Passaporte `ABNT NBR 5674`** | Ditado *Speech-to-Text*, jornada educativa sem dados fictícios (*Zero Fake Data*) e motor PDF vetorial com assinatura `SHA-256` (`DSP-PASS-*`). | **CONCLUÍDO (`100%`)** |
 | **Fase 3** | **Fundo de Garantia em 3 Camadas, *Smart Split* e Baixa Latência** | *Carve-Out* atuarial de $1,5\%$ sobre $V_{\text{MO}}$, taxa $0\%$ em peças, Reserva `D+5`/`D+7`, Grafo *Zero-Linkage*, *Circuit Breaker* ($15\%$), Podagem Axial $O(\log N + K)$ e distância de Hamming $O(1)$. | **CONCLUÍDO (`100%`)** |
-| **Fase 4** | **KYC Bilateral Simétrico, Câmera Frontal Ao Vivo e Scanner ISO ID-1** | Visor oval *in-app* com 3 desafios físicos ($YCbCr$ + EAR + Yaw), Scanner ID-1 ($85,60 \times 53,98\text{ mm}$) com rotação $0^\circ..270^\circ$, `dHash + MAD` em ROI central ($80\%$), Face Match 128-D e transcrição OCR visível a custo $\text{R\$ } 0,00$. | **CONCLUÍDO (`100%`)** |
+| **Fase 4** | **KYC Bilateral Simétrico, Câmera Frontal Ao Vivo e Scanner ISO ID-1** | Visor oval *in-app* com 3 desafios físicos ($YCbCr$ + EAR + Yaw), Scanner ID-1 ($85,60 \times 53,98\text{ mm}$) com rotação $0^\circ..270^\circ$, `dHash + MAD` em ROI central ($80\%$), Face Match 128-D e transcrição OCR visível a custo $\text{BRL } 0,00$. | **CONCLUÍDO (`100%`)** |
 
 ---
 

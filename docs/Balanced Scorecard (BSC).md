@@ -99,7 +99,7 @@ Cada indicador do Balanced Scorecard possui uma equação matemática formal e �
 | **C2** | **Taxa de Liquidação Expressa por PIN Presencial** | $\tau_{\text{PIN}} = \frac{\text{Jobs Liquidados via PIN 4 Dígitos}}{\text{Total de Jobs Concluídos}}$ | $\ge 80,0\%$ | `public.jobs` (`completion_pin_hash IS NOT NULL`) |
 | **P1** | **Eficácia de Rejeição de Mídia Sintética / Duplicada** | $\tau_{\text{Forense}} = 1 - \frac{\text{Fotos Falsas Aprovadas}}{\text{Tentativas de Upload com } D_H \le 5 \lor \text{MAD} < 4,0}$ | **$100,0\%$** | `hamming_distance_64` + `PerceptualHashGuard` |
 | **P2** | **Cumprimento do SLA de Mediação ($24\text{h}$)** | $\tau_{\text{SLA}} = \frac{\text{Mediações Decididas em } \Delta t \le 24\text{h}}{\text{Total de Mediações}}$ | **$100,0\%$** | RPC `process_autonomous_escrow_and_mediation_queues` |
-| **A1** | **Custo Unitário de Validação KYC + Liveness** | $C_{\text{KYC}} = \frac{\text{Despesa com APIs Externas de Biometria/OCR}}{\text{Total de Submissões em } \texttt{kyc\_submissions}}$ | **$\text{R\$ } 0,00$** | `document_ocr_and_liveness_service.dart` (*On-Device*) |
+| **A1** | **Custo Unitário de Validação KYC + Liveness** | $C_{\text{KYC}} = \frac{\text{Despesa com APIs Externas de Biometria/OCR}}{\text{Total de Submissões em } \texttt{kyc\_submissions}}$ | **$\text{BRL } 0,00$** | `document_ocr_and_liveness_service.dart` (*On-Device*) |
 | **A2** | **Parcela da Rede em *Tiers* de Elite ($RTS \ge 70$)** | $\tau_{\text{Elite}} = \frac{\text{Prestadores com } \texttt{waterfall\_tier\_rank} \in \{1, 2, 3\}}{\text{Total de Prestadores Ativos}}$ | $\ge 65,0\%$ | `public.profiles` (`relative_trust_score`, `waterfall_tier_rank`) |
 
 ---
