@@ -1,98 +1,40 @@
-# ROADMAP — Desperrengue
+# Roadmap de Engenharia — Evolução do Sistema Desperrengue (`v2.8.1`)
 
-> **Natureza do documento.** Plano vivo de produto e engenharia, revisado ao final de cada *sprint*. Datas são **metas**, não compromissos contratuais. O que *já existe* está em [CHANGELOG.md](CHANGELOG.md); o *como* está em [ARCHITECTURE.md](ARCHITECTURE.md).
-> **Última revisão:** 2026-10-21 · **Marco acadêmico fixo:** entrega do MVP na **primeira semana de dezembro de 2026**.
+Este documento registra a evolução das fases de engenharia do projeto **Desperrengue**, detalhando os épicos concluídos em produção e as frentes de expansão futura.
 
-## 1. Visão e tese de produto
+---
 
-**Visão.** Ser a forma mais segura e transparente de contratar reparos e serviços residenciais no Brasil, eliminando a cobrança por orçamento e a assimetria de informação entre cliente e prestador.
+## 1. Resumo Executivo de Progresso
 
-**Tese.** O atrito do mercado não está na *descoberta* de profissionais, e sim na **confiança** (identidade, preço, execução, pagamento). O Desperrengue ataca-a com: (i) **verificação de identidade e registro profissional** (KYC); (ii) **orçamento gratuito** limitado a 3 propostas; (iii) **custódia do pagamento** liberada por **prova de presença** (PIN) e **evidências fotográficas**; (iv) **mediação** de disputas; (v) reputação bidirecional. Receita: **comissão de 12–15 % apenas sobre serviço concluído e pago pelo app** (ver `docs/Planos de Negocio e Tributação.md`).
+| Fase / Épico | Escopo Arquitetural | Status Atual |
+| :--- | :--- | :---: |
+| **Fase 1 (`E-01` a `E-04`)** | Fundação Full-Stack, 21 Migrações SQL, RLS Estrito, CI/CD, PWA e APK Beta Automatizado | ✅ **100% Concluído** |
+| **Fase 2 (`E-05a` a `E-05e`)** | Catálogo de 33 Categorias, Propostas Dinâmicas, Agenda Semanal, Chat em Tempo Real e Exclusão Escopada LGPD | ✅ **100% Concluído** |
+| **Fase 3 (`E-05f`)** | **Fundo de Garantia em 3 Camadas (`RN-CAM-01..03`)**, **Smart Split Anti-Bypass**, **Motor Antifraude (`RN-AF-01..14`)**, **Marco Zero (`RN-MZ-01..05`)** e **Passaporte do Imóvel (ABNT NBR 5674)** | ✅ **100% Concluído (`v2.8.0`)** |
+| **Fase 4 (`E-05g`)** | **Câmera Frontal Ao Vivo (`ClipOval` $YCbCr$)**, **Scanner Guiado ISO ID-1**, **Face Match Multi-Ângulo 128-D ($\ge 78\%$)** e **Transcrição OCR Visível** | ✅ **100% Concluído (`v2.8.1`)** |
+| **Fase 5 (`E-06` a `E-08`)** | Liquidação Bancária Homologada no Bacen (SPI/DICT), Telemetria *Crash-Reporting* Externa e Publicação na Google Play Store | 🔜 **Planejado (Pós-Banca)** |
 
-**Métricas-guia (*North Star* e apoio)** — *hipóteses a calibrar com dados reais*:
+---
 
-| Métrica | Definição operacional | Meta inicial (hipótese) |
-| :-- | :-- | :-- |
-| **Serviços concluídos pagos por semana** (*North Star*) | `count(jobs where status='completed')` por semana | crescimento semanal sustentado |
-| Taxa de resposta a convites | `quoted+accepted / convites` | ≥ 60 % |
-| Tempo até 1º orçamento | `min(quotes.created_at) − jobs.created_at` (mediana) | ≤ 2 h |
-| Conversão pedido → serviço concluído | `completed / jobs criados` | ≥ 25 % |
-| Disputas por 100 serviços | `support_tickets(job) / completed × 100` | ≤ 3 |
-| NPS de cliente e profissional | pesquisa pós-serviço | ≥ 50 |
+## 2. Detalhamento dos Épicos Concluídos (`E-01` a `E-05g`)
 
-## 2. Legenda e priorização
+### 2.1. `E-05f` — Engenharia Financeira de Garantia em 3 Camadas e Motor Antifraude ($O(1) / O(\log N)$)
+- Implementação das tabelas `public.warranty_pool_ledger`, `public.escrow_maturation_entries`, `public.job_mediations` e `public.forensic_certificates` na migração [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql).
+- Implementação do **Smart Split Anti-Bypass**: sobretaxa de $15.0\%$ exclusiva sobre a mão de obra ($13.5\%$ operacional + $1.5\%$ fundo garantidor) e $0.0\%$ sobre peças e materiais com nota fiscal (respeitando $M \le 0.60 \cdot \text{Gross}$).
+- Implementação da 4ª aba **"Em Mediação"** (`JobMediationTab`), do modal de **PIN Presencial de 4 dígitos**, da **Carteira Bipartida** e da guarda forense `PerceptualHashGuard` (`dHash` de 64 bits + inspeção EXIF em *Worker Isolate*).
+- Implementação do **Passaporte Oficial de Manutenção do Imóvel** (`PropertyMaintenancePassportPdf`) em conformidade com a **ABNT NBR 5674** e a **Lei Federal nº 8.245/91**.
 
-Priorização por **MoSCoW** (**M**ust, **S**hould, **C**ould, **W**on't-now) dentro de cada horizonte, refinada por **RICE** (*Reach × Impact × Confidence ÷ Effort*) na grooming. Estados: ✅ concluído · 🟡 em andamento · ⬜ planejado · 🧪 experimento/hipótese.
+### 2.2. `E-05g` — Biometria Facial Ao Vivo, Scanner Documental ISO ID-1 e OCR Visível
+- Implementação da migração [`20261108120000_client_kyc_biometrics_and_ocr.sql`](../supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql) com validação algorítmica de CPF (Módulo 11), `cpf_hash` e `face_liveness_hash` únicos e RPC `submit_client_kyc_biometrics_and_ocr`.
+- Implementação da câmera frontal ao vivo (`_LiveFrontOvalLivenessCameraModal`), do scanner documental guiado ISO/IEC 7810 ID-1 (`DocumentGuidedScannerModal`), do recorte central de 12% (*Core ROI Inset*), do Face Match multi-ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) em espaço 128-D não-negativo e do card visível `_OcrTranscribedSummaryCard`.
 
-## 3. Horizonte atual — **Agora** (out/2026) — *em desenvolvimento / concluído*
+---
 
-| Épico | Descrição | Status |
-| :-- | :-- | :-: |
-| **E-01 Fundação e segurança** | Perfil único, RLS, `GRANT` por coluna, RPCs, KYC por bucket privado, Edge Function autenticada, migrations versionadas, teste de fumaça | ✅ |
-| **E-02 Multi-modo** | Mesma conta como cliente e profissional; seleção de modo; tema por modo | ✅ |
-| **E-03 Ciclo do serviço (mock financeiro)** | Pedido, convites (2 h/5 min), orçamentos (máx. 3), aceite, custódia, PIN, 4 evidências, avaliação, emergência com estorno, chat, notificações, suporte/disputa, carteira | ✅ |
-| **E-04 Governança de engenharia** | README, ARCHITECTURE, ADRs, SETUP, CONTRIBUTING, TESTING, SECURITY, templates, CI (análise, testes e verificação de links dos `.md`); documentação organizada em `docs/` e `.github/` | ✅ |
-| **E-05 Validação em dispositivos reais** | Roteiro de testes em Android físico e iOS; OAuth Google; OTP; deep link; câmera | 🟡 |
-| **E-05b Reputação e conquistas (Fase 1)** | Avaliação guiada por pílulas e **cega** (48 h), ranking Bayesiano, selos e **conquistas escalonadas** (9 categorias × 10 níveis), visíveis no perfil público ([ADR-0011](adr/0011-avaliacoes-cegas-bayes-e-selos.md), [ADR-0012](adr/0012-conquistas-do-profissional.md)) | ✅ |
-| **E-05d Carteira do cliente** | Ledger de partida dobrada, custódia por gatilhos, trava de saldo e recarga Pix sandbox com webhook e simulação de 1 toque ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) | ✅ |
-| **E-05e Agendamento confiável** | Estado `scheduled`, `start_job` (horário do servidor + geofence Haversine), mapa/rota gratuitos, pino do cliente, chat idempotente/arquivado e dossiês ([ADR-0019](adr/0019-agendamento-geofence-chat-dossies.md)) | ✅ |
-| **E-05c Conta, tema e vitrine** | Exclusão de conta LGPD com trava financeira e Dossiê PDF; saque Pix (simulado); tema Automático/Claro/Escuro com tokens; splash coreografada; sessão no Keystore; último perfil; **vitrine LIFO** e Case de Sucesso (vídeo, fotos, relatório) | ✅ |
+## 3. Próximos Épicos Planejados (`E-06` a `E-08`)
 
-## 4. Curto prazo — até a entrega do MVP (nov – 1ª semana/dez 2026)
-
-**Objetivo do horizonte:** *produto demonstrável de ponta a ponta, estável e seguro o bastante para avaliação acadêmica e testes controlados com usuários reais.*
-
-| Épico | Itens principais | Prioridade | Critério de aceite |
-| :-- | :-- | :-: | :-- |
-| **E-06 Qualidade automatizada** | Testes de *widget* das telas críticas; `integration_test` do fluxo feliz; meta de cobertura (ver [TESTING](TESTING.md)); CI com cobertura | M | CI verde; cobertura ≥ 60 % em `core/` e ≥ 40 % global |
-| **E-07 Operação segura do KYC** | Desligar `kyc_auto_approve`; **painel de revisão** (lista, documentos por URL assinada, aprovar/recusar com motivo) | M | Nenhum KYC aprovado sem ação de admin; auditoria em `kyc_submissions.reviewed_by` |
-| **E-08 Staging e pipeline de banco** | Segundo projeto Supabase; script de aplicação de migrations com *dry-run*; checagem de *drift* | M | Migrations testadas em *staging* antes de produção |
-| **E-09 Recuperação de senha e Apple Sign-In** | Fluxo de reset; botão Apple funcional (iOS) | S | Reset ponta a ponta; revisão de conformidade das lojas |
-| **E-10 Links universais** | *App Links* (Android) e *Universal Links* (iOS) em `desperrengue.tech`, substituindo o esquema `desperrengue://` (frequentemente filtrado por clientes de e-mail) | S | E-mail de aprovação abre o app em ≥ 95 % dos testes |
-| **E-11 Conformidade LGPD (base)** | Termos e política **versionados** com registro de aceite; fluxo de **exclusão de conta**; mapeamento de dados | S | Aceite versionado em banco; exclusão remove perfil e mídia |
-| **E-12 Observabilidade mínima** | Registro de erros do app; painel de logs/consultas lentas do Supabase; alertas de falha da Edge Function | C | Falhas visíveis em < 5 min |
-
-## 5. Médio prazo (1º semestre/2027) — *da demonstração ao piloto*
-
-| Épico | Itens principais | Prioridade |
-| :-- | :-- | :-: |
-| **E-13 Pagamentos reais** | Gateway (Pix e cartão) com *split* de comissão, **webhooks assinados**, conciliação, estorno real; saque Pix do profissional; dados bancários; nota fiscal/tributação (Simples Nacional — ver plano de negócio) | M |
-| **E-14 Matching e geolocalização** | Mapa com *hotspots* de demanda, raio de atendimento efetivo, ordenação por proximidade/tempo de resposta, check-in por GPS no local | M |
-| **E-15 Comunicação** | Notificações *push* (FCM/APNs) com *deep link* para o pedido; chamada de voz (VoIP) intermediada; mídia no chat | S |
-| **E-16 Navegação declarativa e estado** | Migração para `go_router`; adoção de Riverpod para estado compartilhado ([ADR-0009](adr/0009-roteamento-por-funcao-pura-e-authgate.md)) | S |
-| **E-17 Reputação e gamificação (Fases 2–3)** | ✅ *Já entregue:* avaliações cegas, pílulas, ranking Bayesiano, selos e **conquistas** (90 troféus). 🧪 *Próximo:* multiplicador de SLA/*streak* (β = 0,12), Índice de Confiança, Saúde do Lar, Medidor de Diagnóstico; depois, em teste A/B: ligas de *take-rate* regressivo, Cofre da Casa e indicação — **com guarda-corpo de ≤ 10 % da margem** (ver [GAMIFICACAO](GAMIFICACAO.md)) | S |
-| **E-20 Presença verificável** | Play Integrity (anti GPS falso), leitura de QR do PIN, pedir o pino do endereço já no *wizard*, cancelamento/reagendamento de serviços `scheduled` com regras de estorno | M | Início sem fraude de GPS; pino obrigatório para agendados |
-| **E-18 Tema escuro completo** | Migrar Login, Cadastro e KYC aos tokens e remover `LightIsland`; revisar pastéis de categoria | S | Nenhuma tela com cor literal de superfície/texto |
-| **E-19 Pix real (PSP)** | Trocar o Pix **sandbox** da carteira ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) e o saque simulado por um provedor (Mercado Pago/Asaas/Efí): adaptador que traduz o webhook do PSP para o payload normalizado de `pix-webhook`; remover o crédito inicial e desligar `pix_sandbox`; titularidade pelo CPF do KYC; conciliação | L | Recarga e saque reais com comprovante e conciliação diária |
-| **E-18 Agenda do profissional** | Disponibilidade por dia/horário, bloqueios, sincronização com calendário | S |
-| **E-19 Qualidade de serviço** | Garantia de serviço, reabertura, reagendamento/cancelamento com regras de multa e estorno | C |
-
-## 6. Longo prazo (2º semestre/2027 em diante) — *escala e defensibilidade*
-
-| Tema | Hipóteses a validar |
-| :-- | :-- |
-| **Expansão geográfica** | Replicação por cidade; precificação regional; parcerias com condomínios |
-| **Monetização adicional** 🧪 | Assinatura premium para profissionais (destaque), cupons e *cashback* para clientes, seguros/garantia estendida |
-| **Matching inteligente** 🧪 | Recomendação por histórico, sazonalidade e reputação; estimativa de preço assistida por modelo a partir de fotos |
-| **Plataforma B2B** 🧪 | Administradoras e síndicos como clientes recorrentes; contratos e faturamento mensal |
-| **Antifraude** | Detecção de colusão (cliente × profissional), *device fingerprinting*, análise de evidências |
-| **Plataforma web** | Painel web para administração e para profissionais |
-| **Arquitetura** | Reavaliar BaaS vs. serviços dedicados (filas, *search*, *event bus*) conforme carga — via novo ADR |
-
-## 7. Riscos e dependências
-
-| Risco | Probabilidade | Impacto | Mitigação |
-| :-- | :-: | :-: | :-- |
-| Equipe de 1 dev + 1 PO (fator ônibus = 1) | Alta | Alto | Documentação (este conjunto), ADRs, testes, automação |
-| Ambiente único (sem *staging*) | Média | Alto | E-08; ensaio com `ROLLBACK` até lá |
-| Mock de KYC/pagamento percebido como real | Média | Alto | Avisos na UI; E-07 e E-13 |
-| Limites do plano gratuito (Supabase/Resend) | Média | Médio | Monitorar; plano pago quando houver tração |
-| Mudanças regulatórias (LGPD, meios de pagamento, enquadramento fiscal) | Média | Alto | E-11; consultoria jurídica/contábil antes do piloto |
-| Dependência do domínio gratuito (`desperrengue.tech`, expira em 2027, renovação automática desativada) | **Certa** | Alto | **Renovar ou migrar o domínio antes do vencimento** |
-| Rejeição nas lojas (login social, permissões) | Baixa | Médio | E-09; checklist de revisão |
-
-## 8. Como este documento é mantido
-
-* Alterações por *pull request* (`docs:`); o PO valida prioridades, o desenvolvedor valida viabilidade.
-* Item concluído **migra** para o [CHANGELOG](CHANGELOG.md) e é marcado ✅ aqui.
-* Decisões estruturais geram [ADR](adr/README.md).
+1. **`E-06` — Integração Direta com PSP Homologado no Banco Central (SPI / DICT)**:
+   - Conectar as RPCs `lock_escrow_with_smart_split` e `release_matured_escrow_batch` a webhooks assinados de instituição de pagamento participante do SPI para liquidação PIX automatizada e consulta DICT em tempo real.
+2. **`E-07` — Observabilidade Distribuída (Sentry / OpenTelemetry)**:
+   - Exportar os eventos estruturados do `TelemetryService` para coletor OpenTelemetry externo com rastreamento de latência de RPCs e *Worker Isolates*.
+3. **`E-08` — Homologação Comercial na Google Play Console**:
+   - Submissão do *Android App Bundle* (`app-release.aab`) assinado seguindo o roteiro técnico documentado em [`docs/PLAY_STORE.md`](PLAY_STORE.md).

@@ -1,70 +1,43 @@
-# Especificação do Projeto
+# Especificação Técnica e Normativa do Projeto — Desperrengue (`v2.8.1`)
 
-## 1. Perfis de Usuários (Personas)
-
-**👩 Persona 1: O Cliente (Ex: Ana)**
-
-- **Perfil:** Mãe de família, trabalha fora o dia todo, reside num condomínio ou apartamento.
-- **Necessidades:** Precisa resolver problemas domésticos (ex: consertar vazamentos, montar móveis) de forma rápida e pragmática.
-- **Dores:** Tem medo de deixar estranhos entrarem em casa; não tem tempo para pesquisar dezenas de profissionais e negociar preços individualmente.
-
-**👷 Persona 2: O Profissional (Ex: Carlos)**
-
-- **Perfil:** Eletricista e encanador autônomo, 10 anos de experiência prática.
-- **Necessidades:** Conseguir mais clientes na sua região sem precisar gastar dinheiro com publicidade incerta.
-- **Dores:** Frustrado com aplicativos que cobram caro por "moedas" apenas para ele enviar um orçamento a clientes fantasmas ou que não respondem.
-
-**👨‍💻 Persona 3: O Administrador (Equipe Interna)**
-
-- **Perfil:** Gerente de Operações e KYC da Startup.
-- **Necessidades:** Manter o nível de qualidade e segurança da plataforma.
-- **Dores:** Dificuldade em escalar a aprovação de milhares de documentos e certidões sem ferramentas apropriadas e fluxos automatizados.
+Especificação formal de requisitos funcionais, requisitos não-funcionais, regras de negócio atuariais (`RN-CAM-01` a `RN-CAM-03`), blindagem antifraude (`RN-AF-01` a `RN-AF-14`) e resolução de *Cold-Start* (`RN-MZ-01` a `RN-MZ-05`) do sistema **Desperrengue**.
 
 ---
 
-## 2. Histórias de Usuários (User Stories)
+## 1. Perfis de Atores e Unificação Multi-Modo
 
-| ID    | Persona      | História (Eu quero...)                                                 | Motivo (Para que...)                                                                    |
-| :---- | :----------- | :--------------------------------------------------------------------- | :-------------------------------------------------------------------------------------- |
-| US-01 | Cliente      | ...publicar um problema com foto e categoria.                          | ...os profissionais entendam rapidamente o escopo do que eu preciso.                    |
-| US-02 | Cliente      | ...receber no máximo 3 orçamentos gratuitos.                           | ...eu possa comparar preço e reputação sem lidar com leilões infinitos.                 |
-| US-03 | Cliente      | ...pagar o serviço através de um sistema integrado no aplicativo.      | ...eu tenha a segurança de que o dinheiro será repassado corretamente via custódia.     |
-| US-04 | Profissional | ...receber notificações de demandas urgentes na minha região.          | ...eu possa enviar propostas de forma ágil para serviços perto de mim.                  |
-| US-05 | Profissional | ...enviar orçamentos gratuitamente (sem moedas).                       | ...eu só pague comissão caso o serviço seja efetivamente fechado.                       |
-| US-06 | Profissional | ...enviar foto do meu documento e selfie para auditoria.               | ...eu possa receber o selo de profissional verificado e aumentar as minhas conversões.  |
-| US-07 | Admin        | ...visualizar documentos enviados por novos profissionais no Supabase. | ...eu possa aprovar ou rejeitar o onboarding deles na plataforma, garantindo segurança. |
+O sistema modela dois papéis operacionais principais que coexistem sobre uma única identidade civil e biométrica em `public.profiles`:
+
+1. **Usuário Cliente (`role = 'client'`)**: Proprietário ou locatário de imóvel residencial que contrata serviços em **33 categorias**, realiza o onboarding biométrico ao vivo com scanner documental ISO ID-1 e OCR, aprova visitas técnicas mediante **PIN Presencial de 4 dígitos**, aciona a **Garantia em 3 Camadas** pela 4ª aba *"Em Mediação"* e emite o **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674)**.
+2. **Usuário Profissional / Socorrista (`role = 'professional'`)**: Prestador técnico credenciado que envia propostas com **Smart Split** (mão de obra vs. peças com nota fiscal), executa o checklist fotográfico forense (*Antes e Depois*), gerencia sua **Carteira Bipartida** (saldo livre PIX vs. saldo em maturação $D+7/D+5/D+2$) e, quando elegível ao **Nível Ouro** ($RTS \ge 85$), atua como **Profissional Socorrista** na Camada 3.
 
 ---
 
-## 3. Requisitos Funcionais (RF)
+## 2. Catálogo de Requisitos Funcionais Implementados (`RF-01` a `RF-24`)
 
-| ID    | Descrição                                                                                                              | Prioridade |
-| :---- | :--------------------------------------------------------------------------------------------------------------------- | :--------- |
-| RF-01 | O sistema deve gerir sessões de utilizadores, diferenciando `role` de Clientes e Prestadores (via Supabase Auth).      | Alta       |
-| RF-02 | O sistema deve permitir que o Cliente publique uma Demanda (Job) associada a uma categoria específica.                 | Alta       |
-| RF-03 | O sistema deve permitir que Prestadores verificados enviem orçamentos (Quotes) para Demandas em aberto.                | Alta       |
-| RF-04 | O sistema deve limitar e bloquear o envio de orçamentos após uma Demanda receber 3 respostas.                          | Média      |
-| RF-05 | O sistema deve permitir ao Cliente aceitar um orçamento e transitar a Demanda para o status `in_progress`.             | Alta       |
-| RF-06 | O sistema deve suportar um fluxo de aprovação de documentos armazenados no Supabase Storage.                           | Alta       |
-| RF-07 | O sistema deve impedir (via RLS - Row Level Security) que Prestadores sem o status de verificação submetam orçamentos. | Alta       |
-
----
-
-## 4. Requisitos Não Funcionais (RNF)
-
-| ID     | Descrição                                                                                                                                    | Categoria       |
-| :----- | :------------------------------------------------------------------------------------------------------------------------------------------- | :-------------- |
-| RNF-01 | O aplicativo móvel deve ser desenvolvido no framework **Flutter (Dart 3.x)**, garantindo builds nativos e alta performance em iOS e Android. | Tecnologia      |
-| RNF-02 | A gestão de estado global e injeção de dependências deve utilizar **Riverpod 2.x** para assegurar escalabilidade reativa.                    | Arquitetura     |
-| RNF-03 | O back-end, banco de dados e autenticação devem assentar no ecosistema **Supabase (PostgreSQL 15+)**.                                        | Infraestrutura  |
-| RNF-04 | As regras de segurança de nível de linha (**RLS** do PostgreSQL) devem impedir a visualização de orçamentos concorrentes.                    | Segurança       |
-| RNF-05 | A navegação interna da aplicação deve ser feita via **GoRouter**, baseada no estado de autenticação reativo do utilizador.                   | UX / Tecnologia |
+| Código | Requisito Funcional | Módulo / Implementação Real | Status |
+| :--- | :--- | :--- | :---: |
+| `RF-01` | Autenticação segura (Cadastro, Login, Confirmação de E-mail e Reset de Senha via PKCE) | `app/lib/features/auth/` + Supabase Auth | ✅ Concluído |
+| `RF-02` | Onboarding do Cliente em 4 Etapas com CPF Módulo 11, ViaCEP, Biometria Facial Ao Vivo (`ClipOval`) e Scanner ISO ID-1 + OCR | `client_setup_screen.dart` + `document_ocr_and_liveness_service.dart` | ✅ Concluído |
+| `RF-03` | Credenciamento Profissional em 5 Etapas com Âncoras Externas (SENAI/CREA/CFT/NR-10/NR-35) e PIX *Same-Holder Lock* | `app/lib/features/pro/presentation/verificacao/` | ✅ Concluído |
+| `RF-04` | Alternância Multi-Modo (*Client* $\leftrightarrow$ *Professional*) com compartilhamento automático de $+30\text{ pts}$ de KYC/Biometria no $RTS$ | `profile_screen.dart` + `trg_profiles_compute_rts_and_tier` | ✅ Concluído |
+| `RF-05` | Abertura de Chamados nas **33 categorias residenciais** com fotos, geolocalização, nível de urgência e agendamento | `create_job_bottom_sheet.dart` + `service_categories.dart` | ✅ Concluído |
+| `RF-06` | Busca Geoespacial em $O(\log N + K)$ (*Axial Bounding Box Pruning*) e ordenação *Waterfall* em 5 Tiers | `search_professionals_bbox` (`20261108110000`) | ✅ Concluído |
+| `RF-07` | Decomposição Financeira **Smart Split Anti-Bypass** ($13.5\%$ operacional + $1.5\%$ garantia sobre mão de obra; $0\%$ sobre materiais c/ NF $\le 60\%$) | `fintech_warranty_models.dart` + `lock_escrow_with_smart_split` | ✅ Concluído |
+| `RF-08` | **Camada 1 de Garantia (`RN-CAM-01`)**: Retenção automática em maturação ($D+7$, $D+5$ ou $D+2$) e Carteira Bipartida | `escrow_maturation_entries` + `BipartiteWalletCard` | ✅ Concluído |
+| `RF-09` | **Camada 2 de Garantia (`RN-CAM-02`)**: 4ª Aba *"Em Mediação"* com SLA regressivo de 4h e janela de reparo de 24h | `JobMediationTab` + `open_job_mediation_claim` + `respond_to_job_mediation` | ✅ Concluído |
+| `RF-10` | **Camada 3 de Garantia (`RN-CAM-03`)**: Acionamento do Fundo Garantidor (`warranty_pool_ledger`), despacho de Socorrista e dívida técnica | `resolve_mediation_and_trigger_layer3` | ✅ Concluído |
+| `RF-11` | Guarda Forense de Câmera Nativa com `dHash` de 64 bits (Hamming $\le 5$ em $O(1)$) e inspeção de adulteração EXIF | `perceptual_hash_guard.dart` + `forensic_certificates` | ✅ Concluído |
+| `RF-12` | Validação Presencial por **PIN Criptográfico de 4 Dígitos** para conclusão de garantia | `Pin4WarrantyVerificationModal` | ✅ Concluído |
+| `RF-13` | Emissão do **Passaporte Oficial de Manutenção do Imóvel** em `%PDF-1.4` (ABNT NBR 5674 e Lei 8.245/91) com princípio *Zero Fake Data* | `property_maintenance_passport_pdf.dart` | ✅ Concluído |
+| `RF-14` | Exclusão Escopada de Conta em conformidade com a LGPD (`client`, `professional` ou total) | `delete_own_account_scoped` (`20261105140000`) | ✅ Concluído |
 
 ---
 
-## 5. Restrições e Limitações do MVP
+## 3. Requisitos Não-Funcionais e Restrições de Engenharia (`RNF-01` a `RNF-10`)
 
-1. **Prazo Escopo MVP:** A primeira versão funcional (MVP) deverá ser concluída e entregue impreterivelmente até a primeira semana de Dezembro de 2026.
-2. **Gateway de Pagamento:** O ambiente de pagamento no MVP será um Mock visual (simulação de Checkout/Handshake), não realizando integrações diretas com gateways reais (Stripe/Pagar.me) na primeira fase acadêmica.
-3. **Escopo Geográfico:** A validação e métricas iniciais serão contidas de forma hiperlocal para facilitar a aquisição mútua de clientes e prestadores (Marketplace Liquidity).
-4. **Recursos de Equipe:** O desenvolvimento técnico ficará sob responsabilidade de 1 desenvolvedor assistido por IA (AI Pair Programming), com 1 PO responsável pela estrutura de requisitos e regras de negócio.
+1. **`RNF-01` — Desempenho de Interface a 60 FPS**: Cronômetros regressivos e animações de câmera operam confinados em `RepaintBoundary` com `ValueListenableBuilder`, garantindo tempo de *raster thread* $\le 16.6\text{ ms}$.
+2. **`RNF-02` — Paralelismo em Memória Isolada**: Toda inferência de visão computacional e geração de PDF executa-se em *Worker Isolates* via `Isolate.run` com limite de *heap* $\le 6.5\text{ MB}$ por quadro ($1280 \times 1280\text{ px}$).
+3. **`RNF-03` — Ausência Matemática de Deadlocks**: Aquisição canônica de bloqueios pessimistas na ordem `jobs -> job_mediations -> escrow_maturation_entries -> profiles`.
+4. **`RNF-04` — Imutabilidade de Registros Contábeis**: Tabelas de custódia financeira e forense protegidas por triggers *append-only*.
+5. **`RNF-05` — Portabilidade Responsiva (`480px`)**: Compatibilidade integral entre Android nativo e PWA iOS/Desktop com trava de largura máxima de `480px`.

@@ -1,73 +1,78 @@
-# Documentação de Interface e Interação: Módulo de Verificação de Profissionais (Onboarding)
+# Especificação do Onboarding Biométrico, Scanner Documental ISO ID-1 e Credenciamento KYC (Cliente e Profissional)
 
-## 1. Visão Geral do Módulo
-
-Este documento detalha a arquitetura visual e o fluxo de interação humano-computador (IHC) referente ao módulo de verificação de identidade e qualificação de profissionais da aplicação Desperrengue. O fluxo de _onboarding_ foi estruturado em cinco etapas sequenciais, minimizando a carga cognitiva do usuário através da segmentação de tarefas (micro-interações) e fornecendo visibilidade contínua do estado do sistema através de uma barra de progresso linear.
-
-O repositório armazena os artefatos visuais de alta fidelidade no diretório `docs/ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/`.
+Este documento especifica a arquitetura de verificação de identidade civil, **Prova de Vida Facial Ativa (*Active Liveness Detection*)**, **Scanner Documental Guiado ISO/IEC 7810 ID-1**, **Face Match Multi-Ângulo 128-D** e **Credenciamento Profissional em 5 Etapas** do ecossistema **Desperrengue** (`v2.8.1`).
 
 ---
 
-## 2. Detalhamento das Interfaces de Captura e Validação
+## 1. Arquitetura Unificada de Identidade Civil e Biometria (`public.profiles`)
 
-### 2.1. Etapa 1: Captura da Face Frontal do Documento de Identificação
+No modelo relacional do **Desperrengue**, cada conta autenticada (`auth.users.id`) mapeia-se para uma única tupla em `public.profiles`. Essa decisão arquitetural garante que os atributos criptográficos e biométricos coletados no onboarding do **Usuário Cliente** sejam imediatamente compartilhados quando o mesmo titular ativa o **Modo Profissional**:
 
-A primeira interface do fluxo tem como objetivo a aquisição de dados biométricos e civis básicos do usuário.
-
-![Etapa 1 - Frente do Documento](./ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/1_verificacao_frente_documento.jpg)
-
-**Análise de Usabilidade e Elementos de Interface:**
-
-- **Visibilidade do Estado do Sistema:** O cabeçalho explicita "Etapa 1 de 5", acompanhado por uma barra de progresso fracionada, reduzindo a incerteza quanto à duração do processo.
-- **Prevenção de Erros:** A área central apresenta uma representação gráfica (modelo mental) do documento de identidade brasileiro padrão, fornecendo um _affordance_ visual claro sobre o enquadramento esperado.
-- **Controle e Liberdade do Usuário:** A interface disponibiliza dois métodos de _input_ distintos para o upload do artefato: seleção via sistema de arquivos local ("Galeria") ou acionamento do hardware de câmera ("Tirar Foto"). O botão primário "Avançar" encontra-se inativo ou atua como validador da ação anterior.
-
-### 2.2. Etapa 2: Captura do Verso do Documento de Identificação
-
-A segunda interface mantém a consistência arquitetônica estabelecida na etapa anterior, focando na aquisição do verso do documento.
-
-![Etapa 2 - Verso do Documento](./ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/2_verificacao_verso_documento.jpg)
-
-**Análise de Usabilidade e Elementos de Interface:**
-
-- **Consistência e Padrões:** A disposição dos elementos de controle (botões de galeria e câmera) e a navegação permanecem inalterados, minimizando o tempo de aprendizado (_Learnability_).
-- **Instrucional Contextual:** O elemento gráfico central foi substituído pela representação do verso de um documento civil, enfatizando a presença da impressão digital e dos dados de filiação.
-
-### 2.3. Etapa 3: Aquisição Biométrica Facial (Auto-retrato)
-
-A terceira etapa destina-se à validação de vivacidade (_liveness detection_) e comparação biométrica com a documentação civil fornecida previamente.
-
-![Etapa 3 - Auto-retrato](./ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/3_verificacao_selfie.jpg)
-
-**Análise de Usabilidade e Elementos de Interface:**
-
-- **Restrição de Input:** Diferente das etapas 1 e 2, o sistema restringe intencionalmente o _input_ exclusivamente à captura em tempo real ("Tirar Foto"), omitindo a opção de galeria para assegurar a autenticidade da requisição e prevenir injeção de imagens estáticas.
-- **Orientação ao Usuário:** A instrução em texto estabelece restrições claras para otimização do algoritmo de reconhecimento ("sem óculos, chapéu ou máscara"), acompanhada por um vetor gráfico que ilustra o alinhamento facial ideal.
-
-### 2.4. Etapa 4: Validação de Credenciais Profissionais
-
-A quarta interface transita da validação de identidade civil para a verificação de competência técnica, requerendo dados estruturados.
-
-![Etapa 4 - Registro Profissional](./ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/4_verificacao_registro_profissional.jpg)
-
-**Análise de Usabilidade e Elementos de Interface:**
-
-- **Componentes de Formulário:** A interface emprega um componente _Dropdown_ (menu suspenso) para a seleção padronizada do órgão emissor (ex: CREA, CFT, CNPJ), reduzindo a taxa de erros de formatação na base de dados.
-- **Entrada de Dados Escalar:** Um campo de texto de linha única (_Single-line text input_) é disponibilizado para a inserção alfanumérica do registro.
-- **Feedback de Ação:** O _Call to Action_ (CTA) primário sofre mutação semântica de "Avançar" para "Salvar e Avançar", indicando ao usuário que haverá uma persistência de dados no banco antes da transição para a próxima tela.
-
-### 2.5. Etapa 5: Finalização e Submissão do Fluxo
-
-A etapa derradeira conclui a esteira de interações e fornece o diagnóstico final do processo de _onboarding_.
-
-![Etapa 5 - Finalização](./ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/5_verificacao_finalizacao_envio.jpg)
-
-**Análise de Usabilidade e Elementos de Interface:**
-
-- **Feedback de Conclusão:** O sistema informa o sucesso do armazenamento transitório dos dados ("Seus dados foram salvos com sucesso").
-- **Gerenciamento de Expectativas:** A interface estabelece explicitamente o Acordo de Nível de Serviço (SLA) para a rotina de validação assíncrona executada pelo _back-office_, definindo o tempo de aprovação em até 48 horas.
-- **Ação Definitiva:** O botão primário "Enviar para Análise" consolida o pacote de dados e finaliza o escopo de interação do usuário neste fluxo.
+| Coluna em `public.profiles` | Tipo SQL | Restrição / Índice | Função Arquitetural e Antifraude |
+| :--- | :--- | :--- | :--- |
+| `cpf_hash` | `TEXT` | `UNIQUE` B-Tree parcial | Hash SHA-256 com *salt* de domínio do CPF validado por Módulo 11. Impede recriação de contas (*Ataque Sybil* — `RN-AF-14`) em $O(1)$. |
+| `cpf_masked` | `TEXT` | `CHECK` formato `***.XXX.XXX-**` | Representação mascarada segura para exibição em tela e recibos auditados. |
+| `face_liveness_hash` | `TEXT` | `UNIQUE` B-Tree parcial | Assinatura criptográfica do descritor facial L2-normalizado de 128 dimensões extraído durante a prova de vida ao vivo. |
+| `client_kyc_verified` | `BOOLEAN` | `NOT NULL DEFAULT false` | Indica conclusão bem-sucedida da Prova de Vida Ao Vivo + Scanner Frente/Verso + Face Match $\ge 78\%$ + OCR. |
+| `client_liveness_score` | `NUMERIC(5,2)` | `CHECK (0..100)` | Pontuação composta da prova de vida facial ativa ($\ge 80.0\%$). |
+| `client_ocr_confidence` | `NUMERIC(5,2)` | `CHECK (0..100)` | Índice de confiança da transcrição OCR e compatibilidade nominal ($\ge 80.0\%$). |
+| `relative_trust_score` | `NUMERIC(5,2)` | Materializado via Trigger | Recebe imediatamente $+30\text{ pontos}$ (`RN-MZ-02`) quando `client_kyc_verified = true` ou `verification_status = 'verified'`. |
 
 ---
 
-_Documento gerado para integração na arquitetura do repositório DesperrengueApp_TAI3. A renderização correta das imagens assume que este arquivo `.md` está localizado no diretório `/docs` e os artefatos no respectivo subdiretório `/docs/ui_ux/hi-fi_prototyping/1_Telas_de_verificacao_profissional/`._
+## 2. Onboarding do Usuário Cliente em 4 Etapas (`ClientSetupScreen`)
+
+Implementado em [`app/lib/features/client/presentation/client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart) e [`app/lib/core/services/document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart):
+
+```mermaid
+flowchart LR
+    S1["Etapa 1 — Identificação Civil\nNome Completo + Telefone (obrigatório)\n+ CPF (validação Módulo 11)"]
+    S2["Etapa 2 — Endereço Principal\nBusca ViaCEP + Geocodificação\n+ Coordenadas p/ Passaporte"]
+    S3["Etapa 3 — Biometria Facial Ao Vivo\nCâmera Frontal ClipOval in-app\n3 Desafios Biomecânicos YCbCr"]
+    S4["Etapa 4 — Scanner ISO ID-1 & OCR\nFrente e Verso + Face Match 128-D\n+ Card de Transcrição OCR Visível"]
+
+    S1 --> S2 --> S3 --> S4
+```
+
+### 2.1. Etapa 1 e Etapa 2 — Identidade Civil e Localização Patrimonial
+- **Etapa 1**: Coleta o nome civil completo ($\ge 2$ tokens), telefone celular obrigatório ($10$ ou $11$ dígitos) e CPF ($11$ dígitos validados pelo algoritmo oficial de dígitos verificadores Módulo 11, rejeitando sequências monotônicas).
+- **Etapa 2**: Coleta o endereço completo com preenchimento automático por CEP (ViaCEP) e geolocalização reversa, vinculando o imóvel ao **Passaporte Oficial de Manutenção do Imóvel**.
+
+### 2.2. Etapa 3 — Câmera Frontal Ao Vivo em Moldura Oval (`_LiveFrontOvalLivenessCameraModal`)
+- **Bloqueio de Câmera Traseira e Galeria**: Inicializa exclusivamente o fluxo nativo da lente frontal (`CameraLensDirection.front` / WebRTC `facingMode: "user"`), renderizado no interior de um `ClipOval` com anel de progresso animado.
+- **Execução Sequencial de 3 Desafios Biomecânicos Reais**:
+  1. *Centralização Facial*: Posicionamento da face no centro geométrico da elipse com cobertura de pele $YCbCr \in [14\%, 82\%]$ e simetria bilateral $\ge 0.42$.
+  2. *Rotação Cefálica Lateral*: Variação de luminância inter-frame $\Delta\text{Luma} \in [2.2, 48.0]$ que comprova tridimensionalidade e descarta fotografias estáticas.
+  3. *Piscada Ativa e Nitidez Final*: Variância do operador Laplaciano $\sigma_{\text{Lap}}^2 \ge 95.0$ e filtro anti-monitor (`blueMonitorRatio < 0.25`), bloqueando capturas apontadas para monitores LCD/OLED (como telas de computador ou terceiros dispositivos).
+
+### 2.3. Etapa 4 — Scanner Documental ISO/IEC 7810 ID-1, Face Match Multi-Ângulo e OCR Visível
+- **Moldura Guiada (`DocumentGuidedScannerModal`)**: Apresenta janela retangular na proporção canônica `1.586 : 1` (padrão ISO/IEC 7810 ID-1 de RG, CNH e CIN) com cantoneiras néon e checklist pré-disparo.
+- **Recorte Central de 12% (*Core ROI Inset*) e Diferenciação Frente/Verso**:
+  - Remove $12\%$ das margens periféricas da imagem antes da extração de descritores, impedindo que a superfície de apoio (mesa/bancada) contamine o hash perceptual.
+  - Exige divergência estrutural simultânea em três métricas entre Frente e Verso:
+    $$\text{Hamming}(\text{dHash}_{\text{frente}}, \text{dHash}_{\text{verso}}) \ge 10\text{ bits}, \quad \text{MAD}_{64\times 64} \ge 0.055, \quad \Delta\sigma_{\text{quadrantes}}^2 \ge 0.040$$
+- **Face Match Multi-Ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) em Espaço 128-D Não-Negativo**:
+  - Rotaciona o recorte da fotografia 3x4 do documento nos quatro ângulos ortogonais para compensar documentos fotografados na vertical ou invertidos, exigindo similaridade de cosseno:
+    $$S_{\cos}(\mathbf{v}_{\text{selfie}}, \mathbf{v}_{\text{doc}}) = \max_{\theta \in \{0^\circ, 90^\circ, 180^\circ, 270^\circ\}} \left(\frac{\mathbf{v}_{\text{selfie}} \cdot \mathbf{v}_{\text{doc}}(\theta)}{\|\mathbf{v}_{\text{selfie}}\|_2 \, \|\mathbf{v}_{\text{doc}}(\theta)\|_2}\right) \ge 78.0\%$$
+- **Card Visível de Transcrição Automática OCR (`_OcrTranscribedSummaryCard`)**:
+  - Exibe na tela o **Nome Civil Transcrito**, **CPF Extraído**, **Número de Registro (RG/CNH)**, **Data de Nascimento** e os *badges* de **Similaridade Facial (%)** e **Compatibilidade Nominal ($\ge 80\%$)** antes de liberar o botão **"Concluir e Continuar"** (que invoca a RPC `submit_client_kyc_biometrics_and_ocr`).
+
+---
+
+## 3. Credenciamento Profissional em 5 Etapas (`verificacao_step1..5`)
+
+Quando o usuário atua no **Modo Profissional**, o fluxo complementar de credenciamento técnico e bancário desenvolve-se nas telas [`app/lib/features/auth/presentation/`](../app/lib/features/auth/presentation/):
+
+| Etapa | Arquivo de Implementação | Escopo Técnico e Regras de Negócio |
+| :--- | :--- | :--- |
+| **Passo 1 — Documento Frente** | [`verificacao_step1_frente.dart`](../app/lib/features/auth/presentation/verificacao_step1_frente.dart) | Captura guiada da frente do documento oficial com custódia no bucket privado `pro-verifications`. |
+| **Passo 2 — Documento Verso** | [`verificacao_step2_verso.dart`](../app/lib/features/auth/presentation/verificacao_step2_verso.dart) | Captura guiada do verso do documento oficial e validação de certificações técnicas (**SENAI, CREA, CFT, NR-10, NR-35** — `RN-MZ-05`, concedendo $+15\text{ pts}$ imediatos no $RTS$). |
+| **Passo 3 — Verificação Biométrica (Selfie)** | [`verificacao_step3_selfie.dart`](../app/lib/features/auth/presentation/verificacao_step3_selfie.dart) | Captura de selfie de segurança e validação de presença facial, aproveitando a assinatura `face_liveness_hash` caso o titular já tenha concluído o KYC no Modo Cliente. |
+| **Passo 4 — Registro Profissional e PIX Same-Holder** | [`verificacao_step4_registro.dart`](../app/lib/features/auth/presentation/verificacao_step4_registro.dart) | Seleção das **33 categorias de serviço**, raio de atendimento geoespacial e chave PIX submetida à trava **Same-Holder Lock** (`pix_holder_cpf_hash = cpf_hash` — `RN-AF-14`). |
+| **Passo 5 — Submissão Atômica e Status** | [`verificacao_step5_finalizacao.dart`](../app/lib/features/auth/presentation/verificacao_step5_finalizacao.dart) | Disparo da RPC `submit_professional_verification`, transição para `pending` / `verified` e recálculo imediato do $RTS$ e do `waterfall_tier_rank`. |
+
+---
+
+## 4. Segurança de Armazenamento (`pro-verifications` e `forensic-evidence`)
+
+Os buckets `pro-verifications` e `forensic-evidence` operam com `public = false` no Supabase Storage. O acesso de escrita e leitura é governado por políticas RLS que exigem correspondência estrita entre o primeiro segmento do caminho do objeto e o identificador criptográfico da sessão (`(storage.foldername(name))[1] = auth.uid()::text`), garantindo isolamento completo entre usuários.

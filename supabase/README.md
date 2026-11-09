@@ -1,142 +1,76 @@
-# Supabase — Desperrengue
+# Supabase Backend — Núcleo Relacional, Custódia em 3 Camadas e Motor Antifraude (PostgreSQL 17)
 
-Projeto: **Desperrengue** (`eisfkemgooqbgqljvwvs`, região `sa-east-1`, Postgres 17).
+Projeto Gerenciado: **Desperrengue** (`eisfkemgooqbgqljvwvs`, região `sa-east-1`, PostgreSQL 17).
 
-## Modelo de dados (resumo)
+Toda a lógica financeira, as invariantes contábeis do Fundo de Garantia em 3 Camadas (`RN-CAM-01` a `RN-CAM-03`), a mitigação determinística dos 6 vetores de fraude (`RN-AF-01` a `RN-AF-14`), a resolução do paradoxo do Marco Zero (`RN-MZ-01` a `RN-MZ-05`) e a homologação biométrica/OCR (`submit_client_kyc`) são impostas diretamente no banco de dados mediante políticas **RLS (*Row Level Security*)**, restrições `CHECK`, *triggers* de complexidade $O(1)$ e funções **`SECURITY DEFINER`** ([ADR-0003](../docs/adr/0003-regras-de-negocio-no-banco-via-rpc.md) e [ADR-0020](../docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md)).
 
-Uma **mesma conta pode ser cliente e profissional** (`profiles.is_client` / `is_provider`). `role` existe só para `admin`.
+---
 
-| Objeto | Função |
-| :-- | :-- |
-| `profiles` | Um perfil por usuário. Flags de modo (`is_client`, `is_provider`, `client_setup_done`, `provider_setup_done`, `last_mode`), `verification_status` (KYC do profissional), contato e localização. Criado pelo trigger `handle_new_user`. |
-| `provider_profiles` | Título, especialidades, valor/hora, **taxa de visita**, raio, nota (`rating_avg/count`) e `jobs_done` (só o sistema altera os três últimos). |
-| `provider_portfolio`, `provider_certificates` | Fotos de trabalhos (públicas) e cofre de certificados (privado). |
-| `kyc_submissions` | Dados sensíveis do KYC. Leitura só do dono/admin; **escrita só por RPC**. |
-| `jobs` | Demanda. `urgency` (`scheduled`/`emergency`), `visibility` (`open`/`direct`), `status`, `payment_status`, `quote_count`. |
-| `job_geo` | Destino geocodificado/pino do cliente (`precision_level`, `source`); **privado** (só cliente dono e profissional contratado leem); escrita só pela RPC `set_job_location` (cliente dono: `client_pin` ou `client_geocode`) ([ADR-0019](../docs/adr/0019-agendamento-geofence-chat-dossies.md)). |
-| `job_addresses` | Endereço completo: **só o dono e o profissional contratado** enxergam. O resumo público (bairro/cidade) fica em `jobs.address_summary`. |
-| `job_invites` | Convite cliente → profissional (até 3 por pedido). Expira em 2 h (agendado) ou 5 min (emergência). |
-| `quotes` | Orçamentos (máx. 3 ativos por demanda, 1 por profissional). Cada profissional só vê o próprio. |
-| `job_secrets` | PIN de 4 dígitos da conclusão. **Só o cliente lê**; o profissional só valida pela RPC. |
-| `messages` (colunas novas) | `client_message_id` (UUID do cliente; `UNIQUE` por job+remetente → envio idempotente). Gatilho `messages_guard` recusa escrita em serviço encerrado (`CHAT_ARCHIVED`). |
-| `job_evidence` | 4 fotos obrigatórias do serviço (`overview`, `detail`, `angle`, `clean`). |
-| `payments` | Pagamento em custódia (`escrow` → `released`/`refunded`), comissão de 12 %; método `wallet` debita a carteira por gatilho ([ADR-0018](../docs/adr/0018-carteira-ledger-e-pix-sandbox.md)). |
-| `client_wallets` · `ledger_txns` · `ledger_lines` | Carteira do cliente (`available_balance`/`escrow_balance`, em **centavos**) e **ledger de partida dobrada** (cada transação soma zero; `idempotency_key` única). Só leitura para o dono; o ledger não é legível pelo app. |
-| `wallet_statement` · `pix_topups` | Extrato do cliente (Realtime) e recargas Pix (BR Code de sandbox, expira em 30 min, até 5 pendentes). |
-| `reviews` | Avaliação dos dois lados, **cega** (`revealed_at`: revelada com as duas partes ou 48 h depois), com pílulas (`tags`), fotos (`photo_paths`) e resposta pública única (`reply`). A nota do profissional só considera avaliações reveladas. |
-| `withdrawals` | Saques Pix (MVP simulado): valor, tipo da chave e chave **mascarada**; saldo = liberado − saques ([ADR-0013](../docs/adr/0013-exclusao-de-conta-lgpd-e-dossie.md)) |
-| `provider_case_pins` | Serviços fixados (máx. 3, só 5★) na vitrine do profissional ([ADR-0016](../docs/adr/0016-vitrine-de-cases-lifo.md)) |
-| `account_deletion_log` | Auditoria de exclusões (só *hash* do id; sem dado pessoal) |
-| `provider_achievements` | Conquistas desbloqueadas (`<categoria>_<limite>`; 9 categorias × 10 níveis). Só o sistema escreve ([ADR-0012](../docs/adr/0012-conquistas-do-profissional.md)). |
-| `messages` | Chat por demanda (Realtime). Só participam o cliente e o profissional que orçou. |
-| `notifications` | Geradas por triggers/RPCs (orçamento, aceite, pagamento, convite…). |
-| `support_tickets` | Chamados/disputas com SLA de 24 h; abrir um chamado num serviço em curso o congela (`disputed`). |
-| Views | `provider_public_profiles` (com `badges` e `rank_score` Bayesiano), `public_reviews`, `provider_busy_slots`, `job_client_cards` (dados mínimos e filtrados por quem pode ver). |
-| `app_settings` | Feature flags (ex.: `kyc_auto_approve`). Sem acesso pelo cliente. |
+## 1. Modelo Relacional e Estruturas de Dados (21 Migrações)
 
-### Ciclo de vida do serviço
+Uma mesma conta em `public.profiles` pode operar como **Cliente** (`is_client`) e como **Profissional** (`is_provider`), compartilhando a identidade civil e biométrica auditada.
 
-```
-open ──(cliente aceita orçamento)──▶ awaiting_payment ──(pagamento)──▶ scheduled ──(start_job: horário + geofence)──▶ in_progress
-  │                                                                          │
-  │ emergência: reserva paga ANTES; profissional aceita ───────────────────▶ │
-  │                                                         (PIN do cliente) ▼
-  └─▶ canceled (estorno se havia reserva)                              completed ──▶ avaliações
-                                      chamado de suporte ▶ disputed ▶ (admin) completed | canceled
-```
+| Tabela / Objeto | Responsabilidade Arquitetural e Invariantes de Segurança |
+| :--- | :--- |
+| `profiles` | Perfil unificado do usuário. Contém flags de modo (`is_client`, `is_provider`), identidade civil/biométrica auditada (`cpf_hash` único, `cpf_masked`, `verified_full_name`, `liveness_verified`, `liveness_score`, `face_liveness_hash`, `ocr_verified`, `kyc_biometric_verified`, `pix_key_cpf_matched`), variáveis de confiança do Marco Zero (`trust_tier`, `is_trusted_anchor`, `external_trust_score` $RTS \in [0,100]$, `waterfall_tier_rank` $1..5$, `completed_jobs_count`, `abandoned_warranty_count`), disjuntor de risco (`has_open_dispute`) e saldos da carteira bipartida do prestador (`available_wallet_balance`, `maturing_wallet_balance`, `clawback_debt_balance`). |
+| `provider_profiles` | Dados operacionais do prestador: título, especialidades normalizadas, valor/hora, taxa de visita, raio de atendimento, média Bayesiana (`rating_avg`, `rating_count`) e `jobs_done` (protegidos por trigger). |
+| `kyc_submissions` | Registro forense imutável de validações documentais e biométricas (`role_scope` $\in \{\text{'client'}, \text{'provider'}, \text{'both'}\}$, `document_type`, `doc_front_phash`, `doc_back_phash`, `selfie_liveness_phash`, `liveness_challenges_passed`, `ocr_extracted_payload`, `laplacian_sharpness_score`, `glare_ratio_pct`, `face_match_cosine_similarity`). |
+| `jobs` | Ordem de Serviço. Contém segregação contábil *Smart Split* (`labor_amount`, `materials_amount`), estado da custódia (`escrow_status`), hash do PIN (`checkout_pin_hash`), gatilho de liberação automática (`auto_release_at`), vigência da garantia de 90 dias (`warranty_expires_at`), assinaturas visuais `pHash` de 64 bits (`checkin_photo_phash`, `checkout_photo_phash`), distâncias Haversine (`checkin_gps_distance_m`, `checkout_gps_distance_m`) e rastreabilidade de retrabalho de Camada 3 (`is_warranty_rework`, `parent_job_id`, `original_faulty_provider_id`). |
+| `warranty_pool_ledger` | **Livro-razão imutável (*Append-Only*) do Fundo de Garantia (Camadas 2 e 3).** Registra `CARVEOUT_CONTRIBUTION_1_5_PCT`, `REWORK_PAYOUT_DEBIT`, `CLAWBACK_RECOVERY_CREDIT` e `COLD_START_SEED_RESERVE`. Blindado pelas restrições `chk_invariant_1_coverage_cap` ($\text{amount} \le \text{labor\_reference\_cap}$) e `chk_invariant_2_identity_disjunction` ($\text{rescuer} \ne \text{original} \land \text{rescuer} \ne \text{client}$). |
+| `escrow_maturation_entries` | **Fila de maturação progressiva de repasses ($D+7 / D+5 / D+2$).** Segrega `gross_labor_amount`, `materials_reimbursement_amount` ($0\%$ taxa), `platform_operational_fee` ($13,5\%$), `warranty_carveout_fee` ($1,5\%$) e `net_provider_amount`, transitando entre `MATURING`, `FROZEN_BY_DISPUTE`, `AVAILABLE_FOR_PIX` e `CLAWED_BACK`. |
+| `job_mediations` | **Máquina de estados determinística de 5 fases da aba *"Em Mediação"*.** Controla `PHASE_1_OPENED_AND_FROZEN` a `PHASE_5_SETTLED_AND_CERTIFIED`, categoria da reclamação, `defect_photo_phash`, distância GPS, `original_provider_deadline_at` (SLA de 6 horas) e desfecho (`resolution_outcome`). |
+| `forensic_certificates` | Certificados digitais de garantia e prontuário do imóvel (`certificate_code`, `sha256_integrity_seal`, `checkin_phash`, `checkout_phash`, `warranty_until`). |
+| `client_wallets` · `ledger_txns` · `ledger_lines` · `wallet_statement` · `pix_topups` | Carteira do cliente em centavos inteiros (`bigint`), livro-razão de partida dobrada com soma zero e recarga Pix idempotente ([ADR-0018](../docs/adr/0018-carteira-ledger-e-pix-sandbox.md)). |
+| `job_addresses` · `job_geo` · `job_secrets` | Isolamento de endereço completo, coordenadas confirmadas por pino/geocodificação ([ADR-0019](../docs/adr/0019-agendamento-geofence-chat-dossies.md)) e PIN secreto de 4 dígitos ([ADR-0007](../docs/adr/0007-privacidade-por-minimizacao-de-dados.md)). |
+| `quotes` · `job_invites` · `job_evidence` · `reviews` · `messages` · `provider_achievements` | Orçamentos (máx. 3), convites com expiração automática, evidências fotográficas, avaliações cegas (48h), chat idempotente e 90 conquistas escalonadas. |
 
-`verification_status` (KYC): `NOT_SUBMITTED → PENDING → APPROVED_PENDING_EMAIL → ACTIVE` (ou `REJECTED`, que permite reenvio).
+---
 
-### Funções (RPC) — toda mudança de estado/dinheiro passa por elas
+## 2. Funções Matemáticas Puras $O(1)$, Triggers Materializados e RPCs `SECURITY DEFINER`
 
-| Função | Quem chama | O que faz |
-| :-- | :-- | :-- |
-| `enroll_mode(mode)` / `set_last_mode` / `complete_setup(mode)` | usuário | Cadastra a conta como cliente e/ou profissional e conclui a edição inicial do perfil |
-| `submit_kyc`, `activate_provider`, `admin_review_kyc` | profissional / admin | KYC (ver abaixo) |
-| `invite_providers(job, ids[])` | cliente dono | Convida profissionais **ativos** (máx. 3) |
-| `decline_invite(job)`, `accept_emergency(job)` | profissional convidado | Recusa ou aceita (emergência: gera PIN) |
-| `withdraw_quote(job)` / `reject_quote(quote)` | profissional / cliente | Retira ou recusa um orçamento |
-| `accept_quote(quote)` | cliente dono | Aceita 1 orçamento, rejeita os demais → `awaiting_payment` |
-| `pay_job_mock(job, method, when)` | cliente dono | Checkout **simulado** (`pix`/`credit_card`/`debit_card`), custódia e geração do PIN |
-| `request_emergency_mock(job, method)` | cliente dono | Paga a reserva da visita antes do aceite |
-| `complete_job_with_pin(job, pin)` | profissional contratado | Valida o PIN (5 tentativas persistidas) e libera a custódia |
-| `cancel_job(job)` | cliente dono | Cancela pedido aberto/aguardando pagamento, **estornando** reserva |
-| `submit_review(...)` | cliente ou profissional | Avaliação única por parte; pílulas, fotos (cliente) e revelação cega |
-| `reply_to_review(id, texto)` | avaliado | Resposta pública, uma vez, só após revelada |
-| `review_status(job)` / `client_reputation(cliente)` | autenticado | Estado da avaliação / nota do cliente (só profissionais envolvidos) |
-| `my_achievement_counts()` | profissional | Contadores por categoria (progresso das conquistas) |
-| `my_wallet()` · `request_withdrawal(valor, tipo, chave, titular)` | profissional | Saldo no servidor e saque Pix simulado (trava anti-corrida) |
-| `my_client_wallet()` · `create_topup(centavos, chave)` · `simulate_pix_payment(topup)` | cliente | Saldo e custódia, recarga Pix idempotente e **simulação de 1 toque** (só com `app_settings.pix_sandbox = 'true'`) |
-| `confirm_topup(txid, centavos, ref)` | **só `service_role`** | Núcleo do webhook Pix (idempotente; valida o valor) |
-| `start_job(job, lat, lng, accuracy, simulate)` | profissional contratado | **Dupla trava**: relógio do servidor (≥ agenda − 15 min) e Haversine ≤ raio (100 m / 250 m rua); `simulate` só com `checkin_sandbox='true'`. Grava `started_at`/`start_distance_m` |
-| `job_destination(job)` · `set_job_location(job, lat, lng, source, precision)` · `server_time()` | partes · cliente dono · autenticado | Destino do serviço; o **cliente** grava o pino (`client_pin`) ou a geocodificação do app (`client_geocode` + `house/street/locality`); um pino nunca é sobrescrito; hora do servidor |
-| `chat_counterpart(job, provider)` | participante | Nome/foto/especialidade do interlocutor (nunca e-mail) |
-| `provider_job_dossier(job)` · `client_job_dossier(job)` · `my_received_reviews()` | profissional contratado · cliente dono · profissional | Dossiês privados (financeiro só para o profissional); avaliações recebidas reveladas, com `job_id` |
-| `account_deletion_status()` | autenticado | Trava da exclusão: saldo, custódia, serviços em andamento |
-| `account_dossier(uid)` · `purge_account(uid)` | **só `service_role`** | Dados do Dossiê PDF e limpeza LGPD (chamadas pela Edge Function) |
-| `provider_showcase(p)` · `provider_case_detail(job)` · `provider_case_history()` | autenticado | Vitrine LIFO (4 vagas), Case de Sucesso e histórico |
-| `pin_case(job)` · `unpin_case(job)` · `set_job_report(job, texto)` | profissional | Curadoria da vitrine e relatório técnico |
-| `create_support_ticket(...)` | participante | Abre chamado (congela o serviço em curso) |
-| `admin_resolve_dispute(ticket, release, texto)` | admin / service_role | Libera ao profissional ou devolve ao cliente |
-| `expire_invites()` | `pg_cron` (1/min) | Expira convites e **estorna emergências sem resposta** |
-| `process_mock_kyc_approvals()` | `pg_cron` (1/min) | **MOCK**: aprova KYC após 40 s se `app_settings.kyc_auto_approve = 'true'` |
+### 2.1. Funções Imutáveis de Complexidade Constante $O(1)$
+- `public.hamming_distance_64(hash_a BIGINT, hash_b BIGINT) RETURNS INTEGER`: Calcula a distância de Hamming entre dois hashes perceptuais de 64 bits via operador `XOR` (`#`) e laço de Brian Kernighan (`x := x & (x - 1)`).
+- `public.calculate_relative_trust_score(...) RETURNS NUMERIC(5,2)`: Calcula o *Relative Trust Score* ($RTS \in [0, 100]$) combinando KYC biométrico ($+30$), maturidade MEI $\ge 6\text{ meses}$ ($+20$), certificação técnica ($+20$), histórico inicial ($\min(6N, 30)$) e penalidade por abandono ($-50$ por ocorrência).
+- `public.is_valid_cpf(p_cpf TEXT) RETURNS BOOLEAN`: Valida aritméticamente os dois dígitos verificadores do CPF pelo algoritmo oficial de Módulo 11 e rejeita sequências repetidas em $O(1)$.
+- `public.trg_sync_profile_trust_and_rank()`: Trigger `BEFORE INSERT OR UPDATE` em `public.profiles` que materializa instantaneamente `external_trust_score` e `waterfall_tier_rank` ($1$ a $5$), garantindo leitura em $O(1)$.
 
-### Fluxo de aprovação do KYC e e-mail
+### 2.2. Procedimentos Remotos Transacionais (`SECURITY DEFINER`)
 
-`profiles.verification_status → APPROVED_PENDING_EMAIL` ⇒ trigger `profiles_notify_kyc_approved` ⇒ `net.http_post` para a Edge Function `enviar-email-aprovacao` com o header `x-webhook-secret` (segredo no **Vault** `kyc_webhook_secret` e no secret `WEBHOOK_SECRET` da função) ⇒ Resend ⇒ e-mail com `desperrengue://onboarding/ativar`.
-O link **não carrega credencial**: o app apenas reconsulta o status no servidor.
+| Função RPC | Papel que Invoca | Semântica Transacional, Guardas e Ordem de Bloqueios |
+| :--- | :--- | :--- |
+| `submit_client_kyc(...)` | Cliente autenticado | Valida CPF Mod-11 (`ERR_INVALID_CPF_MOD11`), gera `cpf_hash` (`SHA-256` com *pepper*) e máscara LGPD, verifica unicidade Anti-Sybil (`ERR_DUPLICATE_CPF_IDENTITY`), valida distância de Hamming entre Frente e Verso (`ERR_DUPLICATE_FRONT_BACK_PHOTO`), nitidez Laplaciana $\ge 110,0$ (`ERR_BLURRY_DOCUMENT_IMAGE`), reflexo $\le 8,5\%$ (`ERR_EXCESSIVE_GLARE`), prova de vida $\ge 85\%$ (`ERR_LIVENESS_FAILED`) e *Face Match* $\ge 0,78$ (`ERR_FACE_MISMATCH`). Atualiza `profiles` e compartilha `kyc_biometric_verified = TRUE` (+30 pts $RTS$). |
+| `complete_job_and_schedule_escrow(...)` | Prestador contratado | Adquire lock `1. jobs`. Verifica geofence ($\le 150\text{ m}$ — `ERR_GEOFENCE_VIOLATION`) e `hamming_distance_64(checkin_photo_phash, p_checkout_phash) >= 5` (`ERR_DUPLICATE_FORENSIC_PHOTO`). Se o PIN de 4 dígitos for informado e válido, conclui o serviço e invoca `settle_escrow_with_carveout_and_maturation`; caso contrário, agenda `auto_release_at = NOW() + INTERVAL '24 hours'`. |
+| `settle_escrow_with_carveout_and_maturation(p_job_id)` | Interna / Servidor | Adquire locks `1. jobs -> 4. profiles`. Calcula $13,5\%$ operacional e $1,5\%$ Fundo de Garantia exclusivamente sobre `labor_amount` ($0\%$ sobre `materials_amount`), abate eventual dívida de *Clawback* (`CLAWBACK_RECOVERY_CREDIT`), aporta $1,5\%$ em `warranty_pool_ledger` (`CARVEOUT_CONTRIBUTION_1_5_PCT`) e insere registro em `escrow_maturation_entries` com janela $D+2$ (Âncora), $D+5$ (Padrão) ou $D+7$ (Trainee). |
+| `open_warranty_mediation(...)` | Cliente titular | Adquire locks `1. jobs -> 2. job_mediations -> 3. escrow_maturation_entries -> 4. profiles`. Verifica vigência de 90 dias, geofence ($\le 150\text{ m}$) e não-reciclagem das fotos de Antes/Depois (`hamming_distance_64 >= 5`). Congela o repasse (`FROZEN_BY_DISPUTE`), abre o SLA de 6 horas do prestador original e ativa o *Circuit Breaker* (`has_open_dispute = TRUE`). |
+| `trigger_layer3_rework(...)` | Cliente / Worker | Verifica chave de idempotência. Adquire locks na **Ordem Canônica (`1. jobs -> 2. job_mediations -> 3. escrow_maturation_entries -> 4. profiles`)**. Verifica teto de $100\%$ de `labor_amount` (`ERR_COVERAGE_CAP_EXCEEDED`). Executa busca em cascata de 5 degraus com podagem por *Axial Bounding Box* ($O(\log N + K)$), disjunção tripla (`device_fingerprint_hash`, `cpf_hash`, `face_liveness_hash`), Grafo Zero-Link e *cooldown* de 24h. Executa *Clawback* prioritário, incrementa `abandoned_warranty_count`, cria a nova OS de retrabalho e escritura o débito em `warranty_pool_ledger`. |
+| `process_autonomous_escrow_and_mediation_queues()` | Worker `pg_cron` | Processa em lotes não-bloqueantes (`FOR UPDATE SKIP LOCKED LIMIT 100`) a liberação automática de serviços após 24h (`auto_release_at <= NOW()`) e a conversão de saldos maturados (`available_at <= NOW()`) para saldo livre PIX (`AVAILABLE_FOR_PIX`). |
+| Demais RPCs do Ciclo Operacional | Cliente / Prestador / Admin | `enroll_mode`, `complete_setup`, `submit_kyc`, `activate_provider`, `invite_providers`, `accept_quote`, `pay_job_mock`, `start_job`, `complete_job_with_pin`, `submit_review`, `my_client_wallet`, `create_topup`, `confirm_topup`, `account_deletion_status`, `purge_account`. |
 
-> **Produção:** desligue a aprovação automática: `update public.app_settings set value = 'false' where key = 'kyc_auto_approve';` e revise o KYC com `select public.admin_review_kyc('<uuid>', true, null);`.
+---
 
-### Storage
+## 3. Índices de Alta Seletividade e Podagem Espacial
 
-| Bucket | Acesso | Uso |
-| :-- | :-- | :-- |
-| `kyc-documents` | privado, pasta `<uid>/` | Documentos do KYC |
-| `job-media` | privado, pasta `<uid>/`; leitura liberada por policy a quem participa do pedido | Fotos do pedido, evidências, provas de suporte |
-| `public-media` | público para leitura, escrita na própria pasta | Avatar e portfólio |
+| Índice | Definição e Complexidade Assintótica |
+| :--- | :--- |
+| `idx_profiles_rescue_waterfall_bbox` | `ON public.profiles (waterfall_tier_rank ASC, last_latitude, last_longitude) WHERE is_provider = TRUE AND has_open_dispute = FALSE AND trust_tier <> 'SUSPENDED'` — Viabiliza podagem espacial em $O(\log N + K)$ antes do cálculo trigonométrico de Haversine. |
+| `idx_profiles_cpf_hash_unique` | `UNIQUE ON public.profiles (cpf_hash) WHERE cpf_hash IS NOT NULL` — Prevenção determinística de ataques Sybil em $O(1)$. |
+| `idx_profiles_face_liveness_hash` | `ON public.profiles (face_liveness_hash) WHERE face_liveness_hash IS NOT NULL` — Rastreabilidade de unicidade biométrica em $O(1)$. |
+| `idx_jobs_auto_release_queue` | `ON public.jobs (auto_release_at ASC) WHERE status = 'awaiting_approval' AND escrow_status = 'LOCKED_100'` — Varredura de fila autônoma em $O(B \log S)$. |
+| `idx_escrow_maturation_queue` | `ON public.escrow_maturation_entries (available_at ASC) WHERE maturation_status = 'MATURING'` — Liquidação de maturação em $O(B \log S)$. |
+| `idx_mediations_sla_6h_queue` | `ON public.job_mediations (original_provider_deadline_at ASC) WHERE current_phase IN (...)` — Monitoramento de expiração do SLA de 6 horas. |
 
-## Migrations
+---
 
-Em `migrations/`, aplicadas em ordem (16 até aqui). Sem Docker, aplique com a Management API do CLI:
+## 4. Aplicação de Migrações e Execução dos Testes SQL
 
 ```bash
-supabase db query --linked -f supabase/migrations/<arquivo>.sql
-```
+# Aplicar migração específica via Management API do Supabase CLI
+supabase db query --linked -f supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql
+supabase db query --linked -f supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql
 
-e registre a versão em `supabase_migrations.schema_migrations`. Antes de aplicar, valide em transação com `rollback`. Com Docker, o fluxo padrão (`supabase db push`) também funciona.
-
-## Match de categoria, isolamento do pedido e dossiê (migration `20261106120000`)
-
-- `norm_tag` / `norm_tags`: normalização canônica das especialidades (sem acento/caixa, sinônimos: `Hidráulica` → `encanador`, `Eletricista` → `eletrica`…). **Espelho de `app/lib/core/utils/tag_normalizer.dart`** — ao mudar os sinônimos, altere os dois.
-- `provider_public_profiles.specialty_slugs` + índice GIN: a busca filtra por categoria na própria query (`@>`), inclusive com N tags por perfil e profissionais com 0 serviços.
-- **Pedido público só para quem atende a categoria**: `provider_matches_category()` na RLS de `jobs`, em `job_client_cards`, nas fotos do storage e no trigger `quotes_before_insert` (convidados continuam podendo orçar). O trigger `jobs_notify_area_providers` avisa os profissionais da área (`new_area_job`).
-- `jobs.canceled_at / cancel_reason / canceled_by`, preenchidos pelo trigger `jobs_stamp_cancellation`.
-- `client_job_dossier` devolve endereço completo, coordenadas, cancelamento e a contestação (`dispute`: quem abriu, motivo, andamento) para o detalhe do pedido em qualquer estado.
-- Teste: `supabase db query --linked -f supabase/tests/category_match_smoke.sql` (25 verificações).
-
-## Teste de segurança e de fluxo
-
-```bash
+# Executar baterias transacionais de fumaça (sempre abortadas ao final com ROLLBACK; critério: FALHAS=0)
 supabase db query --linked -f supabase/tests/security_smoke.sql
-```
-
-Roda numa transação **sempre abortada** (nada é gravado) e imprime o relatório `ok`/`FAIL` com **62 verificações**: auto-aprovação e escalada de papel, multi-modo, convites, privacidade de orçamentos/endereço/PIN, limite de 3 orçamentos, aceite, custódia, PIN com tentativas persistidas, comissão, avaliações, chat, emergência (estorno por expiração e por cancelamento), disputa e acesso anônimo. Esperado: `FALHAS=0`.
-
-## Segredos (nomes — nunca valores)
-
-| Onde | Nome |
-| :-- | :-- |
-| Secrets da Edge Function | `RESEND_API_KEY`, `WEBHOOK_SECRET`, `PIX_WEBHOOK_SECRET` (função `pix-webhook`) (+ `SUPABASE_*` padrão) |
-| Vault do banco | `kyc_webhook_secret` (mesmo valor de `WEBHOOK_SECRET`) |
-| Opcionais da função | `EMAIL_FROM`, `ONBOARDING_DEEP_LINK` |
-
-Para rotacionar o segredo do webhook, gere um novo valor, atualize o Vault (`vault.update_secret`) **e** o secret da função (`supabase secrets set WEBHOOK_SECRET=...`) e reimplante a função.
-
-## Deploy da Edge Function
-
-```bash
-supabase functions deploy enviar-email-aprovacao --use-api --no-verify-jwt
-supabase functions deploy excluir-conta --no-verify-jwt   # o JWT do usuário é validado dentro da função
-supabase functions deploy pix-webhook --no-verify-jwt     # autenticada pelo header x-webhook-secret (PIX_WEBHOOK_SECRET)
+supabase db query --linked -f supabase/tests/client_wallet_smoke.sql
+supabase db query --linked -f supabase/tests/scheduled_start_smoke.sql
+supabase db query --linked -f supabase/tests/scoped_deletion_smoke.sql
 ```

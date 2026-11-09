@@ -1,177 +1,158 @@
-# Arquitetura do Sistema — Desperrengue
+# Arquitetura do Sistema — Desperrengue (`v2.8.1`)
 
-> **Escopo:** Este documento apresenta o planejamento e a implementação da arquitetura de software do aplicativo **Desperrengue** para a entrega da Etapa 3, detalhando a stack tecnológica (Frontend, Backend, Banco de Dados e Integrações), os diagramas arquiteturais (Modelo C4), o esquema relacional, as máquinas de estado e os controles de segurança.
-> **Referência Técnica Completa:** Para detalhes adicionais de baixo nível e matrizes STRIDE, consulte também o documento técnico vivo [`ARCHITECTURE.md`](ARCHITECTURE.md) e os 12 Registros de Decisão de Arquitetura em [`docs/adr/`](./adr/README.md).
+Documento de especificação arquitetural do sistema **Desperrengue**, estruturado segundo o modelo **C4** (Contexto, Contêineres, Componentes e Código/Dados) e alinhado à versão de produção `v2.8.1+202611082`.
 
----
-
-## 1. Planejamento e Justificativa da Stack Tecnológica
-
-A arquitetura do **Desperrengue** segue o estilo **Cliente–Servidor em Duas Camadas Lógicas apoiado em BaaS (*Backend-as-a-Service*)**, adotando o paradigma de **"Banco de Dados como Núcleo de Domínio" (*Database-Centric Architecture*)** ([ADR-0001](./adr/0001-baas-supabase-como-backend.md) e [ADR-0003](./adr/0003-regras-de-negocio-no-banco-via-rpc.md)).
-
-Nesse modelo, o aplicativo móvel é tratado sob a premissa de **Zero-Trust no Cliente**: toda validação na interface tem propósito meramente ergonômico (UX), enquanto todas as regras críticas de negócio — limite de 3 orçamentos, custódia financeira (*escrow*), sigilo de endereço/PIN, imutabilidade de notas e bloqueio de auto-aprovação de KYC — são impostas diretamente pelo motor do banco **PostgreSQL 17** via políticas **RLS (*Row Level Security*)**, *triggers* e funções **`SECURITY DEFINER`**.
-
-### 1.1. Matriz da Stack Tecnológica Utilizada
-
-| Camada | Tecnologia / Versão | Papel no Sistema | Justificativa Técnica e de Negócio |
-| :--- | :--- | :--- | :--- |
-| **Frontend Mobile** | **Flutter 3.47** (Dart $\ge$ 3.13.4) | Aplicativo nativo multiplataforma (Android e iOS) em base de código única (`app/`). | Alta performance gráfica (60/120 fps), tipagem estática forte, suporte a tematização dinâmica Material 3 (Modo Cliente Laranja / Modo Profissional Azul) e produtividade para equipe enxuta ([ADR-0002](./adr/0002-flutter-como-cliente-movel-unico.md)). |
-| **Roteamento e Estado** | `Navigator` + `AuthGate` + `AppSession` (`ChangeNotifier`) | Guarda reativa de sessão, tratamento de *deep links* e função pura de roteamento `destinationFor()`. | Desacopla a lógica de redirecionamento pós-login da árvore de widgets, permitindo cobertura de testes unitários em Dart puro sem dependências nativas ([ADR-0009](./adr/0009-roteamento-por-funcao-pura-e-authgate.md)). *Nota: a migração para `go_router` + `Riverpod` amplo está planejada no Épico E-16 do Roadmap.* |
-| **Banco de Dados** | **PostgreSQL 17** (Supabase `sa-east-1` — São Paulo) | Persistência relacional, integridade transacional, RLS, *views* de privacidade e RPCs em PL/pgSQL. | Garante consistência ACID para operações financeiras (custódia, estornos e comissão de 12%), *advisory locks* contra condições de corrida e baixa latência no Brasil. |
-| **API de Dados** | **PostgREST** (Supabase REST) | Exposição automática de tabelas, *views* e chamadas remotas de procedimentos (RPC) sobre HTTPS + JWT. | Elimina a necessidade de manter um servidor intermediário boilerplate em Node/Java, reduzindo o custo operacional no cenário Lean (MVP). |
-| **Autenticação** | **Supabase Auth (GoTrue)** | Cadastro com e-mail/senha + código **OTP de 6 dígitos** e login federado **Google OAuth 2.0**. | Emissão segura de tokens JWT assinados que alimentam diretamente `auth.uid()` nas políticas RLS do PostgreSQL. |
-| **Tempo Real** | **Supabase Realtime** (WebSockets sobre WAL) | Atualização instantânea de `jobs`, `quotes`, `job_invites`, `messages` (chat) e `notifications`. | Permite que a tela do cliente e do profissional reajam ao vivo quando um orçamento chega, um convite de emergência é aceito ou o PIN é validado. |
-| **Armazenamento** | **Supabase Storage** (S3-compatível) | Buckets privados (`kyc-documents`, `job-media`) e público (`public-media`). | Isola documentos sensíveis (RG/CNH, selfie, fotos da residência) com leitura restrita a URLs assinadas temporárias (*Signed URLs*). |
-| **Backend Serverless** | **Supabase Edge Functions** (Deno / TypeScript) | Função `enviar-email-aprovacao` acionada via webhook `pg_net` autenticado por segredo no **Vault**. | Executa integrações externas que exigem chaves secretas (`service_role` e API do Resend) fora do alcance do cliente ([ADR-0010](./adr/0010-webhook-autenticado-por-segredo-no-vault.md)). |
-| **Agendamento (Jobs)** | **`pg_cron`** (no PostgreSQL) | Rotinas periódicas a cada 1 minuto (`expire-invites` e `kyc-mock-approval`). | Cancela convites expirados (2h agendado / 5 min emergência) e **estorna automaticamente** reservas financeiras sem depender de intervenção manual. |
-| **Integrações Externas** | **Resend** (E-mail), **ViaCEP / BrasilAPI** (CEP) e **Nominatim OSM** (GPS) | Envio de e-mails transacionais (`@desperrengue.tech`) e preenchimento automático de endereço. | APIs gratuitas ou de baixo custo que reduzem o atrito de preenchimento no cadastro e garantem entregabilidade DKIM/SPF. |
+> Para a especificação matemática do motor de Garantia em 3 Camadas, análise assintótica *Big-O* e pipeline de Visão Computacional, consulta-se [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) e o [`ADR-0020`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md).
 
 ---
 
-## 2. Visão Arquitetural em Camadas (Modelo C4)
+## 1. Visão Geral e Matriz Tecnológica
 
-### 2.1. Diagrama de Contexto (C4 — Nível 1)
+O **Desperrengue** é uma plataforma *multi-sided* de contratação de serviços residenciais imediatos e agendados com **Fundo de Garantia Auto-Sustentável em 3 Camadas**, **Smart Split Anti-Bypass (15% mão de obra / 0% peças com NF)**, **Biometria Facial Ao Vivo + Scanner Documental ISO ID-1** e **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674)**.
+
+| Camada | Tecnologia Adotada | Papel Arquitetural no Ecossistema |
+| :--- | :--- | :--- |
+| **Cliente Mobile & Web (PWA)** | Flutter `3.47.x` (Dart `>=3.4.0 <4.0.0`), Material 3 | Base de código unificada para Android (APK/AAB) e Web (PWA em GitHub Pages com trava responsiva `480px`). |
+| **Gerenciamento de Estado** | `flutter_riverpod` (`^2.5.1`) | Injeção de dependências determinística, *streams* reativos e isolamento de testes de widgets. |
+| **Visão Computacional & Isolates** | `Isolate.run`, `camera`, `image_picker`, `PerceptualHashGuard`, `DocumentOcrAndLivenessService` | Execução paralela em memória isolada de `dHash` 64-bit, `MAD` $64\times 64$, Laplaciano, segmentação de pele $YCbCr$, Face Match 128-D multi-ângulo e OCR documental. |
+| **Autenticação** | Supabase Auth (GoTrue) | Fluxo OAuth2/PKCE, confirmação de e-mail, recuperação de senha e emissão de JWTs assinados. |
+| **Banco de Dados & Motor Contábil** | PostgreSQL 17 (Supabase) — **21 migrações SQL** | Persistência relacional com *Row Level Security* (RLS), *Append-Only Ledgers*, funções `SECURITY DEFINER` e ordenação canônica de bloqueios. |
+| **Armazenamento de Objetos** | Supabase Storage (`job-photos`, `avatars`, `pro-verifications`, `forensic-evidence`) | Buckets segregados com políticas RLS por prefixo `auth.uid()` e URLs assinadas temporárias para dossiês KYC e forenses. |
+| **Motor Documental PDF** | `PropertyMaintenancePassportPdf` (`%PDF-1.4` nativo) | Geração vetorial determinística em memória de certificados ABNT NBR 5674 e Lei do Inquilinato (Lei 8.245/91). |
+| **Qualidade & CI/CD** | GitHub Actions (`ci.yml`, `pages-pwa.yml`, `release-apk.yml`, `supabase-migrate.yml`) | Execução automatizada de **529 testes Flutter**, **577 asserções SQL**, **17 testes de PDF** e verificação de links Markdown. |
+
+---
+
+## 2. Diagrama de Contexto (C4 — Nível 1)
 
 ```mermaid
 flowchart LR
-    C(["Cliente<br/>(Contratante Residencial)"])
-    P(["Profissional<br/>(Prestador Autônomo Verificado)"])
-    A(["Administrador<br/>(Equipe Operacional / KYC)"])
+    Cliente["👤 Usuário Cliente\n(Solicita serviços, valida KYC/Biometria,\naprova via PIN de 4 dígitos e emite Passaporte)"]
+    Profissional["🛠️ Usuário Profissional / Socorrista\n(Executa serviços, envia checklist Antes/Depois,\nrecebe via Smart Split e atua na Camada 3)"]
+    Desperrengue["📱 Ecossistema Desperrengue\n(App Flutter + Worker Isolates +\nMotor Contábil & Antifraude Supabase)"]
+    ViaCEP["📮 API ViaCEP\n(Enriquecimento de CEP)"]
+    Nominatim["🗺️ OpenStreetMap / Nominatim\n(Geocodificação Reversa)"]
 
-    D["Sistema Desperrengue<br/>(App Flutter + Backend Supabase)"]
-
-    G[("Google OAuth 2.0<br/>Identidade Federada")]
-    R[("Resend SMTP/API<br/>E-mails @desperrengue.tech")]
-    GEO[("ViaCEP / BrasilAPI / OSM<br/>Geocodificação e CEP")]
-
-    C -- "Publica demandas, paga em custódia (saldo da carteira), informa PIN, avalia" --> D
-    P -- "Submete KYC, envia orçamentos grátis, anexa 4 evidências, valida PIN" --> D
-    A -- "Audita KYC e resolve disputas (via RPC)" --> D
-    D -- "Autenticação Social" --> G
-    D -- "OTP e E-mail de Aprovação KYC" --> R
-    D -- "Consulta de Endereço por CEP e GPS" --> GEO
+    Cliente -->|"HTTPS / WSS"| Desperrengue
+    Profissional -->|"HTTPS / WSS"| Desperrengue
+    Desperrengue -->|"REST JSON"| ViaCEP
+    Desperrengue -->|"REST JSON"| Nominatim
 ```
 
-### 2.2. Diagrama de Contêineres (C4 — Nível 2)
+---
+
+## 3. Diagrama de Contêineres e Componentes (C4 — Níveis 2 e 3)
 
 ```mermaid
 flowchart TB
-    subgraph ClientLayer["Dispositivo Móvel (Android / iOS)"]
-        APP["Aplicativo Flutter 3.47<br/>(Camadas: core/ + features/)"]
+    subgraph ClientApp["Aplicação Cliente (Flutter 3.47 — Android & PWA)"]
+        UI["Camada Presentation\n- ClientSetupScreen (KYC 4 Etapas)\n- ClientHomeScreen & ProHomeScreen (4 Abas)\n- JobMediationTab & Pin4Modal\n- PropertyPassportInteractiveView"]
+        CV["Camada Worker Isolates (Paralelismo)\n- PerceptualHashGuard (dHash 64-bit + EXIF)\n- DocumentOcrAndLivenessService (YCbCr + Face Match 128-D)\n- PropertyMaintenancePassportPdf (%PDF-1.4)"]
+        Pipe["Camada de Serviços & Resiliência\n- SpeculativeEvidencePipeline (GPS 30s + Upload)\n- OfflineOutbox & TelemetryService"]
     end
 
-    subgraph CloudLayer["Nuvem Supabase (Região sa-east-1)"]
-        AUTH["GoTrue Auth<br/>(JWT, OTP 6 dígitos, Google OAuth)"]
-        REST["PostgREST API<br/>(Queries + Chamadas RPC)"]
-        RT["Realtime Server<br/>(Streams WebSocket)"]
-        STO["Object Storage<br/>(kyc-documents · job-media · public-media)"]
-        EF["Edge Function (Deno)<br/>enviar-email-aprovacao"]
-
-        subgraph Database["PostgreSQL 17 (Núcleo de Domínio)"]
-            TBL[("13 Tabelas + 4 Views<br/>Protegidas por RLS")]
-            RPC["16 Funções RPC<br/>(SECURITY DEFINER)"]
-            CRON["pg_cron<br/>(Expiração e Estorno 1/min)"]
-            VAULT[("Supabase Vault<br/>(Segredos Criptografados)")]
-        end
+    subgraph Backend["Plataforma Backend (Supabase / PostgreSQL 17)"]
+        GoTrue["Supabase Auth\n(JWT + PKCE)"]
+        PostgREST["PostgREST + RPCs SECURITY DEFINER\n- lock_escrow_with_smart_split\n- open_job_mediation_claim\n- respond_to_job_mediation\n- resolve_mediation_and_trigger_layer3\n- submit_client_kyc_biometrics_and_ocr"]
+        PG[("PostgreSQL 17\n- profiles (RTS + waterfall_tier_rank)\n- jobs & job_mediations\n- escrow_maturation_entries\n- warranty_pool_ledger\n- forensic_certificates")]
+        Buckets[("Supabase Storage\n- job-photos (público)\n- avatars (público)\n- pro-verifications (privado)\n- forensic-evidence (privado)")]
     end
 
-    APP -- "HTTPS + Bearer JWT" --> AUTH
-    APP -- "HTTPS + Bearer JWT" --> REST
-    APP -- "WSS (Streams)" --> RT
-    APP -- "HTTPS (Signed URLs)" --> STO
-    REST --> TBL
-    REST --> RPC
-    RPC --> TBL
-    CRON --> RPC
-    TBL -- "Trigger + pg_net" --> EF
-    VAULT -. "x-webhook-secret" .-> EF
+    UI --> CV
+    UI --> Pipe
+    Pipe --> GoTrue
+    Pipe --> PostgREST
+    Pipe --> Buckets
+    PostgREST --> PG
 ```
 
 ---
 
-## 3. Arquitetura Interna do Aplicativo Flutter (`app/lib/`)
+## 4. Modelo Entidade-Relacionamento Completo (`v2.8.1`)
 
-O código do aplicativo móvel está organizado sob separação estrita de responsabilidades:
-
-```text
-app/lib/
-├── main.dart                         # Inicialização do Supabase, localização pt_BR e tema reativo
-├── core/                             # Camada de infraestrutura e domínio (independente de telas)
-│   ├── constants/env.dart            # Variáveis injetadas via --dart-define
-│   ├── models/                       # Modelos puros em Dart (UserProfile, Job, Quote, Payment...)
-│   ├── services/                     # ÚNICA camada que conhece tabelas, views e RPCs do Supabase
-│   ├── ui/                           # Design System (AppColors, AppTheme, widgets reutilizáveis)
-│   └── utils/                        # Formatadores pt-BR (moeda, datas, distância) e CEP/GPS
-└── features/                         # Módulos funcionais de interface (UI)
-    ├── auth/                         # Login, Cadastro, OTP, Seleção de Modo, KYC (Etapas 1–7), AuthGate
-    ├── client/                       # Home, Busca, Perfil Público, Wizard de Pedido, Custódia, Avaliação
-    ├── provider/                     # Painel, Oportunidades, Orçamento (12%), Execução, Evidências, PIN, Carteira
-    └── shared/                       # Chat em tempo real, Central de Notificações e Suporte/Disputa
-```
-
-**Invariantes Arquiteturais do Frontend:**
-1. `core/*` **nunca** importa arquivos de `features/*`.
-2. Nenhum widget em `features/*` realiza queries diretas ao Supabase; toda comunicação passa exclusivamente por `core/services/*` (`ProfileService`, `JobService`, `ProviderService`, `SocialService`, `MediaService`).
-3. Os modelos em `core/models/*` são classes Dart puras, permitindo que a suíte de **36 testes unitários** (`flutter test`) valide o roteamento multi-modo, o cálculo financeiro e os parsers de CEP/GPS em milissegundos.
-
----
-
-## 4. Modelo de Dados Relacional (`supabase/migrations/`)
-
-O esquema do banco é versionado através de **9 migrations sequenciais** em [`supabase/migrations/`](../supabase/migrations).
+O esquema relacional consolida **21 migrações versionadas** em [`supabase/migrations/`](../supabase/migrations/), abrangendo o ciclo de vida operacional, o motor contábil de garantia em 3 camadas, a custódia forense e o KYC biométrico unificado:
 
 ```mermaid
 erDiagram
-    PROFILES ||--o| PROVIDER_PROFILES : "dados profissionais"
-    PROFILES ||--o{ PROVIDER_PORTFOLIO : "fotos antes/depois"
-    PROFILES ||--o{ PROVIDER_CERTIFICATES : "certificados"
-    PROFILES ||--o{ KYC_SUBMISSIONS : "auditoria KYC"
-    PROFILES ||--o{ JOBS : "cria (client_id) / executa (provider_id)"
-    JOBS ||--|| JOB_ADDRESSES : "endereço sigiloso"
-    JOBS ||--o| JOB_SECRETS : "PIN de 4 dígitos"
-    JOBS ||--o{ JOB_INVITES : "convites (máx 3)"
-    JOBS ||--o{ QUOTES : "orçamentos (máx 3)"
-    JOBS ||--o{ JOB_EVIDENCE : "4 fotos de evidência"
-    JOBS ||--o| PAYMENTS : "custódia (12% taxa)"
-    JOBS ||--o{ REVIEWS : "avaliação mútua"
-    JOBS ||--o{ MESSAGES : "chat em tempo real"
-    JOBS ||--o{ SUPPORT_TICKETS : "mediação/disputa"
-    PROFILES ||--o{ NOTIFICATIONS : "alertas in-app"
+    PROFILES ||--o{ JOBS : "client_id / professional_id"
+    PROFILES ||--o{ PROPOSALS : "professional_id"
+    PROFILES ||--o{ FAVORITES : "client_id / professional_id"
+    PROFILES ||--o{ PROFESSIONAL_AVAILABILITY : "professional_id"
+    PROFILES ||--o{ FORENSIC_CERTIFICATES : "uploader_id"
+    JOBS ||--o{ PROPOSALS : "job_id"
+    JOBS ||--o{ MESSAGES : "job_id"
+    JOBS ||--o| REVIEWS : "job_id (1:1)"
+    JOBS ||--o{ ESCROW_MATURATION_ENTRIES : "job_id"
+    JOBS ||--o{ WARRANTY_POOL_LEDGER : "job_id"
+    JOBS ||--o{ JOB_MEDIATIONS : "job_id"
+    JOBS ||--o{ FORENSIC_CERTIFICATES : "job_id"
+    JOB_MEDIATIONS ||--o{ WARRANTY_POOL_LEDGER : "mediation_id"
+
+    PROFILES {
+        uuid id PK
+        text role "client | professional"
+        text full_name
+        text cpf_hash UK "SHA-256 Anti-Sybil"
+        text face_liveness_hash UK "Biometria 128-D Hash"
+        boolean client_kyc_verified
+        text verification_status "unverified..verified"
+        numeric relative_trust_score "RTS [0..100] O(1)"
+        smallint waterfall_tier_rank "Tier [1..5] O(1)"
+        numeric pending_maturation_balance "Saldo D+5/D+7/D+2"
+        numeric technical_debt_balance "Divida Camada 3"
+    }
+
+    JOBS {
+        uuid id PK
+        uuid client_id FK
+        uuid professional_id FK
+        text status "open | in_progress | in_mediation | completed | cancelled"
+        numeric labor_amount "Taxa 15% (13.5% op + 1.5% pool)"
+        numeric materials_amount "Taxa 0% c/ NF (<= 60% total)"
+        timestamptz warranty_layer1_expires_at
+        timestamptz warranty_layer2_expires_at
+    }
+
+    ESCROW_MATURATION_ENTRIES {
+        uuid id PK
+        uuid job_id FK
+        uuid professional_id FK
+        numeric net_professional_amount
+        text status "locked_in_maturation | frozen_mediation | released | diverted_to_layer3"
+        timestamptz matures_at
+    }
+
+    WARRANTY_POOL_LEDGER {
+        uuid id PK
+        text entry_type "seed_reserve | carveout_credit_1_5pct | layer3_claim_debit | debt_recovery_credit"
+        numeric signed_amount
+        uuid job_id FK
+        uuid mediation_id FK
+        text idempotency_key UK
+    }
+
+    JOB_MEDIATIONS {
+        uuid id PK
+        uuid job_id FK
+        text phase "evidence_submitted | awaiting_pro_response | repair_scheduled | resolved_by_pro | sla_breached | layer3_rescuer_dispatched"
+        smallint active_warranty_layer "1 | 2 | 3"
+        timestamptz sla_deadline_at "SLA 4 horas"
+        uuid rescuer_professional_id FK
+    }
+
+    FORENSIC_CERTIFICATES {
+        uuid id PK
+        uuid job_id FK
+        text sha256_hash
+        bigint perceptual_hash_64 "dHash 64-bit O(1)"
+        boolean exif_tamper_detected
+    }
 ```
 
-### Principais Tabelas e Políticas de Privacidade ([ADR-0007](./adr/0007-privacidade-por-minimizacao-de-dados.md))
-
-| Tabela / View | Descrição e Regra de Segurança (RLS) |
-| :--- | :--- |
-| **`profiles`** | Perfil unificado do usuário (`is_client`, `is_provider`, `verification_status`). Colunas sensíveis são protegidas contra `UPDATE` direto pelo cliente via *trigger* `profiles_protect_columns`. |
-| **`provider_profiles`** | Bio, especialidades, taxa de visita, valor/hora, raio de atendimento e métricas agregadas (`rating_avg`, `jobs_done` — alteráveis apenas por *trigger* do servidor). |
-| **`jobs` e `job_addresses`** | Para proteger a segurança residencial do cliente, a tabela `jobs` contém apenas bairro/cidade e coordenadas aproximadas. O logradouro, número e complemento ficam isolados em **`job_addresses`**, cuja política RLS só permite leitura ao cliente dono e ao **profissional efetivamente contratado** (`provider_id`). |
-| **`client_wallets`, `ledger_txns`/`ledger_lines`, `wallet_statement`, `pix_topups`** | Carteira do cliente (centavos) e ledger de partida dobrada (cada transação soma zero). O dono só **lê** a própria carteira, extrato e recargas; o ledger não é legível pelo app; toda escrita passa por RPC/gatilho. Detalhes: [ADR-0018](./adr/0018-carteira-ledger-e-pix-sandbox.md). |
-| **`job_secrets`** | Armazena o **PIN de 4 dígitos** gerado no momento do pagamento em custódia. A RLS permite leitura **exclusivamente ao cliente dono**. O profissional nunca lê essa tabela; ele submete o código à RPC `complete_job_with_pin`, que valida o valor no servidor e persiste o contador de tentativas (`pin_attempts`, bloqueando após 5 falhas). |
-| **`quotes`** | Propostas enviadas pelos profissionais. Um *trigger* com *advisory lock* garante que uma demanda receba no máximo **3 orçamentos ativos** (RF-04) e que cada prestador veja apenas a sua própria proposta (RNF-04). |
-| **`payments`** | Registro financeiro da custódia (*escrow*). Calcula no servidor o valor total (`amount`), a **comissão de 12% da plataforma (`fee_amount`)** e o valor líquido de 88% do profissional (`net_amount`). |
-
 ---
 
-## 5. Ciclo de Vida do Pedido e Regras de Negócio em RPCs
+## 5. Governança de Segurança, Desempenho e Conformidade Legal
 
-Toda transição de estado crítica ocorre dentro de transações atômicas via **16 funções RPC (`SECURITY DEFINER`)**:
-
-1. **Criação e Convite (`invite_providers`):** O cliente publica a demanda (`status = 'open'`) e pode convidar até 3 profissionais (janela de resposta de 2 horas).
-2. **Orçamento (`quotes`):** Apenas profissionais com `verification_status = 'ACTIVE'` podem enviar orçamento (RF-07) e **não podem orçar no próprio pedido** (`self_service_guards`).
-3. **Aceite (`accept_quote`):** Trava a linha do pedido (`SELECT ... FOR UPDATE`), marca a proposta escolhida como `accepted`, rejeita automaticamente as demais e move o chamado para `awaiting_payment`.
-4. **Pagamento em Custódia (`pay_job_mock` / `request_emergency_mock`):** Reserva o valor da carteira do cliente (gatilho em `payments`: disponível → custódia; sem saldo, erro `INSUFFICIENT_FUNDS`), registra `payments.status = 'escrow'`, gera o PIN aleatório de 4 dígitos em `job_secrets` e deixa o serviço **agendado** (`jobs.status = 'scheduled'`); a execução (`in_progress`, com `started_at`) só começa na RPC `start_job`, que exige o horário (relógio do servidor) e a presença no local (Haversine ≤ 100 m).
-5. **Conclusão Presencial (`complete_job_with_pin`):** Exige que o profissional contratado informe o PIN do cliente. Quando válido, o pedido vai para `completed`, o pagamento muda de `escrow` para `released` (líquido ao profissional e comissão de 12 % à plataforma, registrados no ledger) e o contador `jobs_done` do profissional é incrementado.
-6. **Mediação e Estorno (`create_support_ticket` / `cancel_job` / `expire_invites`):** Se houver disputa, o chamado vai para `disputed` e congela o repasse até decisão administrativa (`admin_resolve_dispute`). Em emergências não respondidas em 5 minutos, o `pg_cron` cancela o pedido e estorna o pagamento (`refunded`).
-
----
-
-## 6. Hospedagem, Implantação, CI/CD e Verificação de Qualidade
-
-* **Infraestrutura em Nuvem:** Hospedada na região Sul-Americana da AWS (`sa-east-1`, São Paulo) através da plataforma gerenciada **Supabase** (projeto `eisfkemgooqbgqljvwvs`), com domínio transacional próprio **`desperrengue.tech`** autenticado no **Resend** (registros DNS DKIM, SPF e DMARC ativos — ver [`docs/registro_dominio_resend.md`](./registro_dominio_resend.md)).
-* **Integração Contínua (GitHub Actions):** O workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) é executado em cada *Push* e *Pull Request*, validando:
-  * Análise estática rigorosa (`flutter analyze` com zero avisos);
-  * Execução da suíte de **36 testes unitários** em Dart (`flutter test`).
-* **Verificação Automatizada de Segurança no Banco (`security_smoke.sql`):**
-  * O script [`supabase/tests/security_smoke.sql`](../supabase/tests/security_smoke.sql) executa **62 asserções SQL transacionais** diretamente contra o banco PostgreSQL, testando tentativas de invasão (auto-aprovação de KYC, leitura de endereço/PIN por terceiros, burla do limite de 3 orçamentos, força bruta no PIN e acesso anônimo), exigindo resultado `FALHAS = 0`.
-* **Empacotamento Android (Play Store):** Configurado em `app/android/` com assinatura de release e guia de publicação em trilha de teste interno documentado em [`docs/PLAY_STORE.md`](./PLAY_STORE.md).
+1. **Unificação Cadastral Multi-Modo**: Como `client` e `professional` compartilham a mesma linha em `public.profiles` (`id = auth.uid()`), a aprovação no onboarding biométrico do cliente (`client_kyc_verified = true`, `cpf_hash` e `face_liveness_hash`) propaga automaticamente $+30\text{ pontos}$ para o $RTS$ ao alternar para o modo Profissional.
+2. **Exclusão Escopada LGPD (`delete_own_account_scoped`)**: Implementada na migração [`20261107100000_scoped_account_deletion.sql`](../supabase/migrations/20261107100000_scoped_account_deletion.sql), permite a revogação granular de um papel (`client` ou `professional`) com anonimização de PII ou a purga integral da conta quando se trata do último papel ativo.
+3. **Passaporte Oficial de Manutenção do Imóvel**: Em conformidade com a **ABNT NBR 5674** e a **Lei Federal nº 8.245/91**, sintetiza apenas ordens de serviço reais e auditadas em documento vetorial `%PDF-1.4` com selos SHA-256, sem qualquer injeção de dados fictícios.

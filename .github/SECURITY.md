@@ -1,130 +1,47 @@
-# Política de Segurança
+# Política de Segurança, Blindagem Antifraude e Custódia Forense (`SECURITY.md`)
 
-A segurança do Desperrengue — que trata **identidade, documentos, endereços residenciais e fluxo financeiro (carteira, ledger e custódia; **dinheiro simulado** no MVP)** — é prioridade. Este documento informa **quais versões recebem correções**, **como reportar vulnerabilidades de forma confidencial** e **o que esperar do processo**. Alinha-se às práticas da ISO/IEC 27001 (Anexo A: gestão de vulnerabilidades técnicas, A.8.8) e à ISO/IEC 29147 (divulgação de vulnerabilidades).
+Este documento especifica a arquitetura de defesa em profundidade, o controle de acesso relacional (*Row Level Security*), a mitigação determinística dos **6 Vetores de Fraude (`RN-AF-01` a `RN-AF-14`)** e as garantias de conformidade com a **LGPD (Lei Federal nº 13.709/2018)** implementadas no ecossistema **Desperrengue** (`v2.8.1`).
 
-## 1. Versões suportadas
+---
 
-O projeto está em **fase pré-1.0 (MVP acadêmico)**. Somente a linha mais recente recebe correções de segurança.
+## 1. Superfície de Autenticação e Autorização Relacional (RLS)
 
-| Versão / ramo | Suporte a correções de segurança |
-| :-- | :-: |
-| `main` (última versão publicada) | ✅ |
-| Candidata `0.2.x` (ramo `fix/foundation-hardening` até o *merge*) | ✅ |
-| `0.1.x` e anteriores | ❌ (contêm falhas já corrigidas; atualize) |
+1. **Autenticação OAuth2 / PKCE**: Toda sessão de usuário é autenticada via Supabase Auth (GoTrue) utilizando fluxo PKCE e tokens JWT assinados criptograficamente.
+2. **Isolamento por *Row Level Security* (RLS)**: Todas as tabelas do esquema `public` operam com `ENABLE ROW LEVEL SECURITY`. Nenhuma tabela sensível (`warranty_pool_ledger`, `escrow_maturation_entries`, `job_mediations`, `forensic_certificates`) aceita comandos `UPDATE` ou `DELETE` diretos provenientes do cliente autenticado.
+3. **Mutação Exclusiva via RPCs `SECURITY DEFINER`**: Operações contábeis, transições da máquina de estados de mediação e submissões de KYC biométrico são executadas exclusivamente por funções PL/pgSQL declaradas com `SECURITY DEFINER` e `SET search_path = public`, prevenindo ataques de *search_path hijacking* e escalação horizontal de privilégios.
 
-O **backend** (Supabase) é implantado de forma contínua: correções de banco/Edge Functions valem para todos os clientes imediatamente, sem versionamento por cliente.
+---
 
-## 2. Como reportar uma vulnerabilidade
+## 2. Mitigação Determinística dos 6 Vetores de Fraude (`RN-AF-01` a `RN-AF-14`)
 
-> **Não abra *issue*, *pull request* ou discussão pública** para relatar vulnerabilidades.
+| Vetor de Ameaça | Regras | Controles Criptográficos e Algorítmicos Ativos |
+| :--- | :--- | :--- |
+| **1. Conluio Cliente-Profissional (*Cash-Out*)** | `RN-AF-01..04` | Proibição de reembolso em espécie ao cliente; cobertura da Camada 3 restrita ao pagamento direto de **Profissional Socorrista** independente; detecção de ciclos em grafo bipartido (`client_id`, `professional_id`, `device_fingerprint`, `ip_prefix_24`, `pix_holder_cpf_hash`); suspensão imediata por dívida técnica (`suspended_debt`). |
+| **2. Sabotagem Pós-Serviço pelo Cliente** | `RN-AF-05..07` | Exigência de **Checklist Fotográfico Antes e Depois** com certificado `forensic_certificates`; validação de **Lacre de Garantia Virtual**; obrigatoriedade de **PIN Presencial de 4 dígitos** gerado no aparelho do cliente para encerrar visita de garantia. |
+| **3. Reciclagem de Evidências Fotográficas** | `RN-AF-08..10` | Captura exclusiva via sensor físico (`ImageSource.camera`); bloqueio de metadados EXIF de editores/mensageiros (`WhatsApp`, `Telegram`, `Photoshop`, `Canva`, `GIMP`) e `DateTimeOriginal > 15 min`; **Distância de Hamming (`dHash` 64-bit) $\le 5$ bits** em $O(1)$ via `compute_hamming_distance_64`. |
+| **4. *Bypass* por Inflação de Material** | `RN-AF-11..12` | Trava relacional e de domínio $M \le 0.60 \cdot (L + M)$; exigência de comprovante fiscal (`materials_receipt_url`); cobertura de garantia restrita estritamente ao valor de mão de obra ($L$). |
+| **5. Golpe do "Falso Socorrista"** | `RN-AF-13` | Elegibilidade restrita a prestadores **Nível Ouro** ($RTS \ge 85$, $\ge 15$ serviços concluídos com $0\%$ de disputa e distância geodésica/grafo disjunta). |
+| **6. Ataque Sybil e Laranjas** | `RN-AF-14` | Índices únicos B-Tree sobre `cpf_hash` (SHA-256 + *salt*) e `face_liveness_hash` em `public.profiles`; trava **PIX Same-Holder Lock** (`pix_holder_cpf_hash = cpf_hash`). |
 
-Use **um** dos canais confidenciais:
+---
 
-1. **GitHub Private Vulnerability Reporting** — na aba *Security → Report a vulnerability* do repositório `WagnerxOliveira/DesperrengueApp_TAI3` (preferencial: cria um aviso privado com os mantenedores).
-2. **E-mail:** `suporte@desperrengue.tech` com o assunto **`[SECURITY] <resumo curto>`**.
+## 3. Segurança Biométrica e Antispoofing de Visão Computacional
 
-**Inclua, se possível:**
+Implementado em [`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart) e [`client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart):
 
-* descrição e **impacto** (que dado/ação é afetado; quem pode explorar);
-* **passos de reprodução** ou prova de conceito mínima (*sem* extrair dados reais de terceiros);
-* versão/commit, plataforma (Android/iOS), endpoint/RPC/tabela envolvidos;
-* sugestão de mitigação, se houver;
-* se deseja **crédito** público e como.
+- **Prova de Vida Ao Vivo (`_LiveFrontOvalLivenessCameraModal`)**: Bloqueia ataques de apresentação (*Presentation Attacks* com fotos impressas ou telas de monitores/notebooks) combinando segmentação de pele humana no espaço $YCbCr$ ($77 \le Cb \le 127$, $133 \le Cr \le 173$), filtro de radiância azul de telas (`blueMonitorRatio < 0.25`), variância Laplaciana ($\sigma_{\text{Lap}}^2 \ge 95.0$) e 3 desafios biomecânicos sequenciais na câmera frontal.
+- **Autenticidade Documental ISO ID-1**: Aplica recorte central de 12% (*Core ROI Inset*) e exige divergência estrutural entre Frente e Verso ($\text{Hamming} \ge 10\text{ bits}$, $\text{MAD}_{64\times 64} \ge 0.055$ e $\Delta\sigma_{\text{quadrantes}}^2 \ge 0.040$), além de Face Match multi-ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) em espaço 128-D não-negativo com similaridade $\ge 78.0\%$.
 
-*Ainda não mantemos chave PGP. Se precisar de canal cifrado, peça no primeiro contato — combinaremos uma troca segura.*
+---
 
-## 3. O que você pode esperar (SLA)
+## 4. Proteção de Dados Pessoais e Conformidade LGPD
 
-| Etapa | Prazo-alvo |
-| :-- | :-- |
-| Confirmação de recebimento | ≤ **3 dias úteis** |
-| Triagem e classificação (CVSS v3.1/v4) | ≤ **7 dias corridos** |
-| Mitigação de severidade **Crítica** (dados/dinheiro/identidade) | ≤ **72 horas** |
-| Correção de severidade **Alta** | ≤ **14 dias** |
-| Correção de severidade **Média/Baixa** | ≤ **60 / 90 dias** |
-| Divulgação coordenada | Após a correção, ou em até **90 dias** do relato (o que ocorrer primeiro), de comum acordo |
+1. **Minimização e Pseudonimização de CPF**: O número bruto do CPF é validado em memória pelo algoritmo Módulo 11 e convertido em hash criptográfico unidirecional (`cpf_hash`) acompanhado apenas da máscara visual `***.XXX.XXX-**` (`cpf_masked`).
+2. **Isolamento de Objetos Sensíveis**: Fotografias de documentos e selfies de verificação são armazenadas nos buckets privados `pro-verifications` e `forensic-evidence` (`public = false`), acessíveis somente via URLs assinadas de curta duração (`createSignedUrl`).
+3. **Direito de Eliminação Escopada (`Art. 18, VI da LGPD`)**: A função `public.delete_own_account_scoped(p_scope)` permite que o titular revogue seletivamente seu perfil `client` ou `professional`, anonimizando dados pessoais e preservando apenas os registros contábeis imutáveis exigidos por lei.
 
-Manteremos você informado(a) do andamento e, com sua autorização, creditaremos a descoberta no [CHANGELOG](../docs/CHANGELOG.md).
+---
 
-## 4. Escopo
+## 5. Reporte de Vulnerabilidades
 
-**No escopo**
-
-* Aplicativo Flutter (Android/iOS) deste repositório.
-* Esquema do banco, **políticas RLS**, *grants*, funções RPC e *triggers* em `supabase/migrations/`.
-* Edge Functions `enviar-email-aprovacao`, `excluir-conta` e `pix-webhook`.
-* **Início do serviço agendado** (`start_job`: relógio do servidor, geofence/Haversine, modo de homologação), `set_job_location`, chat (idempotência e arquivo) e dossiês (`provider_job_dossier`, `client_job_dossier`, `my_received_reviews`).
-* **Carteira, ledger e custódia** (`client_wallets`, `ledger_*`, `wallet_statement`, `pix_topups`, gatilhos de `payments`): integridade contábil, idempotência e autenticação do webhook.
-* Configuração de Storage (*buckets* e políticas) e de Auth documentada.
-
-**Fora do escopo**
-
-* Vulnerabilidades em **serviços de terceiros** (Supabase, Resend, Google, ViaCEP, Abstract API) — reporte aos respectivos fornecedores.
-* Engenharia social, *phishing* contra a equipe ou usuários, ataques físicos.
-* **Negação de serviço** volumétrica e testes de carga contra o ambiente compartilhado.
-* Achados puramente teóricos sem impacto demonstrável; ausência de cabeçalhos/boas práticas sem exploração.
-* O **dinheiro é simulado** (crédito inicial e Pix de sandbox fictícios): não há fundos reais a atacar. Mas a **integridade contábil está no escopo** — gerar saldo sem Pix confirmado, gastar o mesmo saldo duas vezes, forjar ou repetir a confirmação do webhook, alterar o extrato ou liberar custódia sem PIN são vulnerabilidades válidas.
-
-## 5. Regras de engajamento e *safe harbor*
-
-Se agir de **boa-fé** e respeitar as regras abaixo, **não tomaremos ação legal** nem acionaremos autoridades por sua pesquisa:
-
-* Teste **apenas com contas próprias** (ou de teste); **não acesse, modifique ou exclua dados de terceiros**; pare ao provar o impacto.
-* Não degrade o serviço; não execute *scans* automatizados agressivos.
-* Não retenha nem divulgue dados obtidos; relate-os e exclua-os.
-* Não explore a vulnerabilidade além do necessário para demonstrá-la; não pivote para outros sistemas.
-* Respeite a [privacidade dos usuários](#7-proteção-de-dados-pessoais-lgpd) e o [Código de Conduta](CODE_OF_CONDUCT.md).
-
-## 6. Controles de segurança implementados (resumo)
-
-Detalhes em [ARCHITECTURE §8](../docs/ARCHITECTURE.md#8-modelo-de-segurança) e nos ADRs [0003](../docs/adr/0003-regras-de-negocio-no-banco-via-rpc.md), [0007](../docs/adr/0007-privacidade-por-minimizacao-de-dados.md) e [0010](../docs/adr/0010-webhook-autenticado-por-segredo-no-vault.md).
-
-| Domínio | Controle |
-| :-- | :-- |
-| Autorização | RLS em todas as tabelas; `anon` sem acesso; `GRANT UPDATE` por coluna; *triggers* de proteção de colunas sensíveis |
-| Integridade de domínio | Estados e dinheiro **só por RPC** `SECURITY DEFINER` (`search_path` fixo, `REVOKE`/`GRANT` explícitos) |
-| Autenticação | Supabase Auth: e-mail+senha (≥ 8 caracteres) com OTP de 6 dígitos (validade 10 min), Google OAuth; confirmação de e-mail obrigatória |
-| Dados sensíveis | KYC em *bucket* privado por pasta do usuário; endereço e PIN em tabelas de acesso restrito; URLs assinadas (1 h) |
-| Anti-abuso | Limite de 3 orçamentos e 3 convites; 5 tentativas de PIN persistidas; convites expiram (cron) |
-| Webhook | Segredo no Vault, comparação em tempo constante, e-mail obtido no servidor, link sem credencial |
-| Segredos | Fora do repositório; app usa apenas a *publishable key*; rotação documentada |
-| Verificação | Teste de fumaça com 62 asserções; ensaio de migrations com `ROLLBACK` |
-
-## 7. Proteção de dados pessoais (LGPD)
-
-* **Princípios aplicados:** finalidade, necessidade (minimização), segurança e transparência.
-* **Dados tratados:** nome, e-mail, telefone, endereço, localização, documentos de identificação e selfie (KYC), fotos de serviços, mensagens.
-* **Eliminação:** FKs em cascata permitem remover a conta e seus dados; **o processo formal de atendimento a direitos do titular ainda será definido** (ROADMAP E-11).
-* **Incidentes:** em caso de violação com risco relevante a titulares, a equipe avaliará e comunicará à **ANPD** e aos afetados nos termos do art. 48 da LGPD.
-
-## 8. Gestão de segredos e credenciais
-
-* **Nunca** versionar `service_role`, senha do banco, `RESEND_API_KEY`, `PIX_WEBHOOK_SECRET`, tokens pessoais (PAT) ou `.env`.
-* Tokens de operação são **temporários, de escopo mínimo e revogados** ao final.
-* **Suspeita de vazamento:** (1) revogue/rotacione imediatamente; (2) avalie o histórico do Git (segredos removidos de arquivos continuam no histórico); (3) registre o incidente.
-* **Ação pendente conhecida:** uma chave de API de terceiros (validação de e-mail) esteve versionada em *commits* antigos e **deve ser rotacionada** — o código atual a recebe por `--dart-define`.
-
-## 9. Limitações conhecidas (transparência)
-
-| Item | Situação |
-| :-- | :-- |
-| Pagamento, carteira e repasses | **Dinheiro simulado** (sem gateway): carteira com ledger de partida dobrada e Pix **sandbox** com webhook; crédito inicial fictício — ver [ADR-0006](../docs/adr/0006-pagamento-mock-com-custodia-e-pin.md) e [ADR-0018](../docs/adr/0018-carteira-ledger-e-pix-sandbox.md). Antes de usar dinheiro real: remover o crédito inicial, desligar `app_settings.pix_sandbox`, integrar PSP com *webhooks* assinados e incluir o saldo na trava de exclusão |
-| Localização do profissional no início do serviço | O servidor calcula a distância (Haversine) e o horário, mas o **GPS vem do aparelho**: um GPS falso (*mock location*) ainda engana a trava. Mitigações: precisão ≤ 100 m, raio de 100 m, relógio do servidor, pino do cliente; futuro: Play Integrity e QR do PIN. Em produção, desligar `app_settings.checkin_sandbox` |
-| Aprovação de KYC | **Automática (mock)** habilitada por `app_settings.kyc_auto_approve`; desativar em produção e adotar revisão administrativa |
-| Ambientes | Único projeto (sem *staging*) |
-| Testes de intrusão | Ainda **não realizados** por terceiros; revisão interna + teste automatizado de RLS |
-| *Certificate pinning*, detecção de *root/jailbreak*, ofuscação | Não implementados |
-| *Rate limiting* na API | Dependente dos limites padrão do Supabase |
-| Bucket legado `kyc_documentos` | Privado; 19 objetos de teste a remover |
-
-## 10. Higiene de dependências
-
-* Atualizações em PRs dedicados (`chore(deps)`); revisar *changelogs* e permissões nativas adicionadas.
-* `flutter pub outdated` periodicamente; avaliar `dependabot`/Renovate (ROADMAP).
-* Preferir pacotes mantidos e com publicador verificado.
-
-## 11. Reconhecimentos
-
-Agradecemos a quem reporta de forma responsável. Com seu consentimento, listaremos os créditos aqui:
-
-*(ainda sem relatos externos)*
+Vulnerabilidades de segurança identificadas devem ser reportadas de forma privada através da aba **Security Advisories** do repositório GitHub oficial, incluindo passos determinísticos de reprodução e evidências técnicas.

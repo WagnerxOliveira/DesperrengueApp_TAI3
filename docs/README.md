@@ -1,64 +1,67 @@
-# Documentação do Desperrengue
+# Índice Geral da Documentação Técnico-Científica — Desperrengue
 
-Índice organizado por **assunto**. Para visão geral, comece pelo [README principal](../README.md).
+Catálogo estruturado de todos os artefatos documentais do repositório **Desperrengue**. Para a síntese executiva e matemática dos oito domínios arquiteturais do sistema, consulte o [README principal na raiz do repositório](../README.md).
 
-> **Convenções.** Arquivos novos de engenharia usam nomes em `MAIÚSCULAS.md` ou `kebab-case`. Os documentos acadêmicos de entregas (Etapas 1–3) mantêm os nomes originais. Links entre documentos são verificados no CI (`node scripts/check-md-links.mjs`).
+> **Diretrizes de Padronização.** Os documentos de engenharia adotam nomenclatura em `MAIÚSCULAS.md` ou `kebab-case.md`, enquanto os entregáveis acadêmicos preservam a denominação curricular das etapas do projeto. A integridade referencial de todos os links relativos é verificada automaticamente no pipeline de integração contínua (`node scripts/check-md-links.mjs`).
 
-## 1. Comece por aqui (desenvolvedores)
+---
 
-| Documento | Para quê |
-| :-- | :-- |
-| [SETUP](SETUP.md) | Clonar, instalar, rodar e fazer o 1º *commit* (inclui execução no VS Code e no Android Studio) |
-| [CONTRIBUTING](../.github/CONTRIBUTING.md) | Fluxo Git, *Conventional Commits*, revisão, Definição de Pronto |
-| [TESTING](TESTING.md) | Estratégia de testes, cobertura e como executar |
-| [SECURITY](../.github/SECURITY.md) | Política de segurança e divulgação responsável |
-| [CODE_OF_CONDUCT](../.github/CODE_OF_CONDUCT.md) | Normas de convivência |
-| Guias de ambiente | [Windows](setup/windows.md) · [macOS](setup/macos.md) · [Linux](setup/linux.md) |
+## 1. Guia de Entrada e Governança de Engenharia
 
-## 2. Engenharia e arquitetura
+| Documento | Escopo Técnico |
+| :--- | :--- |
+| [SETUP.md](SETUP.md) | Configuração do ambiente de desenvolvimento, variáveis `--dart-define`, execução do cliente Flutter e conexão com o Supabase. |
+| [CONTRIBUTING.md](../.github/CONTRIBUTING.md) | Fluxo de trabalho Git (*Trunk-Based Development*), *Conventional Commits*, Definição de Pronto (DoD) e regras para migrações SQL. |
+| [TESTING.md](TESTING.md) | Estratégia de verificação em pirâmide: `529` testes automatizados em Dart/Widgets/Visão Computacional/*Red Team*, `577` asserções SQL e `17` testes de PDF. |
+| [SECURITY.md](../.github/SECURITY.md) | Política de segurança da informação (ISO/IEC 27001 e ISO/IEC 29147), modelo de ameaças, controles antifraude e conformidade LGPD. |
+| [CODE_OF_CONDUCT.md](../.github/CODE_OF_CONDUCT.md) | Normas de conduta e colaboração técnica. |
+| Guias por Sistema Operacional | [Windows](setup/windows.md) · [macOS](setup/macos.md) · [Linux](setup/linux.md) |
 
-| Documento | Conteúdo |
-| :-- | :-- |
-| [ARCHITECTURE](ARCHITECTURE.md) | Visão técnica viva: C4, dados, estados, segurança |
-| [Arquitetura do Sistema](Arquitetura%20do%20Sistema.md) | Documento acadêmico (Etapa 3): planejamento da stack, C4, modelo relacional |
-| [Decisões de arquitetura (ADRs)](adr/README.md) | Registro imutável das decisões (0001–0019) |
-| [Telas analisadas dos protótipos](specs/cliente_telas.md) | [cliente](specs/cliente_telas.md) · [profissional](specs/profissional_telas.md) · [comuns](specs/comum_telas.md) |
-| [App Flutter](../app/README.md) · [Backend Supabase](../supabase/README.md) | READMEs dos módulos |
-| [Publicação na Play Store](PLAY_STORE.md) | Teste interno, assinatura e declarações |
-| [Testar com outras pessoas (sem Play Console)](TESTE_COM_AMIGOS.md) | Beta automático: a cada push a CI publica o APK num link fixo e o app avisa os testadores ([ADR-0017](adr/0017-distribuicao-beta-e-atualizacao-no-app.md)) |
+---
 
-## 3. Produto, reputação e gamificação
+## 2. Arquitetura de Software, Banco de Dados e Visão Computacional
 
-| Documento | Conteúdo |
-| :-- | :-- |
-| [ROADMAP](ROADMAP.md) | Visão de curto, médio e longo prazo; épicos |
-| [GAMIFICACAO](GAMIFICACAO.md) | Conquistas (implementadas), modelagem do ranking, *unit economics* das recompensas, riscos e plano de experimentos |
-| [ADR-0011](adr/0011-avaliacoes-cegas-bayes-e-selos.md) · [ADR-0012](adr/0012-conquistas-do-profissional.md) | Avaliações cegas/Bayes/selos e conquistas |
-| [ADR-0013](adr/0013-exclusao-de-conta-lgpd-e-dossie.md) · [ADR-0014](adr/0014-design-tokens-e-modo-escuro.md) · [ADR-0015](adr/0015-abertura-do-app-splash-init-e-sessao-segura.md) · [ADR-0016](adr/0016-vitrine-de-cases-lifo.md) | Exclusão de conta (LGPD) e dossiê, tokens/modo escuro, abertura do app e vitrine de cases |
-| [CHANGELOG](CHANGELOG.md) | Histórico de mudanças (Keep a Changelog + SemVer) |
+| Documento | Escopo Técnico |
+| :--- | :--- |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Especificação arquitetural completa: arquitetura em 4 camadas, diagramas C4, modelo relacional de 21 migrações, Fundo de Garantia em 3 Camadas, mitigação dos 6 vetores de fraude, resolução do Marco Zero, biometria facial ativa ($YCbCr$), scanner ISO ID-1 com OCR e complexidade assintótica ($O(1)$ / $O(\log N)$). |
+| [Arquitetura do Sistema.md](Arquitetura%20do%20Sistema.md) | Documento arquitetural consolidado: justificativa da stack tecnológica, contêineres C4, invariantes transacionais e pipeline CI/CD. |
+| [Registros de Decisão de Arquitetura (ADRs 0001–0020)](adr/README.md) | Histórico imutável de decisões estruturais, incluindo o [ADR-0020](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) (Garantia 3 Camadas, Motor Antifraude e KYC Biométrico/OCR). |
+| [App Flutter (`../app/README.md`)](../app/README.md) | Organização dos pacotes em `app/lib/`, *Worker Isolates*, componentes da 4ª aba *"Em Mediação"* e carteira bipartida. |
+| [Backend Supabase (`../supabase/README.md`)](../supabase/README.md) | Esquema relacional, livros-razão imutáveis, funções matemáticas $O(1)$, índices B-Tree/GIN e RPCs `SECURITY DEFINER`. |
+| [Onboarding e Verificação KYC](onboarding_profissional.md) | Arquitetura de captura documental, prova de vida facial ativa (*Active Liveness*), scanner guiado ISO/IEC 7810 ID-1, *Face Match* 128-D e transcrição OCR. |
 
-## 4. Negócio, gestão e finanças (acadêmico)
+---
 
-| Documento | Conteúdo |
-| :-- | :-- |
-| [Documento de Contexto](Documento%20de%20Contexto.md) | Problema, solução, Lean Canvas, missão/visão/valores |
-| [Especificação do Projeto](Especificação%20do%20Projeto.md) | Personas, histórias de usuário, requisitos |
-| [Plano de Negócio e Tributação](Planos%20de%20Negocio%20e%20Tributação.md) | Modelo de receita e enquadramento tributário |
-| [Análise de Ambientes e SWOT](Analise%20de%20Ambientes%20e%20SWOT.md) | PESTEL, benchmarking, SWOT |
-| [Balanced Scorecard](Balanced%20Scorecard%20(BSC).md) · [planilha](planilhas/bsc_desperrengue.csv) | Mapa estratégico e 16 objetivos |
-| [Fluxo de Caixa (12 meses)](Fluxo%20de%20Caixa.md) · [planilha](planilhas/fluxo_de_caixa_12m.csv) | Projeção financeira (base do *unit economics*) |
+## 3. Produto, Reputação Bayesiana e Economia de Incentivos
 
-## 5. Design e interface
+| Documento | Escopo Técnico |
+| :--- | :--- |
+| [ROADMAP.md](ROADMAP.md) | Planejamento evolutivo de curto, médio e longo prazo e rastreamento de épicos concluídos. |
+| [GAMIFICACAO.md](GAMIFICACAO.md) | Conquistas escalonadas (90 medalhas), ranqueamento por Média Bayesiana Empírica, multiplicador de SLA limitado e modelagem de *unit economics*. |
+| [CHANGELOG.md](CHANGELOG.md) | Registro cronológico e semântico de todas as versões, funcionalidades e correções de segurança (até a `v2.8.1+202611082`). |
 
-| Documento | Conteúdo |
-| :-- | :-- |
-| [Projeto de Interface](Projeto%20de%20Interface.md) | Fluxo de telas, protótipos hi-fi, rastreabilidade |
-| [Template e Design System](Template.md) | Cores por modo, tipografia, componentes |
-| [Protótipos hi-fi](ui_ux/hi-fi_prototyping/) | Imagens das telas (login, cliente, profissional) |
+---
 
-## 6. Operação
+## 4. Modelagem de Negócios, Estratégia e Finanças
 
-| Documento | Conteúdo |
-| :-- | :-- |
-| [Onboarding profissional (KYC)](onboarding_profissional.md) | Fluxo de verificação |
-| [Domínio e e-mail (Resend)](registro_dominio_resend.md) | Configuração de domínio, SPF/DKIM |
+| Documento | Escopo Técnico |
+| :--- | :--- |
+| [Documento de Contexto.md](Documento%20de%20Contexto.md) | Formulação do problema de assimetria de informação, solução proposta, Lean Canvas e diretrizes estratégicas. |
+| [Especificação do Projeto.md](Especificação%20do%20Projeto.md) | Modelagem de personas, histórias de usuário, requisitos funcionais (RF) e não-funcionais (RNF). |
+| [Planos de Negocio e Tributação.md](Planos%20de%20Negocio%20e%20Tributação.md) | Estrutura de custos, enquadramento tributário no Simples Nacional (CNAE `7490-1/04`), *Smart Split* ($0\%$ sobre insumos) e reserva de garantia ($1,5\%$). |
+| [Analise de Ambientes e SWOT.md](Analise%20de%20Ambientes%20e%20SWOT.md) | Análise macroambiental PESTEL, *benchmarking* competitivo, Matriz SWOT e estratégias cruzadas contra *bypass* e fraude. |
+| [Balanced Scorecard (BSC).md](Balanced%20Scorecard%20(BSC).md) · [CSV](planilhas/bsc_desperrengue.csv) | Mapa estratégico de causa e efeito e 16 objetivos distribuídos nas 4 perspectivas de Kaplan e Norton. |
+| [Fluxo de Caixa.md](Fluxo%20de%20Caixa.md) · [CSV](planilhas/fluxo_de_caixa_12m.csv) | Projeção financeira de 12 meses, ponto de equilíbrio (*break-even*), *payback* e eficiência fiscal do *split*. |
+
+---
+
+## 5. Projeto de Interface, Design System e Operação
+
+| Documento | Escopo Técnico |
+| :--- | :--- |
+| [Projeto de Interface.md](Projeto%20de%20Interface.md) | Fluxograma completo de telas (*User Flow*), rastreabilidade entre protótipos e implementação Flutter, onboarding biométrico e mediação. |
+| [Template.md](Template.md) | Sistema de tokens semânticos (`AppTokens`), tematização dinâmica por modo (Laranja/Azul), modo escuro WCAG e catálogo de componentes. |
+| [Fichas Analíticas de Telas](specs/cliente_telas.md) | [Jornada do Cliente](specs/cliente_telas.md) · [Jornada do Profissional](specs/profissional_telas.md) · [Telas Comuns](specs/comum_telas.md) · [Protótipos Hi-Fi](ui_ux/hi-fi_prototyping/) |
+| [Publicação na Google Play](PLAY_STORE.md) | Procedimentos de assinatura `.aab`, trilha de teste interno e declarações de segurança de dados. |
+| [Distribuição Beta e Testes em Campo](TESTE_COM_AMIGOS.md) | Entrega contínua via GitHub Releases / GitHub Pages (PWA) e atualização in-app (`UpdateGate`). |
+| [Autenticação de Domínio e E-mail Transacional](registro_dominio_resend.md) | Configuração de registros DNS (SPF, DKIM e DMARC) para o domínio `desperrengue.tech` no serviço Resend. |

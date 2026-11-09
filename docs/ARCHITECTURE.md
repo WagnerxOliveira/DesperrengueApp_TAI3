@@ -1,592 +1,167 @@
-# ARCHITECTURE — Desperrengue
+# Arquitetura Técnica e Formalização Algorítmica — Desperrengue (`v2.8.1`)
 
-> **Escopo.** Descrição macro da arquitetura do sistema Desperrengue (marketplace de serviços residenciais), seus componentes, fluxos de dados, invariantes de segurança e decisões estruturais. Decisões individuais, com contexto e alternativas, estão registradas nos [ADRs](adr/README.md).
-> **Estado do documento.** Reflete o código da branch `fix/foundation-hardening` (migrations `20261009120000` a `20261019160000`). Onde a implementação difere do alvo arquitetural, a lacuna é declarada explicitamente na seção [12](#12-lacunas-conhecidas-e-dívida-técnica).
+Especificação arquitetural de sistemas distribuídos, engenharia financeira transacional (Escrow de Garantia em 3 Camadas), visão computacional determinística em *Worker Isolates* e controle de concorrência em PostgreSQL 17 do ecossistema **Desperrengue**.
 
-## Sumário
-
-1. [Visão geral e estilo arquitetural](#1-visão-geral-e-estilo-arquitetural)
-2. [Contexto do sistema (C4 — nível 1)](#2-contexto-do-sistema-c4--nível-1)
-3. [Contêineres (C4 — nível 2)](#3-contêineres-c4--nível-2)
-4. [Aplicativo móvel (C4 — nível 3)](#4-aplicativo-móvel-c4--nível-3)
-5. [Modelo de dados](#5-modelo-de-dados)
-6. [Máquinas de estado](#6-máquinas-de-estado)
-7. [Fluxos de dados críticos](#7-fluxos-de-dados-críticos)
-8. [Modelo de segurança](#8-modelo-de-segurança)
-9. [Tempo real, jobs agendados e integrações](#9-tempo-real-jobs-agendados-e-integrações)
-10. [Implantação e ambientes](#10-implantação-e-ambientes)
-11. [Atributos de qualidade](#11-atributos-de-qualidade)
-12. [Lacunas conhecidas e dívida técnica](#12-lacunas-conhecidas-e-dívida-técnica)
+> Para o contexto acadêmico e diagramas C4 complementares, consulta-se [`docs/Arquitetura do Sistema.md`](Arquitetura%20do%20Sistema.md). Para o histórico de decisões formais, consulta-se [`docs/adr/README.md`](adr/README.md) (incluindo [`ADR-0020`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md)).
 
 ---
 
-## 1. Visão geral e estilo arquitetural
+## 1. Visão Geral em 4 Camadas Desacopladas
 
-O Desperrengue é um sistema **cliente–servidor de duas camadas lógicas** sobre um **BaaS (Backend-as-a-Service)**:
-
-* **Cliente:** um único aplicativo móvel Flutter (Android e iOS) que hospeda **dois modos de uso** — *Cliente* e *Profissional* — sobre a mesma conta de usuário.
-* **Servidor:** o projeto Supabase `eisfkemgooqbgqljvwvs` (região `sa-east-1`, PostgreSQL 17), que concentra autenticação, banco relacional, armazenamento de objetos, canais de tempo real, funções de borda e agendamento (`pg_cron`).
-
-Não existe servidor de aplicação próprio. O estilo é, portanto, **"banco como núcleo de domínio"** (*database-centric architecture*): as **invariantes de negócio** — limite de três orçamentos, custódia de pagamento, transições de estado, privacidade de endereço e do PIN — são impostas por **políticas RLS (*Row Level Security*), *triggers* e funções `SECURITY DEFINER`**, e não pelo cliente. O aplicativo é tratado como **componente não confiável** (zero-trust no cliente): qualquer verificação feita na UI é apenas ergonomia, nunca controle de acesso ([ADR-0003](adr/0003-regras-de-negocio-no-banco-via-rpc.md)).
-
-| Princípio | Materialização |
-| :-- | :-- |
-| *Single source of truth* do esquema | `supabase/migrations/` (versionadas, ordenadas, idempotentes quando possível) |
-| Menor privilégio | `REVOKE` total + `GRANT` por coluna; RLS `TO authenticated`; `anon` sem acesso |
-| Transições de estado atômicas | RPCs com `SELECT … FOR UPDATE` e *advisory locks* |
-| Minimização de dados | Views públicas mínimas; endereço em tabela separada; PIN em tabela com política de dono |
-| Observabilidade do domínio | Notificações geradas no servidor; `notifications` + Realtime |
-| Verificabilidade | Testes SQL transacionais com 162 asserções (segurança 62, avaliações 30, conquistas 22, carteira/exclusão/vitrine 48) ([TESTING](TESTING.md)) |
-
----
-
-## 2. Contexto do sistema (C4 — nível 1)
-
-```mermaid
-flowchart LR
-    C(["Cliente<br/>(pessoa que contrata)"])
-    P(["Profissional<br/>(prestador verificado)"])
-    A(["Administrador<br/>(equipe interna)"])
-
-    D["Desperrengue<br/>Marketplace de serviços residenciais"]
-
-    G[("Google OAuth<br/>identidade federada")]
-    R[("Resend<br/>e-mail transacional")]
-    V[("ViaCEP<br/>consulta de CEP")]
-    AB[("Abstract API<br/>validação de e-mail<br/>(opcional)")]
-
-    C -- "pede serviços, paga com saldo da carteira, avalia" --> D
-    P -- "recebe pedidos, orça, executa, recebe" --> D
-    A -- "revisa KYC e disputas (SQL/RPC)" --> D
-    D -- "OAuth 2.0 / OIDC" --> G
-    D -- "SMTP + HTTPS API" --> R
-    D -- "HTTPS GET" --> V
-    D -- "HTTPS GET" --> AB
-```
-
-**Observação de fronteira.** O gateway de pagamento é **simulado** (MVP acadêmico): nenhum dado de cartão trafega e nenhuma cobrança real ocorre ([ADR-0006](adr/0006-pagamento-mock-com-custodia-e-pin.md)). O dinheiro vive numa **carteira com ledger de partida dobrada** e a recarga usa um **Pix sandbox** com webhook normalizado ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)).
-
----
-
-## 3. Contêineres (C4 — nível 2)
+O sistema estrutura-se em quatro camadas estritamente desacopladas, projetadas para garantir responsividade de interface a $60\text{ FPS}$ ($\le 16.6\text{ ms}$ por quadro), isolamento de memória para rotinas de Visão Computacional ($O(W \times H)$) e integridade contábil estrita no SGBD relacional:
 
 ```mermaid
 flowchart TB
-    subgraph Device["Dispositivo do usuário"]
-        APP["App Flutter<br/>Dart 3 · supabase_flutter"]
+    subgraph L1["Camada 1 — Apresentação Reativa (Flutter 3.47 / Impeller / Riverpod)"]
+        Boot["BootGate & UpdateGate\nConstrainedBox(maxWidth: 480)"]
+        Shells["ClientHomeScreen & ProHomeScreen\nIndexedStack + AutomaticKeepAliveClientMixin\n4ª Aba: Em Mediação"]
+        Repaint["RepaintBoundary + ValueListenableBuilder\nCronômetros SLA e Desafio Biométrico O(1)"]
+        Modals["Biometria Ao Vivo (ClipOval Frontal) &\nDocumentGuidedScannerModal (ISO ID-1 1.586:1)"]
     end
 
-    subgraph SB["Supabase — sa-east-1"]
-        AUTH["Auth (GoTrue)<br/>e-mail+senha, OTP, Google"]
-        REST["PostgREST<br/>CRUD + RPC"]
-        RT["Realtime<br/>postgres_changes"]
-        STO["Storage<br/>kyc-documents · job-media · public-media"]
-        EF["Edge Function<br/>enviar-email-aprovacao (Deno)"]
-        subgraph PG["PostgreSQL 17"]
-            TBL[("Tabelas + RLS")]
-            FN["Funções SECURITY DEFINER<br/>RPCs de domínio"]
-            CRON["pg_cron<br/>expire-invites · kyc-mock-approval"]
-            NET["pg_net"]
-            VAULT[("Vault<br/>kyc_webhook_secret")]
-        end
+    subgraph L2["Camada 2 — Pipeline Assíncrono Especulativo e Resiliência"]
+        Spec["SpeculativeEvidencePipeline\nGPS Warm-up 30s + Upload Concorrente + UUID v4"]
+        Outbox["Idempotent Telemetry & Offline Outbox\nBackoff Exponencial c/ Jitter"]
     end
 
-    RES[("Resend")]
-    GG[("Google")]
+    subgraph L3["Camada 3 — Processamento Paralelo (Worker Isolates)"]
+        PHash["PerceptualHashGuard\ndHash 64-bit + MAD 64x64 + Laplaciano + EXIF"]
+        BioCV["DocumentOcrAndLivenessService\nYCbCr Skin + Anti-Monitor + Multi-Angle 128-D Face Match + OCR"]
+        PDF["PropertyMaintenancePassportPdf\nMotor Vetorial %PDF-1.4 (ABNT NBR 5674)"]
+    end
 
-    APP -- "HTTPS + JWT" --> AUTH
-    APP -- "HTTPS + JWT" --> REST
-    APP -- "WebSocket" --> RT
-    APP -- "HTTPS (URL assinada)" --> STO
-    REST --> TBL
-    REST --> FN
-    FN --> TBL
-    CRON --> FN
-    TBL -- "trigger AFTER UPDATE" --> NET
-    NET -- "POST + x-webhook-secret" --> EF
-    VAULT -. "lido pelo trigger" .-> NET
-    EF -- "auth.admin.getUserById" --> AUTH
-    EF -- "HTTPS API" --> RES
-    AUTH -- "SMTP 465" --> RES
-    AUTH -- "OAuth" --> GG
-    TBL -- "WAL" --> RT
-    STO -. "policies consultam" .-> TBL
+    subgraph L4["Camada 4 — Persistência Transacional e Invariantes (Supabase / PostgreSQL 17)"]
+        Auth["GoTrue Auth (PKCE + JWT)"]
+        DB[("PostgreSQL 17 + RLS\n21 Migrações SQL\nLedgers Append-Only & Lock Order Canônica")]
+        Storage[("Storage: job-photos / avatars /\npro-verifications / forensic-evidence")]
+    end
+
+    L1 --> L2
+    L1 --> L3
+    L2 --> L4
+    L3 --> L2
 ```
 
-| Contêiner | Tecnologia | Responsabilidade |
-| :-- | :-- | :-- |
-| App | Flutter 3.47 / Dart ^3.13 | UI, estado local de sessão e modo, orquestração de chamadas |
-| Auth | GoTrue | Identidade, OTP de cadastro, OAuth Google, emissão de JWT |
-| PostgREST | — | Exposição segura do esquema `public` conforme RLS e `GRANT` |
-| Banco | PostgreSQL 17 | Persistência, invariantes, regras de negócio, agendamento |
-| Realtime | Supabase Realtime | Difusão de mudanças (`jobs`, `quotes`, `job_invites`, `messages`, `notifications`) |
-| Storage | S3-compatível | Documentos de KYC, fotos de pedido/evidência, mídia pública |
-| Edge Function | Deno | Envio do e-mail de aprovação do KYC (autenticada por segredo compartilhado, [ADR-0010](adr/0010-webhook-autenticado-por-segredo-no-vault.md)) |
-| Edge Function `pix-webhook` | Deno | Recebe a confirmação do Pix (payload normalizado, header `x-webhook-secret`) e chama `confirm_topup` (idempotente) com `service_role` ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) |
-| Edge Function `excluir-conta` | Deno + `pdf-lib` | Offboarding LGPD: valida o JWT do usuário, gera o Dossiê PDF, envia (Resend) e só então apaga dados e conta ([ADR-0013](adr/0013-exclusao-de-conta-lgpd-e-dossie.md)) |
-| Abertura do app | Flutter | Splash nativa + animada, init paralela, sessão no Keystore, último perfil ([ADR-0015](adr/0015-abertura-do-app-splash-init-e-sessao-segura.md)) |
-| Tema | Flutter + Riverpod | Tokens semânticos, tri-state claro/escuro/automático ([ADR-0014](adr/0014-design-tokens-e-modo-escuro.md)) |
+### 1.1. Decisões Estruturais por Camada
+
+1. **Camada 1 (`app/lib/features/`, `app/lib/core/widgets/`)**:
+   - **Trava Responsiva Canônica (`Regra Zero`)**: A árvore de apresentação em [`app/lib/main.dart`](../app/lib/main.dart) é envelopada em um `ConstrainedBox(constraints: BoxConstraints(maxWidth: 480))` combinado aos portões de inicialização `BootGate` e `UpdateGate`.
+   - **Isolamento de Rasterização**: Cronômetros regressivos de SLA de mediação (4 horas) e de desafios biométricos isolam-se em subárvores `RepaintBoundary` alimentadas por `ValueListenableBuilder<Duration>`. Dessa forma, o ciclo de *dirty-marking* da árvore de *RenderObjects* do Flutter restringe-se ao nó folha do texto temporal ($O(1)$), preservando a árvore principal.
+   - **Retenção de Estado em Memória**: As quatro abas operacionais (*Solicitações / Abertos*, *Em Andamento*, *Concluídos* e *Em Mediação*) utilizam `IndexedStack` aliado a `AutomaticKeepAliveClientMixin`, eliminando reconstruções redundantes durante a navegação.
+2. **Camada 2 (`app/lib/core/services/speculative_evidence_pipeline.dart`)**:
+   - **Pré-aquecimento Especulativo de GNSS**: Aciona o hardware GPS por $30\text{ s}$ no instante em que o usuário abre o modal de vistoria ou conclusão, reduzindo o *Time-To-First-Fix* (TTFF) a $0\text{ ms}$ no momento do disparo do obturador.
+   - **Upload Concorrente e Idempotência**: Enquanto o usuário preenche metadados textuais ou o PIN de 4 dígitos, o binário e seu manifesto criptográfico são transmitidos em *background* com `idempotency_key` (`UUID v4`).
+3. **Camada 3 (`app/lib/core/security/perceptual_hash_guard.dart`, `app/lib/core/services/document_ocr_and_liveness_service.dart`)**:
+   - **Paralelismo em Memória Isolada**: Todo processamento matricial de imagem executa-se fora do *UI Isolate* principal via `Isolate.run`, operando sobre *buffers* redimensionados a no máximo $1280 \times 1280\text{ px}$ ($\le 6.5\text{ MB}$ de *heap*).
+4. **Camada 4 (`supabase/migrations/`)**:
+   - **Superfície de Mutação Fechada**: Clientes autenticados não possuem privilégios de `UPDATE` arbitrário sobre saldos, *scores* ou estados de disputa. As transições ocorrem exclusivamente via funções RPC `SECURITY DEFINER` com `SET search_path = public`.
 
 ---
 
-## 4. Aplicativo móvel (C4 — nível 3)
+## 2. Engenharia Financeira: Garantia em 3 Camadas e Smart Split Anti-Bypass
 
-```mermaid
-flowchart TB
-    subgraph main["main.dart"]
-        MA["MaterialApp<br/>tema por modo · pt-BR"]
-    end
-    subgraph routing["Roteamento (features/auth)"]
-        AG["AuthGate<br/>sessão + deep link"]
-        PR["PostAuthRouter<br/>destinationFor(profile, mode)"]
-    end
-    subgraph core["core/"]
-        SES["AppSession<br/>modo ativo · tick de perfil"]
-        MOD["models/<br/>user_profile · marketplace_models<br/>(puros, testáveis)"]
-        SVC["services/<br/>profile · job · provider · social · media · wallet"]
-        UI["ui/<br/>tema · widgets · mídia · rótulos"]
-        FMT["utils/format.dart"]
-        ST["state/<br/>privacy_mode · wallet_providers<br/>(Riverpod, streams em tempo real)"]
-    end
-    subgraph features["features/"]
-        CL["client/<br/>home · busca · wizard · pedido · carteira · pagamento · avaliação"]
-        PV["provider/<br/>painel · oportunidades · execução · carteira · perfil"]
-        SH["shared/<br/>chat · notificações · suporte"]
-        KYC["auth/ KYC<br/>etapas 1–7"]
-    end
+Implementado na migração [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) e na entidade [`fintech_warranty_models.dart`](../app/lib/core/models/fintech_warranty_models.dart), o motor financeiro decompõe toda Ordem de Serviço (OS) em duas rubricas contábeis independentes (`SmartSplitBreakdown`):
 
-    MA --> AG --> PR
-    PR --> SES
-    PR --> MOD
-    PR --> CL
-    PR --> PV
-    PR --> KYC
-    CL --> SVC
-    PV --> SVC
-    SH --> SVC
-    CL --> UI
-    CL --> ST
-    ST --> SVC
-    PV --> UI
-    SVC -->|"supabase_flutter"| SB[("Supabase")]
-```
+- **Mão de Obra (`labor_amount` — $L$)**: Sobretaxa total de plataforma de $15.0\%$, subdividida em $13.5\%$ de receita operacional líquida (`platform_operational_fee_rate`) e $1.5\%$ de provisão atuarial obrigatória (`warranty_pool_carveout_rate`) destinada ao livro-razão `public.warranty_pool_ledger`.
+- **Peças e Materiais com Nota Fiscal (`materials_amount` — $M$)**: Taxa de intermediação estritamente igual a $0.0\%$, exigindo upload de comprovante fiscal válido (`materials_receipt_url`) e respeitando a trava proporcional $M \le 0.60 \cdot (L + M)$ (`RN-AF-11`).
 
-**Regras de dependência (impostas por convenção e revisão):**
+$$\text{Gross} = L + M, \quad \text{Fee}_{\text{op}} = \lfloor 0.135 \cdot L \rceil_2, \quad \text{Fee}_{\text{pool}} = \lfloor 0.015 \cdot L \rceil_2, \quad \text{Net}_{\text{pro}} = (L - \text{Fee}_{\text{op}} - \text{Fee}_{\text{pool}}) + M$$
 
-1. `features/*` depende de `core/*`; **`core/*` nunca importa `features/*`**.
-2. **Somente `core/services/*` conhece nomes de tabelas, colunas e RPCs.** Telas consomem modelos de domínio.
-3. `core/models/*` é **Dart puro** (sem Flutter/Supabase) — pré-condição para testes unitários rápidos.
-4. A decisão "para onde navegar após autenticar" é **função pura** `destinationFor(profile, mode, forceSelection)`, coberta por testes.
+O ponto de equilíbrio atuarial ($N_{\text{equilíbrio}}$) para cobertura de sinistros pelo Fundo Garantidor é:
 
-**Modo ativo e tema.** `AppSession` (em memória) guarda o modo escolhido na sessão. O `PostAuthRouter` deriva o destino e sincroniza `AppSession.theme`, que o `MaterialApp` observa — assim o tema (laranja/cliente, azul/profissional) vale também para telas empilhadas por `Navigator.push`.
+$$N_{\text{equilíbrio}} = \frac{100\%}{1.5\%} = 66.67 \approx 67 \text{ transações concluídas para cada 1 sinistro integral}$$
 
-**Atualização reativa.** `ClientJobScreen` e `ProviderJobScreen` assinam o registro do pedido (`stream`) e **trocam de tela conforme o estado** (aguardando orçamento → pagamento → execução → conclusão), eliminando navegação imperativa frágil entre estados.
+### 2.1. Arquitetura das 3 Camadas de Garantia (`RN-CAM-01` a `RN-CAM-03`)
 
----
+| Camada | Código Normativo | Escopo Temporal e Financeiro | Mecanismo Técnico de Liquidação |
+| :--- | :--- | :--- | :--- |
+| **Camada 1 — Retenção Programada D+5 (Escrow Técnico)** | `RN-CAM-01` | $120\text{ horas}$ ($5\text{ dias}$ corridos; escalonado em $D+7$, $D+5$ ou $D+2$ conforme tier) | O valor líquido fica bloqueado em `public.escrow_maturation_entries` (`status = 'locked_in_maturation'`). A abertura de chamado na 4ª aba **"Em Mediação"** congela instantaneamente o *timer* (`frozen_mediation`). |
+| **Camada 2 — Retorno Técnico Prioritário (30 a 90 dias)** | `RN-CAM-02` | $30\text{ dias}$ (serviço geral) a $90\text{ dias}$ (vício oculto — Art. 26 CDC) | Após a liquidação da Camada 1, aciona-se o protocolo de retorno obrigatório com SLA de resposta de **4 horas úteis** (`sla_deadline_at`) e janela de reparo de **24 horas** (`repair_deadline_at`), sem nova cobrança de mão de obra. |
+| **Camada 3 — Cobertura pelo Fundo Garantidor** | `RN-CAM-03` | Acionamento imediato após violação de SLA da Camada 2 | Caso o prestador original recuse o reparo ou viole o SLA de 4h (`sla_breached`), a RPC `resolve_mediation_and_trigger_layer3` debita `warranty_pool_ledger` até `max(labor_amount, R$ 500,00)`, convoca um **Profissional Socorrista** (`rescuer_professional_id`) e aplica `status = 'suspended_debt'` ao infrator. |
 
-## 5. Modelo de dados
-
-### 5.1 Diagrama entidade–relacionamento (núcleo)
-
-```mermaid
-erDiagram
-    AUTH_USERS ||--|| PROFILES : "1:1 (trigger handle_new_user)"
-    PROFILES ||--o| PROVIDER_PROFILES : "se is_provider"
-    PROFILES ||--o{ PROVIDER_PORTFOLIO : possui
-    PROFILES ||--o{ PROVIDER_CERTIFICATES : possui
-    PROFILES ||--o{ KYC_SUBMISSIONS : envia
-    PROFILES ||--o{ JOBS : "cliente (client_id)"
-    PROFILES ||--o{ JOBS : "contratado (provider_id)"
-    JOBS ||--|| JOB_ADDRESSES : "endereço completo"
-    JOBS ||--o| JOB_SECRETS : "PIN"
-    JOBS ||--o{ JOB_INVITES : convida
-    JOBS ||--o{ QUOTES : recebe
-    JOBS ||--o{ JOB_EVIDENCE : "4 fotos"
-    JOBS ||--o| PAYMENTS : "custódia (carteira)"
-    PROFILES ||--o| CLIENT_WALLETS : "carteira do cliente"
-    CLIENT_WALLETS ||--o{ WALLET_STATEMENT : extrato
-    CLIENT_WALLETS ||--o{ PIX_TOPUPS : recarrega
-    LEDGER_TXNS ||--|{ LEDGER_LINES : "soma zero"
-    JOBS ||--o{ REVIEWS : "2 avaliações"
-    JOBS ||--o{ MESSAGES : "chat por demanda"
-    JOBS ||--o{ SUPPORT_TICKETS : "disputa"
-    JOBS ||--o| JOB_GEO : "destino (privado)"
-    PROFILES ||--o{ NOTIFICATIONS : recebe
-
-    PROFILES {
-        uuid id PK
-        text full_name
-        bool is_client
-        bool is_provider
-        bool client_setup_done
-        bool provider_setup_done
-        text last_mode
-        enum verification_status
-        text role "somente admin"
-    }
-    JOBS {
-        uuid id PK
-        uuid client_id FK
-        uuid provider_id FK
-        text urgency "scheduled|emergency"
-        text visibility "open|direct"
-        text status
-        text payment_status
-        numeric agreed_price
-        int quote_count
-        int pin_attempts
-    }
-    QUOTES {
-        uuid id PK
-        uuid job_id FK
-        uuid provider_id FK
-        numeric price
-        text status "pending|accepted|rejected|withdrawn"
-    }
-    PAYMENTS {
-        uuid id PK
-        uuid job_id FK "unique"
-        numeric amount
-        numeric fee_amount "12%"
-        numeric net_amount
-        text status "escrow|released|refunded"
-    }
-    CLIENT_WALLETS {
-        uuid client_id PK
-        bigint available_cents "CHECK >= 0"
-        bigint escrow_cents "CHECK >= 0"
-    }
-    PIX_TOPUPS {
-        uuid id PK
-        uuid client_id FK
-        bigint amount_cents "R$ 5 a R$ 5.000"
-        text txid "unique"
-        text status "pending|paid|expired|canceled"
-        text idempotency_key "unique por cliente"
-    }
-    LEDGER_TXNS {
-        uuid id PK
-        text kind "seed|topup|hold|release|refund|withdrawal"
-        text idempotency_key "unique"
-    }
-    LEDGER_LINES {
-        bigint id PK
-        uuid txn_id FK
-        text account "client:id:available|escrow, provider:id:available, platform:revenue, external:pix"
-        bigint cents "diferente de 0; soma por transação = 0"
-    }
-    JOB_GEO {
-        uuid job_id PK
-        double lat
-        double lng
-        text precision_level "house|street|locality"
-        text source "client_pin|client_geocode"
-    }
-```
-
-### 5.2 Decisões de modelagem relevantes
-
-| Tema | Decisão | Justificativa |
-| :-- | :-- | :-- |
-| Multi-modo | Flags `is_client` / `is_provider` em vez de `role` único | Uma pessoa exerce os dois papéis; evita duplicar contas ([ADR-0005](adr/0005-modelo-multi-modo-por-flags.md)) |
-| Perfil | Tabela única `profiles` (nomes em inglês) | Havia duas tabelas divergentes (`perfis`/`profiles`) ([ADR-0004](adr/0004-unificacao-de-perfis-e-nomes-em-ingles.md)) |
-| Endereço | `job_addresses` separada de `jobs` | RLS por *linha* não oculta *coluna*; separar aplica privacidade por contratação ([ADR-0007](adr/0007-privacidade-por-minimizacao-de-dados.md)) |
-| PIN | `job_secrets` com política "só dono" | O profissional valida via RPC e nunca lê o segredo |
-| Reputação | `rating_avg`, `rating_count`, `jobs_done` protegidos por *trigger* | Impede inflar a própria nota |
-| Valores monetários | `numeric` (exato) nas tabelas legadas (`payments`) e **centavos inteiros (`bigint`)** na carteira e no ledger; comissão fixa de 12 % calculada no servidor | Evita erros de ponto flutuante; regra única ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) |
-| Carteira e ledger | `client_wallets` (saldo materializado) + `ledger_txns`/`ledger_lines` de **partida dobrada** (cada transação soma zero, `idempotency_key` única); o ledger **não** é legível pelo app e `wallet_statement` é a visão do cliente | Auditoria e prova de integridade (saldo == soma das linhas); o ledger sobrevive à exclusão da conta (UUID pseudonimizado) |
-| Integridade | FKs com `ON DELETE CASCADE` para dados do usuário; `CHECK` para domínios de estado | Consistência e LGPD (eliminação) |
-
----
-
-## 6. Máquinas de estado
-
-### 6.1 Pedido (`jobs.status`)
+### 2.2. Máquina de Estados Finitos da 4ª Aba ("Em Mediação")
 
 ```mermaid
 stateDiagram-v2
-    [*] --> open : cliente cria pedido
-    open --> awaiting_payment : accept_quote
-    open --> in_progress : accept_emergency (reserva paga; started_at no aceite)
-    open --> canceled : cancel_job / convites expirados
-    awaiting_payment --> scheduled : pay_job_mock (pago, ainda NÃO iniciado)
-    scheduled --> in_progress : start_job (relógio do servidor + geofence)
-    scheduled --> disputed : create_support_ticket
-    awaiting_payment --> canceled : cancel_job
-    in_progress --> completed : complete_job_with_pin
-    in_progress --> disputed : create_support_ticket
-    awaiting_approval --> completed : client_approve_job
-    disputed --> completed : admin_resolve_dispute(release=true)
-    disputed --> canceled : admin_resolve_dispute(release=false)
-    completed --> [*]
-    canceled --> [*]
+    [*] --> evidence_submitted : open_job_mediation_claim (pHash + GPS + Vídeo)
+    evidence_submitted --> awaiting_pro_response : SLA 4h iniciado + Freeze D+5 (Camada 1)
+    awaiting_pro_response --> repair_scheduled : respond_to_job_mediation (Aceite <= 4h)
+    awaiting_pro_response --> sla_breached : Timeout > 4h ou Recusa
+    repair_scheduled --> resolved_by_pro : Validação por PIN Presencial de 4 Dígitos
+    repair_scheduled --> sla_breached : Inadimplemento da janela de 24h
+    sla_breached --> layer3_rescuer_dispatched : resolve_mediation_and_trigger_layer3
+    resolved_by_pro --> [*]
+    layer3_rescuer_dispatched --> [*]
 ```
 
-`scheduled` (ADR-0019) separa **pago** de **em execução**: nele não há cronômetro nem "Finalizar", e evidências/PIN/conclusão são recusados pelo servidor (exigem `in_progress`). O cronômetro do app é derivado de `jobs.started_at`.
+### 2.3. Quatro Invariantes Contábeis do Banco de Dados
 
-`awaiting_approval` é um estado reservado (RPCs `provider_finish_job` e `client_approve_job` existem), **não utilizado** pelo fluxo atual, que conclui diretamente por PIN.
-
-### 6.2 Pagamento (`jobs.payment_status` / `payments.status`)
-
-| Evento | `pending` | `escrow` | `released` | `refunded` |
-| :-- | :-: | :-: | :-: | :-: |
-| Pedido criado | ● | | | |
-| `pay_job_mock` / `request_emergency_mock` (método `wallet`: gatilho reserva o saldo; sem saldo → `INSUFFICIENT_FUNDS`) | | ● | | |
-| `complete_job_with_pin` | | | ● | |
-| Cancelamento/expiração com reserva; disputa resolvida a favor do cliente | | | | ● |
-
-> **Efeito na carteira (gatilhos em `payments`, [ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)):** `escrow` move `available → escrow` do cliente (ou aborta com `INSUFFICIENT_FUNDS`); `released` move `escrow →` saldo líquido do profissional + `platform:revenue` (comissão); `refunded` devolve `escrow → available`. Como todo caminho passa por `payments`, nenhuma RPC precisa "lembrar" da carteira.
-
-### 6.3 Verificação do profissional (`profiles.verification_status`)
-
-`NOT_SUBMITTED → PENDING → APPROVED_PENDING_EMAIL → ACTIVE`, com `REJECTED` permitindo reenvio. Somente `ACTIVE` habilita enviar orçamentos e aparecer na busca.
-
-### 6.4 Recarga Pix (`pix_topups.status`)
-
-```mermaid
-stateDiagram-v2
-    [*] --> pending : create_topup (BR Code, expira em 30 min)
-    pending --> paid : confirm_topup (webhook) ou simulate_pix_payment (sandbox)
-    pending --> expired : prazo vencido
-    pending --> canceled : cliente altera o valor
-    paid --> paid : reenvio do webhook (idempotente, sem novo crédito)
-```
-
-O crédito (`topup:<id>` no ledger) acontece **uma única vez**, na transição `pending → paid`, com a linha da cobrança travada (`FOR UPDATE`).
+1. **Invariante 1 (Conservação de Massa Monetária no Split)**:
+   $$\text{gross\_amount} = \text{labor\_amount} + \text{materials\_amount} = \text{net\_professional\_amount} + \text{platform\_operational\_fee\_amount} + \text{warranty\_pool\_contribution\_amount}$$
+2. **Invariante 2 (Imutabilidade Histórica de Ledgers)**: As tabelas `public.warranty_pool_ledger`, `public.escrow_maturation_entries` e `public.forensic_certificates` possuem triggers `BEFORE UPDATE OR DELETE` (`trg_warranty_pool_ledger_immutable` / `prevent_append_only_mutation()`) que abortam qualquer tentativa de mutação destrutiva.
+3. **Invariante 3 ( Idempotência Estrita de Liquidação e Cobertura)**: Chaves únicas (`UNIQUE (idempotency_key)` e índice único parcial de débito por `mediation_id`) garantem que retentativas de rede nunca dupliquem repasses ou indenizações.
+4. **Invariante 4 (Isolamento de Saldo Livre vs. Saldo em Maturação)**: O saldo sacável via PIX restringe-se às entradas com `status = 'released'` e sem mediação ativa vinculada (`active_mediation_id IS NULL`).
 
 ---
 
-## 7. Fluxos de dados críticos
+## 3. Modelagem de Ameaças e Mitigação dos 6 Vetores de Fraude (`RN-AF-01` a `RN-AF-14`)
 
-### 7.1 Ciclo completo do serviço agendado
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor C as Cliente
-    participant A as App
-    participant DB as Postgres (RPC + RLS)
-    participant RT as Realtime
-    actor P as Profissional
-
-    C->>A: descreve, anexa fotos, escolhe data e profissional
-    A->>DB: Storage: upload (job-media/uid/…)
-    A->>DB: INSERT jobs + job_addresses
-    A->>DB: RPC invite_providers(job, [P])
-    DB-->>P: notifications (novo convite) via RT
-    P->>A: abre o chamado (fotos por URL assinada)
-    A->>DB: INSERT quotes (trigger: limite 3, convite válido)
-    DB-->>C: notifications + quote_count via RT
-    C->>A: compara e aceita
-    A->>DB: RPC accept_quote (FOR UPDATE; rejeita os demais)
-    C->>A: confirma pagamento simulado
-    A->>DB: RPC pay_job_mock (payments=escrow; status=scheduled; gera PIN)
-    P->>A: no local e no horário, toca em "Iniciar serviço"
-    A->>DB: RPC start_job(posição GPS): relógio do servidor + Haversine <= raio
-    DB--)A: status=in_progress, started_at (cronômetro derivado)
-    P->>A: executa; captura 4 fotos
-    A->>DB: INSERT job_evidence (RLS: só o contratado)
-    P->>A: digita o PIN informado pelo cliente
-    A->>DB: RPC complete_job_with_pin
-    DB-->>DB: valida PIN, libera escrow, jobs_done++
-    DB-->>C: notifications (concluído) via RT
-    C->>A: avalia; P avalia o cliente
-    A->>DB: RPC submit_review (avaliação cega: revela com as 2 partes ou em 48 h; recalcula reputação e conquistas)
-```
-
-### 7.2 Aprovação do KYC e e-mail
-
-```mermaid
-sequenceDiagram
-    participant App
-    participant DB as Postgres
-    participant EF as Edge Function
-    participant Auth
-    participant Resend
-    App->>DB: Storage kyc-documents/uid/… + RPC submit_kyc
-    DB->>DB: verification_status = PENDING
-    Note over DB: pg_cron (mock) ou admin_review_kyc
-    DB->>DB: verification_status = APPROVED_PENDING_EMAIL
-    DB->>EF: net.http_post + x-webhook-secret (Vault)
-    EF->>EF: compara segredo em tempo constante
-    EF->>Auth: admin.getUserById(id)
-    EF->>Resend: envia e-mail (deep link sem credencial)
-    App->>DB: RPC activate_provider (ao abrir o link)
-```
-
-### 7.3 Emergência
-
-O cliente **paga a reserva da visita antes** do aceite; o profissional tem 5 minutos. Aceite → `in_progress` com PIN gerado. Recusa ou expiração (`pg_cron expire-invites`, 1/min) → `canceled` e `payments.status = refunded`. O cancelamento pelo cliente também estorna. Essas invariantes são verificadas pelos itens 52–57 do teste de fumaça.
-
-### 7.5 Início do serviço agendado (dupla trava)
-
-```mermaid
-flowchart TD
-    S["Serviço scheduled (pago)"] --> D{"Destino conhecido?"}
-    D -- "não" --> G["App do CLIENTE geocodifica (Nominatim)<br/>set_job_location(client_geocode + qualidade)"]
-    G --> D
-    D -- "sim" --> T{"Horário<br/>now() servidor >= agenda - 15 min?"}
-    T -- "não" --> X1["START_TOO_EARLY"]
-    T -- "sim" --> L{"GPS: precisão <= 100 m<br/>Haversine <= raio?"}
-    L -- "não" --> X2["START_TOO_FAR / LOW_ACCURACY"]
-    L -- "sim" --> OK["in_progress + started_at + start_distance_m"]
-    SIM["p_simulate (só checkin_sandbox='true')"] -.-> OK
-```
-
-Prioridade do destino: **pino do cliente** (`set_job_location`, `client_pin`) > coordenadas do pedido > geocodificação do app do cliente (`client_geocode`, que nunca sobrescreve um pino). Raio: 100 m (pino/casa), 250 m (só a rua), 0 (só bairro/cidade: não valida presença). A UI do profissional espelha as duas travas num checklist e o servidor revalida tudo; o cliente vê as regras, mas nenhum controle de início.
-
-### 7.4 Recarga Pix e pagamento com saldo
-
-```mermaid
-sequenceDiagram
-    participant A as App (cliente)
-    participant DB as Postgres (RPC + gatilhos)
-    participant W as Edge Function pix-webhook
-    participant P as PSP / simulador
-    A->>DB: pay_job_mock(job, 'wallet')
-    DB-->>A: INSUFFICIENT_FUNDS|necessário|disponível (aborta tudo)
-    A->>DB: create_topup(centavos, chave) → BR Code + txid
-    A->>P: cliente paga o Pix (ou toca "Simular pagamento")
-    P->>W: POST {txid, amount_cents, status: paid} + x-webhook-secret
-    W->>DB: confirm_topup (service_role, idempotente, confere o valor)
-    DB-->>A: Realtime: saldo e extrato atualizados
-    A->>DB: pay_job_mock(job, 'wallet')
-    DB->>DB: gatilho BEFORE INSERT em payments: FOR UPDATE, available → escrow
-    DB-->>A: pedido em andamento, PIN gerado
-```
-
-No sandbox, "o PSP" é o botão `simulate_pix_payment` (só com `app_settings.pix_sandbox = 'true'` e só para o **próprio** Pix). Um PSP real entra com um adaptador que traduz o seu *webhook* para o payload normalizado ([ROADMAP](ROADMAP.md) E-19).
+| Vetor de Ameaça | Regras | Mecanismo Criptográfico e Algorítmico Implementado |
+| :--- | :--- | :--- |
+| **Vetor 1 — Conluio Cliente-Profissional (*Cash-Out* do Fundo)** | `RN-AF-01` a `RN-AF-04` | Proibição de estorno em espécie (cobertura restrita a crédito de reparo ou pagamento direto ao **Profissional Socorrista** distinto do prestador original); indexação em grafo bipartido (`client_id`, `professional_id`, `device_fingerprint`, `ip_prefix_24`, `pix_holder_cpf_hash`) bloqueando $\ge 2$ disputas cruzadas em 180 dias; penalidade de $-45\text{ pts}$ no $RTS$ e dívida técnica (`suspended_debt`). |
+| **Vetor 2 — Sabotagem Pós-Serviço pelo Cliente** | `RN-AF-05` a `RN-AF-07` | Exigência de **Checklist Fotográfico de Conclusão (Antes e Depois)** com selo de integridade `forensic_certificates` (`sha256_hash` + `perceptual_hash_64`); validação de **Lacre de Garantia Virtual** no chamado de mediação; exigência de **PIN Presencial de 4 dígitos** gerado no dispositivo do cliente para encerrar visita de garantia. |
+| **Vetor 3 — Reciclagem de Fotos Antigas ou da Internet** | `RN-AF-08` a `RN-AF-10` | Proibição de upload via galeria em fluxos forenses (`ImageSource.camera` exclusivo); inspeção de metadados EXIF descartando assinaturas de mensageiros/editores (`WhatsApp`, `Telegram`, `Photoshop`, `Canva`, `GIMP`) e `DateTimeOriginal > 15 min`; **Distância de Hamming (`dHash` 64-bit) $\le 5$ bits** em `O(1)` bloqueando imagens duplicadas (`ForensicDuplicateEvidenceException`). |
+| **Vetor 4 — *Bypass* por Inflação de Material** | `RN-AF-11`, `RN-AF-12` | Trava SQL e de domínio $M \le 0.60 \cdot (L + M)$; obrigatoriedade de nota fiscal (`materials_receipt_url`) quando $M > 0$; escopo de cobertura da garantia restrito estritamente a $L$ (`labor_amount`). |
+| **Vetor 5 — Golpe do "Falso Socorrista"** | `RN-AF-13` | Restrição de elegibilidade a chamados de Camada 3 exclusivamente a profissionais com selo **Verificado Nível Ouro** ($RTS \ge 85$, $\ge 15$ serviços sem disputa e zero vínculos de grafo com o cliente ou prestador original). |
+| **Vetor 6 — Ataque Sybil (Recriação de Contas)** | `RN-AF-14` | Unicidade criptográfica global sobre `cpf_hash` (SHA-256 + *salt*) e `face_liveness_hash` em `public.profiles`, além da trava **Same-Holder Lock** no saque PIX (`pix_holder_cpf_hash = cpf_hash`). |
 
 ---
 
-## 8. Modelo de segurança
+## 4. Resolução do Paradoxo do Marco Zero (*Cold-Start* — `RN-MZ-01` a `RN-MZ-05`)
 
-### 8.1 Fronteiras de confiança
-
-```mermaid
-flowchart LR
-    subgraph Untrusted["Não confiável"]
-        APP["App (reversível)"]
-    end
-    subgraph Edge["Borda"]
-        JWT["JWT (Auth)"]
-    end
-    subgraph Trusted["Confiável"]
-        RLS["RLS + GRANT por coluna"]
-        RPC["RPC SECURITY DEFINER<br/>search_path fixo"]
-        VAULT["Vault"]
-    end
-    APP -- "token" --> JWT --> RLS
-    JWT --> RPC
-    RPC --> RLS
-    RPC -.-> VAULT
-```
-
-### 8.2 Matriz de controle de acesso (resumo)
-
-| Dado | Dono | Contratado | Convidado/Orçou | Profissional ativo | Outro usuário | `anon` |
-| :-- | :-: | :-: | :-: | :-: | :-: | :-: |
-| Pedido aberto (`visibility=open`) | ✔ | ✔ | ✔ | ✔ (leitura) | ✖ | ✖ |
-| Pedido direto | ✔ | ✔ | ✔ (convidado) | ✖ | ✖ | ✖ |
-| Endereço completo | ✔ | ✔ | ✖ | ✖ | ✖ | ✖ |
-| PIN | ✔ | ✖ (só valida) | ✖ | ✖ | ✖ | ✖ |
-| Orçamento | ✔ (todos) | ✔ (o seu) | ✔ (o seu) | ✖ | ✖ | ✖ |
-| Fotos do pedido (storage) | ✔ | ✔ | ✔ | ✔ (aberto) | ✖ | ✖ |
-| Evidências | ✔ (leitura) | ✔ | ✖ | ✖ | ✖ | ✖ |
-| Mensagens | ✔ | ✔ | ✔ (a sua conversa) | ✖ | ✖ | ✖ |
-| Documentos de KYC | próprio/admin | — | — | — | ✖ | ✖ |
-
-### 8.3 Ameaças endereçadas e controles
-
-| Ameaça (STRIDE) | Controle |
-| :-- | :-- |
-| **S**poofing do webhook de e-mail | `x-webhook-secret` no Vault; comparação em tempo constante; e-mail obtido por `auth.admin`, nunca do *payload* |
-| **T**ampering: auto-aprovação de KYC, escalada de papel, inflar nota | `GRANT UPDATE` por coluna + *triggers* `profiles_protect_columns` / `provider_profiles_protect` |
-| **T**ampering: alterar `status`/`payment_status` | Sem `UPDATE` direto; apenas RPCs |
-| **R**epudiation | `notifications`, `payments`, `reviews`, `support_tickets` com *timestamps*; fotos de evidência |
-| **I**nformation disclosure: endereço/PIN/KYC | Tabelas separadas, RLS por dono, *buckets* privados, URLs assinadas |
-| **D**oS lógico: spam de orçamentos | Limite de 3, 1 por profissional, *advisory lock*; convites limitados a 3 |
-| **E**levation: função `SECURITY DEFINER` | `SET search_path = public`; `REVOKE ALL … FROM public, anon`; `GRANT` explícito a `authenticated` |
-| Força bruta no PIN | 5 tentativas **persistidas** (a tentativa não é desfeita por rollback) |
-| **T**ampering: criar saldo / alterar extrato | `client_wallets`, `ledger_*`, `wallet_statement` e `pix_topups` só têm `SELECT` para o dono; escrita apenas por RPC/gatilho `SECURITY DEFINER`; `CHECK (saldo >= 0)` |
-| **S**poofing do webhook Pix | `x-webhook-secret` (`PIX_WEBHOOK_SECRET`) em tempo constante; `txid` único; **valor conferido** contra a cobrança (409 se divergir) |
-| Gasto duplo / corrida no saldo | `SELECT … FOR UPDATE` na carteira dentro da mesma transação do pedido; pedido e débito são atômicos |
-| Replay e cobrança duplicada | `idempotency_key` única no ledger e por cliente nas recargas; reenvio do webhook devolve `already: true` sem novo crédito |
-| Finalizar serviço que nunca começou / início antecipado ou longe do cliente | Status `scheduled` + `start_job` no servidor (relógio do servidor e Haversine); evidência/PIN/conclusão exigem `in_progress` |
-| Fraude de relógio do celular | O horário é decidido por `now()` do Postgres; o app usa `ServerClock` só para a UI |
-| Mensagem duplicada / eco do Realtime | `client_message_id` + `UNIQUE (job_id, sender_id, client_message_id)`; `23505` tratado como sucesso |
-| Escrita em conversa de serviço encerrado | Gatilho `messages_guard` (`CHAT_ARCHIVED`); leitura preservada para as partes |
-| Vazamento de dado financeiro nas avaliações públicas | `public_reviews` sem `job_id`/valores; dossiê só por RPC do dono; avaliação cega respeitada (`hidden`) |
-| Nome/e-mail vazando na UI | `safe_name()` no banco e `friendlyName()` no app |
-| Simulação de pagamento em produção | `simulate_pix_payment` exige `app_settings.pix_sandbox = 'true'` (no servidor) e só vale para o próprio Pix |
-
-Política de divulgação de vulnerabilidades: [SECURITY.md](../.github/SECURITY.md).
+1. **Maturação Escalonada Dinâmica (`RN-MZ-01`)**: Contas em *Cold-Start* ($< 5$ serviços) operam em janela **D+7** ($168\text{ h}$) e teto de $\text{R\$ } 350,00$ por OS; contas regulares ($\ge 5$ serviços e $RTS \ge 60$) operam em **D+5** ($120\text{ h}$); contas Ouro ($\ge 20$ serviços, $RTS \ge 85$ e $0\%$ de disputas) operam em **D+2** ($48\text{ h}$).
+2. **Relative Trust Score ($RTS \in [0, 100]$ — `RN-MZ-02`)**: Calculado em $O(1)$ pela função `public.compute_relative_trust_score`:
+   $$RTS = \text{clamp}_{[0, 100]}\Big(30\cdot\mathbb{I}_{\text{KYC+Bio}} + 15\cdot\mathbb{I}_{\text{Cert}} + \min(25, 2.5 N_{\text{jobs}}) + 20\cdot\max(0, \frac{\bar{R} - 3.0}{2.0}) + 10\cdot\mathbb{I}_{\text{Anchor}} - 45 N_{\text{fault}}\Big)$$
+3. **Algoritmo de Ordenação *Waterfall* em 5 Tiers (`RN-MZ-03`)**: Materializado na coluna `waterfall_tier_rank` ($1 \dots 5$) pela trigger `trg_profiles_Compute_rts_and_tier`, priorizando profissionais verificados e equilibrando exposição de novos talentos verificados no Tier 2.
+4. **Reserva Técnica de *Bootstrapping* e *Circuit Breaker* (`RN-MZ-04`)**: Capital semente inicial registrado como `seed_reserve` em `warranty_pool_ledger`; se o índice de sinistralidade móvel de 30 dias ultrapassar $1.2\%$, o *Circuit Breaker* eleva preventivamente a retenção do Tier Novato para $D+10$.
+5. **Âncoras de Confiança Externa e *Cooldown* de 24h (`RN-MZ-05`)**: Validação de certificados técnicos (SENAI, CREA, CFT, NR-10, NR-35) concede $+15\text{ pts}$ imediatos no $RTS$; alterações de chave PIX ou dispositivo acionam quarentena de saque de **24 horas** (`security_cooldown_until`).
 
 ---
 
-## 9. Tempo real, jobs agendados e integrações
+## 5. Visão Computacional, Biometria Facial Ao Vivo, Scanner ISO ID-1 e OCR
 
-| Mecanismo | Uso |
-| :-- | :-- |
-| `supabase_realtime` (publicação) | `jobs`, `quotes`, `job_invites`, `messages`, `notifications`, `client_wallets`, `wallet_statement`, `pix_topups` — o app usa `.stream()`; a RLS é respeitada pelo Realtime |
-| `pg_cron` — `expire-invites` (1/min) | Expira convites; estorna emergências sem resposta |
-| `pg_cron` — `kyc-mock-approval` (1/min) | **Mock** de aprovação do KYC após 40 s (`app_settings.kyc_auto_approve`); desligar em produção |
-| `pg_net` | *Webhook* do banco para a Edge Function |
-| Resend | SMTP do Auth (`smtp.resend.com:465`, remetente `suporte@desperrengue.tech`) e API da Edge Function |
-| ViaCEP | Preenchimento de endereço por CEP (cliente HTTP direto do app) |
-| Abstract API | Validação opcional de e-mail no cadastro (`--dart-define`) |
-| Nominatim (OSM) | Geocodificação no **app do cliente** (≤ 1 req/s, User-Agent identificável); o resultado vai para `job_geo` por `set_job_location`. Não é feita no servidor: o Nominatim público devolve 403 a IPs de datacenter (verificado numa Edge Function) |
-| OSRM público | Rota real nas ruas, distância e ETA no mapa do profissional (fallback: linha reta) |
-| OpenStreetMap / CARTO | Blocos do mapa (claro/escuro) via `flutter_map`, com atribuição |
-| Pix (sandbox) | BR Code EMV com chave **fictícia** gerado no banco + Edge Function `pix-webhook`; sem PSP real ([ADR-0018](adr/0018-carteira-ledger-e-pix-sandbox.md)) |
+Implementado em [`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart) e [`client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart):
 
----
-
-## 10. Implantação e ambientes
-
-| Aspecto | Estado |
-| :-- | :-- |
-| Ambientes | **Um** projeto Supabase compartilhado (desenvolvimento = produção do MVP); sem *staging* |
-| Aplicação de migrations | `supabase db query --linked -f <arquivo>` (sem Docker) + registro manual em `supabase_migrations.schema_migrations`; *dry-run* em transação com `ROLLBACK` antes de aplicar |
-| Edge Function | `supabase functions deploy enviar-email-aprovacao --use-api --no-verify-jwt` |
-| App | Builds locais (`flutter run`); sem pipeline de distribuição |
-| CI | GitHub Actions: `flutter analyze` + `flutter test` ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) |
-| Segredos | Fora do repositório; ver [SETUP](SETUP.md) e [SECURITY](../.github/SECURITY.md) |
-
-Configuração remota de Auth relevante (verificada): confirmação de e-mail **ligada**, OTP de 6 dígitos com validade de 10 min, SMTP via Resend, Google habilitado, *redirect URLs* `br.com.desperrengue.app://login-callback` e `desperrengue://onboarding/ativar`. Observação: `supabase/config.toml` local mantém `enable_confirmations = false` (somente para o ambiente local do CLI).
+1. **Câmera Frontal Ao Vivo em Moldura Oval (`ClipOval`)**:
+   - Inicializa exclusivamente a lente frontal (`CameraLensDirection.front` / `facingMode: "user"`), vedando o uso de galeria ou câmera traseira.
+   - Executa **3 desafios biomecânicos determinísticos** (1º Centralizar rosto na moldura oval; 2º Rotação cefálica lateral e retorno; 3º Piscada ativa / confirmação final), exigindo em cada quadro presença de pele humana no espaço $YCbCr$ ($77 \le Cb \le 127$, $133 \le Cr \le 173$, cobertura $\in [14\%, 82\%]$), filtro anti-monitor (`blueMonitorRatio < 0.25`), simetria facial bilateral ($\ge 0.42$), nitidez Laplaciana ($\sigma_{\text{Lap}}^2 \ge 95.0$) e deslocamento inter-frame real ($\Delta\text{Luma} \in [2.2, 48.0]$).
+2. **Scanner Guiado de Documento (`DocumentGuidedScannerModal` — Proporção ISO/IEC 7810 ID-1 `1.586 : 1`)**:
+   - Captura guiada da **Frente** e do **Verso** de RG, CNH ou CIN em orientação paisagem com guias de canto néon.
+   - Aplica **Recorte Central de 12% (*Core ROI Inset*)** para isolar o documento da superfície de apoio antes de calcular:
+     - **Diferenciação Frente vs. Verso em 3 Camadas**: Distância de Hamming do `dHash` de 64 bits ($\ge 10\text{ bits}$), Diferença Absoluta Média de luminância em grade $64 \times 64$ ($\text{MAD}_{64\times 64} \ge 0.055$) e delta de variância inter-quadrante ($\ge 0.040$).
+     - **Validação de Textura Documental**: Densidade de bordas tipográficas ($[0.055, 0.58]$), nitidez Laplaciana ($\sigma_{\text{Lap}}^2 \ge 110.0$), reflexo especular ($\le 8.5\%$) e rejeição de telas azuis (`blueDominanceRatio <= 0.30`).
+3. **Face Match Multi-Ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) em Espaço 128-D Não-Negativo**:
+   - Extrai descritores faciais L2-normalizados de 128 dimensões da selfie ao vivo e das 4 rotações ortogonais das zonas de retrato do documento, garantindo $S_{\cos}(\mathbf{v}_{\text{selfie}}, \mathbf{v}_{\text{doc}}) \in [0\%, 100\%]$ e exigindo similaridade $\ge 78.0\%$.
+4. **Transcrição OCR Visível e Cruzamento Nominal Determinístico**:
+   - Extrai Nome Civil, CPF e RG/CNH, exibe o card auditável `_OcrTranscribedSummaryCard` na Etapa 4 do onboarding e valida o dígito verificador Módulo 11 do CPF e a compatibilidade nominal (`computeCivilNameCompatibility >= 0.80`).
 
 ---
 
-## 11. Atributos de qualidade
+## 6. Complexidade Assintótica (Big-O) e Ordem Canônica de Bloqueios
 
-Mapeamento aos atributos da ISO/IEC 25010:
+| Operação Crítica | Complexidade Legada | Complexidade Implementada | Mecanismo Técnico |
+| :--- | :---: | :---: | :--- |
+| **Busca Geoespacial (Raio $R$)** | $O(N)$ | $O(\log N + K)$ | *Axial Bounding Box Pruning* via índice B-Tree composto `(service_category, waterfall_tier_rank, latitude, longitude)` antes da trigonometria de Haversine sobre $K \ll N$. |
+| **Busca Textual / Tags** | $O(N \cdot L)$ | $O(\log N)$ | Índice invertido **GIN** com operador de contenção `@>`. |
+| **Deduplicação Forense `dHash`** | $O(N)$ | $O(1)$ | Operação bit-a-bit `XOR` (`#`) de 64 bits + contagem de população (*Brian Kernighan* / `bit_count`) e índice composto `(job_id, perceptual_hash_64)`. |
+| **Leitura de Ranking e $RTS$** | $O(N \cdot M)$ | $O(1)$ | Colunas materializadas `relative_trust_score` e `waterfall_tier_rank` atualizadas por trigger incremental. |
+| **Verificação Anti-Sybil (CPF/Face)** | $O(N)$ | $O(1)$ | Lookup direto em índices B-Tree únicos sobre `cpf_hash` e `face_liveness_hash`. |
+| **Liquidação D+5 / SLA 4h** | $O(S)$ c/ contenção | $O(B \log S)$ | Varredura de lote fixo ($B = 100$) com `FOR UPDATE SKIP LOCKED`. |
 
-| Característica | Táticas arquiteturais |
-| :-- | :-- |
-| **Segurança** (confidencialidade, integridade, não repúdio) | RLS, `GRANT` por coluna, RPCs, Vault, URLs assinadas, evidências (§8) |
-| **Confiabilidade** (maturidade, recuperabilidade) | Invariantes atômicas; estorno automático; `pg_cron`; *backup* manual antes de migrações destrutivas |
-| **Adequação funcional** | Telas derivadas de protótipos hi-fi; spec em [`docs/specs`](specs) |
-| **Manutenibilidade** (modularidade, testabilidade) | Camadas `core/features`, modelos puros, serviços isolados, migrations versionadas |
-| **Usabilidade** | Design system por modo, estados de carregamento/erro/vazio padronizados, textos em pt-BR |
-| **Eficiência de desempenho** | Índices parciais (`jobs_open_idx`), `quote_count` desnormalizado, URLs assinadas com cache |
-| **Portabilidade** | Flutter multiplataforma; Supabase portável (PostgreSQL padrão) |
-| **Compatibilidade** | Esquemas de URL (deep links) Android/iOS |
+### 6.1. Prevenção Matemática de Deadlocks (*Canonical Lock Acquisition Order*)
 
----
+Todas as transações distribuídas e RPCs `SECURITY DEFINER` adquirem bloqueios pessimistas (`SELECT ... FOR UPDATE`) obedecendo estritamente à ordem topológica:
 
-## 12. Lacunas conhecidas e dívida técnica
+$$\texttt{1. public.jobs} \longrightarrow \texttt{2. public.job\_mediations} \longrightarrow \texttt{3. public.escrow\_maturation\_entries} \longrightarrow \texttt{4. public.profiles}$$
 
-| ID | Lacuna | Impacto | Plano |
-| :-- | :-- | :-- | :-- |
-| DT-01 | Ambiente único (sem *staging*) | Risco ao aplicar migrations | Criar projeto de *staging* e pipeline de migrations ([ROADMAP](ROADMAP.md)) |
-| DT-02 | Navegação com `Navigator` + `AuthGate`; `go_router` e `flutter_riverpod` declarados, pouco usados | Deep links por rota e *state management* limitados | Migrar para `go_router` + Riverpod |
-| DT-03 | Cobertura de testes restrita às camadas puras e ao banco | Regressões de UI não detectadas | Testes de *widget* e `integration_test` |
-| DT-04 | Pagamento simulado (carteira e Pix em sandbox; crédito inicial fictício) | Sem dinheiro real | Adaptador de PSP sobre o `pix-webhook` com *webhooks* assinados (ROADMAP E-19); incluir o saldo do cliente na trava de exclusão de conta |
-| DT-05 | Aprovação de KYC automática (mock) | Verificação não efetiva em produção | Fila de revisão administrativa |
-| DT-06 | Bucket legado `kyc_documentos` (privado, 19 objetos de teste) | Resíduo | Remoção após confirmação |
-| DT-07 | Sem *push notifications* | Avisos só dentro do app | FCM/APNs |
-| DT-08 | Aprovação por PIN sem biometria/QR | Atrito em campo | Leitura de QR do PIN |
-| DT-11 | GPS do aparelho não é atestado (GPS falso engana o geofence) | Início indevido por fraude deliberada | Play Integrity e leitura de QR do PIN (ROADMAP) |
-| DT-12 | OSM incompleto no Brasil: o ponto automático pode ser só a rua/cidade | Geofence inalcançável sem o pino | Cliente confirma o pino (já implementado); pedir o pino já no *wizard* |
-| DT-09 | Saldo do cliente não entra na trava de exclusão de conta | Com dinheiro real, haveria fundos sem destino | Reembolso à origem antes de excluir (junto com o PSP, E-19) |
-| DT-10 | Ledger sem *backfill* do profissional anterior à migration da carteira | Extrato do profissional só cobre fluxos novos | Migração contábil dos `payments` liberados antes de 2026-10-29 |
+A ausência de ciclos no grafo de espera (*Wait-For Graph*) elimina matematicamente a ocorrência de *deadlocks* sob concorrência extrema.
