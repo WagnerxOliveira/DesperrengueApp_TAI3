@@ -1,78 +1,130 @@
-# Especificação do Onboarding Biométrico, Scanner Documental ISO ID-1 e Credenciamento KYC (Cliente e Profissional)
+# Tratado de Onboarding Unificado (Cliente & Profissional), Biometria Facial Ao Vivo e OCR (`onboarding_profissional.md`)
 
-Este documento especifica a arquitetura de verificação de identidade civil, **Prova de Vida Facial Ativa (*Active Liveness Detection*)**, **Scanner Documental Guiado ISO/IEC 7810 ID-1**, **Face Match Multi-Ângulo 128-D** e **Credenciamento Profissional em 5 Etapas** do ecossistema **Desperrengue** (`v2.8.1`).
-
----
-
-## 1. Arquitetura Unificada de Identidade Civil e Biometria (`public.profiles`)
-
-No modelo relacional do **Desperrengue**, cada conta autenticada (`auth.users.id`) mapeia-se para uma única tupla em `public.profiles`. Essa decisão arquitetural garante que os atributos criptográficos e biométricos coletados no onboarding do **Usuário Cliente** sejam imediatamente compartilhados quando o mesmo titular ativa o **Modo Profissional**:
-
-| Coluna em `public.profiles` | Tipo SQL | Restrição / Índice | Função Arquitetural e Antifraude |
-| :--- | :--- | :--- | :--- |
-| `cpf_hash` | `TEXT` | `UNIQUE` B-Tree parcial | Hash SHA-256 com *salt* de domínio do CPF validado por Módulo 11. Impede recriação de contas (*Ataque Sybil* — `RN-AF-14`) em $O(1)$. |
-| `cpf_masked` | `TEXT` | `CHECK` formato `***.XXX.XXX-**` | Representação mascarada segura para exibição em tela e recibos auditados. |
-| `face_liveness_hash` | `TEXT` | `UNIQUE` B-Tree parcial | Assinatura criptográfica do descritor facial L2-normalizado de 128 dimensões extraído durante a prova de vida ao vivo. |
-| `client_kyc_verified` | `BOOLEAN` | `NOT NULL DEFAULT false` | Indica conclusão bem-sucedida da Prova de Vida Ao Vivo + Scanner Frente/Verso + Face Match $\ge 78\%$ + OCR. |
-| `client_liveness_score` | `NUMERIC(5,2)` | `CHECK (0..100)` | Pontuação composta da prova de vida facial ativa ($\ge 80.0\%$). |
-| `client_ocr_confidence` | `NUMERIC(5,2)` | `CHECK (0..100)` | Índice de confiança da transcrição OCR e compatibilidade nominal ($\ge 80.0\%$). |
-| `relative_trust_score` | `NUMERIC(5,2)` | Materializado via Trigger | Recebe imediatamente $+30\text{ pontos}$ (`RN-MZ-02`) quando `client_kyc_verified = true` ou `verification_status = 'verified'`. |
+Especificação técnico-científica da **Arquitetura de Identidade Civil Unificada Multi-Modo** (`public.profiles` + `public.kyc_submissions`) e formulação matemática completa dos **6 validadores forenses de Visão Computacional** executados em *Worker Isolates* no ecossistema **Desperrengue** (`v2.8.1+202611082`).
 
 ---
 
-## 2. Onboarding do Usuário Cliente em 4 Etapas (`ClientSetupScreen`)
+## 1. Arquitetura de Identidade Civil Unificada Multi-Modo (`+30 pts` imediatos no Score RTS)
 
-Implementado em [`app/lib/features/client/presentation/client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart) e [`app/lib/core/services/document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart):
+Diferentemente de sistemas fragmentados que duplicam tabelas de usuários para clientes e prestadores, o **Desperrengue** unifica a identidade civil e biométrica na entidade [`public.profiles`](../supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql) (`id = auth.uid()`).
+
+Quando um usuário conclui o onboarding como **Cliente** ([`client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart)) e invoca a RPC `public.submit_client_kyc`, o banco de dados grava atomicamente:
+- `cpf_hash` (`SHA-256` com *pepper* `DSP-CPF-PEPPER-2026`, índice único `idx_profiles_cpf_hash_unique`);
+- `face_liveness_hash` (assinatura do descritor facial 128-D extraído ao vivo, índice `idx_profiles_face_liveness_hash`);
+- `liveness_verified = TRUE`, `ocr_verified = TRUE`, `kyc_biometric_verified = TRUE` e `pix_key_cpf_matched = TRUE`.
+
+Consequentemente, quando esse mesmo titular ativa o **Modo Profissional** ([`verificacao_step1_frente.dart`](../app/lib/features/auth/presentation/verificacao_step1_frente.dart) a [`verificacao_step5_finalizacao.dart`](../app/lib/features/auth/presentation/verificacao_step5_finalizacao.dart)), a trigger `BEFORE INSERT OR UPDATE` `trg_sync_profile_trust_and_rank` reutiliza instantaneamente sua validação civil e biométrica, concedendo-lhe **na hora os $+30,0\text{ pontos}$ de $P_{\text{KYC}}$ no *Relative Trust Score* ($RTS$)** e exigindo apenas a complementação de suas especialidades técnicas (dentre as 33 categorias), raio de atendimento e credenciais profissionais (**MEI/CNPJ** e certificações **SENAI, CREA, CFT, NR-10, NR-35**).
+
+---
+
+## 2. Máquina de Estados dos 3 Desafios Físicos da Prova de Vida Ao Vivo (`ActiveLivenessStep`)
 
 ```mermaid
-flowchart LR
-    S1["Etapa 1 — Identificação Civil\nNome Completo + Telefone (obrigatório)\n+ CPF (validação Módulo 11)"]
-    S2["Etapa 2 — Endereço Principal\nBusca ViaCEP + Geocodificação\n+ Coordenadas p/ Passaporte"]
-    S3["Etapa 3 — Biometria Facial Ao Vivo\nCâmera Frontal ClipOval in-app\n3 Desafios Biomecânicos YCbCr"]
-    S4["Etapa 4 — Scanner ISO ID-1 & OCR\nFrente e Verso + Face Match 128-D\n+ Card de Transcrição OCR Visível"]
-
-    S1 --> S2 --> S3 --> S4
+stateDiagram-v2
+    direction LR
+    [*] --> centerFaceInOval : Inicializa Camera Frontal (facingMode: user)
+    centerFaceInOval --> blinkBothEyesSlowly : Pele YCbCr in [22%, 82%] & blueMonitorRatio < 0,25 & Centro <= 0,17
+    blinkBothEyesSlowly --> turnHeadRight : Queda Ocular EAR < 0,18 seguida de Retorno EAR > 0,25
+    turnHeadRight --> returnHeadToCenterAndCapture : Rotacao 3D |Yaw| >= 18,0 graus
+    returnHeadToCenterAndCapture --> completed : Retorno |Yaw| <= 6,0 graus & Disparo Automatico SHA-256
+    completed --> [*]
 ```
 
-### 2.1. Etapa 1 e Etapa 2 — Identidade Civil e Localização Patrimonial
-- **Etapa 1**: Coleta o nome civil completo ($\ge 2$ tokens), telefone celular obrigatório ($10$ ou $11$ dígitos) e CPF ($11$ dígitos validados pelo algoritmo oficial de dígitos verificadores Módulo 11, rejeitando sequências monotônicas).
-- **Etapa 2**: Coleta o endereço completo com preenchimento automático por CEP (ViaCEP) e geolocalização reversa, vinculando o imóvel ao **Passaporte Oficial de Manutenção do Imóvel**.
+### 2.1. Blueprint Antropométrico da Câmera Frontal Ao Vivo na Moldura Oval
 
-### 2.2. Etapa 3 — Câmera Frontal Ao Vivo em Moldura Oval (`_LiveFrontOvalLivenessCameraModal`)
-- **Bloqueio de Câmera Traseira e Galeria**: Inicializa exclusivamente o fluxo nativo da lente frontal (`CameraLensDirection.front` / WebRTC `facingMode: "user"`), renderizado no interior de um `ClipOval` com anel de progresso animado.
-- **Execução Sequencial de 3 Desafios Biomecânicos Reais**:
-  1. *Centralização Facial*: Posicionamento da face no centro geométrico da elipse com cobertura de pele $YCbCr \in [14\%, 82\%]$ e simetria bilateral $\ge 0.42$.
-  2. *Rotação Cefálica Lateral*: Variação de luminância inter-frame $\Delta\text{Luma} \in [2.2, 48.0]$ que comprova tridimensionalidade e descarta fotografias estáticas.
-  3. *Piscada Ativa e Nitidez Final*: Variância do operador Laplaciano $\sigma_{\text{Lap}}^2 \ge 95.0$ e filtro anti-monitor (`blueMonitorRatio < 0.25`), bloqueando capturas apontadas para monitores LCD/OLED (como telas de computador ou terceiros dispositivos).
-
-### 2.3. Etapa 4 — Scanner Documental ISO/IEC 7810 ID-1, Face Match Multi-Ângulo e OCR Visível
-- **Moldura Guiada (`DocumentGuidedScannerModal`)**: Apresenta janela retangular na proporção canônica `1.586 : 1` (padrão ISO/IEC 7810 ID-1 de RG, CNH e CIN) com cantoneiras néon e checklist pré-disparo.
-- **Recorte Central de 12% (*Core ROI Inset*) e Diferenciação Frente/Verso**:
-  - Remove $12\%$ das margens periféricas da imagem antes da extração de descritores, impedindo que a superfície de apoio (mesa/bancada) contamine o hash perceptual.
-  - Exige divergência estrutural simultânea em três métricas entre Frente e Verso:
-    $$\text{Hamming}(\text{dHash}_{\text{frente}}, \text{dHash}_{\text{verso}}) \ge 10\text{ bits}, \quad \text{MAD}_{64\times 64} \ge 0.055, \quad \Delta\sigma_{\text{quadrantes}}^2 \ge 0.040$$
-- **Face Match Multi-Ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) em Espaço 128-D Não-Negativo**:
-  - Rotaciona o recorte da fotografia 3x4 do documento nos quatro ângulos ortogonais para compensar documentos fotografados na vertical ou invertidos, exigindo similaridade de cosseno:
-    $$S_{\cos}(\mathbf{v}_{\text{selfie}}, \mathbf{v}_{\text{doc}}) = \max_{\theta \in \{0^\circ, 90^\circ, 180^\circ, 270^\circ\}} \left(\frac{\mathbf{v}_{\text{selfie}} \cdot \mathbf{v}_{\text{doc}}(\theta)}{\|\mathbf{v}_{\text{selfie}}\|_2 \, \|\mathbf{v}_{\text{doc}}(\theta)\|_2}\right) \ge 78.0\%$$
-- **Card Visível de Transcrição Automática OCR (`_OcrTranscribedSummaryCard`)**:
-  - Exibe na tela o **Nome Civil Transcrito**, **CPF Extraído**, **Número de Registro (RG/CNH)**, **Data de Nascimento** e os *badges* de **Similaridade Facial (%)** e **Compatibilidade Nominal ($\ge 80\%$)** antes de liberar o botão **"Concluir e Continuar"** (que invoca a RPC `submit_client_kyc_biometrics_and_ocr`).
-
----
-
-## 3. Credenciamento Profissional em 5 Etapas (`verificacao_step1..5`)
-
-Quando o usuário atua no **Modo Profissional**, o fluxo complementar de credenciamento técnico e bancário desenvolve-se nas telas [`app/lib/features/auth/presentation/`](../app/lib/features/auth/presentation/):
-
-| Etapa | Arquivo de Implementação | Escopo Técnico e Regras de Negócio |
-| :--- | :--- | :--- |
-| **Passo 1 — Documento Frente** | [`verificacao_step1_frente.dart`](../app/lib/features/auth/presentation/verificacao_step1_frente.dart) | Captura guiada da frente do documento oficial com custódia no bucket privado `pro-verifications`. |
-| **Passo 2 — Documento Verso** | [`verificacao_step2_verso.dart`](../app/lib/features/auth/presentation/verificacao_step2_verso.dart) | Captura guiada do verso do documento oficial e validação de certificações técnicas (**SENAI, CREA, CFT, NR-10, NR-35** — `RN-MZ-05`, concedendo $+15\text{ pts}$ imediatos no $RTS$). |
-| **Passo 3 — Verificação Biométrica (Selfie)** | [`verificacao_step3_selfie.dart`](../app/lib/features/auth/presentation/verificacao_step3_selfie.dart) | Captura de selfie de segurança e validação de presença facial, aproveitando a assinatura `face_liveness_hash` caso o titular já tenha concluído o KYC no Modo Cliente. |
-| **Passo 4 — Registro Profissional e PIX Same-Holder** | [`verificacao_step4_registro.dart`](../app/lib/features/auth/presentation/verificacao_step4_registro.dart) | Seleção das **33 categorias de serviço**, raio de atendimento geoespacial e chave PIX submetida à trava **Same-Holder Lock** (`pix_holder_cpf_hash = cpf_hash` — `RN-AF-14`). |
-| **Passo 5 — Submissão Atômica e Status** | [`verificacao_step5_finalizacao.dart`](../app/lib/features/auth/presentation/verificacao_step5_finalizacao.dart) | Disparo da RPC `submit_professional_verification`, transição para `pending` / `verified` e recálculo imediato do $RTS$ e do `waterfall_tier_rank`. |
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│ VIEWFINDER DE CÂMERA FRONTAL AO VIVO (WEB WEBRTC FACINGMODE: USER / MOBILE FRONT LENS)   │
+│                                                                                          │
+│                        ╭──────────────────────────────╮                                  │
+│                    ╭───╯   ZONA DE TOPOLOGIA FACIAL   ╰───╮                              │
+│                  ╭─╯   Crominância Pele YCbCr: 22%–82%    ╰─╮                            │
+│                  │                                          │                            │
+│                  │       p2  p3                p2  p3       │                            │
+│                  │    p1 ( ● ) p4   │Ponte│ p1 ( ● ) p4     │ ◄── Razão Ocular (EAR)     │
+│                  │       p6  p5     │Nasal│    p6  p5       │     Piscada: EAR < 0,18    │
+│                  │                     ▼                    │     Retorno: EAR > 0,25    │
+│                  │            ◄─── Eixo Yaw (θ_y) ───►      │                            │
+│                  │             Desafio: θ_y ≥ +18,0°        │ ◄── Rotação 3D (Yaw)       │
+│                  ╰─╮           Retorno: |θ_y| ≤ 6,0°      ╭─╯                            │
+│                    ╰───╮     Luminância: 42 ≤ L ≤ 230 ╭───╯                              │
+│                        ╰──────────────────────────────╯                                  │
+│                                                                                          │
+│ ▶ Bloqueio Anti-Monitor/Parede: Sem crominância epidérmica YCbCr + simetria = 0% avanço  │
+│ ▶ Captura Automática no Retorno ao Centro ⇒ Assinatura Criptográfica DSP-LIVE-SHA256     │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 4. Segurança de Armazenamento (`pro-verifications` e `forensic-evidence`)
+## 3. Pipeline Forense em `Isolate.run` e Blueprint do Scanner ISO/IEC 7810 ID-1
 
-Os buckets `pro-verifications` e `forensic-evidence` operam com `public = false` no Supabase Storage. O acesso de escrita e leitura é governado por políticas RLS que exigem correspondência estrita entre o primeiro segmento do caminho do objeto e o identificador criptográfico da sessão (`(storage.foldername(name))[1] = auth.uid()::text`), garantindo isolamento completo entre usuários.
+```mermaid
+flowchart TD
+    Capture["Captura In-App do Documento (Frente e Verso)\nMoldura Retangular ISO/IEC 7810 ID-1 (1,586 : 1)"] --> Isolate["Despacho para Worker Isolate (Isolate.run)"]
+    Isolate --> Inset["1. Recorte Estrito de ROI (cropCoreRoiInset = 12%)\nRemove mesa de madeira, bordas e ambiente externo"]
+    Inset --> Quality["2. Decomposicao de Nitidez e Reflexo\nVariancia Laplaciana 3x3 >= 110,0 e Glare <= 8,5%"]
+    Quality --> Distinct["3. Anti-Duplicidade Frente vs. Verso\ndHamming(dHash_64) >= 5 e MAD_64x64 >= 6,5"]
+    Distinct --> Rot["4. Alinhamento Canônico Multi-Orientação (0°, 90°, 180°, 270°)\nda Janela 3x4 do Titular + Vetor 128-D Não-Negativo"]
+    Rot --> Match["5. Face Match 1:1 por Similaridade de Cosseno\nS_cos(Selfie_Oval, Foto_3x4) in [0%, 100%] >= 78,0%"]
+    Match --> OCR["6. Extração OCR Multi-Orientação + Compatibilidade Nominal\nToken Overlap >= 80% + CPF Módulo 11 == Etapa 1"]
+```
+
+### 3.1. Blueprint Geométrico do Scanner Documental ISO/IEC 7810 ID-1 com *Core Inset* de 12%
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│ CÂMERA TRASEIRA IN-APP (AMBIENTE EXTERNO DESCARTADO: MESA DE MADEIRA / MONITOR / BORDAS) │
+│  ╔════════════════════════════════════════════════════════════════════════════════════╗  │
+│  ║ MOLDURA RETANGULAR VAZADA ISO/IEC 7810 ID-1 (STRICT ROI CROP - PROPORÇÃO 1,58)     ║  │
+│  ║  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ ║  │
+│  ║  │ CORE INSET DE SEGURANÇA (12% DE MARGEM INTERNA PARA CÁLCULO DHASH + MAD)      │ ║  │
+│  ║  │  ┌──────────────┐   REPÚBLICA FEDERATIVA DO BRASIL - SENATRAN / DETRAN / SSP  │ ║  │
+│  ║  │  │   FOTO 3×4   │   NOME CIVIL: [EXTRAÍDO VIA OCR MULTI-ORIENTAÇÃO]           │ ║  │
+│  ║  │  │  DO TITULAR  │   DOC IDENTIDADE / ÓRGÃO EMISSOR / UF                       │ ║  │
+│  ║  │  │  (64×64 LBP  │   CPF: ###.###.###-## (VALIDADO MÓDULO 11 == ETAPA 1)       │ ║  │
+│  ║  │  │   + CLAHE)   │   DATA NASCIMENTO: DD/MM/AAAA      Nº REGISTRO CNH          │ ║  │
+│  ║  │  └──────────────┘                                                             │ ║  │
+│  ║  │  [DETECÇÃO E ROTAÇÃO CANÔNICA AUTOMÁTICA: 0° | 90° | 180° | 270°]             │ ║  │
+│  ║  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ ║  │
+│  ╚════════════════════════════════════════════════════════════════════════════════════╝  │
+│ ▶ Regra Anti-Falso-Positivo: Duplicidade Frente×Verso exige dHamming(dHash) ≤ 2 E MAD<6,5│
+│ ▶ Regra Face Match 1:1: Vetor 128-D Não-Negativo (A_k ≥ 0, B_k ≥ 0) ⇒ S_cos ∈ [0%, 100%] │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Formulação Matemática dos 6 Validadores Forenses ([`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart))
+
+### 4.1. Validador 1 — Algoritmo Aritmético Módulo 11 de CPF (`validateCpfMod11` / `public.is_valid_cpf`)
+Dado um vetor de 11 dígitos decimais $d_1 d_2 \dots d_{11}$ (não-monotônico, isto é, $\exists i, j : d_i \neq d_j$), os dígitos verificadores $d_{10}$ e $d_{11}$ são validados em $O(1)$ por:
+
+$$d_{10} = \left[\left(10 \sum_{i=1}^{9} d_i \cdot (11 - i)\right) \bmod 11\right] \bmod 10, \qquad d_{11} = \left[\left(10 \sum_{i=1}^{10} d_i \cdot (12 - i)\right) \bmod 11\right] \bmod 10$$
+
+### 4.2. Validador 2 — Segmentação Epidérmica no Espaço $YCbCr$ e Filtro Anti-Monitor
+Para cada pixel $(R, G, B)$ no interior da elipse de prova de vida $(x - c_x)^2/a^2 + (y - c_y)^2/b^2 \le 1$, projeta-se o vetor no espaço de luminância-crominância:
+
+$$Y = 0,299 R + 0,587 G + 0,114 B, \quad Cb = 128 - 0,168736 R - 0,331264 G + 0,5 B, \quad Cr = 128 + 0,5 R - 0,418688 G - 0,081312 B$$
+
+Um pixel pertence à máscara epidérmica humana se, e somente se, $77 \le Cb \le 127$ e $133 \le Cr \le 173$, exigindo-se razão de preenchimento $\text{skinFillRatio} \in [0,22,\; 0,82]$ e ausência de emissão espectral de painel LCD/OLED ($\text{blueMonitorRatio} < 0,25$).
+
+### 4.3. Validador 3 — Razão de Aspecto Ocular ($\text{EAR}$) e Ângulo de Euler $\text{Yaw}$ ($\theta_y$)
+A dinâmica de piscada bilateral aferida sobre os 6 marcos perioculares $(p_1, \dots, p_6)$ e a rotação horizontal $\theta_y$ sobre o deslocamento do centroide facial em relação à ponte nasal obedecem a:
+
+$$\text{EAR} = \frac{\|p_2 - p_6\|_2 + \|p_3 - p_5\|_2}{2 \cdot \|p_1 - p_4\|_2}, \qquad \theta_y = \arcsin\left(\text{clamp}_{[-1, 1]}\left(\frac{\Delta x_{\text{nariz-centro}}}{R_{\text{elipse}}}\right)\right) \cdot \frac{180^\circ}{\pi}$$
+
+### 4.4. Validador 4 — Variância do Operador Laplaciano Discreto $3 \times 3$ ($\sigma_{\text{Lap}}^2$)
+A nitidez óptica da captura documental é calculada pela variância espacial da convolução $L(x, y) = (I * K_{\text{Lap}})(x, y)$:
+
+$$L(x, y) = I(x-1, y) + I(x+1, y) + I(x, y-1) + I(x, y+1) - 4\,I(x, y), \qquad \sigma_{\text{Lap}}^2 = \frac{1}{|\Omega|} \sum_{(x,y)\in\Omega} \big(L(x, y) - \mu_L\big)^2 \ge 110,0$$
+
+### 4.5. Validador 5 — `dHash` de 64 Bits e Diferença Absoluta Média ($\text{MAD}_{64\times 64}$) sobre ROI 12%
+Após aplicar `PerceptualHashGuard.cropCoreRoiInset(source, insetRatio: 0.12)`, computam-se o hash de gradiente horizontal $9 \times 8$ (`dHash`) e a Diferença Absoluta Média sobre grade normalizada $64 \times 64$:
+
+$$\text{dHash}_{64} = \sum_{y=0}^{7}\sum_{x=0}^{7} \mathbb{I}\big(I_{9\times 8}(x, y) > I_{9\times 8}(x+1, y)\big) \cdot 2^{8y + x}, \qquad \text{MAD}_{64\times 64}(A, B) = \frac{1}{4096}\sum_{u=0}^{63}\sum_{v=0}^{63} \big|I_A(u,v) - I_B(u,v)\big|$$
+
+### 4.6. Validador 6 — Face Match 1:1 Multi-Orientação no 1º Ortante ($\mathbb{R}_{\ge 0}^{128}$) e Compatibilidade Nominal
+Para garantir invariância rotacional quando o usuário fotografa a CNH na vertical ou na horizontal, o recorte da foto $3\times 4$ é avaliado nas quatro rotações canônicas $\theta \in \{0^\circ, 90^\circ, 180^\circ, 270^\circ\}$. Como todas as componentes dos vetores de características $\mathbf{A}, \mathbf{B}(\theta) \in \mathbb{R}_{\ge 0}^{128}$ são estritamente não-negativas ($A_k \ge 0, B_k \ge 0$), o produto interno é sempre não-negativo e a similaridade de cosseno pertence matematicamente ao intervalo fechado $[0\%, 100\%]$:
+
+$$S_{\cos}(\mathbf{A}, \mathbf{B}) = \max_{\theta \in \{0^\circ, 90^\circ, 180^\circ, 270^\circ\}} \left( \frac{\sum_{k=1}^{128} A_k \cdot B_k(\theta)}{\sqrt{\sum_{k=1}^{128} A_k^2} \cdot \sqrt{\sum_{k=1}^{128} B_k(\theta)^2}} \right) \times 100\% \ge 78,0\%$$

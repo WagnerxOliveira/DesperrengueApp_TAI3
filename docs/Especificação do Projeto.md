@@ -1,43 +1,139 @@
-# Especificação Técnica e Normativa do Projeto — Desperrengue (`v2.8.1`)
+# Engenharia de Requisitos, Regras de Negócio Normativas e Matriz de Rastreabilidade (`Especificação do Projeto.md`)
 
-Especificação formal de requisitos funcionais, requisitos não-funcionais, regras de negócio atuariais (`RN-CAM-01` a `RN-CAM-03`), blindagem antifraude (`RN-AF-01` a `RN-AF-14`) e resolução de *Cold-Start* (`RN-MZ-01` a `RN-MZ-05`) do sistema **Desperrengue**.
-
----
-
-## 1. Perfis de Atores e Unificação Multi-Modo
-
-O sistema modela dois papéis operacionais principais que coexistem sobre uma única identidade civil e biométrica em `public.profiles`:
-
-1. **Usuário Cliente (`role = 'client'`)**: Proprietário ou locatário de imóvel residencial que contrata serviços em **33 categorias**, realiza o onboarding biométrico ao vivo com scanner documental ISO ID-1 e OCR, aprova visitas técnicas mediante **PIN Presencial de 4 dígitos**, aciona a **Garantia em 3 Camadas** pela 4ª aba *"Em Mediação"* e emite o **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674)**.
-2. **Usuário Profissional / Socorrista (`role = 'professional'`)**: Prestador técnico credenciado que envia propostas com **Smart Split** (mão de obra vs. peças com nota fiscal), executa o checklist fotográfico forense (*Antes e Depois*), gerencia sua **Carteira Bipartida** (saldo livre PIX vs. saldo em maturação $D+7/D+5/D+2$) e, quando elegível ao **Nível Ouro** ($RTS \ge 85$), atua como **Profissional Socorrista** na Camada 3.
+Catálogo formal e exaustivo de Requisitos Funcionais (`RF`), Requisitos Não-Funcionais (`RNF`), Regras de Camada de Garantia (`RN-CAM-01` a `RN-CAM-03`), Travas Determinísticas Antifraude (`RN-AF-01` a `RN-AF-14`), Pilares do Marco Zero (`RN-MZ-01` a `RN-MZ-05`), Validadores Forenses de KYC Biométrico e OCR (`RN-KYC-01` a `RN-KYC-06`) e Matriz de Rastreabilidade Biunívoca Código $\times$ Teste do ecossistema **Desperrengue** (`v2.8.1`).
 
 ---
 
-## 2. Catálogo de Requisitos Funcionais Implementados (`RF-01` a `RF-24`)
+## 1. Árvore de Decisão Normativa do Ecossistema (`flowchart TD`)
 
-| Código | Requisito Funcional | Módulo / Implementação Real | Status |
-| :--- | :--- | :--- | :---: |
-| `RF-01` | Autenticação segura (Cadastro, Login, Confirmação de E-mail e Reset de Senha via PKCE) | `app/lib/features/auth/` + Supabase Auth | ✅ Concluído |
-| `RF-02` | Onboarding do Cliente em 4 Etapas com CPF Módulo 11, ViaCEP, Biometria Facial Ao Vivo (`ClipOval`) e Scanner ISO ID-1 + OCR | `client_setup_screen.dart` + `document_ocr_and_liveness_service.dart` | ✅ Concluído |
-| `RF-03` | Credenciamento Profissional em 5 Etapas com Âncoras Externas (SENAI/CREA/CFT/NR-10/NR-35) e PIX *Same-Holder Lock* | `app/lib/features/pro/presentation/verificacao/` | ✅ Concluído |
-| `RF-04` | Alternância Multi-Modo (*Client* $\leftrightarrow$ *Professional*) com compartilhamento automático de $+30\text{ pts}$ de KYC/Biometria no $RTS$ | `profile_screen.dart` + `trg_profiles_compute_rts_and_tier` | ✅ Concluído |
-| `RF-05` | Abertura de Chamados nas **33 categorias residenciais** com fotos, geolocalização, nível de urgência e agendamento | `create_job_bottom_sheet.dart` + `service_categories.dart` | ✅ Concluído |
-| `RF-06` | Busca Geoespacial em $O(\log N + K)$ (*Axial Bounding Box Pruning*) e ordenação *Waterfall* em 5 Tiers | `search_professionals_bbox` (`20261108110000`) | ✅ Concluído |
-| `RF-07` | Decomposição Financeira **Smart Split Anti-Bypass** ($13.5\%$ operacional + $1.5\%$ garantia sobre mão de obra; $0\%$ sobre materiais c/ NF $\le 60\%$) | `fintech_warranty_models.dart` + `lock_escrow_with_smart_split` | ✅ Concluído |
-| `RF-08` | **Camada 1 de Garantia (`RN-CAM-01`)**: Retenção automática em maturação ($D+7$, $D+5$ ou $D+2$) e Carteira Bipartida | `escrow_maturation_entries` + `BipartiteWalletCard` | ✅ Concluído |
-| `RF-09` | **Camada 2 de Garantia (`RN-CAM-02`)**: 4ª Aba *"Em Mediação"* com SLA regressivo de 4h e janela de reparo de 24h | `JobMediationTab` + `open_job_mediation_claim` + `respond_to_job_mediation` | ✅ Concluído |
-| `RF-10` | **Camada 3 de Garantia (`RN-CAM-03`)**: Acionamento do Fundo Garantidor (`warranty_pool_ledger`), despacho de Socorrista e dívida técnica | `resolve_mediation_and_trigger_layer3` | ✅ Concluído |
-| `RF-11` | Guarda Forense de Câmera Nativa com `dHash` de 64 bits (Hamming $\le 5$ em $O(1)$) e inspeção de adulteração EXIF | `perceptual_hash_guard.dart` + `forensic_certificates` | ✅ Concluído |
-| `RF-12` | Validação Presencial por **PIN Criptográfico de 4 Dígitos** para conclusão de garantia | `Pin4WarrantyVerificationModal` | ✅ Concluído |
-| `RF-13` | Emissão do **Passaporte Oficial de Manutenção do Imóvel** em `%PDF-1.4` (ABNT NBR 5674 e Lei 8.245/91) com princípio *Zero Fake Data* | `property_maintenance_passport_pdf.dart` | ✅ Concluído |
-| `RF-14` | Exclusão Escopada de Conta em conformidade com a LGPD (`client`, `professional` ou total) | `delete_own_account_scoped` (`20261105140000`) | ✅ Concluído |
+```mermaid
+flowchart TD
+    Start["Onboarding do Usuário (ClientSetupScreen)"] --> KYC{"Validação RN-KYC-01..06\nCPF Mod-11 + Oval YCbCr/EAR/Yaw\n+ ISO ID-1 ROI 12% + FaceMatch >= 78%"}
+    KYC -->|"Reprovado"| BlockKYC["Bloqueio Determinístico\n(Anti-Monitor / Foto Duplicada / CPF Inválido)"]
+    KYC -->|"Aprovado (+30 pts RTS)"| Order["Abertura de OS (33 Categorias / Voz 60s)"]
+    Order --> Split["Orçamento Smart Split (RN-AF-11)\nMão de Obra (13,5% + 1,5%) | Materiais (0%)"]
+    Split --> Exec["Execução Forense no Local\nCheck-in/Out GPS <= 150m + dHash >= 5 bits"]
+    Exec --> PinCheck{"PIN Presencial de 4 Dígitos\nInformado pelo Cliente?"}
+    PinCheck -->|"Sim (SettledByPin)"| Settle["Liquidação p/ Maturação (RN-CAM-01)\nCarve-out 1,5% + Reserva D+2 / D+5 / D+7"]
+    PinCheck -->|"Não"| Wait24h["Janela SLA de 24h (auto_release_at)"]
+    Wait24h -->|"Sem Contestação (24h)"| Settle
+    Wait24h -->|"Contestação c/ Foto Nativa"| Med["Abertura de Mediação (RN-CAM-02)\nCongela D+N + Ativa Circuit Breaker"]
+    Settle -->|"Defeito em até 90 dias"| Med
+    Med --> SLA6h{"1º Profissional Responde <= 6h\ne Repara no Local <= 24h?"}
+    SLA6h -->|"Sim + PIN 4 Dígitos"| Cert["Emissão de Certificado Forense\n& Passaporte ABNT NBR 5674"]
+    SLA6h -->|"Não (Recusa ou Timeout)"| Layer3["Acionamento Camada 3 (RN-CAM-03)\nBounding Box O(log N + K) + Grafo Zero-Vínculo\n+ Clawback First + Fundo 1,5%"]
+    Layer3 --> Cert
+```
 
 ---
 
-## 3. Requisitos Não-Funcionais e Restrições de Engenharia (`RNF-01` a `RNF-10`)
+## 2. Catálogo de Regras de Negócio Normativas
 
-1. **`RNF-01` — Desempenho de Interface a 60 FPS**: Cronômetros regressivos e animações de câmera operam confinados em `RepaintBoundary` com `ValueListenableBuilder`, garantindo tempo de *raster thread* $\le 16.6\text{ ms}$.
-2. **`RNF-02` — Paralelismo em Memória Isolada**: Toda inferência de visão computacional e geração de PDF executa-se em *Worker Isolates* via `Isolate.run` com limite de *heap* $\le 6.5\text{ MB}$ por quadro ($1280 \times 1280\text{ px}$).
-3. **`RNF-03` — Ausência Matemática de Deadlocks**: Aquisição canônica de bloqueios pessimistas na ordem `jobs -> job_mediations -> escrow_maturation_entries -> profiles`.
-4. **`RNF-04` — Imutabilidade de Registros Contábeis**: Tabelas de custódia financeira e forense protegidas por triggers *append-only*.
-5. **`RNF-05` — Portabilidade Responsiva (`480px`)**: Compatibilidade integral entre Android nativo e PWA iOS/Desktop com trava de largura máxima de `480px`.
+### 2.1. As 3 Camadas do Fundo de Garantia e Custódia (`RN-CAM-01` a `RN-CAM-03`)
+
+| Código | Designação Formal | Especificação Algorítmica e Invariante |
+| :---: | :--- | :--- |
+| `RN-CAM-01` | **Custódia Financeira Condicional e Maturação Escalonada** | $100\%$ do valor pago permanece retido em `LOCKED_100` durante a execução; após aprovação por PIN de 4 dígitos ou decurso de 24h sem disputa (`auto_release_at`), o repasse líquido ingressa em `public.escrow_maturation_entries` por **D+7** (`TRAINEE`), **D+5** (`STANDARD`) ou **D+2** (`VERIFIED_ANCHOR`). |
+| `RN-CAM-02` | **Retorno Técnico Prioritário e Segregação Atuarial de 1,5%** | De cada serviço liquidado, $1,5\%$ de `labor_amount` é segregado automaticamente em `public.warranty_pool_ledger` (`CARVEOUT_CONTRIBUTION_1_5_PCT`, ponto de equilíbrio $N = 66,67$). Em caso de falha em até 90 dias, o 1º prestador dispõe de **6 horas** para aceite e **24 horas** para reparo sem custo adicional. |
+| `RN-CAM-03` | **Despacho Algorítmico Cego de 2º Especialista e *Clawback First*** | Se o 1º prestador violar o SLA da Camada 2, `trigger_layer3_rework` confisca prioritariamente sua retenção em maturação (`CLAWED_BACK`) ou debita o fundo de $1,5\%$ (limitado a $100\%$ de `labor_amount`), despachando um 2º especialista independente e inscrevendo o infrator em `clawback_debt_balance`. |
+
+### 2.2. As 14 Travas Determinísticas contra os 6 Vetores de Golpe (`RN-AF-01` a `RN-AF-14`)
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│          MATRIZ DE DEFESA EM PROFUNDIDADE: 6 VETORES DE ATAQUE × 14 TRAVAS (RN-AF)       │
+├───────────────────────────────┬──────────────────────┬───────────────────────────────────┤
+│ Vetor de Ataque Modelado      │ Regras Normativas    │ Trava Criptográfica / Relacional  │
+├───────────────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ V1. Conluio Triplo (Cash-Out) │ RN-AF-01, RN-AF-02,  │ • Proibição de estorno em espécie │
+│                               │ RN-AF-03, RN-AF-04   │ • Sorteio Cego hashtextextended   │
+│                               │                      │ • Disjunção Device/CPF/Face/Grafo │
+│                               │                      │ • Clawback First + Penalidade -50 │
+├───────────────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ V2. Sequestro de Escrow /     │ RN-AF-05, RN-AF-06,  │ • Check-in/Out GPS <= 150m        │
+│     Sabotagem Pós-Serviço     │ RN-AF-07             │ • PIN Presencial de 4 Dígitos     │
+│                               │                      │ • Auto-Release em 24h s/ disputa  │
+├───────────────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ V3. Falso Defeito / Reciclagem│ RN-AF-08, RN-AF-09,  │ • Sensor Físico ImageSource.camera│
+│     de Fotos da Galeria/Web   │ RN-AF-10             │ • Bloqueio Fake GPS (isMocked)    │
+│                               │                      │ • Hamming 64-Bit >= 5 bits O(1)   │
+├───────────────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ V4. Evasão por Inflação de    │ RN-AF-11, RN-AF-12   │ • Smart Split (0% em Peças c/ NF) │
+│     Materiais / Retrabalho    │                      │ • Teto Camada 3 <= 100% Mão Obra  │
+├───────────────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ V5. Quebra Atuarial Cold-Start│ RN-AF-13             │ • Reserva D+7 + Cooldown 24h entre│
+│     e Monopólio de Resgate    │                      │   chamados de Camada 3            │
+├───────────────────────────────┼──────────────────────┼───────────────────────────────────┤
+│ V6. Ataque Sybil e Contas     │ RN-AF-14             │ • UNIQUE cpf_hash + face_hash     │
+│     Laranja                   │                      │ • Trava PIX Same-Holder Lock      │
+└───────────────────────────────┴──────────────────────┴───────────────────────────────────┘
+```
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    NormalOperation : Operacao Normal (has_open_dispute = FALSE)
+    FrozenCircuitBreaker : Disjuntor Ativado (has_open_dispute = TRUE)
+    SuspendedDebt : Conta Restrita c/ Divida de Clawback
+
+    [*] --> NormalOperation
+    NormalOperation --> FrozenCircuitBreaker : open_warranty_mediation (Bloqueia Saque PIX e Despacho)
+    FrozenCircuitBreaker --> NormalOperation : 1o Prestador Conclui Reparo Primario no Prazo
+    FrozenCircuitBreaker --> SuspendedDebt : Estouro de SLA -> trigger_layer3_rework (abandoned_warranty_count + 1)
+    SuspendedDebt --> NormalOperation : Compensacao Integral de clawback_debt_balance em Novos Servicos
+```
+
+### 2.3. Os 5 Pilares do Marco Zero (`RN-MZ-01` a `RN-MZ-05`)
+
+- **`RN-MZ-01` (Maturação Escalonada $D+7 / D+5 / D+2$)**: Inverte a fonte pagadora nos primeiros serviços de contas iniciantes (`TRAINEE`), garantindo que sua própria retenção financie eventual retrabalho.
+- **`RN-MZ-02` (Cálculo em $O(1)$ do *Relative Trust Score* — $RTS$)**: Combina sinais intrínsecos de credenciamento ($+30$ KYC/Biometria, $+20$ MEI $\ge 6$m, $+20$ Certificação Técnica) com histórico empírico ($+6\text{ pts}$ por serviço concluído até $30\text{ pts}$ e $-50\text{ pts}$ por abandono).
+- **`RN-MZ-03` (Cascata Hierárquica de 5 Degraus — `waterfall_tier_rank` 1..5)**: Habilita o despacho imediato mesmo quando os Degraus 1 e 2 estão vazios em uma nova cidade, recorrendo com segurança aos Degraus 3 e 4.
+- **`RN-MZ-04` (Reserva Semente de *Bootstrapping* e *Circuit Breaker*)**: Aporte inicial `COLD_START_SEED_RESERVE` acoplado ao congelamento preventivo `has_open_dispute = TRUE`.
+- **`RN-MZ-05` (Profissionais Âncora e Quarentena de 24h)**: Flag `is_trusted_anchor = TRUE` combinada à restrição temporal de 24h entre acionamentos de Camada 3.
+
+### 2.4. As 6 Regras Forenses de KYC Biométrico e OCR (`RN-KYC-01` a `RN-KYC-06`)
+
+- **`RN-KYC-01` (Validação Aritmética Módulo 11 e Unicidade de CPF)**: Todo CPF digitado na Etapa 1 do `ClientSetupScreen` é validado pelo cálculo dos dois dígitos verificadores Módulo 11 (`public.is_valid_cpf`) e indexado via `SHA-256` salgado (`idx_profiles_cpf_hash_unique`).
+- **`RN-KYC-02` (Prova de Vida Ao Vivo na Moldura Oval — $YCbCr$, $\text{EAR}$ e $\text{Yaw}$)**: Captura exclusiva na câmera frontal exigindo fração de pele $YCbCr \in [22\%, 82\%]$, rejeição de monitores (`blueMonitorRatio < 0,25`), piscada bilateral ($\text{EAR} < 0,18 \to > 0,25$) e rotação cefálica ($|\theta_y| \ge 18^\circ$).
+- **`RN-KYC-03` (Scanner Documental Guiado ISO/IEC 7810 ID-1)**: Captura da Frente e do Verso de CNH, RG ou CIN sob moldura retangular de proporção `1,586 : 1`, exigindo nitidez Laplaciana $\sigma_{\text{Lap}}^2 \ge 110,0$ e reflexo especular $\le 8,5\%$.
+- **`RN-KYC-04` (Recorte Estrito de ROI com *Core Inset* de 12% e Anti-Duplicidade `dHash + MAD`)**: Descarta $12\%$ das bordas externas antes de computar o `dHash` de 64 bits e a Diferença Absoluta Média ($\text{MAD}_{64\times 64}$), eliminando falsos positivos de superfícies de madeira e bloqueando fotos idênticas de Frente e Verso (`Hamming < 5`).
+- **`RN-KYC-05` (Face Match 1:1 Multi-Orientação $0^\circ/90^\circ/180^\circ/270^\circ$ em 128-D Não-Negativo)**: Compara o descritor facial da selfie ao vivo contra as 4 rotações canônicas do recorte $3\times 4$ do documento ($A_k \ge 0, B_k \ge 0 \implies S_{\cos} \in [0\%, 100\%]$), exigindo $S_{\cos} \ge 78,0\%$.
+- **`RN-KYC-06` (Transcrição Automática via OCR e Compatibilidade de Nome Civil)**: Exibe na Etapa 4 o card com os dados extraídos do documento e exige compatibilidade de tokens do Nome Civil $\ge 80\%$ em relação ao nome informado na Etapa 1.
+
+---
+
+## 3. Fluxograma Visual de Validação do PIN Presencial de 4 Dígitos vs. SLA de 24h
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│        FLUXO DETERMINÍSTICO DE CHECK-OUT FORENSE (PIN PRESENCIAL vs. SLA 24 HORAS)       │
+│                                                                                          │
+│  [Prestador conclui serviço e captura Foto "Depois" via ImageSource.camera (1280px)]     │
+│                                            │                                             │
+│                                            ▼                                             │
+│     ┌──────────────────────────────────────────────────────────────────────────────┐     │
+│     │ Guarda Forense Inicial: Geofence <= 150m E dHamming(Checkin, Checkout) >= 5  │     │
+│     └──────────────────┬────────────────────────────────────────┬──────────────────┘     │
+│                        │ (Cliente presente c/ PIN)              │ (Cliente ausente)      │
+│                        ▼                                        ▼                        │
+│     ╔═════════════════════════════════════╗  ╔════════════════════════════════════════╗  │
+│     ║ CAMINHO A: PIN DE 4 DÍGITOS VÁLIDO  ║  ║ CAMINHO B: JANELA SLA DE 24 HORAS      ║  │
+│     ║ • crypt(pin, checkout_pin_hash) OK  ║  ║ • status = 'awaiting_approval'         ║  │
+│     ║ • status = 'completed'              ║  ║ • auto_release_at = NOW() + 24 hours   ║  │
+│     ║ • Liquida p/ Maturação no ato       ║  ║ • Worker SKIP LOCKED libera após 24h   ║  │
+│     ╚═════════════════════════════════════╝  ╚════════════════════════════════════════╝  │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. Matriz de Rastreabilidade Biunívoca Completa (Regra Normativa $\times$ SQL $\times$ Dart $\times$ Teste)
+
+| Regra Normativa | Migração SQL e Função RPC | Arquivo Dart / Flutter | Suíte de Teste Automatizado |
+| :--- | :--- | :--- | :--- |
+| `RN-CAM-01` a `RN-CAM-03` | [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) (`complete_job_and_schedule_escrow`, `settle_escrow_with_carveout_and_maturation`, `open_warranty_mediation`, `trigger_layer3_rework`) | [`fintech_warranty_models.dart`](../app/lib/core/models/fintech_warranty_models.dart), [`warranty_escrow_service.dart`](../app/lib/core/services/warranty_escrow_service.dart), [`fintech_warranty_widgets.dart`](../app/lib/features/shared/presentation/fintech_warranty_widgets.dart) | [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart), [`security_smoke.sql`](../supabase/tests/security_smoke.sql) |
+| `RN-AF-01` a `RN-AF-14` | [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) (`hamming_distance_64`, `chk_invariant_1_coverage_cap`, `chk_invariant_2_identity_disjunction`) | [`perceptual_hash_guard.dart`](../app/lib/core/security/perceptual_hash_guard.dart), [`anti_bypass_fintech_controller.dart`](../app/lib/core/state/anti_bypass_fintech_controller.dart) | [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) |
+| `RN-MZ-01` a `RN-MZ-05` | [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) (`calculate_relative_trust_score`, `trg_sync_profile_trust_and_rank`) | [`fintech_warranty_models.dart`](../app/lib/core/models/fintech_warranty_models.dart) | [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart), [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) |
+| `RN-KYC-01` a `RN-KYC-06` | [`20261108120000_client_kyc_biometrics_and_ocr.sql`](../supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql) (`is_valid_cpf`, `submit_client_kyc`, `idx_profiles_cpf_hash_unique`) | [`client_setup_screen.dart`](../app/lib/features/client/presentation/client_setup_screen.dart), [`document_ocr_and_liveness_service.dart`](../app/lib/core/services/document_ocr_and_liveness_service.dart) | [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart), [`security_smoke.sql`](../supabase/tests/security_smoke.sql) |
+| Passaporte ABNT NBR 5674 | [`20261106120000_category_match_orders_dossier.sql`](../supabase/migrations/20261106120000_category_match_orders_dossier.sql), `forensic_certificates` | [`desperrengue_official_pdf_service.dart`](../app/lib/core/services/desperrengue_official_pdf_service.dart) | [`dossier_test.dart`](../app/test/dossier_test.dart), `scripts/test-dossie.mjs` |
+| Exclusão Escopada LGPD | [`20261107100000_scoped_account_deletion.sql`](../supabase/migrations/20261107100000_scoped_account_deletion.sql) (`delete_own_account_scoped`) | [`delete_account_screen.dart`](../app/lib/features/shared/presentation/delete_account_screen.dart) | [`account_screens_test.dart`](../app/test/account_screens_test.dart), [`scoped_deletion_smoke.sql`](../supabase/tests/scoped_deletion_smoke.sql) |

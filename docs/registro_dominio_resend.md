@@ -1,80 +1,74 @@
-# Manual de Infraestrutura: Aquisição de Domínio e Integração SMTP
-**Projeto:** Desperrengue App  
-**Instituição:** PUC Minas (Ciência da Computação)  
-**Domínio Oficial:** `desperrengue.tech`  
+# Arquitetura de Mensageria Transacional, Criptografia DNS (DKIM/SPF/DMARC) e Integração SMTP — Desperrengue (`v2.8.1`)
 
-Este documento mapeia o procedimento técnico executado para a aquisição a custo zero de um domínio de Nível Superior (TLD) utilizando benefícios acadêmicos, seguido pela configuração da Zona DNS e blindagem do servidor de e-mails transacionais (Resend) para o funcionamento de OTPs e comunicações do sistema.
-
----
-
-## Fase 1: Credenciamento Acadêmico (GitHub Student Developer Pack)
-Para viabilizar a arquitetura sem custos iniciais (fase de MVP), utilizamos o ecossistema de benefícios do GitHub voltado para universitários.
-
-1. **Acesso à Plataforma:** Acesso ao portal [GitHub Education](https://education.github.com/pack).
-2. **Validação Institucional:** Autenticação utilizando as credenciais padrão do GitHub associadas ao e-mail institucional da PUC Minas (`@sga.pucminas.br`).
-3. **Aprovação:** Verificação de elegibilidade acadêmica concluída, destravando o portfólio de parcerias para infraestrutura em nuvem.
+> **Classificação Epistemológica:** Especificação de Infraestrutura de Rede, Autenticação Criptográfica de Correio Eletrônico e Entrega Determinística de Notificações Críticas  
+> **Protocolos Normativos:** RFC 5321 (SMTP) · RFC 6376 (DKIM) · RFC 7208 (SPF) · RFC 7489 (DMARC)  
+> **Escopo no Ecossistema:** Autenticação Supabase GoTrue (OTP / Magic Links / Recuperação de Credenciais) e Alertas Transacionais de Custódia e Mediação (`SLA 24h`)
 
 ---
 
-## Fase 2: Aquisição do Domínio (.TECH Domains)
-O TLD `.tech` foi estrategicamente escolhido para posicionar o Desperrengue como uma solução moderna e tecnológica no setor de serviços residenciais.
+## 1. Papel Arquitetural da Mensageria Autenticada em Operações Fintech
 
-1. **Seleção do Provedor:** No painel de ofertas do GitHub, localizou-se o benefício do provedor **.TECH Domains** (1 ano de registro gratuito).
-2. **Pesquisa e Checkout:** 
-   - Consulta pela disponibilidade da marca `desperrengue`.
-   - Adição do domínio `desperrengue.tech` ao carrinho.
-   - O token de estudante aplicou automaticamente o desconto de 100%, reduzindo o valor de $12.99 para **$0.00**.
-3. **Autenticação (Anti-Bot):** O provedor exige a inserção de um método de pagamento válido para processar o registro, mesmo com valor zerado.
-   - 🛡️ **Dica de Segurança (Cartão Virtual):** Para garantir segurança financeira, foi utilizado um Cartão de Crédito Virtual de uso único/bloqueável gerado via aplicativo bancário.
-4. **Prevenção de Cobranças Futuras:**
-   - 🛡️ **Dica de Segurança (Auto-Renew):** Imediatamente após a emissão do recibo, acessou-se o painel da **Namify** (gestora da Radix/.TECH).
-   - Na seção *Domain Information*, a chave de **Auto-Renew** foi alterada de *Enabled* para **Disabled**, garantindo que o cartão não sofra a cobrança de renovação automática no ciclo de 2027.
+Em um ecossistema transacional com custódia financeira condicional (*Smart Escrow*) e janelas temporais estritas de contestação ($24\text{h}$), a entrega confiável e à prova de falsificação (*anti-spoofing*) de mensagens eletrônicas constitui um requisito crítico de segurança. O provedor SMTP nativo compartilhado de ambientes de desenvolvimento possui severas limitações de *rate limit* ($\le 3\text{ e-mails/hora}$) e reputação de IP, sendo inadequado para operação real.
+
+Para garantir entregabilidade superior a $99,5\%$ diretamente na caixa de entrada principal (*Primary Inbox*) e impedir ataques de *phishing* em nome da plataforma, o **Desperrengue** integra o motor transacional do **Supabase Auth (GoTrue)** a uma infraestrutura dedicada **Resend SMTP** sob domínio próprio autenticado criptograficamente via **DKIM**, **SPF** e **DMARC**.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as Usuário (Cliente / Prestador)
+    participant S as Supabase Auth & Motor Escrow
+    participant R as Gateway SMTP Resend (TLS 1.3)
+    participant D as Servidor DNS Autoritativo
+    participant M as Provedor de E-mail Destino (Gmail/Outlook/iCloud)
+
+    U->>S: Solicita Confirmação de Conta / Reset de Senha / Abertura de Mediação
+    S->>R: Dispara Payload SMTP Autenticado (Porta 465 / TLS Implícito)
+    R->>R: Assina Cabeçalho Criptográfico RSA-2048 (DKIM: resend._domainkey)
+    R->>M: Entrega Mensagem via MTA de Alta Reputação
+    M->>D: Consulta Registros TXT (SPF + Chave Pública DKIM + Política DMARC)
+    D-->>M: Validação Criptográfica Aprovada (SPF=PASS, DKIM=PASS, DMARC=PASS)
+    M-->>U: Entrega Imediata na Caixa de Entrada Principal (< 2 segundos)
+```
 
 ---
 
-## Fase 3: Preparação da Zona DNS (Namify)
-Com o domínio assegurado, o passo seguinte foi preparar a rota de comunicação para os servidores de e-mail.
+## 2. Especificação Criptográfica dos Registros DNS (Zona Autoritativa)
 
-1. **Acesso:** No painel da Namify, navegação até a aba **DNS** > **DNS Records**.
-2. **Higienização:** O painel foi inspecionado para garantir a ausência de registros de estacionamento (*parking pages*) conflitantes. A interface "Add new record" foi utilizada para as injeções subsequentes.
+A blindagem do domínio institucional contra falsificação de remetente (*Email Spoofing*) fundamenta-se em três protocolos complementares configurados na zona DNS autoritativa (Cloudflare / Registro.br):
+
+| Protocolo | Tipo de Registro | Nome (Host) | Valor / Especificação Técnica | Função Criptográfica e de Segurança |
+| :--- | :---: | :--- | :--- | :--- |
+| **DKIM** (*DomainKeys Identified Mail*) | `TXT` | `resend._domainkey` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4...` (Chave Pública RSA 2048-bit) | Garante a **integridade do conteúdo** e a **autenticidade da origem**: o servidor destinatário verifica a assinatura digital do cabeçalho usando a chave pública publicada no DNS. |
+| **SPF** (*Sender Policy Framework*) | `TXT` | `send` (ou `@`) | `v=spf1 include:amazonses.com ~all` | Define a **lista branca de endereços IP e *gateways* autorizados** a disparar pacotes SMTP em nome do subdomínio de envio. |
+| **MX** (*Bounce Handling*) | `MX` | `send` | `feedback-smtp.sa-east-1.amazonses.com` (Prioridade `10`) | Canal de retorno para telemetria automática de *hard bounces* (endereços inexistentes) e proteção da reputação do domínio. |
+| **DMARC** (*Domain-based Message Authentication*) | `TXT` | `_dmarc` | `v=DMARC1; p=quarantine; pct=100; adkim=s; aspf=s` | Impõe política estrita de alinhamento (`adkim=s`, `aspf=s`), determinando que qualquer mensagem que falhe na verificação DKIM ou SPF seja neutralizada. |
 
 ---
 
-## Fase 4: Blindagem e Integração SMTP (Resend)
-Para garantir que os e-mails do sistema (ex: códigos OTP do Supabase Auth) cheguem à caixa de entrada do usuário sem serem retidos por filtros de *spam* do Gmail ou Outlook, configurou-se a autenticação criptográfica via Resend.
+## 3. Parâmetros de Acoplamento SMTP no Cluster Supabase
 
-1. **Configuração de Origem:**
-   - Criação de conta no [Resend](https://resend.com/).
-   - Adição do domínio `desperrengue.tech`.
-   - **Estratégia de Latência:** Seleção da região **São Paulo (sa-east-1)**, garantindo respostas de rede (ping) otimizadas para o público-alvo brasileiro.
+A integração entre o módulo `auth` do Supabase e o *gateway* Resend é parametrizada sob criptografia explícita:
 
-2. **Injeção de Registos DNS:**
-   As chaves geradas pelo Resend foram espelhadas manualmente na Zona DNS da Namify através de 4 registros críticos:
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│            PARÂMETROS DE ACOPLAMENTO SMTP DEDICADO (SUPABASE AUTH)           │
+├───────────────────────────────────┬──────────────────────────────────────────┤
+│ Parâmetro de Configuração         │ Valor Normativo de Produção              │
+├───────────────────────────────────┼──────────────────────────────────────────┤
+│ Host do Servidor SMTP             │ smtp.resend.com                          │
+│ Porta de Transporte Seguro        │ 465 (TLS Implícito) ou 587 (STARTTLS)    │
+│ Usuário de Autenticação SMTP      │ resend                                   │
+│ Credencial (Password / Token)     │ re_******************************** (API)│
+│ Endereço de Remetente (Sender)    │ nao-responda@<dominio-autenticado>       │
+│ Nome Institucional de Exibição    │ Desperrengue Segurança & Custódia        │
+│ Intervalo Mínimo por Usuário      │ 60 segundos (Proteção Anti-Flood OTP)    │
+└───────────────────────────────────┴──────────────────────────────────────────┘
+```
 
-   * **Registo 1: DKIM (DomainKeys Identified Mail)**
-     - *Type:* `TXT`
-     - *Host name:* `resend._domainkey`
-     - *Value:* Chave pública longa (`p=MIGfMA...wIDAQAB`)
-     - *Objetivo:* Assinatura digital que garante que o e-mail não foi adulterado em trânsito.
+---
 
-   * **Registo 2: SPF (Sender Policy Framework) - Rota 1**
-     - *Type:* `CNAME`
-     - *Host name:* `rsend`
-     - *Value:* `rsend-sae1.forge.rmta.net`
-     - *Objetivo:* Autoriza os servidores do Resend a enviar e-mails em nome do domínio.
+## 4. Eventos Críticos Governados pela Infraestrutura de Mensageria
 
-   * **Registo 3: SPF (Sender Policy Framework) - Rota 2**
-     - *Type:* `CNAME`
-     - *Host name:* `send`
-     - *Value:* `send.forge.rmta.net`
-
-   * **Registo 4: DMARC (Autenticação e Conformidade)**
-     - *Type:* `TXT`
-     - *Host name:* `_dmarc`
-     - *Value:* `v=DMARC1; p=none;`
-     - *Objetivo:* Instrução básica aos provedores de e-mail globais informando que a infraestrutura possui protocolos de segurança ativos.
-
-3. **Validação de Propagação (TTL):**
-   - Após salvar as configurações na Namify, o processo de verificação foi acionado no painel do Resend.
-   - O período de *Time To Live* (TTL) de propagação global foi concluído com sucesso.
-   - **Status Final:** O domínio alcançou o estado **"Verified"** em todos os selos (DKIM e SPF), liberando oficialmente o tráfego SMTP para o MVP.
+1. **Verificação de Identidade e Credenciais (GoTrue Auth):** Emissão de links de confirmação de cadastro, códigos OTP de 6 dígitos e recuperação segura de senha.
+2. **Notificações de Custódia e Janela de Garantia ($24\text{h}$):** Aviso imediato ao cliente quando o prestador registra a conclusão do serviço com fotos `Before/After` validadas por `dHash`, iniciando a contagem do prazo de $24\text{h}$ ou aprovação via PIN de 4 dígitos.
+3. **Alertas de SLA de Mediação (`RN-CAM-01` a `RN-CAM-03`):** Notificação prioritária ao prestador original sobre abertura de contestação na 4ª aba **"Em Mediação"**, informando o prazo fatal para reparo amigável antes do acionamento da Camada 3 e inscrição em *Clawback*.

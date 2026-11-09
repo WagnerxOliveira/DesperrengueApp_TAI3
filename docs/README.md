@@ -1,67 +1,90 @@
-# Índice Geral da Documentação Técnico-Científica — Desperrengue
+# Catálogo Sistemático e Guia de Leitura Científica do Diretório `docs/`
 
-Catálogo estruturado de todos os artefatos documentais do repositório **Desperrengue**. Para a síntese executiva e matemática dos oito domínios arquiteturais do sistema, consulte o [README principal na raiz do repositório](../README.md).
-
-> **Diretrizes de Padronização.** Os documentos de engenharia adotam nomenclatura em `MAIÚSCULAS.md` ou `kebab-case.md`, enquanto os entregáveis acadêmicos preservam a denominação curricular das etapas do projeto. A integridade referencial de todos os links relativos é verificada automaticamente no pipeline de integração contínua (`node scripts/check-md-links.mjs`).
+Este documento constitui o índice taxonômico, o mapa conceitual e o guia de navegação da documentação técnico-científica do ecossistema **Desperrengue** (`v2.8.1+202611082`), catalogando a finalidade de todos os **20 documentos Markdown principais** e das **5 subpastas especializadas** contidas em `docs/`.
 
 ---
 
-## 1. Guia de Entrada e Governança de Engenharia
+## 1. Mapa Taxonômico da Documentação (`mindmap`)
 
-| Documento | Escopo Técnico |
-| :--- | :--- |
-| [SETUP.md](SETUP.md) | Configuração do ambiente de desenvolvimento, variáveis `--dart-define`, execução do cliente Flutter e conexão com o Supabase. |
-| [CONTRIBUTING.md](../.github/CONTRIBUTING.md) | Fluxo de trabalho Git (*Trunk-Based Development*), *Conventional Commits*, Definição de Pronto (DoD) e regras para migrações SQL. |
-| [TESTING.md](TESTING.md) | Estratégia de verificação em pirâmide: `529` testes automatizados em Dart/Widgets/Visão Computacional/*Red Team*, `577` asserções SQL e `17` testes de PDF. |
-| [SECURITY.md](../.github/SECURITY.md) | Política de segurança da informação (ISO/IEC 27001 e ISO/IEC 29147), modelo de ameaças, controles antifraude e conformidade LGPD. |
-| [CODE_OF_CONDUCT.md](../.github/CODE_OF_CONDUCT.md) | Normas de conduta e colaboração técnica. |
-| Guias por Sistema Operacional | [Windows](setup/windows.md) · [macOS](setup/macos.md) · [Linux](setup/linux.md) |
-
----
-
-## 2. Arquitetura de Software, Banco de Dados e Visão Computacional
-
-| Documento | Escopo Técnico |
-| :--- | :--- |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Especificação arquitetural completa: arquitetura em 4 camadas, diagramas C4, modelo relacional de 21 migrações, Fundo de Garantia em 3 Camadas, mitigação dos 6 vetores de fraude, resolução do Marco Zero, biometria facial ativa ($YCbCr$), scanner ISO ID-1 com OCR e complexidade assintótica ($O(1)$ / $O(\log N)$). |
-| [Arquitetura do Sistema.md](Arquitetura%20do%20Sistema.md) | Documento arquitetural consolidado: justificativa da stack tecnológica, contêineres C4, invariantes transacionais e pipeline CI/CD. |
-| [Registros de Decisão de Arquitetura (ADRs 0001–0020)](adr/README.md) | Histórico imutável de decisões estruturais, incluindo o [ADR-0020](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) (Garantia 3 Camadas, Motor Antifraude e KYC Biométrico/OCR). |
-| [App Flutter (`../app/README.md`)](../app/README.md) | Organização dos pacotes em `app/lib/`, *Worker Isolates*, componentes da 4ª aba *"Em Mediação"* e carteira bipartida. |
-| [Backend Supabase (`../supabase/README.md`)](../supabase/README.md) | Esquema relacional, livros-razão imutáveis, funções matemáticas $O(1)$, índices B-Tree/GIN e RPCs `SECURITY DEFINER`. |
-| [Onboarding e Verificação KYC](onboarding_profissional.md) | Arquitetura de captura documental, prova de vida facial ativa (*Active Liveness*), scanner guiado ISO/IEC 7810 ID-1, *Face Match* 128-D e transcrição OCR. |
-
----
-
-## 3. Produto, Reputação Bayesiana e Economia de Incentivos
-
-| Documento | Escopo Técnico |
-| :--- | :--- |
-| [ROADMAP.md](ROADMAP.md) | Planejamento evolutivo de curto, médio e longo prazo e rastreamento de épicos concluídos. |
-| [GAMIFICACAO.md](GAMIFICACAO.md) | Conquistas escalonadas (90 medalhas), ranqueamento por Média Bayesiana Empírica, multiplicador de SLA limitado e modelagem de *unit economics*. |
-| [CHANGELOG.md](CHANGELOG.md) | Registro cronológico e semântico de todas as versões, funcionalidades e correções de segurança (até a `v2.8.1+202611082`). |
+```mermaid
+mindmap
+  root((Biblioteca Científica\nDesperrengue v2.8.1))
+    Arquitetura & Algoritmos
+      ARCHITECTURE.md
+      Arquitetura do Sistema.md
+      adr/ (0000 a 0020)
+    Requisitos, Contexto & UI/UX
+      Especificação do Projeto.md
+      Documento de Contexto.md
+      Projeto de Interface.md
+      onboarding_profissional.md
+      specs/ & ui_ux/
+    Engenharia Financeira & Estratégia
+      Fluxo de Caixa.md
+      Planos de Negocio e Tributação.md
+      GAMIFICACAO.md
+      Analise de Ambientes e SWOT.md
+      Balanced Scorecard (BSC).md
+      planilhas/
+    Qualidade, Operação & Release
+      TESTING.md
+      TESTE_COM_AMIGOS.md
+      SETUP.md & setup/
+      PLAY_STORE.md
+      registro_dominio_resend.md
+      ROADMAP.md & CHANGELOG.md
+      Template.md
+```
 
 ---
 
-## 4. Modelagem de Negócios, Estratégia e Finanças
+## 2. Catálogo Sistemático dos 20 Arquivos `.md` de `docs/`
 
-| Documento | Escopo Técnico |
-| :--- | :--- |
-| [Documento de Contexto.md](Documento%20de%20Contexto.md) | Formulação do problema de assimetria de informação, solução proposta, Lean Canvas e diretrizes estratégicas. |
-| [Especificação do Projeto.md](Especificação%20do%20Projeto.md) | Modelagem de personas, histórias de usuário, requisitos funcionais (RF) e não-funcionais (RNF). |
-| [Planos de Negocio e Tributação.md](Planos%20de%20Negocio%20e%20Tributação.md) | Estrutura de custos, enquadramento tributário no Simples Nacional (CNAE `7490-1/04`), *Smart Split* ($0\%$ sobre insumos) e reserva de garantia ($1,5\%$). |
-| [Analise de Ambientes e SWOT.md](Analise%20de%20Ambientes%20e%20SWOT.md) | Análise macroambiental PESTEL, *benchmarking* competitivo, Matriz SWOT e estratégias cruzadas contra *bypass* e fraude. |
-| [Balanced Scorecard (BSC).md](Balanced%20Scorecard%20(BSC).md) · [CSV](planilhas/bsc_desperrengue.csv) | Mapa estratégico de causa e efeito e 16 objetivos distribuídos nas 4 perspectivas de Kaplan e Norton. |
-| [Fluxo de Caixa.md](Fluxo%20de%20Caixa.md) · [CSV](planilhas/fluxo_de_caixa_12m.csv) | Projeção financeira de 12 meses, ponto de equilíbrio (*break-even*), *payback* e eficiência fiscal do *split*. |
+| # | Documento em `docs/` | Categoria Epistemológica | Síntese do Conteúdo Técnico-Científico |
+| :---: | :--- | :--- | :--- |
+| `01` | [`README.md`](README.md) | Índice Sistemático | Taxonomia documental completa, sumário executivo de `docs/` e subpastas e matriz de leitura por perfil técnico. |
+| `02` | [`ARCHITECTURE.md`](ARCHITECTURE.md) | Arquitetura de Software e Algoritmos | Decomposição nas 4 camadas, provas algébricas *Big-O* (*Axial Bounding Box* $O(\log N + K)$, Hamming Bitwise $O(1)$, Triggers $O(1)$), *Worker Isolates* a $120\text{ Hz}$ e prova por teoria dos grafos de ausência de *deadlocks*. |
+| `03` | [`Arquitetura do Sistema.md`](Arquitetura%20do%20Sistema.md) | Topologia Distribuída e Banco de Dados | Topologia Cliente-Servidor-Edge, dicionário de dados completo das 6 tabelas centrais, as 4 invariantes declarativas, os 9 índices estratégicos e catálogo de RPCs. |
+| `04` | [`Especificação do Projeto.md`](Especifica%C3%A7%C3%A3o%20do%20Projeto.md) | Engenharia de Requisitos e Normas | Catálogo formal de `RF`, `RNF`, Regras de Camada (`RN-CAM-01..03`), Regras Antifraude (`RN-AF-01..14`), Regras de Marco Zero (`RN-MZ-01..05`), Regras de KYC (`RN-KYC-01..06`) e Matriz de Rastreabilidade Código $\times$ Teste. |
+| `05` | [`Documento de Contexto.md`](Documento%20de%20Contexto.md) | Fundamentação Teórica e Econômica | Análise científica da Seleção Adversa de Akerlof, do Paradoxo da Desintermediação (*Bypass*) e da solução estrutural pela tríade *Smart Split* + Garantia 3 Camadas + Passaporte ABNT NBR 5674. |
+| `06` | [`Projeto de Interface.md`](Projeto%20de%20Interface.md) | Engenharia de IHC e Design System | Estética *Quiet Luxury Dark*, container `480px`, *wireframes* Unicode das 4 etapas do `ClientSetupScreen`, mapa com contador `1º, 2º, 3º`, 4ª aba *"Em Mediação"* com `ForensicSplitViewComparator` e carteira bipartida. |
+| `07` | [`onboarding_profissional.md`](onboarding_profissional.md) | Visão Computacional, Biometria e KYC | Arquitetura de Identidade Civil Unificada Multi-Modo ($+30\text{ pts}$ no $RTS$) e equações matemáticas dos 6 validadores forenses (Módulo 11, $YCbCr$, $\text{EAR}$, $\text{Yaw}$, Laplaciano $3\times 3$, `dHash + MAD` sobre ROI 12% e Face Match 128-D). |
+| `08` | [`GAMIFICACAO.md`](GAMIFICACAO.md) | Engenharia de Reputação e Teoria de Incentivos | Fórmula exata do *Relative Trust Score* ($RTS \in [0, 100]$), progressão de tiers e Profissionais Âncora, acoplamento com velocidade de liquidação e Cascata de 5 Degraus (`waterfall_tier_rank`). |
+| `09` | [`Fluxo de Caixa.md`](Fluxo%20de%20Caixa.md) | Contabilidade de Custódia e Liquidez Atuarial | Equações de fluxo de caixa do *Smart Escrow*, segregação de $1,5\%$ ($N = 66,67$), contabilidade da reserva de maturação e recuperação via *Clawback* (`clawback_debt_balance`). |
+| `10` | [`Planos de Negocio e Tributação.md`](Planos%20de%20Negocio%20e%20Tributa%C3%A7%C3%A3o.md) | Economia da Plataforma e Engenharia Tributária | Segregação contábil do *Smart Split* no Brasil (evitando bitributação sobre repasse do prestador e insumos), linhas de receita B2C/B2B (Passaporte ABNT NBR 5674) e *Unit Economics*. |
+| `11` | [`Analise de Ambientes e SWOT.md`](Analise%20de%20Ambientes%20e%20SWOT.md) | Inteligência Competitiva | Análise PESTEL, 5 Forças de Porter e Matriz SWOT Cruzada fundamentada na visão computacional *on-device* a custo marginal R$ 0,00 e blindagem antifraude. |
+| `12` | [`Balanced Scorecard (BSC).md`](Balanced%20Scorecard%20(BSC).md) | Governança Estratégica e Telemetria | Mapa Estratégico de Causa-Efeito nas 4 perspectivas de Kaplan & Norton com fórmulas SQL de KPIs extraídas em tempo real do PostgreSQL. |
+| `13` | [`TESTING.md`](TESTING.md) | Verificação Formal e Suíte *Red Team* | Arquitetura das 26 suítes Dart (`529` testes) e 9 suítes SQL (`577` asserções), detalhando os 6 testes *Red Team* de fraude financeira e os 6 testes forenses de visão computacional e OCR. |
+| `14` | [`TESTE_COM_AMIGOS.md`](TESTE_COM_AMIGOS.md) | Homologação Empírica em Campo | Roteiro científico de validação em aparelhos Android e iOS: câmera frontal no oval, scanner CNH na horizontal e vertical, ditado por voz, mapa, PIN de 4 dígitos, mediação e Passaporte PDF. |
+| `15` | [`SETUP.md`](SETUP.md) | Provisionamento e Build | Instruções determinísticas de configuração do Flutter SDK, variáveis Supabase, aplicação das 21 migrações SQL e compilação Web/Android/iOS. |
+| `16` | [`PLAY_STORE.md`](PLAY_STORE.md) | Engenharia de Release Mobile | Configuração de permissões nativas (`CAMERA`, `ACCESS_FINE_LOCATION`, `RECORD_AUDIO`), assinatura AAB, conformidade LGPD Art. 11 para biometria e ícones adaptativos na *Safe-Zone*. |
+| `17` | [`registro_dominio_resend.md`](registro_dominio_resend.md) | Infraestrutura de Mensageria e DNS | Arquitetura de envio de e-mails transacionais e códigos OTP via Resend + Supabase Auth e configuração criptográfica de registros DNS (`DKIM`, `SPF`, `DMARC`). |
+| `18` | [`ROADMAP.md`](ROADMAP.md) | Planejamento Evolutivo (`gantt`) | Linha do tempo técnica das fases concluídas até novembro de 2026 e horizontes futuros (expansão B2B imobiliárias/seguradoras e IA preditiva). |
+| `19` | [`CHANGELOG.md`](CHANGELOG.md) | Registro Cronológico de Versões | Histórico auditável de todas as versões (`v1.1.0` a `v2.8.1`), migrações SQL, correções de visão computacional e otimizações de performance. |
+| `20` | [`Template.md`](Template.md) | Padrão Metadocumental Científico | Modelo estrutural normativo (cabeçalho técnico, resumo, fundamentação matemática, especificação de código, complexidade *Big-O* e checklist) para novos documentos. |
 
 ---
 
-## 5. Projeto de Interface, Design System e Operação
+## 3. Catálogo das 5 Subpastas Especializadas de `docs/`
 
-| Documento | Escopo Técnico |
+1. **[`docs/adr/`](adr/README.md) — *Architecture Decision Records* (`ADR-0000` a `ADR-0020`)**:
+   - Registro histórico imutável das 20 decisões arquiteturais do projeto, culminando no [`ADR-0020`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) (Fundo de Garantia em 3 Camadas, Motor Antifraude $O(1)/O(\log N)$ e KYC Biométrico Ao Vivo com Scanner ISO ID-1 e OCR).
+2. **[`docs/planilhas/`](planilhas/) — Modelagem Quantitativa em CSV**:
+   - Contém [`bsc_desperrengue.csv`](planilhas/bsc_desperrengue.csv) (métricas do Balanced Scorecard) e [`fluxo_de_caixa_12m.csv`](planilhas/fluxo_de_caixa_12m.csv) (projeção financeira de 12 meses com *Smart Split* e *Carve-out* de $1,5\%$).
+3. **[`docs/setup/`](setup/) — Guias de Provisionamento por Sistema Operacional**:
+   - Procedimentos detalhados de instalação de *toolchains* para [`windows.md`](setup/windows.md), [`linux.md`](setup/linux.md) e [`macos.md`](setup/macos.md).
+4. **[`docs/specs/`](specs/) — Especificações Analíticas de Telas**:
+   - Fichas técnicas detalhadas das interfaces em [`cliente_telas.md`](specs/cliente_telas.md), [`profissional_telas.md`](specs/profissional_telas.md) e [`comum_telas.md`](specs/comum_telas.md).
+5. **[`docs/ui_ux/hi-fi_prototyping/`](ui_ux/hi-fi_prototyping/) — Acervo de Prototipação de Alta Fidelidade**:
+   - Artefatos visuais organizados por jornada operacional (`0_telas_de_login` a `7_Gestao_de_Perfil_e_Gamificacao`, `cliente/` e `profissional/`).
+
+---
+
+## 4. Matriz de Leitura Recomendada por Perfil Técnico
+
+| Perfil do Leitor / Auditor | Sequência de Leitura Recomendada |
 | :--- | :--- |
-| [Projeto de Interface.md](Projeto%20de%20Interface.md) | Fluxograma completo de telas (*User Flow*), rastreabilidade entre protótipos e implementação Flutter, onboarding biométrico e mediação. |
-| [Template.md](Template.md) | Sistema de tokens semânticos (`AppTokens`), tematização dinâmica por modo (Laranja/Azul), modo escuro WCAG e catálogo de componentes. |
-| [Fichas Analíticas de Telas](specs/cliente_telas.md) | [Jornada do Cliente](specs/cliente_telas.md) · [Jornada do Profissional](specs/profissional_telas.md) · [Telas Comuns](specs/comum_telas.md) · [Protótipos Hi-Fi](ui_ux/hi-fi_prototyping/) |
-| [Publicação na Google Play](PLAY_STORE.md) | Procedimentos de assinatura `.aab`, trilha de teste interno e declarações de segurança de dados. |
-| [Distribuição Beta e Testes em Campo](TESTE_COM_AMIGOS.md) | Entrega contínua via GitHub Releases / GitHub Pages (PWA) e atualização in-app (`UpdateGate`). |
-| [Autenticação de Domínio e E-mail Transacional](registro_dominio_resend.md) | Configuração de registros DNS (SPF, DKIM e DMARC) para o domínio `desperrengue.tech` no serviço Resend. |
+| **Arquitetos de Software e Engenheiros de Sistemas Distribuídos** | [`../README.md`](../README.md) $\to$ [`ARCHITECTURE.md`](ARCHITECTURE.md) $\to$ [`Arquitetura do Sistema.md`](Arquitetura%20do%20Sistema.md) $\to$ [`adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) |
+| **Especialistas em Segurança, Criptografia e Visão Computacional** | [`onboarding_profissional.md`](onboarding_profissional.md) $\to$ [`../.github/SECURITY.md`](../.github/SECURITY.md) $\to$ [`TESTING.md`](TESTING.md) |
+| **Auditores Financeiros, Economistas e Avaliadores de Negócios** | [`Documento de Contexto.md`](Documento%20de%20Contexto.md) $\to$ [`Planos de Negocio e Tributação.md`](Planos%20de%20Negocio%20e%20Tributa%C3%A7%C3%A3o.md) $\to$ [`Fluxo de Caixa.md`](Fluxo%20de%20Caixa.md) $\to$ [`Balanced Scorecard (BSC).md`](Balanced%20Scorecard%20(BSC).md) |
+| **Engenheiros de Qualidade (QA) e Homologadores Mobile** | [`SETUP.md`](SETUP.md) $\to$ [`TESTING.md`](TESTING.md) $\to$ [`TESTE_COM_AMIGOS.md`](TESTE_COM_AMIGOS.md) $\to$ [`PLAY_STORE.md`](PLAY_STORE.md) |

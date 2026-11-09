@@ -1,40 +1,65 @@
-# Roadmap de Engenharia — Evolução do Sistema Desperrengue (`v2.8.1`)
+# Roadmap Tecnológico, Evolução Arquitetural e Horizontes de Pesquisa — Desperrengue (`v2.8.1`)
 
-Este documento registra a evolução das fases de engenharia do projeto **Desperrengue**, detalhando os épicos concluídos em produção e as frentes de expansão futura.
-
----
-
-## 1. Resumo Executivo de Progresso
-
-| Fase / Épico | Escopo Arquitetural | Status Atual |
-| :--- | :--- | :---: |
-| **Fase 1 (`E-01` a `E-04`)** | Fundação Full-Stack, 21 Migrações SQL, RLS Estrito, CI/CD, PWA e APK Beta Automatizado | ✅ **100% Concluído** |
-| **Fase 2 (`E-05a` a `E-05e`)** | Catálogo de 33 Categorias, Propostas Dinâmicas, Agenda Semanal, Chat em Tempo Real e Exclusão Escopada LGPD | ✅ **100% Concluído** |
-| **Fase 3 (`E-05f`)** | **Fundo de Garantia em 3 Camadas (`RN-CAM-01..03`)**, **Smart Split Anti-Bypass**, **Motor Antifraude (`RN-AF-01..14`)**, **Marco Zero (`RN-MZ-01..05`)** e **Passaporte do Imóvel (ABNT NBR 5674)** | ✅ **100% Concluído (`v2.8.0`)** |
-| **Fase 4 (`E-05g`)** | **Câmera Frontal Ao Vivo (`ClipOval` $YCbCr$)**, **Scanner Guiado ISO ID-1**, **Face Match Multi-Ângulo 128-D ($\ge 78\%$)** e **Transcrição OCR Visível** | ✅ **100% Concluído (`v2.8.1`)** |
-| **Fase 5 (`E-06` a `E-08`)** | Liquidação Bancária Homologada no Bacen (SPI/DICT), Telemetria *Crash-Reporting* Externa e Publicação na Google Play Store | 🔜 **Planejado (Pós-Banca)** |
+> **Classificação Epistemológica:** Planejamento Estratégico de Engenharia de Sistemas, Cronograma de Entregas Consolidado e Horizontes de P&D  
+> **Estado Atual do Repositório:** Versão de Produção `v2.8.1+49` (Novembro de 2026) — **100% dos Marcos de Engenharia Core, Blindagem Antifraude, Visão Computacional *On-Device* e Passaporte ABNT NBR 5674 Concluídos e Auditados**
 
 ---
 
-## 2. Detalhamento dos Épicos Concluídos (`E-01` a `E-05g`)
+## 1. Cronograma Vetorial de Engenharia (`gantt`)
 
-### 2.1. `E-05f` — Engenharia Financeira de Garantia em 3 Camadas e Motor Antifraude ($O(1) / O(\log N)$)
-- Implementação das tabelas `public.warranty_pool_ledger`, `public.escrow_maturation_entries`, `public.job_mediations` e `public.forensic_certificates` na migração [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql).
-- Implementação do **Smart Split Anti-Bypass**: sobretaxa de $15.0\%$ exclusiva sobre a mão de obra ($13.5\%$ operacional + $1.5\%$ fundo garantidor) e $0.0\%$ sobre peças e materiais com nota fiscal (respeitando $M \le 0.60 \cdot \text{Gross}$).
-- Implementação da 4ª aba **"Em Mediação"** (`JobMediationTab`), do modal de **PIN Presencial de 4 dígitos**, da **Carteira Bipartida** e da guarda forense `PerceptualHashGuard` (`dHash` de 64 bits + inspeção EXIF em *Worker Isolate*).
-- Implementação do **Passaporte Oficial de Manutenção do Imóvel** (`PropertyMaintenancePassportPdf`) em conformidade com a **ABNT NBR 5674** e a **Lei Federal nº 8.245/91**.
+O diagrama de Gantt a seguir documenta a trajetória evolutiva do **Desperrengue**, desde a concepção da infraestrutura relacional até a consolidação da versão `v2.8.1` em novembro de 2026 e os horizontes de expansão institucional B2B:
 
-### 2.2. `E-05g` — Biometria Facial Ao Vivo, Scanner Documental ISO ID-1 e OCR Visível
-- Implementação da migração [`20261108120000_client_kyc_biometrics_and_ocr.sql`](../supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql) com validação algorítmica de CPF (Módulo 11), `cpf_hash` e `face_liveness_hash` únicos e RPC `submit_client_kyc_biometrics_and_ocr`.
-- Implementação da câmera frontal ao vivo (`_LiveFrontOvalLivenessCameraModal`), do scanner documental guiado ISO/IEC 7810 ID-1 (`DocumentGuidedScannerModal`), do recorte central de 12% (*Core ROI Inset*), do Face Match multi-ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) em espaço 128-D não-negativo e do card visível `_OcrTranscribedSummaryCard`.
+```mermaid
+gantt
+    title "Roadmap de Engenharia e Evolução Tecnológica — Desperrengue (2026–2027)"
+    dateFormat  YYYY-MM-DD
+    axisFormat  %m/%Y
+
+    section Fase 1: Fundação & Core
+    Esquema Unificado Supabase & RLS Estrito           :done, f1_1, 2026-08-01, 2026-09-10
+    Identidade Multi-Modo (Cliente + Prestador)        :done, f1_2, 2026-09-05, 2026-09-28
+    Design System Quiet Luxury Dark (480px Shell)      :done, f1_3, 2026-09-20, 2026-10-12
+
+    section Fase 2: UX & Patrimônio
+    Catálogo de 33 Categorias Técnicas & Voz           :done, f2_1, 2026-10-10, 2026-10-28
+    Mapa Ordenado (1º, 2º, 3º) & Triagem SOS < 60s     :done, f2_2, 2026-10-25, 2026-11-05
+    Passaporte do Imóvel (ABNT NBR 5674 + SHA-256)     :done, f2_3, 2026-11-04, 2026-11-07
+    Ícone Adaptativo Metálico (Safe-Zone 57%–66%)      :done, f2_4, 2026-11-07, 2026-11-08
+
+    section Fase 3: Fintech & Antifraude
+    Garantia 3 Camadas (Carve-Out 1,5% + Reserva D+5)  :done, f3_1, 2026-11-07, 2026-11-08
+    Blindagem 6 Vetores (dHash 64-bit, Grafo, Clawback):done, f3_2, 2026-11-07, 2026-11-08
+    Otimização Big-O (Bounding Box O(log N+K) + O(1))  :done, f3_3, 2026-11-08, 2026-11-09
+
+    section Fase 4: Biometria & Visão 3D
+    Câmera Frontal Ao Vivo In-App (3 Desafios Liveness):done, f4_1, 2026-11-08, 2026-11-09
+    Scanner ISO ID-1 (0°..270°), ROI dHash+MAD & OCR   :done, f4_2, 2026-11-08, 2026-11-09
+    Suíte 529 Testes Dart + 577 SQL + Tratado Científico:done, f4_3, 2026-11-08, 2026-11-09
+
+    section Fase 5: Expansão B2B (2027)
+    API Gateway B2B para Imobiliárias & Seguradoras    :active, f5_1, 2026-11-15, 2027-02-15
+    Diagnóstico Preventivo Assistido por Visão (NPU)   :f5_2, 2027-01-15, 2027-04-30
+    Liquidação Open Finance & Split Bancário Direto    :f5_3, 2027-03-01, 2027-06-30
+```
 
 ---
 
-## 3. Próximos Épicos Planejados (`E-06` a `E-08`)
+## 2. Balanço Consolidado dos Marcos Entregues até `v2.8.1` (Novembro de 2026)
 
-1. **`E-06` — Integração Direta com PSP Homologado no Banco Central (SPI / DICT)**:
-   - Conectar as RPCs `lock_escrow_with_smart_split` e `release_matured_escrow_batch` a webhooks assinados de instituição de pagamento participante do SPI para liquidação PIX automatizada e consulta DICT em tempo real.
-2. **`E-07` — Observabilidade Distribuída (Sentry / OpenTelemetry)**:
-   - Exportar os eventos estruturados do `TelemetryService` para coletor OpenTelemetry externo com rastreamento de latência de RPCs e *Worker Isolates*.
-3. **`E-08` — Homologação Comercial na Google Play Console**:
-   - Submissão do *Android App Bundle* (`app-release.aab`) assinado seguindo o roteiro técnico documentado em [`docs/PLAY_STORE.md`](PLAY_STORE.md).
+| Fase | Marco Arquitetural | Artefatos de Engenharia Auditados | Status |
+| :--- | :--- | :--- | :---: |
+| **Fase 1** | **Unificação de Perfis, RLS e Container Responsivo (`480px`)** | Tabela única `public.profiles`, `BootGate`, `UpdateGate`, exclusão segura LGPD (`delete_own_account_scoped`) e layout *Quiet Luxury Dark*. | **CONCLUÍDO (`100%`)** |
+| **Fase 2** | **Taxonomia de 33 Categorias, Voz e Passaporte `ABNT NBR 5674`** | Ditado *Speech-to-Text*, jornada educativa sem dados fictícios (*Zero Fake Data*) e motor PDF vetorial com assinatura `SHA-256` (`DSP-PASS-*`). | **CONCLUÍDO (`100%`)** |
+| **Fase 3** | **Fundo de Garantia em 3 Camadas, *Smart Split* e Baixa Latência** | *Carve-Out* atuarial de $1,5\%$ sobre $V_{\text{MO}}$, taxa $0\%$ em peças, Reserva `D+5`/`D+7`, Grafo *Zero-Linkage*, *Circuit Breaker* ($15\%$), Podagem Axial $O(\log N + K)$ e distância de Hamming $O(1)$. | **CONCLUÍDO (`100%`)** |
+| **Fase 4** | **KYC Bilateral Simétrico, Câmera Frontal Ao Vivo e Scanner ISO ID-1** | Visor oval *in-app* com 3 desafios físicos ($YCbCr$ + EAR + Yaw), Scanner ID-1 ($85,60 \times 53,98\text{ mm}$) com rotação $0^\circ..270^\circ$, `dHash + MAD` em ROI central ($80\%$), Face Match 128-D e transcrição OCR visível a custo $\text{R\$ } 0,00$. | **CONCLUÍDO (`100%`)** |
+
+---
+
+## 3. Horizontes de Pesquisa e Desenvolvimento (Fase 5 — 2027)
+
+1. **Barramento B2B de Interoperabilidade Imobiliária e Securitária (*Property Passport API*):**
+   * Exposição de *endpoints* REST/GraphQL autenticados via mTLS para que imobiliárias e companhias seguradoras verifiquem programaticamente a assinatura SHA-256 (`DSP-PASS-*`) e o *Score de Vistoria* de um imóvel durante processos de vistoria de saída ou subscrição de apólices.
+2. **Pré-Diagnóstico de Patologias Construtivas em NPU Local:**
+   * Expansão do pipeline de `Isolate.run` para classificar visualmente infiltrações, oxidação de barramentos em quadros elétricos e fissuras estruturais a partir das fotos de abertura do chamado, sugerindo automaticamente a lista de materiais ($V_{\text{Mat}}$) antes mesmo do deslocamento do profissional.
+3. **Integração Direta com Arranjos de Liquidação *Open Finance* (PIX Automático Bacen):**
+   * Acoplamento nativo das tabelas `escrow_maturation_entries` e `warranty_pool_ledger` às APIs de liquidação instantânea do Banco Central do Brasil para execução automatizada de *split* bancário e débito autorizado de *Clawback*.

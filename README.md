@@ -1,398 +1,439 @@
-# Desperrengue — Arquitetura de Marketplace Residencial, Custódia Financeira em Três Camadas, Motor Antifraude Determinístico e Visão Computacional Aplicada ao Onboarding Biométrico
+# Desperrengue — Ecossistema Distribuído Multi-Modo com Custódia Financeira em 3 Camadas, Motor Antifraude $O(1) / O(\log N)$ e Visão Computacional In-App (`v2.8.1`)
 
 [![CI](https://github.com/WagnerxOliveira/DesperrengueApp_TAI3/actions/workflows/ci.yml/badge.svg)](https://github.com/WagnerxOliveira/DesperrengueApp_TAI3/actions/workflows/ci.yml)
-![Versão](https://img.shields.io/badge/vers%C3%A3o-2.8.1%2B202611082-blue)
-![Estágio](https://img.shields.io/badge/est%C3%A1gio-Produ%C3%A7%C3%A3o%20Acad%C3%AAmica%20Auditada-orange)
-![Flutter](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter&logoColor=white)
-![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%2017-3ECF8E?logo=supabase&logoColor=white)
-![Testes](https://img.shields.io/badge/testes-529%20Dart%2FWid%20%C2%B7%20577%20SQL%20%C2%B7%2017%20PDF-brightgreen)
-![Licença](https://img.shields.io/badge/licen%C3%A7a-todos%20os%20direitos%20reservados-lightgrey)
+[![Flutter](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter)](https://flutter.dev)
+[![Supabase](https://img.shields.io/badge/PostgreSQL-17%20%2B%20RLS-3ECF8E?logo=supabase)](https://supabase.com)
+[![Testes Dart](https://img.shields.io/badge/Flutter%20Tests-529%20passing-10B981)](app/test/)
+[![Invariantes SQL](https://img.shields.io/badge/SQL%20Assertions-577%20passing-3B82F6)](supabase/tests/)
+
+Tratado executivo, arquitetural e algorítmico da plataforma **Desperrengue**: uma arquitetura distribuída multi-modo (*Client $\leftrightarrow$ Provider Dual-Role Ecosystem*) voltada à intermediação de serviços residenciais sob demanda e de urgência, estruturada sobre **Particionamento Orçamentário Assimétrico (*Anti-Bypass Smart Split*)**, **Custódia Financeira Condicional Transacional em 3 Camadas (*3-Layer Self-Sustaining Warranty Escrow*)**, **Prova de Vida Biométrica Ativa Desafio-Resposta (*Active Challenge-Response Facial Liveness Detection*)**, **Scanner Documental Guiado ISO/IEC 7810 ID-1 com Reconhecimento Óptico de Caracteres (*OCR*)** e **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674 / Lei Federal nº 8.245/91)**.
 
 ---
 
-## Sumário Executivo e Epistemológico
+## Sumário Sistemático
 
-O sistema **Desperrengue** consiste em uma plataforma computacional distribuída de intermediação de serviços de manutenção residencial, projetada sob os paradigmas de **Arquitetura Centrada em Banco de Dados (*Database-Centric Architecture*)**, **Confiança Zero no Cliente (*Zero-Trust Client Model*)**, **Custódia Financeira Paramétrica em Três Camadas (*Three-Layer Parametric Escrow*)** e **Visão Computacional Forense em Memória Isolada (*Worker Isolate Computer Vision*)**.
-
-O problema fundamental endereçado pela engenharia do sistema reside na eliminação simultânea de três falhas estruturais dos mercados digitais de serviços:
-1. **Assimetria de Confiança e Risco Físico Residencial:** Mitigada pela verificação civil e biométrica ativa (*Active Liveness Detection* em espaço de crominância $YCbCr$ e confronto facial 1:1 com descritores de 128 dimensões) tanto para prestadores quanto para contratantes, aliada à trava temporal e geográfica de endereço (*Geofencing* por distância ortodrômica de Haversine).
-2. **Seleção Adversa e Tarifação Predatória de Orçamentos:** Erradicada pela substituição da venda especulativa de contatos (*leads*) por um modelo de comissionamento estrito sobre o êxito (*Success Fee*), com segregação tributária e contábil entre mão de obra e insumos (*Smart Split Anti-Bypass*).
-3. **Risco Moral Pós-Execução e Conluio Financeiro:** Neutralizado pelo Fundo Autossustentável de Garantia em 3 Camadas (`RN-CAM-01` a `RN-CAM-03`), pelas 4 Invariantes Contábeis impostas no motor relacional PostgreSQL 17 e pelo motor antifraude determinístico (`RN-AF-01` a `RN-AF-14`) capaz de operar com segurança desde o Marco Zero (*Cold-Start Security Paradox* — `RN-MZ-01` a `RN-MZ-05`).
-
----
-
-## 🧭 Índice de Navegação Documental
-
-| Domínio Documental | Artefato Normativo |
-| :--- | :--- |
-| 🚀 **Guia de Instalação e Configuração** | [SETUP.md](./docs/SETUP.md) · [Windows](./docs/setup/windows.md) · [macOS](./docs/setup/macos.md) · [Linux](./docs/setup/linux.md) |
-| 🏗️ **Especificação Arquitetural Viva (C4, Estados, STRIDE)** | [ARCHITECTURE.md](./docs/ARCHITECTURE.md) · [Arquitetura do Sistema.md](./docs/Arquitetura%20do%20Sistema.md) |
-| 🧾 **Registros de Decisão de Arquitetura (ADRs 0001–0020)** | [docs/adr/README.md](./docs/adr/README.md) · [ADR-0020 (Garantia 3 Camadas e KYC Biométrico)](./docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) |
-| 📱 **Documentação do Cliente Móvel/Web (Flutter)** | [app/README.md](./app/README.md) |
-| 🗄️ **Documentação do Núcleo Relacional e RPCs (Supabase)** | [supabase/README.md](./supabase/README.md) |
-| 🧪 **Estratégia de Verificação, Testes Forenses e Red Team** | [TESTING.md](./docs/TESTING.md) |
-| 🔐 **Política de Segurança da Informação e Divulgação (ISO 29147)** | [SECURITY.md](.github/SECURITY.md) |
-| 📝 **Histórico de Mudanças (Versionamento Semântico)** | [CHANGELOG.md](./docs/CHANGELOG.md) |
-| 🗺️ **Planejamento Evolutivo e Épicos de Engenharia** | [ROADMAP.md](./docs/ROADMAP.md) |
-| 🎮 **Modelagem Matemática de Reputação, Bayes e Gamificação** | [GAMIFICACAO.md](./docs/GAMIFICACAO.md) |
-| 🪪 **Arquitetura de Onboarding e Verificação Documental (KYC)** | [onboarding_profissional.md](./docs/onboarding_profissional.md) |
-| 🎨 **Projeto de Interface, Design System e Fichas de Telas** | [Projeto de Interface.md](./docs/Projeto%20de%20Interface.md) · [Template.md](./docs/Template.md) · [Protótipos Hi-Fi](./docs/ui_ux/hi-fi_prototyping) · [Specs de Telas](./docs/specs) |
-| 💼 **Modelagem Econômica, Tributária e Estratégica** | [Documento de Contexto.md](./docs/Documento%20de%20Contexto.md) · [Especificação do Projeto.md](./docs/Especificação%20do%20Projeto.md) · [Planos de Negocio e Tributação.md](./docs/Planos%20de%20Negocio%20e%20Tributação.md) · [Análise SWOT](./docs/Analise%20de%20Ambientes%20e%20SWOT.md) · [Balanced Scorecard (BSC)](./docs/Balanced%20Scorecard%20(BSC).md) ([CSV](./docs/planilhas/bsc_desperrengue.csv)) · [Fluxo de Caixa 12M](./docs/Fluxo%20de%20Caixa.md) ([CSV](./docs/planilhas/fluxo_de_caixa_12m.csv)) |
-| 🚢 **Operação Contínua, Distribuição Beta, Play Store e DNS** | [PLAY_STORE.md](./docs/PLAY_STORE.md) · [TESTE_COM_AMIGOS.md](./docs/TESTE_COM_AMIGOS.md) · [registro_dominio_resend.md](./docs/registro_dominio_resend.md) |
-| 🤝 **Governança do Repositório e Comunidade** | [CONTRIBUTING.md](.github/CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](.github/CODE_OF_CONDUCT.md) · [LICENSE.md](./LICENSE.md) · [Índice Geral (`docs/README.md`)](./docs/README.md) |
+1. [Caracterização Sistêmica e Tese Computacional do Desperrengue](#1-caracterização-sistêmica-e-tese-computacional-do-desperrengue)
+2. [Arquitetura de Software em 4 Camadas Desacopladas e Engenharia Multiplataforma](#2-arquitetura-de-software-em-4-camadas-desacopladas-e-engenharia-multiplataforma)
+3. [Engenharia Financeira em 3 Camadas e Invariantes do Livro-Razão](#3-engenharia-financeira-em-3-camadas-e-invariantes-do-livro-razão)
+4. [Modelagem de Ameaças (Threat Modeling) e Mitigação dos 6 Vetores de Fraude (`RN-AF-01` a `RN-AF-14`)](#4-modelagem-de-ameaças-threat-modeling-e-mitigação-dos-6-vetores-de-fraude-rn-af-01-a-rn-af-14)
+5. [Resolução do Paradoxo de Segurança do Marco Zero (`RN-MZ-01` a `RN-MZ-05`)](#5-resolução-do-paradoxo-de-segurança-do-marco-zero-rn-mz-01-a-rn-mz-05)
+6. [Visão Computacional In-App, Biometria Facial Ao Vivo (Active Liveness) e OCR Documental](#6-visão-computacional-in-app-biometria-facial-ao-vivo-active-liveness-e-ocr-documental)
+7. [Complexidade de Algoritmos (Big-O), Indexação e Controle de Concorrência Sem Deadlocks](#7-complexidade-de-algoritmos-big-o-indexação-e-controle-de-concorrência-sem-deadlocks)
+8. [Convergência Sistêmica: Unificação Multi-Modo, Passaporte ABNT NBR 5674 e LGPD](#8-convergência-sistêmica-unificação-multi-modo-passaporte-abnt-nbr-5674-e-lgpd)
+9. [Ecossistema Funcional Completo e Árvore do Repositório](#9-ecossistema-funcional-completo-e-árvore-do-repositório)
+10. [Guia de Provisionamento, Execução Local, Testes Formais e Deploy](#10-guia-de-provisionamento-execução-local-testes-formais-e-deploy)
 
 ---
 
-## 1. Arquitetura de Software em 4 Camadas Desacopladas e Fundação Multiplataforma
+## 1. Caracterização Sistêmica e Tese Computacional do Desperrengue
 
-Projetou-se a estrutura interna do sistema segundo os princípios da **Arquitetura Limpa em Camadas (*Clean Layered Architecture*)** combinada com **Gerenciamento de Estado Orientado a Eventos Otimistas (*Optimistic Event-Driven State Management*)**, segregando estritamente a renderização visual, a orquestração assíncrona, os guardas forenses computacionais e o livro-razão transacional.
+Mercados digitais bilaterais (*Two-Sided Marketplaces*) dedicados a reparos e manutenções domiciliares enfrentam historicamente três patologias estruturais documentadas na literatura de Economia da Informação e Sistemas Distribuídos: (a) **Seleção Adversa pré-contratual** (Modelo de Akerlof), decorrente da ausência de verificação biométrica e documental determinística de clientes e prestadores; (b) **Evasão Transacional (*Platform Leakage / Bypass*)**, provocada pela incidência de comissões lineares abusivas sobre o reembolso de peças e insumos; e (c) **Risco Moral pós-execução**, em que o pagamento instantâneo desprotegido inviabiliza a execução de garantias técnicas em casos de vício oculto.
+
+O **Desperrengue** soluciona matematicamente essas três patologias mediante a integração de **três pilares de inovação arquitetural**:
+
+1. **Particionamento Orçamentário Assimétrico (*Anti-Bypass Smart Split*)**: Decomposição estrita do vetor de preço da Ordem de Serviço (OS) em componente tributável de mão de obra (`labor_amount`, sujeito à alíquota paramétrica total de $15,0\%$, sendo $13,5\%$ de margem operacional líquida e $1,5\%$ de provisão atuarial) e componente neutro de reembolso de peças/insumos comprovados fiscalmente (`materials_amount`, sujeito à **alíquota de $0,0\%$**), eliminando o incentivo econômico à desintermediação.
+2. **Fundo Autossustentável de Garantia em 3 Camadas (*3-Layer Self-Sustaining Warranty Escrow*)**: Máquina de estados finitos determinística (DFSM) que acopla a custódia integral do valor na **Camada 1** (`LOCKED_100` e fila de maturação `escrow_maturation_entries`), a janela de **Retorno Técnico Prioritário com SLA de 6h/24h** na **Camada 2**, e o **Despacho Algorítmico Cego Ponderado no Servidor (*Server-Side Single-Target Blind Dispatch*)** de um segundo especialista remunerado pelo livro-razão imutável `warranty_pool_ledger` com recuperação por *Clawback* na **Camada 3**.
+3. **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674 / Lei nº 8.245/91) e Triagem Multimodal em 60 Segundos**: Conversão de cada intervenção auditada por *hashing* perceptual (`dHash` 64-bit) e geolocalização fina em certidão técnica imutável exportável em `%PDF-1.4` vetorial, precedida por contenção emergencial assistida por ditado de voz e triagem estruturada.
+
+### 1.1. Blueprint da Topologia Multi-Modo Unificada (*Client $\leftrightarrow$ Provider Dual-Role*)
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                 ENTIDADE BASE UNIFICADA: public.profiles (id = auth.uid())               │
+│  ┌──────────────────────────────────────────┬─────────────────────────────────────────┐  │
+│  │ ATRIBUTOS CIVIS E BIOMÉTRICOS (MÓDULO 11)│ ATRIBUTOS DE CONFIANÇA E CARTEIRA O(1)  │  │
+│  │ • cpf_hash (SHA-256 + Pepper Único)      │ • external_trust_score (RTS ∈ [0, 100]) │  │
+│  │ • face_liveness_hash (128-D L2 Norm)     │ • waterfall_tier_rank (Degraus 1 .. 5)  │  │
+│  │ • liveness_verified & ocr_verified       │ • available_wallet_balance (PIX Livre)  │  │
+│  │ • pix_key_cpf_matched (Same-Holder Lock) │ • maturing_wallet_balance (Reserva D+N) │  │
+│  └────────────────────┬─────────────────────┴────────────────────┬────────────────────┘  │
+│                       │      COMPARTILHAMENTO INSTANTÂNEO        │                       │
+│                       ▼              (+30 pts RTS)               ▼                       │
+│  ╔══════════════════════════════════════════╗ ╔═══════════════════════════════════════╗  │
+│  ║       PAPEL 1: MODO CLIENTE ATIVO        ║ ║     PAPEL 2: MODO PROFISSIONAL ATIVO  ║  │
+│  ║ • Solicita OS em 33 Categorias           ║ ║ • Recebe Chamados via Bounding Box    ║  │
+│  ║ • Triagem por Voz + Contenção 60s        ║ ║ • Envia Orçamento Smart Split (0% Mat)║  │
+│  ║ • Aprova Serviço com PIN de 4 Dígitos    ║ ║ • Check-in/Out GPS <= 150m + dHash    ║  │
+│  ║ • Emite Passaporte ABNT NBR 5674 (PDF)   ║ ║ • Elegível a Socorrista da Camada 3   ║  │
+│  ╚══════════════════════════════════════════╝ ╚═══════════════════════════════════════╝  │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 2. Arquitetura de Software em 4 Camadas Desacopladas e Engenharia Multiplataforma
+
+O sistema implementa separação estrita de responsabilidades em quatro camadas concêntricas, obedecendo ao princípio de inversão de dependência e garantindo orçamento de renderização compatível com taxas de atualização de $60\text{ Hz}$ ($16,67\text{ ms}$) a $120\text{ Hz}$ ($8,33\text{ ms}$):
 
 ```mermaid
 flowchart TB
-    subgraph L1["Camada 1: Apresentação (Presentation Layer — 60/120 FPS UI)"]
-        UI_MAIN["main.dart: ConstrainedBox(480px) · UpdateGate · BootGate"]
-        UI_REP["RepaintBoundary + ValueListenableBuilder<Duration>"]
-        UI_KEEP["AutomaticKeepAliveClientMixin (4 Abas de Pedidos)"]
-        UI_CAM["ClientSetupScreen: Oval Camera Preview & DocumentGuidedScannerModal"]
+    subgraph L1["Camada 1 — Presentation Layer (120 FPS Declarative UI — app/lib/features/)"]
+        Boot["BootGate & UpdateGate\nConstrainedBox(maxWidth: 480)\nPostAuthRouter Determinístico"]
+        Shells["ClientShell & ProviderShell\nIndexedStack + AutomaticKeepAliveClientMixin\n4ª Aba: Em Mediação (ForensicSplitViewComparator)"]
+        Repaint["RepaintBoundary + ValueListenableBuilder\nIsolamento de Cronômetros SLA e Desafios O(1)"]
+        Scanners["Câmera Frontal Ao Vivo (ClipOval YCbCr/EAR/Yaw)\n& Scanner Traseiro Guiado ISO/IEC 7810 ID-1"]
     end
 
-    subgraph L2["Camada 2: Aplicação e Orquestração (Application & State Layer)"]
-        SPEC_PIPE["SpeculativeEvidencePipeline: Warm-up GPS (30s) + Upload Concorrente"]
-        RIVERPOD["Controllers Riverpod: AntiBypassFintechController · SmartTriageController"]
-        IDEMP["Gerador Criptográfico UUID v4 (Semântica Exactly-Once)"]
+    subgraph L2["Camada 2 — Application & Speculative State Layer (app/lib/core/state/ & services/)"]
+        FintechCtrl["AntiBypassFintechController & WarrantyEscrowService\nOptimistic UI State Machine"]
+        SpecPipe["Pipeline Especulativo de Evidências\nGPS Warm-up (initState) + Upload Binário Paralelo\nIdempotency Key (UUID v4)"]
     end
 
-    subgraph L3["Camada 3: Domínio e Guardas Forenses (Domain & Forensic Guards — Worker Isolates)"]
-        PHASH["PerceptualHashGuard: dHash 64-Bit + ROI Core Inset (12%) + MAD 64x64"]
-        CV_ENGINE["DocumentOcrAndLivenessService: YCbCr Liveness + Laplaciano + Multi-Angle 128-D Face Match"]
-        PDF_ENG["DesperrengueOfficialPdfService: Geração %PDF-1.4 em Isolate.run"]
+    subgraph L3["Camada 3 — Domain & Worker Isolate Forensic Guards (app/lib/core/security/ & models/)"]
+        PHashGuard["PerceptualHashGuard (Isolate.run)\ndHash 64-Bit + MAD 64x64 + Core ROI Inset 12%"]
+        BioService["DocumentOcrAndLivenessService (Isolate.run)\nSegmentação YCbCr + Laplaciano 3x3 + Face Match 128-D + OCR"]
+        PdfEngine["DesperrengueOfficialPdfService (Isolate.run)\nMotor Vetorial %PDF-1.4 (ABNT NBR 5674 / Lei 8.245/91)"]
     end
 
-    subgraph L4["Camada 4: Persistência Transacional e Livro-Razão (PostgreSQL 17 / Supabase)"]
-        RPC_SEC["RPCs SECURITY DEFINER (Ordem Canônica de Bloqueios Pessimistas)"]
-        LEDGER["Append-Only Ledgers: warranty_pool_ledger · escrow_maturation_entries · ledger_txns"]
-        CRON_W["Workers Assíncronos pg_cron (FOR UPDATE SKIP LOCKED LIMIT 100)"]
+    subgraph L4["Camada 4 — Transactional Data & Immutable Ledger Layer (supabase/migrations/)"]
+        Auth["Supabase Auth (GoTrue PKCE + Resend SMTP/DNS)"]
+        PG[("PostgreSQL 17 + RLS Estrito (21 Migrações)\nwarranty_pool_ledger | escrow_maturation_entries\njob_mediations | forensic_certificates | kyc_submissions")]
+        Locks["Gerenciador de Bloqueios em Ordem Canônica\n1. jobs -> 2. job_mediations -> 3. escrow_maturation_entries -> 4. profiles"]
     end
 
-    L1 --> L2 --> L3 --> L4
+    L1 --> L2
+    L2 --> L3
+    L2 --> L4
+    L3 --> L4
 ```
 
-### 1.1. Camada de Apresentação (*Presentation Layer — 120 FPS UI*)
-- **Isolamento de Reconstrução da Árvore de Elementos (`RepaintBoundary` e `ValueListenableBuilder<Duration>`):** Nas interfaces que exibem contadores regressivos de Acordo de Nível de Serviço (SLA de 6 horas na mediação, 2 horas para cotação ou 5 minutos no radar de emergência), o texto cronométrico é encapsulado em um `RepaintBoundary` dedicado acoplado a um `ValueListenableBuilder<Duration>`. Dessa forma, o pulso de atualização de `1 Hz` reconstrói exclusivamente a folha de texto de $O(1)$ nós, impedindo a invalidação e a repintura dos cartões adjacentes e mantendo a taxa de quadros estável em $60\text{--}120\text{ FPS}$.
-- **Preservação de Estado entre Abas (`AutomaticKeepAliveClientMixin`):** Implementou-se em [`app/lib/features/client/presentation/client_orders_tab.dart`](./app/lib/features/client/presentation/client_orders_tab.dart) a retenção de estado nas quatro abas operacionais (*Em Andamento*, *Concluídos*, *Cancelados* e *Em Mediação*), eliminando requisições redundantes ao banco de dados durante transições horizontais.
-- **Trava Responsiva Centralizada de `480px` e Suporte Nativo a PWA:** Em [`app/lib/main.dart`](./app/lib/main.dart), o contêiner raiz aplica um `ConstrainedBox(maxWidth: 480)` sobre fundo escuro institucional, assegurando ergonomia idêntica entre dispositivos móveis físicos (Android/iOS) e navegadores Desktop/Web. Em [`app/web/index.html`](./app/web/index.html) e [`app/web/manifest.json`](./app/web/manifest.json), configuraram-se as diretivas `apple-mobile-web-app-capable` e `display: standalone`, acompanhadas de engenharia de ícones adaptativos com enquadramento matemático na *Safe-Zone* central de $57\%\text{--}66\%$ para prevenção de corte (*clipping*) em máscaras circulares e *squircles* (Samsung One UI e iOS).
+### 2.1. Especificação Técnica por Camada
 
-### 1.2. Camada de Aplicação e Orquestração (*Application & State Layer*)
-- **Pipeline de Evidências Especulativas (`SpeculativeEvidencePipeline`):** Implementada em [`app/lib/services/warranty_escrow_service.dart`](./app/lib/services/warranty_escrow_service.dart), reduz a latência percebida pelo usuário em operações de *Check-out* e abertura de mediação para menos de $180\text{ ms}$ mediante duas técnicas concorrentes:
-  1. **Pré-Aquecimento Assíncrono do Sensor GPS (*Location Warm-up*):** Ao inicializar a tela (`initState`), o método `warmUpGpsOnScreenEnter()` aciona o receptor GNSS em alta precisão e armazena a coordenada verificada (`!pos.isMocked`) em cache válido por $30\text{ segundos}$.
-  2. **Upload Binário Especulativo em *Background*:** Imediatamente após a captura óptica da fotografia pela câmera nativa, `captureAndStartSpeculativeUpload()` inicia a transmissão assíncrona dos bytes para o bucket privado do Supabase Storage enquanto o usuário digita a descrição técnica ou o código PIN de 4 dígitos.
-- **Semântica de Execução *Exactly-Once*:** Todas as chamadas remotas que movimentam saldos ou acionam garantias geram uma chave criptográfica `UUID v4` (`SpeculativeEvidencePipeline.generateIdempotencyKey()`) validada contra restrições `UNIQUE` nos livros-razão do banco de dados, neutralizando cliques duplos e retransmissões em redes móveis instáveis.
-
-### 1.3. Camada de Domínio e Guardas Forenses (*Domain & Forensic Guards Layer*)
-- **Paralelismo em Memória Isolada via *Worker Isolates* (`Isolate.run`):** Operações computacionalmente densas — decodificação de matrizes de pixels, convolução pelo operador Laplaciano, cálculo de *Difference Hash* (`dHash`), equalização de histograma, extração de descritores faciais de 128 dimensões e compilação de documentos binários `%PDF-1.4` — executam estritamente fora da *Main UI Isolate* do Flutter por meio de `Isolate.run` em [`app/lib/core/services/document_ocr_and_liveness_service.dart`](./app/lib/core/services/document_ocr_and_liveness_service.dart), [`app/lib/core/security/perceptual_hash_guard.dart`](./app/lib/core/security/perceptual_hash_guard.dart) e [`app/lib/core/services/desperrengue_official_pdf_service.dart`](./app/lib/core/services/desperrengue_official_pdf_service.dart), garantindo $0\text{ ms}$ de bloqueio da thread gráfica (*zero UI jank*).
-- **Amostragem Assistida por Hardware (*ISP Hardware Downsampling*):** A captura fotográfica impõe `maxWidth: 1280`, `maxHeight: 1280` e `imageQuality: 82` diretamente ao Processador de Sinal de Imagem (ISP) do sistema operacional, reduzindo o consumo de memória RAM de $\approx 48\text{ MB}$ para $\approx 4,9\text{ MB}$ por imagem sem perda de nitidez forense.
-
-### 1.4. Camada de Persistência Transacional e Livro-Razão (*Transactional Data & Ledger Layer*)
-- **Núcleo Relacional PostgreSQL 17:** Estruturado sobre 21 migrações versionadas em [`supabase/migrations/`](./supabase/migrations), nas quais todas as mutações financeiras, de custódia e de estado ocorrem exclusivamente no interior de funções PL/pgSQL `SECURITY DEFINER` com `search_path = public` fixo e controle de concorrência pessimista.
+1. **Camada 1 — *Presentation Layer* ([`app/lib/main.dart`](app/lib/main.dart), [`app/lib/features/`](app/lib/features/))**:
+   - **Trava Responsiva Centralizada (`480px`)**: Toda a árvore visual em [`app/lib/main.dart`](app/lib/main.dart) é contida por um `ConstrainedBox(constraints: BoxConstraints(maxWidth: 480))` associado aos portões de inicialização paralela [`BootGate`](app/lib/features/boot/boot_gate.dart) e [`UpdateGate`](app/lib/features/boot/update_gate.dart) e ao roteador determinístico [`PostAuthRouter`](app/lib/features/auth/presentation/post_auth_router.dart).
+   - **Isolamento de Subárvore de Pintura**: Cronômetros regressivos de SLA e indicadores de prova de vida operam encapsulados em `RepaintBoundary` e `ValueListenableBuilder`, garantindo que a marcação de redesenho (*dirty flag*) atinja exclusivamente o nó folha em $O(1)$.
+   - **Engenharia PWA e Ícones Adaptativos**: O manifesto [`app/web/index.html`](app/web/index.html) implementa meta tags de tela cheia para iOS/Android, enquanto os ícones adaptativos obedecem rigorosamente à **Safe-Zone central de $57\%\text{–}66\%$** ($66 \times 66\text{ dp}$ dentro do viewport $108 \times 108\text{ dp}$).
+2. **Camada 2 — *Application & Speculative State Layer* ([`app/lib/core/services/warranty_escrow_service.dart`](app/lib/core/services/warranty_escrow_service.dart), [`app/lib/core/state/anti_bypass_fintech_controller.dart`](app/lib/core/state/anti_bypass_fintech_controller.dart))**:
+   - Pré-aquecimento do sensor GNSS na abertura do modal de conclusão e transmissão paralela em *background* com `idempotency_key` (`UUID v4`), reduzindo a latência percebida de confirmação de check-out de $\sim 3.500\text{ ms}$ para $< 50\text{ ms}$.
+3. **Camada 3 — *Domain & Worker Isolate Forensic Guards* ([`app/lib/core/security/perceptual_hash_guard.dart`](app/lib/core/security/perceptual_hash_guard.dart), [`app/lib/core/services/document_ocr_and_liveness_service.dart`](app/lib/core/services/document_ocr_and_liveness_service.dart))**:
+   - Execução concorrente fora da *Main UI Thread* via `Isolate.run` combinada com *downsampling* no *Image Signal Processor* (ISP) para $1280 \times 1280\text{ px}$ ($\le 6,5\text{ MB}$ de *heap*), mantendo $0\text{ ms}$ de *UI Jank*.
+4. **Camada 4 — *Transactional Data & Immutable Ledger Layer* ([`supabase/migrations/`](supabase/migrations/))**:
+   - **21 migrações SQL idempotentes** gobernadas por *Row Level Security* (RLS) e funções PL/pgSQL `SECURITY DEFINER` com `SET search_path = public`.
 
 ---
 
-## 2. Engenharia Financeira do Fundo Autossustentável de Garantia em 3 Camadas e Split Anti-Bypass
+## 3. Engenharia Financeira em 3 Camadas e Invariantes do Livro-Razão
 
-A modelagem econômico-financeira implementada em [`app/lib/core/models/fintech_warranty_models.dart`](./app/lib/core/models/fintech_warranty_models.dart) (`SmartSplitBreakdown`) e na migração [`supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql`](./supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) elimina o incentivo econômico à desintermediação (*bypass*) e financia autonomamente a cobertura de garantia de 90 dias sem comprometer o caixa operacional da plataforma.
+Implementada na migração [`20261108110000_high_perf_warranty_antifraud_engine.sql`](supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) e modelada em [`fintech_warranty_models.dart`](app/lib/core/models/fintech_warranty_models.dart), a arquitetura financeira opera sob **Particionamento Orçamentário Assimétrico (*Anti-Bypass Smart Split*)**:
 
-### 2.1. Segregação Orçamentária (*Smart Split* — Carteira A vs. Carteira B)
-Em serviços residenciais que demandam substituição de componentes físicos (disjuntores, válvulas, tubulações), a cobrança de comissão sobre o valor das peças penalizaria a margem líquida do prestador, induzindo-o a negociar fora do aplicativo. O algoritmo de *Smart Split* segrega cada Ordem de Serviço em duas carteiras contábeis independentes:
-- **Carteira A — Mão de Obra (`labor_amount` = $M$):** Incide a taxa total de intermediação de $15\%$, decomposta em **$13,5\%$ de Receita Operacional Líquida da Plataforma** (`platform_operational_fee`) e **$1,5\%$ de Aporte Paramétrico ao Fundo de Reserva de Garantia** (`warranty_carveout_fee`).
-- **Carteira B — Insumos e Materiais com Comprovação Fiscal (`materials_amount` = $P$):** Incide **alíquota zero ($0\%$)** mediante anexação de nota/cupom fiscal (`MaterialFiscalItem`) e aprovação do contratante, repassando $100\%$ do valor de reembolso ao prestador.
+```mermaid
+pie showData
+    title "Decomposição Contábil de Orçamento Exemplo de R$ 500,00 (R$ 200 Mão de Obra + R$ 300 Peças)"
+    "Reembolso Integral de Materiais/Peças ao Profissional (Taxa 0%)" : 300.00
+    "Repasse Líquido de Mão de Obra ao Profissional (85,0%)" : 170.00
+    "Margem Operacional Líquida da Plataforma Desperrengue (13,5%)" : 27.00
+    "Segregação Paramétrica Automática do Fundo de Garantia (1,5%)" : 3.00
+```
 
-As identidades contábeis exatas verificadas por `SecurityAndLgpdGuard.validateSplitRates()` são definidas por:
+### 3.1. Equações Fundamentais do Smart Split e Equilíbrio Atuarial
 
-$$\text{Valor Bruto Total } (V_{\text{bruto}}) = M + P$$
+Seja $V_{\text{MãoDeObra}} \ge 0$ (`labor_amount`) o valor contratado de mão de obra e $V_{\text{Materiais}} \ge 0$ (`materials_amount`) o reembolso de materiais comprovados por documento fiscal:
 
-$$\text{Receita Operacional } (R_{\text{op}}) = \operatorname{round}(0,135 \cdot M,\; 2)$$
+$$\text{GMV}_{\text{Total}} = V_{\text{MãoDeObra}} + V_{\text{Materiais}}, \quad \text{Taxa}_{\text{Op}} = \lfloor 0,135 \cdot V_{\text{MãoDeObra}} \rceil_2, \quad \text{Reserva}_{\text{Garantia}} = \lfloor 0,015 \cdot V_{\text{MãoDeObra}} \rceil_2$$
 
-$$\text{Aporte ao Fundo de Garantia } (F_{\text{gar}}) = \operatorname{round}(0,015 \cdot M,\; 2)$$
+$$\text{Repasse}_{\text{LíquidoPrestador}} = \left(V_{\text{MãoDeObra}} - \text{Taxa}_{\text{Op}} - \text{Reserva}_{\text{Garantia}}\right) + 100\% \cdot V_{\text{Materiais}}$$
 
-$$\text{Repasse Líquido ao Prestador } (L_{\text{prest}}) = (M - R_{\text{op}} - F_{\text{gar}}) + P = 0,85 \cdot M + P$$
+O ponto de equilíbrio atuarial ($N_{\text{equilíbrio}}$) da **Segregação Paramétrica Automática de Liquidez (*1,5% Actuarial Carve-out*)** para cobertura integral de um retrabalho de mesmo valor médio de mão de obra $\bar{V}_{\text{MãoDeObra}}$ é dado por:
 
-$$\text{Economia Real do Prestador pelo Smart Split } (E_{\text{split}}) = 0,15 \cdot P$$
+$$N_{\text{equilíbrio}} = \frac{100\%}{1,5\%} = \frac{1}{0,015} = 66,67 \approx 67 \text{ transações concluídas por sinistro integral}$$
 
-### 2.2. Arquitetura das 3 Camadas de Proteção Financeira (`RN-CAM-01` a `RN-CAM-03`)
+### 3.2. Matriz Normativa das 3 Camadas de Garantia (`RN-CAM-01` a `RN-CAM-03`)
 
-| Camada | Código Normativo | Mecanismo Técnico e Contábil | Artefatos de Implementação |
+| Camada Normativa | Regra | Janela e Escopo | Mecanismo Transacional no PostgreSQL |
 | :--- | :---: | :--- | :--- |
-| **Camada 1: Custódia Inteligente (*Escrow*)** | `RN-CAM-01` | Retenção integral ($100\%$) do pagamento do cliente vinculada à Ordem de Serviço (`escrow_status = 'LOCKED_100'`). A conversão para maturação (`RELEASED_TO_MATURATION`) exige comprovação óptica georreferenciada (*Antes* e *Depois*) e validação presencial por PIN de 4 dígitos (ou decurso de 24h sem contestação). | `WarrantyEscrowService.lockJobEscrow()`, RPC `complete_job_and_schedule_escrow` |
-| **Camada 2: Reserva Técnica Paramétrica (*1,5% Carve-out*)** | `RN-CAM-02` | Na liquidação de cada serviço, a RPC `settle_escrow_with_carveout_and_maturation` segrega automaticamente $1,5\%$ de `labor_amount` e registra um lançamento imutável `CARVEOUT_CONTRIBUTION_1_5_PCT` na tabela `public.warranty_pool_ledger`. | Tabela `warranty_pool_ledger`, RPC `settle_escrow_with_carveout_and_maturation` |
-| **Camada 3: Cobertura de Retrabalho Sem Custo Operacional** | `RN-CAM-03` | Caso ocorra defeito técnico dentro do prazo legal de 90 dias e o prestador original descumpra o SLA de reparo de 6 horas, o sistema aciona um segundo profissional independente (*Rescuer*) por sorteio cego, custeado prioritariamente pelo estorno (*Clawback*) da maturação do prestador faltoso e, subsidiariamente, pelo saldo acumulado da Camada 2 (limitado a $100\%$ de $M$). | RPC `trigger_layer3_rework`, `MediationAndWarrantyTabView` |
+| **Camada 1 — Custódia Financeira Condicional e Maturação Programada** | `RN-CAM-01` | $100\%$ retido na execução + fila de maturação $D+7$ (*Trainee*), $D+5$ (*Standard*) ou $D+2$ (*Verified Anchor*) | A função `complete_job_and_schedule_escrow` valida o PIN presencial de 4 dígitos (ou agenda *Auto-Release* de 24h) e invoca `settle_escrow_with_carveout_and_maturation`, inserindo o crédito em `public.escrow_maturation_entries` (`maturation_status = 'MATURING'`). |
+| **Camada 2 — Retorno Técnico Prioritário e Segregação Atuarial de 1,5%** | `RN-CAM-02` | Garantia de **90 dias** (`warranty_expires_at`) com **SLA de 6 horas** para resposta e **24 horas** para reparo | A função `open_warranty_mediation` congela instantaneamente a maturação (`FROZEN_BY_DISPUTE`), ativa o *Circuit Breaker* no prestador (`has_open_dispute = TRUE`) e instancia a disputa em `public.job_mediations` na fase `PHASE_3_ORIGINAL_PROVIDER_SLA_6H`. |
+| **Camada 3 — Despacho Algorítmico Cego e Cobertura via *Clawback First*** | `RN-CAM-03` | Acionamento imediato após recusa ou estouro do SLA de 6h/24h da Camada 2 | A função `trigger_layer3_rework` seleciona um segundo especialista via podagem espacial $O(\log N + K)$ e Grafo Zero-Vínculo, executa o estorno prioritário (*Clawback*) da retenção em maturação (`CLAWED_BACK`) ou debita `public.warranty_pool_ledger` (`REWORK_PAYOUT_DEBIT` limitado a $100\%$ de `labor_amount`), lançando eventual saldo residual em `clawback_debt_balance`. |
 
-#### Demonstração Matemática do Ponto de Equilíbrio Atuarial da Camada 2
-Seja $c = 0,015$ ($1,5\%$) a alíquota de contribuição incidente sobre a mão de obra média $\bar{M}$ de cada serviço concluído, e seja $\bar{C}_{\text{rework}} \le 1,00 \cdot \bar{M}$ o custo máximo de cobertura de um sinistro de retrabalho na Camada 3 (quando não coberto por *Clawback*). O número de serviços concluídos necessários para financiar integralmente um retrabalho de teto máximo é dado por:
-
-$$N_{\text{equilíbrio}} = \frac{100\%}{1,5\%} = \frac{1,00}{0,015} = 66,67 \text{ serviços}$$
-
-Portanto, a cada $67$ serviços liquidados, o Fundo de Garantia acumula autonomamente $100\%$ do valor de mão de obra de um novo serviço completo, suportando uma taxa de sinistralidade líquida residual de até $1,49\%$ sem qualquer subsídio do caixa operacional da empresa (`platform_operational_fee` permanece intacta em $13,5\%$).
-
-### 2.3. Máquina de Estados de 5 Fases da 4ª Aba *"Em Mediação"* (`public.job_mediations`)
-Quando um chamado entra em revisão técnica de garantia, ele é apresentado na 4ª aba **"Em Mediação"** (`app/lib/features/client/presentation/client_orders_tab.dart` e `MediationAndWarrantyTabView` em `app/lib/features/shared/presentation/fintech_warranty_widgets.dart`), percorrendo determinísticamente 5 fases:
+### 3.3. Máquina de Estados Finitos Determinística do Smart Escrow e das 5 Fases da Aba "Em Mediação"
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PHASE_1_OPENED_AND_FROZEN : Abertura de Mediação (Congela Maturação D+N + Circuit Breaker)
-    PHASE_1_OPENED_AND_FROZEN --> PHASE_2_FORENSIC_TRIAGE : Validação Haversine (<=150m) + pHash Hamming (>=5)
-    PHASE_2_FORENSIC_TRIAGE --> PHASE_3_ORIGINAL_PROVIDER_SLA_6H : Notificação ao 1º Prestador (SLA 6h Resposta / 24h Visita)
-    PHASE_3_ORIGINAL_PROVIDER_SLA_6H --> PHASE_5_SETTLED_AND_CERTIFIED : Reparo Concluído pelo 1º Prestador (Libera Custódia)
-    PHASE_3_ORIGINAL_PROVIDER_SLA_6H --> PHASE_4_WARRANTY_FUND_RESCUE_DISPATCH : Expiração SLA 6h / Recusa -> Sorteio Cego Camada 3 + Clawback
-    PHASE_4_WARRANTY_FUND_RESCUE_DISPATCH --> PHASE_5_SETTLED_AND_CERTIFIED : Retrabalho Concluído pelo 2º Prestador (Certificado Forense PDF)
-    PHASE_5_SETTLED_AND_CERTIFIED --> [*]
+    direction TB
+    [*] --> PendingPayment : Criacao da OS (Smart Split Mao de Obra + Materiais 0%)
+    PendingPayment --> HeldInEscrow : Pagamento Confirmado (PIX Same-Holder / Carteira)
+    HeldInEscrow --> Awaiting24hSla : Upload Foto Depois (Camera Nativa + GPS <= 150m + pHash O(1))
+    HeldInEscrow --> SettledByPin : Check-out Presencial Irrevogavel (PIN 4 Digitos Validado)
+    Awaiting24hSla --> AutoReleased24h : Decurso de Prazo SLA 24h Sem Contestacao (Worker SKIP LOCKED)
+    SettledByPin --> CarveOut15Pct : Segregacao Automatica de 1,5% para o Warranty Pool Ledger
+    AutoReleased24h --> CarveOut15Pct : Segregacao Automatica de 1,5% para o Warranty Pool Ledger
+    CarveOut15Pct --> ReleasedImmediate : Profissional Ancora D+2 / Veterano Sem Disputas
+    CarveOut15Pct --> MaturingD5Reserve : Cold-Start / Standard (Retido em Maturacao D+5 / D+7)
+
+    Awaiting24hSla --> Phase1OpenedAndFrozen : Contestacao do Cliente (Camera Nativa + pHash >= 5)
+    MaturingD5Reserve --> Phase1OpenedAndFrozen : Contestacao do Cliente (Congela Saldo D+5 + Circuit Breaker)
+    ReleasedImmediate --> Phase1OpenedAndFrozen : Contestacao do Cliente (Ativa Circuit Breaker no Prestador)
+
+    Phase1OpenedAndFrozen --> Phase3PrimaryRepair : Notifica 1o Profissional (SLA 6h Resposta / 24h Visita)
+    Phase3PrimaryRepair --> Phase5SettledAndCertified : 1o Profissional Corrige no Local (Custo R$ 0,00 ao Fundo)
+    Phase3PrimaryRepair --> Phase4Layer3BlindDispatch : Recusa ou Estouro de SLA (Cascata 5 Degraus + Grafo Zero-Vinculo)
+    Phase4Layer3BlindDispatch --> Phase5SettledAndCertified : 2o Especialista Conclui (Pago via Retencao D+5 ou Fundo 1,5% + Clawback)
+    Phase5SettledAndCertified --> [*] : Emissao do Certificado Forense PDF e Atualizacao do Passaporte ABNT
 ```
 
-### 2.4. As 4 Invariantes Contábeis Impostas no Banco de Dados
-1. **Invariante 1 — Teto Paramétrico Estrito (`chk_invariant_1_coverage_cap`):** Em `public.warranty_pool_ledger`, a restrição `CHECK (entry_type <> 'REWORK_PAYOUT_DEBIT' OR amount <= labor_reference_cap)` impede matematicamente qualquer débito de retrabalho superior a $100\%$ do valor de mão de obra original.
-2. **Invariante 2 — Disjunção Estrita de Identidade Tripla (`chk_invariant_2_identity_disjunction`):** A restrição `CHECK` garante que o profissional socorrista (`rescuer_provider_id`), o prestador original (`original_provider_id`) e o cliente (`client_id`) possuam identificadores, hashes de CPF (`cpf_hash`), hashes biométricos (`face_liveness_hash`) e *device fingerprints* estritamente distintos.
-3. **Invariante 3 — Conservação de Soma Zero e Não-Negatividade de Saldos:** Todos os saldos (`available_wallet_balance`, `maturing_wallet_balance`, `clawback_debt_balance`, `available_cents`, `escrow_cents`) possuem restrição `CHECK (>= 0)` e toda movimentação no livro-razão possui soma algébrica nula.
-4. **Invariante 4 — Prioridade de *Clawback* antes do Débito Coletivo:** Na função `trigger_layer3_rework`, o custo do retrabalho é deduzido primeiramente do saldo em maturação (`MATURING` / `FROZEN_BY_DISPUTE`) e do saldo disponível do prestador faltoso, registrando qualquer déficit residual em `clawback_debt_balance` para compensação automática nos serviços futuros (`CLAWBACK_RECOVERY_CREDIT`).
+### 3.4. As 4 Invariantes Contábeis Declarativas do PostgreSQL
+
+1. **Invariante 1 — Teto Estrito de Cobertura de Retrabalho (`chk_invariant_1_coverage_cap`)**: Nenhum débito de retrabalho (`REWORK_PAYOUT_DEBIT`) em `public.warranty_pool_ledger` pode exceder $100\%$ do valor de mão de obra da OS original (`amount <= labor_reference_cap`).
+2. **Invariante 2 — Disjunção Estrita de Identidade na Camada 3 (`chk_invariant_2_identity_disjunction`)**: O profissional socorrista (`rescuer_provider_id`) deve ser matematicamente distinto do prestador original infrator (`original_provider_id`) e do cliente (`client_id`).
+3. **Invariante 3 — Prioridade de *Clawback* antes da Mutualização (*Clawback First*)**: Na execução de `trigger_layer3_rework`, o sistema absorve prioritariamente o saldo retido em `escrow_maturation_entries` (`CLAWED_BACK`) e o `available_wallet_balance` do prestador infrator antes de lançar passivo residual em `clawback_debt_balance`, protegendo a liquidez livre do fundo.
+4. **Invariante 4 — Idempotência Transacional Estrita**: A restrição `UNIQUE (idempotency_key)` em `public.warranty_pool_ledger` e `UNIQUE (job_id)` em `public.escrow_maturation_entries` garante que retentativas de rede jamais produzam duplicidade de liquidação ou débito.
 
 ---
 
-## 3. Modelagem de Ameaças (*Threat Modeling*), Teoria dos Jogos e Mitigação dos 6 Vetores de Fraude (`RN-AF-01` a `RN-AF-14`)
+## 4. Modelagem de Ameaças (Threat Modeling) e Mitigação dos 6 Vetores de Fraude (`RN-AF-01` a `RN-AF-14`)
 
-Abaixo detalham-se os 6 vetores de ataque econômico e operacional modelados pela engenharia de segurança e as respectivas contramedidas determinísticas implementadas no código-fonte e no banco de dados.
+A tabela abaixo especifica os **6 vetores de ataque** modelados contra sistemas de custódia e garantia e as **14 travas determinísticas (`RN-AF-01` a `RN-AF-14`)** codificadas nas camadas de banco de dados e visão computacional:
 
-| Vetor de Ameaça | Regras Normativas | Mecanismo Determinístico de Mitigação no Código e Banco de Dados |
+| Vetor de Ataque | Regras Normativas | Mecanismo Algorítmico e Criptográfico de Mitigação |
 | :--- | :---: | :--- |
-| **1. Conluio Triplo de Drenagem do Fundo (*Pool Siphoning Attack*)**<br/>*(Cliente $C$, Prestador $P_1$ e Prestador $P_2$ combinam forjar um serviço e um falso defeito para extrair pagamento duplo do Fundo de Garantia)* | `RN-AF-01`<br/>`RN-AF-02`<br/>`RN-AF-03` | • **Despacho Cego no Servidor (`RN-AF-01`):** O cliente e o prestador original jamais escolhem quem executará o retrabalho da Camada 3; a RPC `trigger_layer3_rework` seleciona o socorrista via função de dispersão pseudoaleatória determinística `hashtextextended(p.id::TEXT \|\| p_mediation_id::TEXT, 0)`.<br/>• **Grafo Zero-Link e Disjunção Tripla (`RN-AF-02`):** A cláusula `NOT EXISTS` exclui qualquer prestador que já tenha transacionado anteriormente com $C$ ou $P_1$, além de exigir disjunção de `device_fingerprint_hash`, `cpf_hash` e `face_liveness_hash`.<br/>• **Retenção $D+5$ e *Clawback* (`RN-AF-03`):** Como o repasse de $P_1$ permanece retido na fila `escrow_maturation_entries` por 5 a 7 dias, a abertura de disputa confisca os $85\%$ de $P_1$ para pagar o retrabalho, impondo à quadrilha um prejuízo líquido imediato igual à taxa da plataforma ($-15\%$). |
-| **2. Chantagem e Sequestro de Custódia pelo Cliente (*Escrow Hold-up*)**<br/>*(Após a conclusão perfeita do serviço, o cliente recusa-se a fornecer o PIN ou silencia para tentar extorquir desconto ou reter o pagamento)* | `RN-AF-04`<br/>`RN-AF-05` | • **Check-out Presencial Irrevogável por PIN (`RN-AF-05`):** Quando o PIN de 4 dígitos (`ClientCheckoutPinDialog`) é validado pela função `crypt(p_client_pin_plain, v_job.checkout_pin_hash)`, o serviço transita imediatamente para `completed` e agenda a maturação.<br/>• **Gatilho de Liberação Automática em 24h (`RN-AF-04`):** Caso o cliente não informe o PIN presencialmente, mas o prestador envie as fotos de *Depois* dentro do geofence ($\le 150\text{ m}$) e com `pHash` distinto ($d_{\text{Hamming}} \ge 5$), o pedido entra em `awaiting_approval` com `auto_release_at = NOW() + INTERVAL '24 hours'`. O worker `process_autonomous_escrow_and_mediation_queues()` libera automaticamente o pagamento após 24 horas caso o cliente não abra mediação fundamentada. |
-| **3. Falso Defeito, Substituição de Escopo e Sabotagem Pós-Serviço (*Friendly Fraud*)**<br/>*(Cliente envia foto baixada da internet, reutiliza a foto do "Antes" como se o defeito persistisse ou fotografa outro cômodo/imóvel)* | `RN-AF-06`<br/>`RN-AF-07`<br/>`RN-AF-08` | • **Imposição Estrita de Sensor de Câmera Física e Anti-Mock GPS (`RN-AF-06`):** `PerceptualHashGuard.captureStrictlyFromCamera()` bloqueia o seletor de galeria (`ImageSource.camera` exclusivo) e rejeita coordenadas com `position.isMocked == true` ou distância de Haversine $> 150\text{ m}$ na RPC `open_warranty_mediation`.<br/>• **Assinatura Perceptual de 64 Bits (`RN-AF-07`):** A função SQL `hamming_distance_64` compara o `defect_photo_phash` contra `checkin_photo_phash` e `checkout_photo_phash`, abortando com `ERR_RECYCLED_CHECKIN_PHOTO` ou `ERR_RECYCLED_CHECKOUT_PHOTO` se $d_{\text{Hamming}} < 5$.<br/>• **Comparador Visual Forense em 3 Colunas (`RN-AF-08`):** O widget `ForensicSplitViewComparator` exibe lado a lado as evidências de *Check-in (Antes)*, *Check-out (Depois)* e *Abertura de Chamado (Defeito)* com seus respectivos carimbos de tempo, coordenadas GPS e hashes perceptuais. |
-| **4. Risco Moral e Superfaturamento no Retrabalho pelo 2º Profissional**<br/>*(O profissional socorrista tenta inflar o orçamento do reparo de garantia para drenar recursos excessivos do Fundo)* | `RN-AF-09`<br/>`RN-AF-10` | • **Trava de Teto Paramétrico de 100% (`RN-AF-09`):** A RPC `trigger_layer3_rework` verifica `IF p_rework_labor_budget > v_original_job.labor_amount THEN RAISE EXCEPTION 'ERR_COVERAGE_CAP_EXCEEDED'`, reforçada pela constraint relacional `chk_invariant_1_coverage_cap`.<br/>• **Segregação de Escopo Adicional (`RN-AF-10`):** Qualquer serviço extra ou peça adicional não pertencente ao escopo original é isolado no componente `AdditionalScopeSplitCheckoutSheet`, exigindo aprovação e pagamento complementar pelo cliente com isenção de taxa ($0\%$) sobre peças. |
-| **5. Quebra Atuarial no *Cold-Start* (*Actuarial Drain*)**<br/>*(Prestador novato abandona múltiplos serviços em sequência antes que o fundo acumule reserva suficiente)* | `RN-AF-11`<br/>`RN-AF-12` | • **Janela de Maturação Escalonada $D+7$ (`RN-AF-11`):** Prestadores em estágio inicial (`trust_tier = 'TRAINEE'` ou `completed_jobs_count < 3`) têm seus repasses retidos por 7 dias corridos em `escrow_maturation_entries`, garantindo liquidez integral para eventual *Clawback*.<br/>• **Disjuntor Automático de Risco — *Circuit Breaker* (`RN-AF-12`):** No instante em que `open_warranty_mediation` é invocada, o banco executa `UPDATE public.profiles SET has_open_dispute = TRUE` e congela a maturação (`FROZEN_BY_DISPUTE`). Enquanto `has_open_dispute = TRUE`, o prestador fica impedido de realizar saques PIX e é filtrado de novos despachos de garantia (`Waterfall`). |
-| **6. Lavagem de Cartão Clonado e *Chargeback* Duplo**<br/>*(Atacante utiliza cartão furtado ou tenta sacar fundos para conta de laranja)* | `RN-AF-13`<br/>`RN-AF-14` | • **Trava de Mesma Titularidade PIX — *Same-Holder Lock* (`RN-AF-13`):** O campo `pix_key_cpf_matched` vincula criptograficamente o `cpf_hash` (`SHA-256` salgado) validado via OCR documental na Etapa 4 do KYC à titularidade das operações de recarga e saque PIX.<br/>• **Certificado Forense PDF para Disputa de *Chargeback* (`RN-AF-14`):** `DesperrengueOfficialPdfService.generateWarrantyCertificatePdfInIsolate()` compila um dossiê probatório `%PDF-1.4` contendo selo biométrico `face_liveness_hash`, hashes `pHash` de Antes/Depois, coordenadas GPS e validação de PIN para contestação irrefutável de *chargebacks*. |
+| **1. Conluio Triplo (*Cash-Out* do Fundo Garantidor)** | `RN-AF-01` a `RN-AF-04` | Proibição absoluta de saque em espécie da reserva de garantia pelo cliente; **Despacho Algorítmico Cego Ponderado no Servidor** (`hashtextextended(p.id::TEXT \|\| p_mediation_id::TEXT, 0)`); **Podagem por Disjunção em Grafo de Afinidade e Telemetria** verificando desigualdade estrita de `device_fingerprint_hash`, `cpf_hash`, `face_liveness_hash` e histórico cruzado em `public.jobs`; penalidade automática de $-50\text{ pts}$ no $RTS$ e inscrição em `clawback_debt_balance`. |
+| **2. Sequestro de Escrow e Sabotagem Pós-Serviço** | `RN-AF-05` a `RN-AF-07` | Obrigatoriedade de **Check-in e Check-out Fotográfico Geolocalizado** ($\le 150\text{ m}$ do imóvel) com selo `forensic_certificates`; liquidação imediata mediante **PIN Presencial de 4 Dígitos** (`crypt(p_client_pin_plain, checkout_pin_hash)`) ou liberação automática em **24 horas** (`auto_release_at`) na ausência de contestação fundamentada. |
+| **3. Falso Defeito e Foto Reciclada / Baixada da Web** | `RN-AF-08` a `RN-AF-10` | **Imposição de Sensor Físico Nativo** (`ImageSource.camera`) bloqueando galeria e *Fake GPS* (`pos.isMocked`); cálculo em $O(1)$ da **Distância de Hamming de 64 bits** (`public.hamming_distance_64`) rejeitando qualquer imagem de conclusão ou defeito com distância $< 5\text{ bits}$ em relação às fotos anteriores (`ERR_DUPLICATE_FORENSIC_PHOTO` / `ERR_RECYCLED_CHECKOUT_PHOTO`). |
+| **4. Evasão Fiscal e Superfaturamento de Materiais/Retrabalho** | `RN-AF-11`, `RN-AF-12` | Particionamento *Smart Split* com taxa de $0\%$ sobre materiais mediante nota fiscal e trava de teto na Camada 3 restrita a $100\%$ de `labor_amount` (`ERR_COVERAGE_CAP_EXCEEDED`). |
+| **5. Quebra Atuarial em *Cold-Start* e Monopólio de Socorristas** | `RN-AF-13` | Janela de maturação estendida ($D+7$) para prestadores novatos (`TRAINEE` ou $< 3$ serviços), quarentena obrigatória de **24 horas** entre resgates de Camada 3 (`idx_jobs_rescuer_cooldown_24h`) e disjuntor automático `has_open_dispute = TRUE`. |
+| **6. Ataque Sybil (Recriação de Contas por Inadimplentes)** | `RN-AF-14` | Indexação única global sobre o CPF salgado (`idx_profiles_cpf_hash_unique` com `DSP-CPF-PEPPER-2026`), indexação biométrica (`idx_profiles_face_liveness_hash`) e trava **Same-Holder PIX Lock** (`pix_key_cpf_matched = TRUE`). |
 
-### Prova Matemática da Inviabilidade Econômica do Conluio (Teoria dos Jogos)
-Seja $M$ o valor de mão de obra de uma Ordem de Serviço simulada por uma coalizão fraudulenta $\{C, P_1, P_2\}$. Para iniciar o serviço, $C$ aporta $1,00 \cdot M$ na Conta de Custódia (Camada 1). A plataforma retém instantaneamente $0,15 \cdot M$ ($13,5\%$ operacional + $1,5\%$ reserva), restando $0,85 \cdot M$ em maturação $D+5/D+7$ para $P_1$.
-- **Cenário A (Sem abertura de disputa):** A coalizão resgata $0,85 \cdot M$ após $D+5$, incorrendo em **VPL líquido de $-0,15 \cdot M$ ($-15\%$)**.
-- **Cenário B (Com abertura de falsa disputa para acionar a Camada 3):**
-  1. A RPC `open_warranty_mediation` congela os $0,85 \cdot M$ de $P_1$ (`FROZEN_BY_DISPUTE`).
-  2. Na fase de Camada 3, `trigger_layer3_rework` executa o *Clawback* integral dos $0,85 \cdot M$ de $P_1$ (`CLAWED_BACK`), lança a diferença de $0,15 \cdot M$ como dívida ativa em `clawback_debt_balance` de $P_1$, aplica penalidade de $-50\text{ pontos}$ no Score $RTS$ de $P_1$ e despacha o serviço para um profissional $P_{\text{externo}} \notin \{C, P_1, P_2\}$ (imposto pelo filtro Grafo Zero-Link e Disjunção Tripla).
-  3. O valor pago pela coalizão ($1,00 \cdot M$) é integralmente transferido a um terceiro independente ($P_{\text{externo}}$) e à plataforma, resultando em **perda de $100\%$ do capital aportado pela coalizão ($\text{Payoff} = -1,00 \cdot M$)**.
+### 4.1. Prova Algébrica de Inviabilidade Econômica do Conluio (Prejuízo Líquido de $-15,0\%$)
 
-Conclui-se que a estratégia dominante para qualquer agente racional sob as regras do protocolo é a execução honesta do serviço ($\mathbb{E}[\text{Payoff}_{\text{fraude}}] < 0$).
+Suponha que uma coalizão fraudulenta composta por um falso cliente $C$, um falso prestador primário $P_1$ e um cúmplice $P_2$ tente simular um serviço de mão de obra $L$ seguido de falso acionamento de garantia para drenar o Fundo Garantidor:
+
+1. **Bloqueio de Direcionamento a $P_2$**: Na Camada 3, o cliente $C$ não escolhe o socorrista; a função `trigger_layer3_rework` filtra o grafo Zero-Vínculo (excluindo qualquer conta com mesmo `device_fingerprint_hash`, `cpf_hash`, `face_liveness_hash` ou histórico prévio) e seleciona o profissional via ordenação `waterfall_tier_rank ASC, external_trust_score DESC, hashtextextended(...) ASC`.
+2. **Inversão da Fonte Pagadora (*Clawback First*)**: Como $P_1$ encontra-se na janela de maturação ($D+5$ ou $D+7$), seu repasse líquido de $0,85 \cdot L$ é integralmente confiscado (`maturation_status = 'CLAWED_BACK'`) para pagar o socorrista independente, além de gerar débito residual de $0,15 \cdot L$ em `clawback_debt_balance`.
+3. **Resultado Esperado da Coalizão**: A quadrilha desembolsa $1,00 \cdot L$ no checkout, perde a retenção confiscada pelo *Clawback* e sofre retenção definitiva da taxa de plataforma de **$15,0\%$** ($13,5\%$ operacional + $1,5\%$ fundo), resultando em **prejuízo líquido determinístico de $-15,0\% \cdot L$** (ou $-12,0\%$ a $-15,0\%$ conforme a faixa promocional de *take rate*), tornando o ataque estritamente dominado em Teoria dos Jogos.
 
 ---
 
-## 4. Resolução do Paradoxo de Segurança do Marco Zero (*Cold-Start Security Paradox* — `RN-MZ-01` a `RN-MZ-05`)
+## 5. Resolução do Paradoxo de Segurança do Marco Zero (`RN-MZ-01` a `RN-MZ-05`)
 
-Em um marketplace recém-inaugurado em uma nova cidade (*Dia 1 / Marco Zero*), inexistem profissionais com histórico de dezenas de serviços concluídos (níveis Ouro ou Diamante) e o saldo inicial da Camada 2 (`warranty_pool_ledger`) é próximo de zero. Caso o algoritmo de despacho exigisse veteranos para operar, ocorreria falha por inanição (*starvation*). Resolveram-se ambos os problemas através de **5 Pilares Arquiteturais**:
+Para operar com segurança máxima desde o **Dia 1** (mesmo quando a plataforma ainda possui zero prestadores veteranos), o sistema implementa **5 Pilares de *Cold-Start***:
 
-1. **Pilar 1 — Liquidação Escalonada (*Tiered Escrow Maturation* — `RN-MZ-01`):** Nos primeiros serviços de qualquer prestador (`completed_jobs_count < 3`), a janela de maturação em `escrow_maturation_entries` é estendida para **$D+7$ dias** (`STANDARD` opera em $D+5$ e `VERIFIED_ANCHOR` em $D+2$). Durante esses 7 dias, o próprio repasse retido do prestador ($85\%$ de $M$) atua como colateral individual de $1^{\text{a}}$ perda (*First-Loss Collateral*), protegendo a transação mesmo que o saldo coletivo da Camada 2 seja zero.
-2. **Pilar 2 — *Relative Trust Score* Materializado ($RTS \in [0, 100]$ — `RN-MZ-02`):** A função PL/pgSQL `public.calculate_relative_trust_score` (invocada automaticamente pelo trigger `sync_profile_trust_and_rank_biu` `BEFORE INSERT OR UPDATE` em `public.profiles`) afere a confiabilidade extrínseca e intrínseca do profissional antes mesmo de seu primeiro chamado:
-
-$$RTS = \operatorname{clip}\!\Big(P_{\text{KYC}} + P_{\text{MEI}} + P_{\text{Cert}} + \min(6 \cdot N_{\text{concluídos}},\, 30) - 50 \cdot N_{\text{abandonos}},\; 0,\; 100\Big)$$
-
-Onde:
-- $P_{\text{KYC}} = 30,00\text{ pts}$ se `kyc_biometric_verified = TRUE` ou (`liveness_verified = TRUE` e `ocr_verified = TRUE`);
-- $P_{\text{MEI}} = 20,00\text{ pts}$ se `mei_cnpj_active_months >= 6` (maturidade empresarial externa comprovada);
-- $P_{\text{Cert}} = 20,00\text{ pts}$ se `technical_cert_verified = TRUE` (certificação NR-10, NR-35, CREA, CFT ou SENAI validada);
-- $\min(6 \cdot N_{\text{concluídos}},\, 30)$ concede até $30,00\text{ pts}$ progressivos pelos primeiros 5 serviços concluídos;
-- $50 \cdot N_{\text{abandonos}}$ aplica penalidade severa a cada abandono de garantia (`abandoned_warranty_count`).
-
-3. **Pilar 3 — Algoritmo de *Fallback* em Cascata de 5 Degraus (`waterfall_tier_rank` 1 a 5 — `RN-MZ-03`):** O trigger `trg_sync_profile_trust_and_rank()` classifica continuamente cada prestador em um dos 5 degraus de prioridade, permitindo que o `ORDER BY p.waterfall_tier_rank ASC, p.external_trust_score DESC` encontre sempre o melhor profissional disponível sem retornar `NULL`:
-   - **Degrau 1 (`waterfall_tier_rank = 1`):** Profissionais Âncora Homologados (`is_trusted_anchor = TRUE`).
-   - **Degrau 2 (`waterfall_tier_rank = 2`):** Veteranos consolidados (`completed_jobs_count >= 5` e `abandoned_warranty_count = 0`).
-   - **Degrau 3 (`waterfall_tier_rank = 3`):** Profissionais validados em tração inicial (`completed_jobs_count BETWEEN 1 AND 4` e `abandoned_warranty_count = 0`).
-   - **Degrau 4 (`waterfall_tier_rank = 4`):** Profissionais em *Cold-Start* Forte (`completed_jobs_count = 0` e $RTS \ge 70,00$, isto é, com KYC Biométrico + MEI $\ge 6\text{ meses}$ + Certificação Técnica).
-   - **Degrau 5 (`waterfall_tier_rank = 5`):** *Cold-Start* Geral Isolado (elegível para chamados regulares com retenção $D+7$, mas bloqueado de atuar como socorrista de Camada 3 pela cláusula `p.waterfall_tier_rank <= 4`).
-4. **Pilar 4 — Credenciamento de Profissionais Âncora (`is_trusted_anchor` — `RN-MZ-04`):** Permite a homologação prévia de especialistas fundadores verificados em cada praça antes da abertura ao público, garantindo liquidez imediata de socorro técnico (Degrau 1) com liquidação acelerada $D+2$.
-5. **Pilar 5 — Sorteio Cego Individual, Cooldown de 24h e Auditoria Multimodal Pré-Despacho (`RN-MZ-05`):** A cláusula `idx_jobs_rescuer_cooldown_24h` impede que um mesmo prestador monopolize resgates consecutivos em menos de 24 horas.
+| Código | Pilar do Marco Zero | Mecanismo Implementado no Código e no SGBD |
+| :---: | :--- | :--- |
+| `RN-MZ-01` | **Liquidação Escalonada com Reserva de Maturação (*Tiered Rolling Reserve*)** | Em `settle_escrow_with_carveout_and_maturation`, contas `VERIFIED_ANCHOR` maturam em **D+2**, contas `STANDARD` ($\ge 3$ serviços) maturam em **D+5** e contas `TRAINEE` ($< 3$ serviços) maturam em **D+7**, garantindo que a própria retenção do iniciante cubra eventuais vícios de execução. |
+| `RN-MZ-02` | **Relative Trust Score ($RTS \in [0, 100]$) em $O(1)$** | Calculado pela função imutável `public.calculate_relative_trust_score`: soma $+30\text{ pts}$ por KYC Biométrico/OCR aprovado, $+20\text{ pts}$ por CNPJ/MEI ativo $\ge 6$ meses, $+20\text{ pts}$ por certificação técnica verificada (SENAI/CREA/CFT/NR-10/NR-35), até $+30\text{ pts}$ por histórico ($6\text{ pts/OS}$) e subtrai $-50\text{ pts}$ por garantia abandonada. |
+| `RN-MZ-03` | **Cascata Hierárquica de 5 Degraus (`waterfall_tier_rank` 1 a 5)** | Mantida em $O(1)$ pela trigger `trg_sync_profile_trust_and_rank`: **Degrau 1** (`is_trusted_anchor = TRUE`), **Degrau 2** ($\ge 5$ serviços e $0$ abandonos), **Degrau 3** ($1\text{ a }4$ serviços e $0$ abandonos), **Degrau 4** ($0$ serviços, porém $RTS \ge 70$ via KYC + MEI + Certificação) e **Degrau 5** (demais contas). |
+| `RN-MZ-04` | **Reserva Semente de *Bootstrapping* e *Circuit Breaker*** | Rubrica contábil `COLD_START_SEED_RESERVE` em `public.warranty_pool_ledger` combinada ao disjuntor `has_open_dispute = TRUE`, que congela saques e novos despachos do prestador no exato milissegundo da abertura de mediação. |
+| `RN-MZ-05` | **Profissionais Âncora (`is_trusted_anchor`) e Quarentena de 24h** | Credenciamento técnico antecipado que habilita o Degrau 1 e 4 desde o Dia 1, protegido pelo índice parcial `idx_jobs_rescuer_cooldown_24h` que impede que o mesmo socorrista concentre múltiplos chamados de garantia em menos de 24h. |
 
 ---
 
-## 5. Visão Computacional, Biometria Facial Ativa (*Active Liveness*), Autenticidade Documental e Transcrição Automática via OCR no Onboarding Civil
+## 6. Visão Computacional In-App, Biometria Facial Ao Vivo (Active Liveness) e OCR Documental
 
-O módulo de verificação de identidade civil e biométrica do contratante e do prestador ([`app/lib/features/client/presentation/client_setup_screen.dart`](./app/lib/features/client/presentation/client_setup_screen.dart), [`app/lib/core/services/document_ocr_and_liveness_service.dart`](./app/lib/core/services/document_ocr_and_liveness_service.dart), [`app/lib/core/services/live_camera_frame_bridge_stub.dart`](./app/lib/core/services/live_camera_frame_bridge_stub.dart), [`app/lib/core/services/live_camera_frame_bridge_web.dart`](./app/lib/core/services/live_camera_frame_bridge_web.dart) e [`supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql`](./supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql)) estrutura-se em 4 etapas determinísticas:
+Implementado em [`client_setup_screen.dart`](app/lib/features/client/presentation/client_setup_screen.dart), [`document_ocr_and_liveness_service.dart`](app/lib/core/services/document_ocr_and_liveness_service.dart), [`perceptual_hash_guard.dart`](app/lib/core/security/perceptual_hash_guard.dart) e na migração [`20261108120000_client_kyc_biometrics_and_ocr.sql`](supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql), o pipeline de validação civil e biométrica executa-se **100% *on-device* em *Worker Isolates*** (custo marginal de API externa igual a $\text{R\$ } 0,00$).
+
+### 6.1. Blueprint Antropométrico da Câmera Frontal Ao Vivo na Moldura Oval (*Active Liveness*)
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│ VIEWFINDER DE CÂMERA FRONTAL AO VIVO (WEB WEBRTC FACINGMODE: USER / MOBILE FRONT LENS)   │
+│                                                                                          │
+│                        ╭──────────────────────────────╮                                  │
+│                    ╭───╯   ZONA DE TOPOLOGIA FACIAL   ╰───╮                              │
+│                  ╭─╯   Crominância Pele YCbCr: 22%–82%    ╰─╮                            │
+│                  │                                          │                            │
+│                  │       p2  p3                p2  p3       │                            │
+│                  │    p1 ( ● ) p4   │Ponte│ p1 ( ● ) p4     │ ◄── Razão Ocular (EAR)     │
+│                  │       p6  p5     │Nasal│    p6  p5       │     Piscada: EAR < 0,18    │
+│                  │                     ▼                    │     Retorno: EAR > 0,25    │
+│                  │            ◄─── Eixo Yaw (θ_y) ───►      │                            │
+│                  │             Desafio: θ_y ≥ +18,0°        │ ◄── Rotação 3D (Yaw)       │
+│                  ╰─╮           Retorno: |θ_y| ≤ 6,0°      ╭─╯                            │
+│                    ╰───╮     Luminância: 42 ≤ L ≤ 230 ╭───╯                              │
+│                        ╰──────────────────────────────╯                                  │
+│                                                                                          │
+│ ▶ Bloqueio Anti-Monitor/Parede: Sem crominância epidérmica YCbCr + simetria = 0% avanço  │
+│ ▶ Captura Automática no Retorno ao Centro ⇒ Assinatura Criptográfica DSP-LIVE-SHA256     │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6.2. Blueprint Geométrico do Scanner Documental ISO/IEC 7810 ID-1, Recorte ROI (*Core Inset 12%*) e Alinhamento Multi-Orientação
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│ CÂMERA TRASEIRA IN-APP (AMBIENTE EXTERNO DESCARTADO: MESA DE MADEIRA / MONITOR / BORDAS) │
+│  ╔════════════════════════════════════════════════════════════════════════════════════╗  │
+│  ║ MOLDURA RETANGULAR VAZADA ISO/IEC 7810 ID-1 (STRICT ROI CROP - PROPORÇÃO 1,586:1)  ║  │
+│  ║  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐ ║  │
+│  ║  │ CORE INSET DE SEGURANÇA (12% DE MARGEM INTERNA PARA CÁLCULO DHASH + MAD)      │ ║  │
+│  ║  │  ┌──────────────┐   REPÚBLICA FEDERATIVA DO BRASIL - SENATRAN / DETRAN / SSP  │ ║  │
+│  ║  │  │   FOTO 3×4   │   NOME CIVIL: [EXTRAÍDO VIA OCR MULTI-ORIENTAÇÃO]           │ ║  │
+│  ║  │  │  DO TITULAR  │   DOC IDENTIDADE / ÓRGÃO EMISSOR / UF                       │ ║  │
+│  ║  │  │ (128-D L2    │   CPF: ###.###.###-## (VALIDADO MÓDULO 11 == ETAPA 1)       │ ║  │
+│  ║  │  │ Não-Negativo)│   DATA NASCIMENTO: DD/MM/AAAA      Nº REGISTRO CNH/RG/CIN   │ ║  │
+│  ║  │  └──────────────┘                                                             │ ║  │
+│  ║  │  [DETECÇÃO E ROTAÇÃO CANÔNICA AUTOMÁTICA: 0° | 90° | 180° | 270°]             │ ║  │
+│  ║  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘ ║  │
+│  ╚════════════════════════════════════════════════════════════════════════════════════╝  │
+│ ▶ Regra Anti-Falso-Positivo: Duplicidade Frente×Verso exige dHamming(dHash) e MAD_64x64  │
+│ ▶ Regra Face Match 1:1: Vetor 128-D Não-Negativo (A_k ≥ 0, B_k ≥ 0) ⇒ S_cos ∈ [0%, 100%] │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6.3. As 4 Etapas Determinísticas do `ClientSetupScreen`
+
+1. **Etapa 1 — Identificação Civil e Validação Aritmética Módulo 11**: Coleta Nome Civil composto, Telefone obrigatório com DDD (sem o sufixo opcional) e CPF obrigatório submetido em tempo real e no banco (`public.is_valid_cpf`) ao cálculo dos dois dígitos verificadores Módulo 11.
+2. **Etapa 2 — Localização Georreferenciada (`AddressForm`)**: Autopreenchimento via CEP (ViaCEP) e coordenadas geográficas que alimentam o filtro espacial e o Passaporte do Imóvel.
+3. **Etapa 3 — Prova de Vida Biométrica Ativa Desafio-Resposta (`ActiveLivenessStep`)**: Fluxo ao vivo exclusivo da lente frontal dentro da moldura oval (`ClipOval`), exigindo progressão nos 4 estágios (`centerFaceInOval` $\to$ `blinkBothEyesSlowly` com queda de $\text{EAR} < 0,18$ e retorno $> 0,25$ $\to$ `turnHeadRight` com $|\theta_y| \ge 18^\circ$ $\to$ `returnHeadToCenterAndCapture`) e reprovando monitores LCD/OLED (`blueMonitorRatio < 0,25`).
+4. **Etapa 4 — Scanner Documental ISO/IEC 7810 ID-1, Face Match Multi-Ângulo e OCR Visível**:
+   - Recorta o **Core ROI Inset de 12%** (`PerceptualHashGuard.cropCoreRoiInset`) para eliminar fundos de madeira ou bancadas antes de aferir a distinção estrutural entre Frente e Verso (`dHash` 64-bit + $\text{MAD}_{64\times 64}$ + variância de quadrantes).
+   - Avalia a nitidez pela variância do operador Laplaciano $3\times 3$ ($\sigma_{\text{Lap}}^2 \ge 110,0$) e saturação especular ($\le 8,5\%$).
+   - Executa o **Face Match 1:1 Multi-Orientação ($0^\circ, 90^\circ, 180^\circ, 270^\circ$)** sobre a janela $3\times 4$ do documento com vetores de características estritamente não-negativos de 128 dimensões ($A_k \ge 0, B_k \ge 0 \implies S_{\cos} \in [0\%, 100\%]$), exigindo $S_{\cos} \ge 78,0\%$.
+   - Renderiza em tela o card de **Transcrição Automática via OCR** (Nome Civil, CPF, RG/CNH, Órgão Emissor e Data de Nascimento) e homologa via RPC `public.submit_client_kyc`.
+
+---
+
+## 7. Complexidade de Algoritmos (Big-O), Indexação e Controle de Concorrência Sem Deadlocks
+
+### 7.1. Matriz Comparativa *Big-O* Ingênuo vs. *Big-O* Otimizado no Desperrengue
+
+| Subsistema / Operação | Implementação Ingênua | Implementação Desperrengue | Ganho Estrutural e Mecanismo |
+| :--- | :---: | :---: | :--- |
+| **Busca Geoespacial e Cascata Camada 3** | $O(N \log N)$ (Haversine em todas as $N$ tuplas + `SORT`) | **$O(\log N + K)$** | **Podagem Espacial por Caixa Delimitadora Axial (*Axial Bounding Box*)** sobre o índice B-Tree parcial `idx_profiles_rescue_waterfall_bbox` antes de avaliar Haversine apenas nos $K \ll N$ candidatos locais. |
+| **Distância de Hamming de 64 Bits (`dHash`)** | $O(64)$ por string binária ou $O(W \cdot H)$ por imagem | **$O(1)$ estrito** | Operação bitwise `XOR` (`hash_a # hash_b`) acoplada ao algoritmo de limpeza do bit menos significativo de *Brian Kernighan* (`x := x & (x - 1)` em PL/pgSQL e Dart). |
+| **Leitura de Score $RTS$ e Degrau da Cascata** | $O(L)$ (agregação histórica sobre $L$ linhas de serviços/disputas) | **$O(1)$ estrito** | Desnormalização controlada de `completed_jobs_count` e `abandoned_warranty_count` mantida pela trigger `BEFORE INSERT OR UPDATE` `trg_sync_profile_trust_and_rank`. |
+| **Verificação Anti-Sybil (CPF e Face)** | $O(N)$ (varredura sequencial) | **$O(\log N) \approx O(1)$** | Índices B-Tree parciais `idx_profiles_cpf_hash_unique` e `idx_profiles_face_liveness_hash`. |
+| **Processamento de Filas Autônomas (24h / D+N)** | $O(S)$ com bloqueio de tabela | **$O(B \log S)$ sem contenção** | Lote fixo ($B = 100$) via `FOR UPDATE SKIP LOCKED LIMIT 100` sobre `idx_jobs_auto_release_queue` e `idx_escrow_maturation_queue`. |
+
+### 7.2. Equação de Podagem Espacial por Caixa Delimitadora Axial (*Axial Bounding Box*)
+
+Dado o ponto central do imóvel $(\text{lat}_0, \text{lng}_0)$ e o raio máximo de busca $R_{\text{km}} = 15,0\text{ km}$, calculam-se os semieixos angulares:
+
+$$\Delta\text{lat} = \frac{R_{\text{km}}}{111,32}, \qquad \Delta\text{lng} = \frac{R_{\text{km}}}{111,32 \times \max\big(0,10,\; |\cos(\text{rad}(\text{lat}_0))|\big)}$$
+
+O predicado indexado filtra `last_latitude BETWEEN (lat_0 - Δlat) AND (lat_0 + Δlat)` e `last_longitude BETWEEN (lng_0 - Δlng) AND (lng_0 + Δlng)` em $O(\log N)$, aplicando a distância ortodrômica esférica de Haversine exclusivamente sobre as $K$ tuplas sobreviventes:
+
+$$d_{\text{Haversine}} = 2 \cdot 6371,0 \cdot \arcsin\left(\sqrt{\sin^2\left(\frac{\text{rad}(\text{lat}_p - \text{lat}_0)}{2}\right) + \cos(\text{rad}(\text{lat}_0))\cos(\text{rad}(\text{lat}_p))\sin^2\left(\frac{\text{rad}(\text{lng}_p - \text{lng}_0)}{2}\right)}\right) \le R_{\text{km}}$$
+
+### 7.3. Ordem Canônica de Bloqueios Pessimistas e Prova de Ausência de Deadlocks
+
+Todas as RPCs transacionais adquirem bloqueios de linha (`SELECT ... FOR UPDATE`) respeitando estritamente a ordem parcial topológica $R_1 \prec R_2 \prec R_3 \prec R_4$:
+
+$$\texttt{1º public.jobs} \longrightarrow \texttt{2º public.job\_mediations} \longrightarrow \texttt{3º public.escrow\_maturation\_entries} \longrightarrow \texttt{4º public.profiles}$$
 
 ```mermaid
-flowchart LR
-    S1["Etapa 1: Identificação Civil<br/>Nome Composto + Telefone + CPF Mod-11 O(1)"] --> S2["Etapa 2: Geolocalização<br/>ViaCEP/Photon/Nominatim + Pino Exato"]
-    S2 --> S3["Etapa 3: Prova de Vida In-App<br/>Câmera Frontal no Oval + YCbCr + 3 Desafios"]
-    S3 --> S4["Etapa 4: Scanner ISO ID-1 + OCR<br/>ROI Crop 12% + dHash/MAD + Face Match 128-D"]
-    S4 --> RPC["RPC submit_client_kyc<br/>Anti-Sybil CPF/Face Hash + +30 pts RTS"]
+sequenceDiagram
+    autonumber
+    actor C as Cliente (Titular KYC/OCR)
+    participant UI as Flutter 120 FPS UI & Isolate.run
+    participant RPC as PostgreSQL RPC (SECURITY DEFINER)
+    participant DB as SGBD (Canonical Lock Manager)
+    participant P2 as 2o Especialista (Blind Dispatch)
+
+    C->>UI: Captura foto do defeito (Camera Nativa ISP 1280px)
+    UI->>UI: Calcula dHash 64-Bit em Worker Isolate (0 ms UI Jank)
+    UI->>RPC: open_warranty_mediation(jobId, phash, lat, lng)
+    RPC->>DB: 1o Lock FOR UPDATE em public.jobs
+    RPC->>DB: Valida Distancia de Hamming >= 5 (Bloqueia Foto Repetida)
+    RPC->>DB: 2o Lock e Insert em public.job_mediations (Fase 3: SLA 6h/24h)
+    RPC->>DB: 3o Lock em public.escrow_maturation_entries (Status = FROZEN_BY_DISPUTE)
+    RPC->>DB: 4o Lock em public.profiles (Ativa Circuit Breaker: has_open_dispute = true)
+    RPC-->>UI: Card movido em tempo real para a 4a Aba "Em Mediacao"
+
+    Note over RPC,DB: Expiracao do SLA Primario ou Recusa do 1o Prestador
+    UI->>RPC: trigger_layer3_rework(mediationId, reworkLaborBudget)
+    RPC->>DB: Locks em Ordem Canonica (1. jobs -> 2. job_mediations -> 3. escrow -> 4. profiles)
+    RPC->>DB: Podagem Espacial O(log N + K) via Axial Bounding Box
+    RPC->>DB: Filtra Grafo Zero-Vinculo (Device, CPF-Hash, Face-Hash e Historico)
+    RPC->>DB: Seleciona menor waterfall_tier_rank (Degraus 1 a 5) + Sorteio Cego O(1)
+    RPC->>DB: Invariante 3 (Clawback First): Debita Retencao D+5 do 1o Prestador
+    RPC->>P2: Despacha OS de Garantia com Teto <= 100% da Mao de Obra Original
 ```
 
-### 5.1. Etapa 1 — Validação Civil e Algoritmo Aritmético Módulo 11 do CPF em $O(1)$
-Na primeira etapa do `ClientSetupScreen`, exige-se o nome civil composto, o telefone móvel com DDD (sem caráter opcional) e o Cadastro de Pessoas Físicas (CPF). A função `DocumentOcrAndLivenessService.isValidCpfMod11` (no cliente) e a função PL/pgSQL `public.is_valid_cpf` (no servidor) rejeitam sequências monótonas (`000.000.000-00` a `999.999.999-99`) e calculam os dois dígitos verificadores $DV_1$ e $DV_2$ em tempo constante $O(1)$:
+---
 
-$$DV_1 = \left(\left(\sum_{i=1}^{9} d_i \cdot (11 - i)\right) \cdot 10\right) \bmod 11 \quad (\text{se } 10 \Rightarrow 0)$$
+## 8. Convergência Sistêmica: Unificação Multi-Modo, Passaporte ABNT NBR 5674 e LGPD
 
-$$DV_2 = \left(\left(\sum_{i=1}^{10} d_i \cdot (12 - i)\right) \cdot 10\right) \bmod 11 \quad (\text{se } 10 \Rightarrow 0)$$
-
-### 5.2. Etapa 3 — Prova de Vida Facial Ativa (*Active Liveness*) com Câmera Frontal In-App
-- **Renderização Ao Vivo Dentro da Moldura Oval (`ClipOval`):** O fluxo de vídeo da câmera frontal (`CameraLensDirection.front` / `facingMode: 'user'`) é embutido diretamente dentro do `ClipOval` de $236 \times 292\text{ px}$ na própria tela (`_OvalBiometricGuidePainter`), sem abrir aplicativos externos de câmera e sem utilizar temporizadores simulados (`Future.delayed`).
-- **Amostragem Frame a Frame (`140 ms`) e Segmentação no Espaço de Crominância $YCbCr$:** A cada $140\text{ ms}$, o frame capturado pela ponte multiplataforma (`convertCameraImageToUprightRgbNamed` para planos `YUV420`/`NV21`/`BGRA8888` no Android/iOS ou `grabWebVideoFramePngBytes` para `<video>` HTML5 no Web/PWA) é analisado por `evaluateLiveOvalFrameInput`. Para cada pixel $(R, G, B)$ no interior da elipse normalizada $\frac{(x - c_x)^2}{r_x^2} + \frac{(y - c_y)^2}{r_y^2} \le 1$, aplicam-se as equações da recomendação ITU-R BT.601:
-
-$$Y = 0,299 R + 0,587 G + 0,114 B$$
-
-$$Cb = 128 - 0,168736 R - 0,331264 G + 0,500 B$$
-
-$$Cr = 128 + 0,500 R - 0,418688 G - 0,081312 B$$
-
-- **Filtro Anti-Monitor e Presença Humana (`hasRealHumanFaceInOval`):** Um quadro só é reconhecido como face humana viva quando satisfaz simultaneamente:
-  1. Fração de pixels de crominância epidérmica humana ($Y \in [40, 245], Cb \in [77, 127], Cr \in [133, 173]$) contida no intervalo $[0,22,\; 0,88]$;
-  2. Índice de emissão luminosa azulada de telas de computador/monitores `blueMonitorRatio < 0.25` (bloqueando $100\%$ de ataques de apresentação contra monitores exibindo código ou fotografias digitais);
-  3. Desvio-padrão de luminância orgânica $\sigma_Y \ge 9,5$ e luminância média $L_{\text{mean}} \in [42, 238]$.
-- **Máquina de Estados Biomecânica de 3 Desafios Sequenciais:**
-  1. **Desafio 0 — Centralização e Simetria Bilateral:** Exige centroide de massa epidérmica centralizado ($|\bar{x} - 0,5| \le 0,13$ e $|\bar{y} - 0,5| \le 0,15$) com presença equilibrada nos hemisférios esquerdo e direito.
-  2. **Desafio 1 — Rotação Cefálica Horizontal (*Head Yaw*):** Exige deslocamento horizontal significativo do centroide facial ($\Delta\bar{x} \ge 0,032$) ou assimetria hemisférica $|L_{\text{left}} - L_{\text{right}}| \ge 0,085$ em relação ao quadro de referência neutro.
-  3. **Desafio 2 — Variação de Expressão / Piscada (*Smile & Eye Aspect Ratio*):** Exige modulação de textura e luminância no terço inferior/ocular ($\Delta\sigma_Y \ge 1,8$) com retorno do rosto ao eixo central, disparando automaticamente a captura da selfie oficial e a geração do selo criptográfico `face_liveness_hash` (`DSP-LIVE-SHA256-...`).
-
-### 5.3. Etapa 4 — Scanner Documental Guiado ISO/IEC 7810 ID-1, Recorte de ROI e Antifraude Óptico
-- **Máscara Guiada na Proporção Oficial ISO/IEC 7810 ID-1 (`DocumentGuidedScannerModal`):** Aciona a câmera traseira (`CameraLensDirection.back` / `facingMode: 'environment'`) sob uma máscara escura (`Colors.black.withValues(alpha: 0.68)`) com janela central transparente na razão de aspecto normativa dos documentos brasileiros ($85,60\text{ mm} \times 53,98\text{ mm} \Rightarrow r = 1,585$ no modo **Horizontal/Deitada** ou $1/1,585$ no modo **Vertical/Em pé**), exibindo guias tracejadas internas para a **Foto 3×4** (Frente) e para o **QR Code SERPRO / MRZ** (Verso).
-- **Recorte Estrito da Região de Interesse (*Strict ROI Crop* + *Core Inset* de 12%):** No instante do disparo, `cropDocumentToGuidedFrameNamed` recorta exclusivamente os pixels internos à moldura guiada, descartando a mesa ou o ambiente ao redor. Adicionalmente, `PerceptualHashGuard.cropCoreRoiInset(insetRatio: 0.12)` remove uma borda periférica de $12\%$ de cada lado antes do cálculo de hash.
-- **Prevenção de Falso Positivo entre Frente e Verso (`evaluateDocumentFrontBackDistinction`):** Para evitar que a fotografia da Frente e a do Verso tiradas sobre a mesma superfície sejam falsamente classificadas como idênticas, combinam-se três métricas sobre o núcleo recortado:
-  1. **Distância de Hamming do *Difference Hash* Horizontal ($9 \times 8$):** $d_{\text{Hamming}}(\text{dHash}_{\text{frente}}, \text{dHash}_{\text{verso}})$;
-  2. **Diferença Absoluta Média em Grade $64 \times 64$ ($\text{MAD}_{64\times 64}$):**
-     $$\text{MAD}_{64\times 64}(A, B) = \frac{1}{4096} \sum_{u=0}^{63} \sum_{v=0}^{63} |I_A(u,v) - I_B(u,v)|$$
-  3. **Delta de Variância Inter-Quadrantes ($\Delta\sigma_{\text{quad}}^2$):** Diferença média das variâncias dos 4 quadrantes estruturais do documento.
-  A rejeição por duplicidade (`ERR_DUPLICATE_FRONT_BACK_PHOTO`) só é disparada quando `dHashHammingDistance <= 2 && mad64x64 < 6.5 && quadrantVarianceDelta < 15.0`.
-- **Aferição Óptica de Qualidade Forense:**
-  - **Nitidez pela Variância do Operador Laplaciano ($\sigma_{\text{Lap}}^2 \ge 110,0$):** Aplica-se o kernel discreto de segunda derivada $\nabla^2 I(x,y) = I(x-1,y) + I(x+1,y) + I(x,y-1) + I(x,y+1) - 4I(x,y)$ e calcula-se sua variância estatística, rejeitando imagens desfocadas (`ERR_BLURRY_DOCUMENT_IMAGE`).
-  - **Controle de Estouro Especular de Flash ($\text{Glare Ratio} \le 8,5\%$):** Calcula-se a proporção de pixels saturados $P(I(x,y) > 248)$, bloqueando documentos ilegíveis por reflexo direto (`ERR_EXCESSIVE_GLARE`).
-
-### 5.4. Confronto Biométrico 1:1 (*Face Match*) Multi-Orientação e Transcrição Automática via OCR
-- **Alinhamento Multi-Ângulo ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) e Descritor Facial 128-D Estritamente Não-Negativo:** Como o usuário pode fotografar a CNH ou RG na orientação horizontal ou vertical, `computeMultiAngleDocumentFaceMatch` rotaciona a imagem do documento nas 4 orientações canônicas, localiza as janelas candidatas do retrato $3\times 4$ e extrai o vetor de características `extractNormalizedFaceEmbedding128` ($V \in [0,10;\; 1,00]^{128}$, normalizado em norma $\ell_2$). Como todas as componentes vetoriais pertencem ao primeiro ortante estritamente positivo, a Similaridade de Cosseno:
-
-$$S_{\cos}(\mathbf{A}, \mathbf{B}) = \frac{\sum_{k=1}^{128} A_k B_k}{\sqrt{\sum_{k=1}^{128} A_k^2} \cdot \sqrt{\sum_{k=1}^{128} B_k^2}} \in [0,0000;\; 1,0000] \quad (0\% \text{ a } 100\%)$$
-
-jamais assume valores negativos e exige limiar mínimo $S_{\cos} \ge 0,7800$ ($78\%$) na RPC `submit_client_kyc`.
-- **Transcrição Automática via OCR e Compatibilidade de Nome Civil Parcial vs. Completo:** Os dados extraídos do documento (Nome Civil Completo, CPF, Registro/RG, Data de Nascimento, Validade e Órgão Emissor/UF) são renderizados imediatamente no card estruturado `_OcrTranscribedSummaryCard` (**"Dados Transcritos Automaticamente do Documento (OCR)"**). A função `computeCivilNameCompatibility` valida o nome informado na Etapa 1 contra o nome civil completo impresso na CNH/RG por inclusão ordenada de tokens (ex.: `"Wagner Oliveira"` contido em `"WAGNER OLIVEIRA CLAUDIANO"` retorna compatibilidade $1,00 \ge 0,80$), enquanto o CPF extraído por OCR é confrontado de forma exata com o CPF digitado.
+1. **Interoperabilidade Cadastral Multi-Modo (`+30 pts` imediatos no $RTS$)**: Quando um cliente validado por Prova de Vida Ao Vivo e OCR ativa o modo Profissional, a trigger `trg_sync_profile_trust_and_rank` reconhece `liveness_verified AND ocr_verified` e atribui instantaneamente os $+30,0\text{ pontos}$ de identidade civil ao seu `external_trust_score`.
+2. **Trava Bancária *Same-Holder PIX Lock***: A aprovação do CPF no onboarding define `pix_key_cpf_matched = TRUE` e vincula `cpf_hash`, impedindo que saques ou reembolsos sejam direcionados a contas bancárias de terceiros ("contas laranja").
+3. **Passaporte Oficial de Manutenção do Imóvel ([`desperrengue_official_pdf_service.dart`](app/lib/core/services/desperrengue_official_pdf_service.dart))**: Opera sob a diretriz *Zero Fake Data* — exibe uma jornada educativa interativa para imóveis recém-cadastrados e, à medida que serviços reais são concluídos e auditados com `forensic_certificates`, compila em *Worker Isolate* um laudo técnico `%PDF-1.4` compatível com a **ABNT NBR 5674** e a **Lei Federal nº 8.245/91**.
+4. **Exclusão Escopada LGPD (`delete_own_account_scoped`)**: Permite revogar isoladamente o papel `client` ou `provider` com anonimização criptográfica de PII, preservando a integridade contábil do livro-razão.
 
 ---
 
-## 6. Análise de Complexidade Assintótica (*Big-O*), Indexação e Controle de Concorrência
+## 9. Ecossistema Funcional Completo e Árvore do Repositório
 
-A escalabilidade do backend PostgreSQL 17 e do cliente Flutter foi projetada para substituir varreduras lineares ou quadráticas por algoritmos de complexidade constante $O(1)$ ou logarítmica $O(\log N)$:
+```text
+00_Desperrengue/
+├── README.md                                  # Tratado Executivo e Arquitetural Mestre (Raiz)
+├── LICENSE.md                                 # Governança Jurídica, Propriedade Intelectual e LGPD
+├── .github/
+│   ├── workflows/                             # Pipelines CI/CD (ci.yml e beta-release.yml)
+│   ├── SECURITY.md                            # Política de Defesa em Profundidade e Matriz RN-AF-01..14
+│   └── CONTRIBUTING.md                        # Padrões de Engenharia, Regra Zero e Definition of Done
+├── app/                                       # Aplicação Multiplataforma Flutter 3.47 (Android, iOS, PWA)
+│   ├── README.md                              # Manual de Engenharia Client-Side (120 FPS, Isolates, Safe-Zone)
+│   ├── lib/
+│   │   ├── main.dart                          # BootGate, UpdateGate e Container Responsivo 480px
+│   │   ├── core/
+│   │   │   ├── models/                        # Modelos de Domínio e Fintech (fintech_warranty_models.dart)
+│   │   │   ├── security/                      # PerceptualHashGuard (dHash 64-bit, Core ROI Inset 12%)
+│   │   │   ├── services/                      # DocumentOcrAndLivenessService, WarrantyEscrowService, PDF %PDF-1.4
+│   │   │   ├── state/                         # Controllers Riverpod e AntiBypassFintechController
+│   │   │   └── ui/                            # Design System Quiet Luxury Dark e Tokens Visuais
+│   │   └── features/
+│   │       ├── auth/presentation/             # AuthGate, PostAuthRouter e Verificação Profissional (Steps 1..7)
+│   │       ├── boot/                          # AnimatedSplashScreen, BootGate e UpdateGate
+│   │       ├── client/presentation/           # ClientSetupScreen (4 Etapas), Carteira, Passaporte e Pedidos
+│   │       ├── provider/presentation/         # ProviderShell, Execução Forense, Carteira Bipartida e Dossiê
+│   │       └── shared/presentation/           # 4ª Aba Em Mediação, ForensicSplitViewComparator e PIN 4 Dígitos
+│   └── test/                                  # 26 Suítes Automatizadas (529 Testes Unitários, Widget e Red Team)
+├── supabase/
+│   ├── README.md                              # Catálogo do SGBD, 21 Migrações, 9 Índices e RPCs SECURITY DEFINER
+│   ├── migrations/                            # 21 Migrações SQL (incluindo Garantia 3 Camadas e KYC/OCR)
+│   └── tests/                                 # 9 Suítes de Contrato SQL (577 Asserções Formais)
+├── scripts/                                   # Verificadores Automatizados (check-md-links.mjs e test-dossie.mjs)
+└── docs/                                      # Biblioteca Técnico-Científica Completa (20 Documentos + 5 Subpastas)
+```
 
-| Operação Computacional | Complexidade Ingênua | Complexidade Implementada (Tempo / Espaço) | Estrutura de Dados e Mecanismo Algorítmico Real |
-| :--- | :---: | :---: | :--- |
-| **Busca Geográfica + Cascata de 5 Degraus (`trigger_layer3_rework`)** | $O(N \log N)$<br/>*(Cálculo trigonométrico de Haversine em toda a tabela + Sort)* | **Tempo:** $O(\log N + K)$<br/>**Espaço:** $O(1)$ | **Podagem Espacial por *Axial Bounding Box***: calcula-se a janela retangular $\Delta\text{lat} = \frac{15}{111,32}$ e $\Delta\text{lng} = \frac{15}{111,32 \cdot \cos(\text{lat})}$ que filtra o índice B-Tree composto parcial `idx_profiles_rescue_waterfall_bbox` (`waterfall_tier_rank ASC, last_latitude, last_longitude`), executando a fórmula esférica de Haversine apenas sobre os $K \ll N$ candidatos internos ao retângulo. |
-| **Filtro de Categoria com Sinônimos Canônicos** | $O(N \cdot T)$<br/>*( Comparação textual `LIKE` por linha)* | **Tempo:** $O(\log N)$<br/>**Espaço:** $O(1)$ | Normalização determinística por `norm_tags` (SQL) e `TagNormalizer` (Dart) indexada por árvore invertida **GIN** (`idx_profiles_service_tags_gin` / operador de continência `@>`). |
-| **Comparação de Duplicidade Visual (`pHash` / `dHash` 64-Bit)** | $O(W \cdot H)$<br/>*(Comparação pixel a pixel de imagens completas)* | **Tempo:** $O(1)$<br/>**Espaço:** $O(1)$ | Operação de disjunção exclusiva bit a bit (`XOR #` em SQL / `^` em Dart) sobre inteiros de 64 bits seguida do **Algoritmo de Brian Kernighan** (`x := x & (x - 1)`), cujo laço executa no máximo $64$ iterações elementares de CPU ($\le 64\text{ ciclos}$). |
-| **Leitura do Score de Confiança ($RTS$) e Degrau da Cascata** | $O(H)$<br/>*(Agregação `COUNT(*)` sobre histórico de pedidos e disputas a cada leitura)* | **Tempo:** $O(1)$<br/>**Espaço:** $O(1)$ | Contadores materializados em `public.profiles` (`completed_jobs_count`, `abandoned_warranty_count`) sincronizados em tempo de escrita pelo trigger `BEFORE INSERT OR UPDATE` `trg_sync_profile_trust_and_rank()`. |
-| **Prevenção de *Sybil Attack* (Unicidade de CPF e Biometria)** | $O(N)$<br/>*(Varredura sequencial de documentos)* | **Tempo:** $O(1)$ / $O(\log N)$<br/>**Espaço:** $O(1)$ | Hash criptográfico `SHA-256` salgado com *pepper* (`encode(digest('DSP-CPF-PEPPER-2026:' \|\| v_digits, 'sha256'), 'hex')`) indexado por índice único parcial `idx_profiles_cpf_hash_unique` e `idx_profiles_face_liveness_hash`. |
-| **Processamento Autônomo de Filas (`auto_release` e `maturation`)** | $O(N)$ com bloqueio de tabela | **Tempo:** $O(B \log S)$<br/>**Espaço:** $O(B)$ ($B = 100$) | Índices parciais `idx_jobs_auto_release_queue` e `idx_escrow_maturation_queue` percorridos na RPC `process_autonomous_escrow_and_mediation_queues()` com `FOR UPDATE SKIP LOCKED LIMIT 100`, permitindo múltiplos workers paralelos sem contenção. |
+### 9.1. Índice Clicável da Biblioteca Científica em [`/docs/`](docs/)
 
-### Prevenção Matemática de *Deadlocks* por Ordenação Canônica de Recursos (Teorema de Coffman)
-Para eliminar a condição de **Espera Circular (*Circular Wait*)** — quarta condição necessária de Coffman para ocorrência de *deadlock* em sistemas transacionais concorrentes — todas as funções RPC `SECURITY DEFINER` (`complete_job_and_schedule_escrow`, `settle_escrow_with_carveout_and_maturation`, `open_warranty_mediation` e `trigger_layer3_rework`) adquirem bloqueios pessimistas `SELECT ... FOR UPDATE` obedecendo estritamente à seguinte **Ordem Total Canônica de Tabelas**:
-
-$$\mathbf{1^{\circ}}\;\texttt{public.jobs} \;\longrightarrow\; \mathbf{2^{\circ}}\;\texttt{public.job\_mediations} \;\longrightarrow\; \mathbf{3^{\circ}}\;\texttt{public.escrow\_maturation\_entries} \;\longrightarrow\; \mathbf{4^{\circ}}\;\texttt{public.profiles}$$
-
-Como o grafo de alocação de recursos é um Grafo Acíclico Direcionado (DAG) estritamente ordenado ($1 < 2 < 3 < 4$), é matematicamente impossível a formação de ciclos de espera entre transações concorrentes.
+| # | Documento Especializado | Escopo Técnico-Científico |
+| :---: | :--- | :--- |
+| `01` | [`docs/README.md`](docs/README.md) | Catálogo Sistemático, Taxonomia Documental e Matriz de Leitura por Perfil |
+| `02` | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Decomposição das 4 Camadas, Provas Algébricas *Big-O*, *Worker Isolates* a 120 Hz e Grafo Sem Deadlocks |
+| `03` | [`docs/Arquitetura do Sistema.md`](docs/Arquitetura%20do%20Sistema.md) | Topologia Distribuída, Dicionário de Dados SQL Completo, 9 Índices e Catálogo de RPCs |
+| `04` | [`docs/Especificação do Projeto.md`](docs/Especifica%C3%A7%C3%A3o%20do%20Projeto.md) | Requisitos `RF`/`RNF`, Regras `RN-CAM`, `RN-AF`, `RN-MZ`, `RN-KYC` e Matriz de Rastreabilidade 1:1 |
+| `05` | [`docs/Documento de Contexto.md`](docs/Documento%20de%20Contexto.md) | Seleção Adversa de Akerlof, Paradoxo da Desintermediação e Tese Econômica do Produto |
+| `06` | [`docs/Projeto de Interface.md`](docs/Projeto%20de%20Interface.md) | Sistema Visual *Quiet Luxury Dark*, Container `480px`, Wireframes Unicode e 4ª Aba *Em Mediação* |
+| `07` | [`docs/onboarding_profissional.md`](docs/onboarding_profissional.md) | Tratado de Onboarding Unificado, Equações de Visão Computacional ($YCbCr$, EAR, Yaw, Laplaciano, 128-D) |
+| `08` | [`docs/GAMIFICACAO.md`](docs/GAMIFICACAO.md) | Matemática do *Relative Trust Score* ($RTS$), Cascata de 5 Degraus e Velocidade de Liquidação |
+| `09` | [`docs/Fluxo de Caixa.md`](docs/Fluxo%20de%20Caixa.md) | Equações de Fluxo de Caixa do *Smart Escrow*, Equilíbrio Atuarial ($N = 66,67$) e *Clawback* |
+| `10` | [`docs/Planos de Negocio e Tributação.md`](docs/Planos%20de%20Negocio%20e%20Tributa%C3%A7%C3%A3o.md) | Engenharia Tributária do *Smart Split* (bitributação zero), Receitas B2C/B2B e *Unit Economics* |
+| `11` | [`docs/Analise de Ambientes e SWOT.md`](docs/Analise%20de%20Ambientes%20e%20SWOT.md) | Análise PESTEL, 5 Forças de Porter e Matriz SWOT Cruzada com Barreiras Tecnológicas |
+| `12` | [`docs/Balanced Scorecard (BSC).md`](docs/Balanced%20Scorecard%20(BSC).md) | Mapa Estratégico de Causa-Efeito nas 4 Perspectivas e KPIs Telemetrizados em SQL |
+| `13` | [`docs/TESTING.md`](docs/TESTING.md) | Verificação Formal (`529` testes Dart, `577` asserções SQL) e Detalhamento dos 12 Testes *Red Team* |
+| `14` | [`docs/TESTE_COM_AMIGOS.md`](docs/TESTE_COM_AMIGOS.md) | Protocolo de Homologação Empírica em Campo para Smartphones Android e iOS |
+| `15` | [`docs/SETUP.md`](docs/SETUP.md) | Guia de Provisionamento de Ambiente, Banco de Dados Supabase e Compilação Multiplataforma |
+| `16` | [`docs/PLAY_STORE.md`](docs/PLAY_STORE.md) | Engenharia de Release Mobile, Permissões Nativas, LGPD Art. 11 (Biometria) e *Safe-Zone* |
+| `17` | [`docs/registro_dominio_resend.md`](docs/registro_dominio_resend.md) | Infraestrutura de Mensageria Transacional SMTP e Autenticação Criptográfica DNS (DKIM/SPF/DMARC) |
+| `18` | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Cronograma Evolutivo de Engenharia (`gantt`), Marcos Concluídos e Horizontes B2B/IA |
+| `19` | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Registro Cronológico Auditável de Versões e Migrações SQL |
+| `20` | [`docs/Template.md`](docs/Template.md) | Padrão Metadocumental Científico para Criação de Futuros Artefatos em Linguagem de Especialidade |
+| `21` | [`docs/adr/README.md`](docs/adr/README.md) | Catálogo de 21 *Architecture Decision Records* (`ADR-0000` a [`ADR-0020`](docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md)) |
 
 ---
 
-## 7. Convergência Sistêmica: Unificação Multi-Modo, PIX *Same-Holder Lock*, Passaporte ABNT NBR 5674 e LGPD
+## 10. Guia de Provisionamento, Execução Local, Testes Formais e Deploy
 
-Os artefatos criptográficos e civis homologados no fluxo de KYC integram-se transversalmente aos demais subsistemas da plataforma:
-1. **Interoperabilidade Multi-Modo (Cliente $\leftrightarrow$ Profissional):** A execução bem-sucedida da RPC `submit_client_kyc` preenche `verified_full_name`, `cpf_hash`, `cpf_masked`, `liveness_verified = TRUE`, `ocr_verified = TRUE` e `kyc_biometric_verified = TRUE` na linha única de `public.profiles`. Caso o mesmo usuário ative posteriormente o modo **Profissional**, o trigger `trg_sync_profile_trust_and_rank()` concede-lhe instantaneamente os **$+30,00\text{ pontos}$ de $P_{\text{KYC}}$** no Score $RTS$, evitando retrabalho de captura biométrica.
-2. **Prevenção à Lavagem de Dinheiro (*Same-Holder PIX Lock*):** A flag `pix_key_cpf_matched = TRUE` assegura que operações de recarga (`pix_topups`) e solicitações de saque (`withdrawals`) estejam vinculadas ao titular cujo CPF foi extraído por OCR e validado em Módulo 11.
-3. **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674 e Lei do Inquilinato nº 8.245/91):** Implementado em [`app/lib/features/shared/presentation/fintech_warranty_widgets.dart`](./app/lib/features/shared/presentation/fintech_warranty_widgets.dart) (`PropertyPassportInteractiveFlowSheet`) e [`app/lib/core/services/desperrengue_official_pdf_service.dart`](./app/lib/core/services/desperrengue_official_pdf_service.dart). Ao contrário de telas estáticas com dados fictícios, o módulo inicia com uma apresentação executiva animada de valor patrimonial e conduz o proprietário/inquilino por um assistente de 3 etapas para cadastro real do imóvel (apelido, tipologia, endereço auditado, finalidade de vistoria e sistemas verificados segundo a ABNT NBR 5674), consolidando apenas serviços reais concluídos pelo titular e exportando o laudo `%PDF-1.4` em `Isolate.run` com o nome civil validado, o CPF mascarado (`***.456.789-**`) e o selo `face_liveness_hash`.
-4. **Exclusão Escopada de Conta e Dossiê de Despedida (LGPD — Art. 18):** Implementada na migração [`supabase/migrations/20261107100000_scoped_account_deletion.sql`](./supabase/migrations/20261107100000_scoped_account_deletion.sql) e na Edge Function `excluir-conta`. Permite que um usuário multi-modo exclua seletivamente apenas o perfil de Cliente, apenas o perfil de Profissional ou a conta integral, gerando previamente o Dossiê de Despedida em PDF e preservando ou expurgando os objetos no bucket privado `kyc-documents/{user_id}/` conforme o escopo selecionado.
-
----
-
-## 8. Guia de Instalação, Execução, Suíte de Testes Automatizados (*Red Team* & Forense) e Deploy
-
-### 8.1. Pré-requisitos do Ambiente de Engenharia
-
-| Ferramenta | Versão Homologada | Finalidade |
-| :--- | :--- | :--- |
-| **Git** | $\ge 2.40$ | Controle de versão distribuído |
-| **Flutter SDK** (*channel stable*) | $3.47.x$ (Dart $\ge 3.13.4$) | Compilação multiplataforma (Android, iOS e Web/PWA) |
-| **Java Development Kit (JDK)** | **17** | Compilação Gradle/AGP para Android |
-| **Node.js** | $\ge 20.x$ | Execução dos verificadores de integridade documental e PDF |
-| **Supabase CLI** | $\ge 2.100$ *(opcional)* | Aplicação de migrações e execução da suíte SQL transacional |
-
-### 8.2. Comandos de Configuração e Execução Local
-
-```bash
-# 1. Clonar o repositório e instalar dependências do aplicativo Flutter
-git clone https://github.com/WagnerxOliveira/DesperrengueApp_TAI3.git
-cd DesperrengueApp_TAI3/app
+```powershell
+# 1. Instalar dependências e validar análise estática (0 issues obrigatórios)
+cd C:\00_Desperrengue\app
 flutter pub get
-
-# 2. Executar em dispositivo móvel conectado ou emulador
-flutter run \
-  --dart-define=SUPABASE_URL=https://eisfkemgooqbgqljvwvs.supabase.co \
-  --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-```
-
-### 8.3. Execução da Suíte Completa de Verificação Estática, Testes Unitários, Forenses e *Red Team*
-
-```bash
-# 1. Análise estática rigorosa (critério de aceite: "No issues found!")
-cd app
 flutter analyze
 
-# 2. Suíte completa de 529 testes automatizados (Unitários, Widgets, Visão Computacional e Red Team)
+# 2. Executar as 26 suítes de testes automatizados (529 testes: Domínio, Widgets, Visão Computacional e Red Team)
 flutter test
 
-# 3. Execução isolada da suíte forense de Garantia em 3 Camadas, Biometria Ao Vivo e OCR
-flutter test test/red_team_warranty_and_kyc_forensics_test.dart
-flutter test test/fintech_warranty_security_test.dart
+# 3. Executar especificamente a bateria Red Team de Fraude Financeira e Forense Biométrica/OCR
+flutter test test/red_team_warranty_and_kyc_forensics_test.dart test/fintech_warranty_security_test.dart
 
-# 4. Verificação de integridade de links Markdown e geração do Dossiê PDF (na raiz do repositório)
-cd ..
+# 4. Validar integridade de todos os links Markdown e motor de geração PDF na raiz
+cd C:\00_Desperrengue
 node scripts/check-md-links.mjs
 node scripts/test-dossie.mjs
+
+# 5. Compilar APK Release Android ou PWA Web com variáveis de ambiente
+cd C:\00_Desperrengue\app
+flutter build apk --release --dart-define-from-file=.env
+flutter build web --release --dart-define-from-file=.env
 ```
-
-### 8.4. Aplicação de Migrações e Execução dos Testes SQL Transacionais no Supabase
-
-```bash
-# Aplicar as migrações de Garantia 3 Camadas e KYC Biométrico/OCR
-supabase db query --linked -f supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql
-supabase db query --linked -f supabase/migrations/20261108120000_client_kyc_biometrics_and_ocr.sql
-
-# Executar as baterias de testes SQL transacionais (577 asserções; critério: FALHAS=0)
-supabase db query --linked -f supabase/tests/security_smoke.sql
-supabase db query --linked -f supabase/tests/review_system_smoke.sql
-supabase db query --linked -f supabase/tests/achievements_smoke.sql
-supabase db query --linked -f supabase/tests/offboarding_showcase_smoke.sql
-supabase db query --linked -f supabase/tests/client_wallet_smoke.sql
-supabase db query --linked -f supabase/tests/scheduled_start_smoke.sql
-supabase db query --linked -f supabase/tests/category_match_smoke.sql
-supabase db query --linked -f supabase/tests/expanded_categories_smoke.sql
-supabase db query --linked -f supabase/tests/scoped_deletion_smoke.sql
-```
-
-### 8.5. Compilação e Publicação Contínua Web/PWA (`gh-pages`)
-
-```bash
-cd app
-flutter build web --release --base-href "/DesperrengueApp_TAI3/" --no-wasm-dry-run
-```
-
----
-
-## 🗂️ Organização Estrutural do Repositório
-
-| Diretório / Arquivo | Descrição Técnica |
-| :--- | :--- |
-| [`app/lib/main.dart`](./app/lib/main.dart) | Ponto de entrada da aplicação, `UpdateGate`, `BootGate`, tematização dinâmica e trava responsiva `480px`. |
-| [`app/lib/core/security/perceptual_hash_guard.dart`](./app/lib/core/security/perceptual_hash_guard.dart) | Guarda criptográfica de câmera física, cálculo de `dHash` 64-bit em `Isolate.run`, recorte de ROI (`12%`) e métrica $\text{MAD}_{64\times 64}$. |
-| [`app/lib/core/services/document_ocr_and_liveness_service.dart`](./app/lib/core/services/document_ocr_and_liveness_service.dart) | Motor de visão computacional: segmentação $YCbCr$ ao vivo, filtro anti-monitor, nitidez Laplaciana, alinhamento multi-ângulo $3\times 4$, *Face Match* 128-D e OCR. |
-| [`app/lib/core/services/live_camera_frame_bridge.dart`](./app/lib/core/services/live_camera_frame_bridge.dart) | Ponte multiplataforma de extração de frames de vídeo em tempo real (Android `YUV420`/`NV21`, iOS `BGRA8888` e Web HTML5 `<video>`). |
-| [`app/lib/core/services/warranty_escrow_service.dart`](./app/lib/core/services/warranty_escrow_service.dart) | `SpeculativeEvidencePipeline` (pré-aquecimento de GPS + upload concorrente) e `WarrantyEscrowService` (Camadas 1, 2 e 3). |
-| [`app/lib/core/services/desperrengue_official_pdf_service.dart`](./app/lib/core/services/desperrengue_official_pdf_service.dart) | Compilador determinístico de documentos `%PDF-1.4` em `Isolate.run` (Certificado Forense de Garantia e Passaporte ABNT NBR 5674). |
-| [`app/lib/features/client/presentation/client_setup_screen.dart`](./app/lib/features/client/presentation/client_setup_screen.dart) | Onboarding civil e biométrico do cliente em 4 etapas, câmera frontal embutida no `ClipOval`, `DocumentGuidedScannerModal` (ISO ID-1) e card de transcrição OCR. |
-| [`app/lib/features/shared/presentation/fintech_warranty_widgets.dart`](./app/lib/features/shared/presentation/fintech_warranty_widgets.dart) | Componentes da 4ª aba *"Em Mediação"*, `ForensicSplitViewComparator`, `ClientCheckoutPinDialog`, `BipartiteProviderWalletCard` e `PropertyPassportInteractiveFlowSheet`. |
-| [`supabase/migrations/`](./supabase/migrations) | 21 migrações SQL sequenciais contendo esquema relacional, RLS, índices B-Tree/GIN, triggers $O(1)$ e RPCs `SECURITY DEFINER`. |
-| [`app/test/`](./app/test) | 26 arquivos de testes automatizados (`529` testes aprovados), incluindo [`red_team_warranty_and_kyc_forensics_test.dart`](./app/test/red_team_warranty_and_kyc_forensics_test.dart). |
-
----
-
-## ⚖️ Governança e Licença
-
-- **Política de Contribuição e Fluxo Git:** Consulte [CONTRIBUTING.md](.github/CONTRIBUTING.md) e o [Código de Conduta](.github/CODE_OF_CONDUCT.md).
-- **Repositório Oficial de Engenharia:** O desenvolvimento ativo, a integração contínua e a distribuição PWA ocorrem em [`WagnerxOliveira/DesperrengueApp_TAI3`](https://github.com/WagnerxOliveira/DesperrengueApp_TAI3), preservando [`Washington-Freitas/DesperrengueApp_TAI3`](https://github.com/Washington-Freitas/DesperrengueApp_TAI3) como remoto histórico (`upstream`).
-- **Direitos Autorais:** Todos os direitos reservados conforme especificado em [LICENSE.md](./LICENSE.md).
