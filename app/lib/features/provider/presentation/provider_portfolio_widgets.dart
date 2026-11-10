@@ -4,286 +4,527 @@ import '../../../core/models/provider_portfolio_models.dart';
 import '../../../core/state/provider_portfolio_controller.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 
-/// Seção completa do **"Meu Portfólio" Inteligente + "Histórico de Serviços Prestados"**
-/// governada por validação de PIN do Cliente.
-class ProviderSmartPortfolioSection extends StatelessWidget {
+/// Seção completa **"Meu Portfólio"** conectada ao **"Histórico de Serviços Prestados"**.
+///
+/// Regras de Negócio e Arquitetura:
+/// - **Zero Fake Data**: Exibe exclusivamente serviços reais que já cumpriram o período de
+///   proteção pós-serviço e tiveram 100% do pagamento líquido recebido pelo profissional.
+/// - **Seção A — Pilha LIFO Automática (`Top 3`)**: Os 3 serviços elegíveis mais recentes entram
+///   sozinhos em `#1`, `#2` e `#3`. Quando um novo serviço finaliza a proteção pós-serviço,
+///   assume `#1`, deslocando `#1 -> #2`, `#2 -> #3` e enviando o antigo `#3` para o pool do Histórico.
+/// - **Seção B — Destaques Escolhidos pelo Profissional (`Até 5 serviços`)**: A partir do 4º
+///   serviço elegível no Histórico, o profissional pode escolher até 5 serviços adicionais.
+/// - **Isolamento Cliente vs. Profissional (`isOwner`)**:
+///   - Quando `isOwner == false` (Usuário Cliente visitando o perfil do profissional), nenhum
+///     valor monetário (`R$`) é exibido (sem avisos de ocultação), nenhum botão de edição aparece
+///     e o botão do "Histórico de Serviços Prestados" jamais é renderizado.
+class ProviderSmartPortfolioSection extends StatefulWidget {
   const ProviderSmartPortfolioSection({
     super.key,
     this.isOwner = true,
-    this.showSimulationControls = true,
+    this.syncOnMount = true,
   });
 
   final bool isOwner;
-  final bool showSimulationControls;
+  final bool syncOnMount;
+
+  @override
+  State<ProviderSmartPortfolioSection> createState() =>
+      _ProviderSmartPortfolioSectionState();
+}
+
+class _ProviderSmartPortfolioSectionState
+    extends State<ProviderSmartPortfolioSection> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.syncOnMount) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ProviderPortfolioStore.instance.syncFromSupabase();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final store = ProviderPortfolioStore.instance;
+    final tk = context.tk;
+    final isOwner = widget.isOwner;
+
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
         final state = store.state;
-        final tk = context.tk;
         final topThree = state.automaticTopThree;
         final curated = state.curatedPortfolioServices;
+        final totalCount = state.totalCompletedCount;
+        final unlocked = state.isAddFromHistoryUnlocked;
+
+        // Se for visão pública do Cliente e o profissional ainda não tiver nenhum
+        // serviço 100% liquidado pós-proteção, exibe estado informativo enxuto.
+        if (!isOwner && topThree.isEmpty && curated.isEmpty) {
+          return Container(
+            key: const ValueKey('client-public-portfolio-empty'),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: tk.surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: tk.border),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.verified_user_outlined,
+                  color: tk.providerAccent,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Profissional com identidade e biometria verificadas. '
+                    'Os próximos serviços concluídos aparecerão neste portfólio.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.38,
+                      color: tk.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Banner Explicativo no Topo
+            // =================================================================
+            // CABEÇALHO DO PORTFÓLIO + ACESSO AO HISTÓRICO (APENAS PROFISSIONAL)
+            // =================================================================
             Container(
-              key: const ValueKey('portfolio-explanatory-banner'),
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: tk.providerSoft,
-                borderRadius: BorderRadius.circular(16),
+                gradient: LinearGradient(
+                  colors: [
+                    tk.providerSoft,
+                    tk.surface,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: tk.providerAccent.withValues(alpha: 0.35),
                 ),
               ),
-              child: Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.verified_user_rounded,
-                    color: tk.providerAccent,
-                    size: 22,
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: tk.providerAccent,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.workspace_premium_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isOwner
+                                  ? 'Meu Portfólio Auditado'
+                                  : 'Portfólio de Serviços Verificados',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 17,
+                                color: tk.text,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              isOwner
+                                  ? '$totalCount serviço(s) 100% liquidado(s) • Top 3 recentes + até $kMaxCuratedPortfolioServices destaques'
+                                  : '${topThree.length + curated.length} serviço(s) verificado(s) e concluído(s) na plataforma',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: tk.providerAccent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isOwner)
+                        OutlinedButton.icon(
+                          key: const ValueKey('btn-open-full-history'),
+                          onPressed: () =>
+                              ProviderFullHistoryScreen.open(context),
+                          icon: const Icon(Icons.history_edu_rounded, size: 17),
+                          label: Text(
+                            'Histórico (${state.totalHistoryRecordsCount})',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Seu Portfólio exibe automaticamente os 3 últimos serviços validados pelo código PIN do cliente. '
-                      'A partir do seu 4º serviço concluído, os serviços anteriores ficam salvos para sempre no seu '
-                      'Histórico de Serviços Prestados, e você pode escolher até 3 deles (1 por vez) para destacar aqui.',
-                      style: TextStyle(
-                        fontSize: 12.8,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
-                        color: tk.text,
+                  const SizedBox(height: 10),
+                  Text(
+                    isOwner
+                        ? 'Apenas serviços reais cujo período de Proteção Pós-Serviço já foi concluído e com 100% do pagamento recebido entram no Meu Portfólio. '
+                            'Os 3 mais recentes entram automaticamente no topo (Pilha LIFO) e, a partir do 4º serviço, você pode escolher até $kMaxCuratedPortfolioServices destaques do seu Histórico.'
+                        : 'Toque em qualquer serviço abaixo para ver o que foi solicitado, a solução técnica aplicada pelo profissional, as notas complementares e deslizar pelas fotos.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: tk.textMuted,
+                    ),
+                  ),
+                  if (isOwner && state.underProtectionServices.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    InkWell(
+                      onTap: () => ProviderFullHistoryScreen.open(
+                        context,
+                        initialFilter: 'protection',
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: tk.infoSoft,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: tk.info.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.shield_moon_rounded,
+                              size: 17,
+                              color: tk.info,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${state.underProtectionServices.length} serviço(s) Sob Proteção Pós-Serviço (Em Cobertura Técnica & Maturação) — entrarão no Portfólio após 100% da liquidação.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: tk.text,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: tk.info,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-
-            // 2. Acesso rápido ao "Histórico de Serviços Prestados" + Controles de Simulação PIN
-            AppCard(
-              key: const ValueKey('open-full-history-card'),
-              onTap: () => ProviderFullHistoryScreen.open(context),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: tk.infoSoft,
-                    child: Icon(Icons.history_edu_rounded, color: tk.info),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Histórico de Serviços Prestados',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15.5,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${state.totalCompletedCount} serviços validados via PIN • Registro permanente imutável',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            color: tk.textMuted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  StatusChip(
-                    'Ver todos (${state.totalCompletedCount})',
-                    color: tk.info,
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(Icons.chevron_right_rounded, color: tk.textMuted),
-                ],
-              ),
-            ),
-
-            if (isOwner && showSimulationControls) ...[
-              const SizedBox(height: 10),
-              _PinSimulationToolbar(state: state),
-            ],
 
             const SizedBox(height: 18),
 
-            // 3. Seção 1 — "Últimos 3 Serviços Realizados (Atualização Automática via PIN)"
+            // =================================================================
+            // SEÇÃO 1: ÚLTIMOS 3 SERVIÇOS REALIZADOS (PILHA LIFO AUTOMÁTICA)
+            // =================================================================
             Row(
               children: [
-                Icon(Icons.workspace_premium_rounded, size: 20, color: tk.providerAccent),
-                const SizedBox(width: 8),
-                const Expanded(
+                Icon(
+                  Icons.bolt_rounded,
+                  color: tk.providerAccent,
+                  size: 20,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
                   child: Text(
-                    'Últimos 3 Serviços Realizados (Atualização Automática via PIN)',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                    isOwner
+                        ? 'Últimos 3 Serviços Realizados (Automático)'
+                        : 'Serviços Recentes Verificados',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15.5,
+                      color: tk.text,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tk.providerSoft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${topThree.length}/$kAutomaticPortfolioTopCount',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w900,
+                      color: tk.providerAccent,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
-              'Sempre que um serviço é finalizado com o PIN do cliente, ele entra automaticamente em #1.',
+              isOwner
+                  ? 'Atualizado automaticamente assim que um serviço conclui o período Sob Proteção Pós-Serviço e 100% do pagamento é recebido.'
+                  : 'Registros reais validados presencialmente na conclusão do atendimento.',
               style: TextStyle(fontSize: 12.5, color: tk.textMuted),
             ),
             const SizedBox(height: 10),
 
             if (topThree.isEmpty)
-              AppCard(
-                key: const ValueKey('portfolio-top3-empty'),
+              Container(
+                key: const ValueKey('portfolio-empty-top3-card'),
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: tk.border),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Nenhum serviço validado por PIN ainda',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Assim que você concluir seu 1º atendimento inserindo o código PIN do cliente, ele aparecerá automaticamente aqui.',
-                      style: TextStyle(color: tk.textMuted, fontSize: 13),
-                    ),
-                  ],
-                ),
-              )
-            else
-              for (var i = 0; i < topThree.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: CompletedServicePortfolioCard(
-                    key: ValueKey('portfolio-top3-card-$i-${topThree[i].id}'),
-                    service: topThree[i],
-                    positionBadge: i == 0 ? '#1 Mais Recente' : '#${i + 1}',
-                    isAutomaticTopThree: true,
-                    onTap: () => PortfolioServiceDetailSheet.show(
-                      context,
-                      serviceId: topThree[i].id,
-                    ),
-                  ),
-                ),
-
-            const SizedBox(height: 18),
-
-            // 4. Seção 2 — "Destaques Escolhidos do Meu Histórico (Até 3 serviços)"
-            Row(
-              children: [
-                Icon(Icons.push_pin_rounded, size: 20, color: tk.providerAccent),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Destaques Escolhidos do Meu Histórico (Até 3 serviços)',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                  ),
-                ),
-                StatusChip(
-                  '${curated.length}/3',
-                  color: tk.providerAccent,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            if (!state.isAddFromHistoryUnlocked)
-              // REGRA ESTRITA: Quando totalCompletedCount <= 3, NÃO renderizar o botão de adicionar!
-              Container(
-                key: const ValueKey('portfolio-curated-locked-card'),
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: tk.warningSoft,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: tk.warningInk.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.lock_clock_rounded, color: tk.warningInk, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Conclua seu 4º serviço (atualmente ${state.totalCompletedCount}/3 nos últimos serviços) '
-                        'para desbloquear a escolha de até 3 serviços adicionais do seu Histórico.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.38,
-                          fontWeight: FontWeight.w700,
-                          color: tk.warningInk,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.verified_outlined,
+                          color: tk.providerAccent,
+                          size: 22,
                         ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Sua vitrine automática está pronta para o 1º serviço 100% liquidado',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 14,
+                              color: tk.text,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Nenhum dado fictício é exibido aqui. Assim que você concluir um serviço real com PIN do cliente, finalizar o período Sob Proteção Pós-Serviço e receber 100% do pagamento, ele entrará automaticamente na posição #1 desta pilha.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: tk.textMuted,
                       ),
                     ),
                   ],
                 ),
               )
-            else ...[
-              if (curated.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    'Você já desbloqueou o Histórico! Escolha até 3 serviços anteriores (1 por vez) para destacar na sua vitrine.',
-                    style: TextStyle(fontSize: 13, color: tk.textMuted),
+            else
+              for (var i = 0; i < topThree.length; i++) ...[
+                CompletedServicePortfolioCard(
+                  key: ValueKey('portfolio-top3-card-$i-${topThree[i].id}'),
+                  service: topThree[i],
+                  positionBadge: isOwner
+                      ? '#${i + 1} Mais Recente (Automático)'
+                      : 'Serviço Verificado #${i + 1}',
+                  isAutomaticTopThree: true,
+                  showPrice: isOwner,
+                  onTap: () => PortfolioServiceDetailSheet.show(
+                    context,
+                    serviceId: topThree[i].id,
+                    isOwner: isOwner,
                   ),
                 ),
-              for (var i = 0; i < curated.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: CompletedServicePortfolioCard(
-                    key: ValueKey('portfolio-curated-card-$i-${curated[i].id}'),
-                    service: curated[i],
-                    positionBadge: 'Destaque Escolhido ${i + 1}/3',
-                    isAutomaticTopThree: false,
-                    onTap: () => PortfolioServiceDetailSheet.show(
-                      context,
-                      serviceId: curated[i].id,
-                    ),
-                    onRemoveFromPortfolio: isOwner
-                        ? () {
-                            store.removeCuratedServiceFromPortfolio(
-                              curated[i].id,
-                            );
-                            showSnack(
-                              context,
-                              'Serviço removido dos destaques (continua salvo no seu Histórico).',
-                            );
-                          }
-                        : null,
-                    onSwapFromHistory: (isOwner && state.availableToCurate.isNotEmpty)
-                        ? () => _openHistoryPickerSheet(
-                              context,
-                              swapOldServiceId: curated[i].id,
-                            )
-                        : null,
+                const SizedBox(height: 10),
+              ],
+
+            const SizedBox(height: 10),
+
+            // =================================================================
+            // SEÇÃO 2: ATÉ 5 DESTAQUES ESCOLHIDOS PELO PROFISSIONAL (A PARTIR DO 4º)
+            // =================================================================
+            if (isOwner || curated.isNotEmpty) ...[
+              Row(
+                children: [
+                  Icon(
+                    Icons.stars_rounded,
+                    color: tk.warning,
+                    size: 20,
                   ),
-                ),
-              if (isOwner && state.canAddMoreCuratedServices)
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    key: const ValueKey('btn-add-from-history-one-by-one'),
-                    onPressed: () => _openHistoryPickerSheet(context),
-                    icon: const Icon(Icons.add_circle_outline_rounded),
-                    label: Text(
-                      'Adicionar serviço do Histórico (+1 por vez • ${curated.length}/3)',
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      isOwner
+                          ? 'Destaques Escolhidos do Meu Histórico (Até $kMaxCuratedPortfolioServices serviços)'
+                          : 'Destaques Selecionados pelo Especialista',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15.5,
+                        color: tk.text,
+                      ),
                     ),
                   ),
-                ),
+                  if (isOwner)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: unlocked ? tk.successSoft : tk.surface,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: unlocked
+                              ? tk.success.withValues(alpha: 0.4)
+                              : tk.border,
+                        ),
+                      ),
+                      child: Text(
+                        unlocked
+                            ? '${curated.length}/$kMaxCuratedPortfolioServices escolhidos'
+                            : 'Desbloqueia no 4º serviço',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w800,
+                          color: unlocked ? tk.success : tk.textMuted,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (!unlocked && isOwner)
+                Container(
+                  key: const ValueKey('portfolio-curated-locked-card'),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: tk.border),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.lock_clock_rounded,
+                        color: tk.textMuted,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Você possui atualmente $totalCount serviço(s) 100% liquidado(s) (faltam ${(4 - totalCount).clamp(0, 4)} para liberar esta seção). '
+                          'Assim que concluir e liquidar o 4º serviço, o 1º sairá dos 3 mais recentes, ficará salvo no Histórico de Serviços Prestados e você poderá escolher até $kMaxCuratedPortfolioServices serviços para destacar aqui.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            height: 1.4,
+                            color: tk.textMuted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                if (isOwner)
+                  Text(
+                    'Escolha até $kMaxCuratedPortfolioServices serviços concluídos e 100% pagos que já saíram dos 3 últimos para manter fixados na sua vitrine pública.',
+                    style: TextStyle(fontSize: 12.5, color: tk.textMuted),
+                  ),
+                const SizedBox(height: 10),
+                if (curated.isEmpty && isOwner)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: tk.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: tk.border),
+                    ),
+                    child: Text(
+                      'Nenhum serviço extra destacado no momento. Use o botão abaixo para escolher até $kMaxCuratedPortfolioServices serviços do seu Histórico de Serviços Prestados.',
+                      style: TextStyle(fontSize: 12.5, color: tk.textMuted),
+                    ),
+                  )
+                else
+                  for (var i = 0; i < curated.length; i++) ...[
+                    CompletedServicePortfolioCard(
+                      key: ValueKey('portfolio-curated-card-$i-${curated[i].id}'),
+                      service: curated[i],
+                      positionBadge: isOwner
+                          ? 'Destaque Escolhido ${i + 1}/$kMaxCuratedPortfolioServices'
+                          : 'Destaque do Especialista',
+                      isAutomaticTopThree: false,
+                      showPrice: isOwner,
+                      onTap: () => PortfolioServiceDetailSheet.show(
+                        context,
+                        serviceId: curated[i].id,
+                        isOwner: isOwner,
+                      ),
+                      onSwapFromHistory:
+                          isOwner && state.availableToCurate.isNotEmpty
+                              ? () => _showHistoryPickerSheet(
+                                    context,
+                                    replaceServiceId: curated[i].id,
+                                  )
+                              : null,
+                      onRemoveFromPortfolio: isOwner
+                          ? () {
+                              store.removeCuratedServiceFromPortfolio(
+                                curated[i].id,
+                              );
+                              showSnack(
+                                context,
+                                'Serviço removido dos destaques (continua salvo no seu Histórico Permanente).',
+                              );
+                            }
+                          : null,
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                if (isOwner && state.canAddMoreCuratedServices)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonalIcon(
+                      key: const ValueKey('btn-add-from-history-one-by-one'),
+                      onPressed: () => _showHistoryPickerSheet(context),
+                      icon: const Icon(Icons.add_circle_outline_rounded),
+                      label: Text(
+                        'Escolher +1 Serviço do Histórico (${curated.length}/$kMaxCuratedPortfolioServices)',
+                      ),
+                    ),
+                  ),
+              ],
             ],
           ],
         );
@@ -291,250 +532,102 @@ class ProviderSmartPortfolioSection extends StatelessWidget {
     );
   }
 
-  Future<void> _openHistoryPickerSheet(
+  Future<void> _showHistoryPickerSheet(
     BuildContext context, {
-    String? swapOldServiceId,
+    String? replaceServiceId,
   }) async {
+    final store = ProviderPortfolioStore.instance;
+    final available = store.state.availableToCurate;
+    if (available.isEmpty) {
+      showSnack(
+        context,
+        'Todos os serviços elegíveis do Histórico já estão exibidos no Portfólio.',
+      );
+      return;
+    }
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: true,
-      builder: (ctx) {
-        final store = ProviderPortfolioStore.instance;
-        return ListenableBuilder(
-          listenable: store,
-          builder: (context, _) {
-            final state = store.state;
-            final available = state.availableToCurate;
-            final tk = context.tk;
-            return FractionallySizedBox(
-              heightFactor: 0.78,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      swapOldServiceId != null
-                          ? 'Trocar por outro serviço do Histórico'
-                          : 'Escolher 1 serviço do Histórico (${state.curatedPortfolioServices.length}/3)',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Apenas serviços concluídos que já saíram dos 3 mais recentes aparecem aqui. Selecione 1 por vez:',
-                      style: TextStyle(fontSize: 13, color: tk.textMuted),
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: available.isEmpty
-                          ? const EmptyView(
-                              icon: Icons.inventory_2_outlined,
-                              title: 'Nenhum outro serviço elegível disponível',
-                              subtitle:
-                                  'Conclua novos serviços com o PIN do cliente para ampliar seu Histórico.',
-                            )
-                          : ListView.separated(
-                              itemCount: available.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, i) {
-                                final s = available[i];
-                                return AppCard(
-                                  key: ValueKey('picker-eligible-item-${s.id}'),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Wrap(
-                                        spacing: 8,
-                                        runSpacing: 6,
-                                        children: [
-                                          StatusChip(
-                                            s.categoryName,
-                                            color: tk.providerAccent,
-                                          ),
-                                          StatusChip(
-                                            'PIN ${s.validatedClientPin} Validado',
-                                            color: tk.success,
-                                            icon: Icons.verified_rounded,
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        s.title,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w900,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        s.detailedExecutionReport,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          color: tk.textMuted,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: FilledButton.icon(
-                                          key: ValueKey(
-                                            'confirm-pick-service-${s.id}',
-                                          ),
-                                          onPressed: () {
-                                            final ok = swapOldServiceId != null
-                                                ? store
-                                                    .swapCuratedServiceInPortfolio(
-                                                      oldServiceId:
-                                                          swapOldServiceId,
-                                                      newServiceId: s.id,
-                                                    )
-                                                : store
-                                                    .addServiceFromHistoryToPortfolio(
-                                                      s.id,
-                                                    );
-                                            Navigator.of(ctx).pop();
-                                            if (ok && context.mounted) {
-                                              showSnack(
-                                                context,
-                                                swapOldServiceId != null
-                                                    ? 'Destaque substituído com sucesso no Meu Portfólio!'
-                                                    : 'Serviço adicionado com sucesso ao Meu Portfólio (+1)!',
-                                              );
-                                            }
-                                          },
-                                          icon: const Icon(
-                                            Icons.add_task_rounded,
-                                            size: 18,
-                                          ),
-                                          label: Text(
-                                            swapOldServiceId != null
-                                                ? 'Substituir por este serviço'
-                                                : 'Destacar este serviço (+1)',
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-                  ],
+      builder: (sheetCtx) {
+        final tk = sheetCtx.tk;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  replaceServiceId == null
+                      ? 'Escolher Serviço do Histórico (1 por vez • até $kMaxCuratedPortfolioServices)'
+                      : 'Substituir Destaque por Outro do Histórico',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 17,
+                    color: tk.text,
+                  ),
                 ),
-              ),
-            );
-          },
+                const SizedBox(height: 4),
+                Text(
+                  'Apenas serviços Concluídos & 100% Liquidados (pós-proteção) que já saíram dos 3 últimos podem ser escolhidos.',
+                  style: TextStyle(fontSize: 12.5, color: tk.textMuted),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: available.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (_, idx) {
+                      final item = available[idx];
+                      return CompletedServicePortfolioCard(
+                        key: ValueKey('history-picker-item-${item.id}'),
+                        service: item,
+                        positionBadge: 'Elegível no Histórico',
+                        isAutomaticTopThree: false,
+                        showPrice: true,
+                        onTap: () {
+                          final bool ok;
+                          if (replaceServiceId != null) {
+                            ok = store.swapCuratedServiceInPortfolio(
+                              oldServiceId: replaceServiceId,
+                              newServiceId: item.id,
+                            );
+                          } else {
+                            ok = store.addServiceFromHistoryToPortfolio(
+                              item.id,
+                            );
+                          }
+                          Navigator.of(sheetCtx).pop();
+                          if (ok) {
+                            showSnack(
+                              context,
+                              replaceServiceId != null
+                                  ? 'Destaque substituído com sucesso no Meu Portfólio!'
+                                  : 'Serviço adicionado com sucesso ao Meu Portfólio!',
+                            );
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
   }
 }
 
-/// Barra de simulação interativa para testar em tempo real a conclusão via PIN
-/// (1º, 2º, 3º, 4º, 5º+ serviço) e a trava antes do 4º serviço.
-class _PinSimulationToolbar extends StatelessWidget {
-  const _PinSimulationToolbar({required this.state});
-
-  final ProviderPortfolioState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = context.tk;
-    final store = ProviderPortfolioStore.instance;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: tk.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: tk.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.pin_rounded, size: 18, color: tk.providerAccent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Simulador de Gatilho por PIN do Cliente (${state.totalCompletedCount} concluídos)',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12.8,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonalIcon(
-                key: const ValueKey('btn-simulate-next-pin-service'),
-                onPressed: () {
-                  final added = store.simulateNextPinCompletedService();
-                  showSnack(
-                    context,
-                    'Novo serviço validado com PIN ${added.validatedClientPin}! Entrou em #1 no Meu Portfólio.',
-                  );
-                },
-                icon: const Icon(Icons.verified_rounded, size: 17),
-                label: Text(
-                  'Concluir ${state.totalCompletedCount + 1}º Serviço com PIN',
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const ValueKey('btn-simulate-3-services-locked'),
-                onPressed: () {
-                  store.resetToCount(3);
-                  showSnack(
-                    context,
-                    'Estado ajustado para 3 serviços concluídos (escolha do Histórico bloqueada até o 4º).',
-                  );
-                },
-                icon: const Icon(Icons.looks_3_outlined, size: 17),
-                label: const Text(
-                  'Testar com 3 serviços',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const ValueKey('btn-simulate-5-services-unlocked'),
-                onPressed: () {
-                  store.resetToCount(5);
-                  showSnack(
-                    context,
-                    'Estado ajustado para 5 serviços concluídos (Top 3 + 2 elegíveis no Histórico).',
-                  );
-                },
-                icon: const Icon(Icons.looks_5_outlined, size: 17),
-                label: const Text(
-                  'Testar com 5 serviços',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Card rico de um serviço concluído e validado via PIN (usado no Portfólio e no Histórico).
+/// Card de serviço exibido no Meu Portfólio e no Histórico de Serviços Prestados.
+///
+/// Regra de Sigilo para o Usuário Cliente (`showPrice == false`):
+/// - Quando `showPrice == false`, nenhum valor monetário (`R$`) é renderizado e
+///   nenhum aviso de ocultação é exibido.
 class CompletedServicePortfolioCard extends StatelessWidget {
   const CompletedServicePortfolioCard({
     super.key,
@@ -542,178 +635,351 @@ class CompletedServicePortfolioCard extends StatelessWidget {
     required this.positionBadge,
     required this.isAutomaticTopThree,
     required this.onTap,
-    this.onRemoveFromPortfolio,
+    this.showPrice = true,
     this.onSwapFromHistory,
+    this.onRemoveFromPortfolio,
   });
 
   final CompletedServiceRecord service;
   final String positionBadge;
   final bool isAutomaticTopThree;
+  final bool showPrice;
   final VoidCallback onTap;
-  final VoidCallback? onRemoveFromPortfolio;
   final VoidCallback? onSwapFromHistory;
+  final VoidCallback? onRemoveFromPortfolio;
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return AppCard(
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              StatusChip(
-                positionBadge,
-                color: isAutomaticTopThree ? tk.providerAccent : tk.info,
-                icon: isAutomaticTopThree
-                    ? Icons.auto_awesome_rounded
-                    : Icons.push_pin_rounded,
-              ),
-              StatusChip(
-                'PIN Validado (${service.validatedClientPin})',
-                color: tk.success,
-                icon: Icons.verified_rounded,
-              ),
-              StatusChip(
-                service.categoryName,
-                color: tk.textMuted,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            service.title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 15.5,
-              height: 1.28,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            service.detailedExecutionReport,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              color: tk.textMuted,
-              height: 1.38,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.event_available_rounded, size: 15, color: tk.textMuted),
-                  const SizedBox(width: 4),
-                  Text(
-                    dateShort(service.completedAt),
-                    style: TextStyle(fontSize: 12, color: tk.textMuted, fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.place_outlined, size: 15, color: tk.textMuted),
-                  const SizedBox(width: 4),
-                  Text(
-                    service.cityAndState,
-                    style: TextStyle(fontSize: 12, color: tk.textMuted, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.payments_outlined, size: 15, color: tk.success),
-                  const SizedBox(width: 4),
-                  Text(
-                    brl(service.serviceValue),
-                    style: TextStyle(fontSize: 12, color: tk.successInk, fontWeight: FontWeight.w800),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
+    final stage = service.lifecycleStage;
 
-          // Bloco resumido de Avaliação do Cliente (Sincronização Reativa)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: service.isReviewedByClient ? tk.successSoft : tk.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: service.isReviewedByClient
-                    ? tk.success.withValues(alpha: 0.35)
-                    : tk.border,
-              ),
+    final (Color stageBg, Color stageFg, IconData stageIcon) = switch (stage) {
+      ServiceHistoryLifecycleStage.settledAndPaid => (
+          isAutomaticTopThree ? tk.providerSoft : tk.successSoft,
+          isAutomaticTopThree ? tk.providerAccent : tk.success,
+          isAutomaticTopThree ? Icons.bolt_rounded : Icons.verified_rounded,
+        ),
+      ServiceHistoryLifecycleStage.underPostServiceProtection => (
+          tk.infoSoft,
+          tk.info,
+          Icons.shield_moon_rounded,
+        ),
+      ServiceHistoryLifecycleStage.inMediation => (
+          tk.warningSoft,
+          tk.warning,
+          Icons.gavel_rounded,
+        ),
+      ServiceHistoryLifecycleStage.canceled => (
+          tk.dangerSoft,
+          tk.danger,
+          Icons.cancel_outlined,
+        ),
+    };
+
+    return Material(
+      color: tk.surface,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isAutomaticTopThree
+                  ? tk.providerAccent.withValues(alpha: 0.4)
+                  : tk.border,
             ),
-            child: service.isReviewedByClient
-                ? Column(
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: stageBg,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(stageIcon, size: 13, color: stageFg),
+                        const SizedBox(width: 4),
+                        Text(
+                          positionBadge,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: stageFg,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tk.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: tk.border),
+                    ),
+                    child: Text(
+                      service.categoryName,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: tk.text,
+                      ),
+                    ),
+                  ),
+                  if (stage != ServiceHistoryLifecycleStage.canceled)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tk.successSoft,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.verified_user_rounded,
+                            size: 13,
+                            color: tk.success,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            showPrice
+                                ? 'PIN ${service.validatedClientPin} Validado'
+                                : 'Conclusão Verificada',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: tk.success,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                service.title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: tk.text,
+                ),
+              ),
+              if (service.hasClientRequestedDescription) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Solicitado: ${service.clientRequestedDescription}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: tk.textMuted,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 4),
+              Text(
+                service.detailedExecutionReport,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: tk.textMuted,
+                ),
+              ),
+              if (service.hasComplementaryTechnicalNotes) ...[
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.note_alt_outlined,
+                      size: 14,
+                      color: tk.providerAccent,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Notas Técnicas Complementares: ${service.complementaryTechnicalNotes}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: tk.providerAccent,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 10),
+
+              // ===============================================================
+              // BLOCO DE AVALIAÇÃO DO CLIENTE OU STATUS DO HISTÓRICO
+              // ===============================================================
+              if (stage == ServiceHistoryLifecycleStage.canceled)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tk.dangerSoft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Cancelado (${service.canceledByRole == 'client' ? 'pelo Cliente' : (service.canceledByRole == 'provider' ? 'pelo Profissional' : 'Sistema')}): '
+                    '${service.cancelReason ?? 'Cancelamento registrado no histórico.'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: tk.danger,
+                    ),
+                  ),
+                )
+              else if (stage == ServiceHistoryLifecycleStage.inMediation)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tk.warningSoft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Em Mediação Técnica: ${service.mediationReason ?? 'Análise de evidências em andamento na plataforma.'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: tk.warning,
+                    ),
+                  ),
+                )
+              else if (stage ==
+                  ServiceHistoryLifecycleStage.underPostServiceProtection)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tk.infoSoft,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.shield_moon_rounded, size: 16, color: tk.info),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sob Proteção Pós-Serviço (Em Cobertura Técnica & Maturação) • '
+                          '${service.protectionEndsAt != null ? 'Liberação 100% em ${dateShort(service.protectionEndsAt!)}' : 'Aguardando conclusão da janela de proteção para entrar no Portfólio'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: tk.text,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (service.isReviewedByClient)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: tk.border),
+                  ),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.star_rounded, size: 17, color: tk.warningInk),
+                          Icon(
+                            Icons.star_rounded,
+                            color: tk.warning,
+                            size: 16,
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              'Avaliação do cliente: ${(service.clientRating ?? 5.0).toStringAsFixed(1).replaceAll('.', ',')} ★',
+                              '${(service.clientRating ?? 5.0).toStringAsFixed(1)} ★ • Avaliação de ${service.clientDisplayName ?? 'Cliente Verificado'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
-                                fontSize: 12.5,
-                                color: tk.successInk,
+                                fontSize: 12,
+                                color: tk.text,
                               ),
                             ),
                           ),
-                          if (service.clientDisplayName != null) ...[
-                            const SizedBox(width: 6),
-                            Text(
-                              service.clientDisplayName!,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: tk.textMuted,
-                              ),
-                            ),
-                          ],
                         ],
                       ),
-                      if ((service.clientReviewComment ?? '').isNotEmpty) ...[
+                      if ((service.clientReviewComment ?? '')
+                          .trim()
+                          .isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
                           '"${service.clientReviewComment}"',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12.2,
+                            fontSize: 12,
                             fontStyle: FontStyle.italic,
                             color: tk.text,
                           ),
                         ),
                       ],
                     ],
-                  )
-                : Row(
+                  ),
+                )
+              else
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: tk.border),
+                  ),
+                  child: Row(
                     children: [
-                      Icon(Icons.hourglass_top_rounded, size: 16, color: tk.warningInk),
+                      Icon(
+                        Icons.schedule_rounded,
+                        size: 15,
+                        color: tk.textMuted,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '⏳ Aguardando avaliação do cliente (sincroniza automaticamente quando enviada)',
+                          'Concluído e validado (${service.clientDisplayName ?? 'Cliente'}) • Aguardando avaliação',
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 11.5,
                             fontWeight: FontWeight.w700,
                             color: tk.textMuted,
                           ),
@@ -721,443 +987,952 @@ class CompletedServicePortfolioCard extends StatelessWidget {
                       ),
                     ],
                   ),
-          ),
-
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Toque para ver relatório técnico completo e fotos',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: tk.providerAccent,
-                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Icon(Icons.open_in_new_rounded, size: 15, color: tk.providerAccent),
-            ],
-          ),
 
-          if (onRemoveFromPortfolio != null || onSwapFromHistory != null) ...[
-            const Divider(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                if (onSwapFromHistory != null)
-                  TextButton.icon(
-                    key: ValueKey('btn-swap-curated-${service.id}'),
-                    onPressed: onSwapFromHistory,
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 16),
-                    label: const Text(
-                      'Trocar por outro do Histórico',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                if (onRemoveFromPortfolio != null)
-                  TextButton.icon(
-                    key: ValueKey('btn-remove-curated-${service.id}'),
-                    onPressed: onRemoveFromPortfolio,
-                    icon: Icon(Icons.bookmark_remove_outlined, size: 16, color: tk.danger),
-                    label: Text(
-                      'Remover do Portfólio (mantém no Histórico)',
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.place_outlined, size: 14, color: tk.textMuted),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      '${service.cityAndState} • ${dateShort(service.completedAt)}',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: tk.danger,
+                        fontSize: 11.5,
+                        color: tk.textMuted,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
+                  if (service.beforeAfterPhotoCaptionsOrUrls.isNotEmpty) ...[
+                    Icon(
+                      Icons.photo_library_outlined,
+                      size: 14,
+                      color: tk.providerAccent,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${service.beforeAfterPhotoCaptionsOrUrls.length} foto(s)',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: tk.providerAccent,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  // Omissão silenciosa de valores para o Usuário Cliente (`showPrice == false`)
+                  if (showPrice) ...[
+                    Text(
+                      brl(service.serviceValue),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13.5,
+                        color: tk.text,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    'Ver detalhes',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: tk.providerAccent,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: tk.providerAccent,
+                  ),
+                ],
+              ),
+
+              if (onSwapFromHistory != null ||
+                  onRemoveFromPortfolio != null) ...[
+                const Divider(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (onSwapFromHistory != null)
+                      TextButton.icon(
+                        onPressed: onSwapFromHistory,
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                        label: const Text('Trocar por outro do Histórico'),
+                      ),
+                    if (onRemoveFromPortfolio != null)
+                      TextButton.icon(
+                        onPressed: onRemoveFromPortfolio,
+                        icon: Icon(
+                          Icons.remove_circle_outline_rounded,
+                          size: 16,
+                          color: tk.danger,
+                        ),
+                        label: Text(
+                          'Tirar da Vitrine',
+                          style: TextStyle(color: tk.danger),
+                        ),
+                      ),
+                  ],
+                ),
               ],
-            ),
-          ],
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-/// Modal detalhado ao clicar em qualquer serviço do Portfólio ou do Histórico de Serviços Prestados.
-/// Exibe todas as informações do serviço realizado + avaliação do cliente (ou simulador de avaliação futura).
-class PortfolioServiceDetailSheet extends StatelessWidget {
+/// Modal detalhado de um serviço do Portfólio ou do Histórico:
+/// 1. O que foi solicitado pelo cliente (`clientRequestedDescription` — imutável);
+/// 2. A solução técnica aplicada pelo profissional na conclusão (`detailedExecutionReport` — imutável);
+/// 3. Galeria de fotos deslizável da 1ª à última foto (`PageView.builder` + `InteractiveViewer` — imutável);
+/// 4. "Notas Técnicas Complementares" (`complementaryTechnicalNotes` — editável apenas pelo profissional dono).
+///
+/// Quando `isOwner == false` (visão do Cliente):
+/// - Oculta silenciosamente 100% dos valores monetários (sem exibir mensagem de ocultação);
+/// - Exibe tudo em modo somente leitura limpo (sem botões de edição e sem avisos de restrição).
+class PortfolioServiceDetailSheet extends StatefulWidget {
   const PortfolioServiceDetailSheet({
     super.key,
     required this.serviceId,
+    this.isOwner = true,
   });
 
   final String serviceId;
+  final bool isOwner;
 
   static Future<void> show(
     BuildContext context, {
     required String serviceId,
+    bool isOwner = true,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       showDragHandle: true,
       builder: (_) => FractionallySizedBox(
         heightFactor: 0.90,
-        child: PortfolioServiceDetailSheet(serviceId: serviceId),
+        child: PortfolioServiceDetailSheet(
+          serviceId: serviceId,
+          isOwner: isOwner,
+        ),
       ),
     );
   }
 
   @override
+  State<PortfolioServiceDetailSheet> createState() =>
+      _PortfolioServiceDetailSheetState();
+}
+
+class _PortfolioServiceDetailSheetState
+    extends State<PortfolioServiceDetailSheet> {
+  int _currentPhotoIndex = 0;
+  late final PageController _pageController = PageController();
+  bool _editingComplementaryNotes = false;
+  final TextEditingController _notesController = TextEditingController();
+  bool _savingNotes = false;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveComplementaryNotes(CompletedServiceRecord service) async {
+    setState(() => _savingNotes = true);
+    try {
+      await ProviderPortfolioStore.instance.updateComplementaryTechnicalNotes(
+        serviceId: service.id,
+        notes: _notesController.text,
+      );
+      if (mounted) {
+        setState(() => _editingComplementaryNotes = false);
+        showSnack(
+          context,
+          'Notas Técnicas Complementares atualizadas no seu Portfólio!',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingNotes = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final store = ProviderPortfolioStore.instance;
+    final tk = context.tk;
+    final isOwner = widget.isOwner;
+
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
-        final tk = context.tk;
-        final state = store.state;
-        final service = state.fullHistory
-            .where((s) => s.id == serviceId)
-            .firstOrNull;
+        final service = store.state.findById(widget.serviceId);
         if (service == null) {
           return const Center(child: Text('Serviço não encontrado.'));
         }
-        final inTop3 = state.isInAutomaticTopThree(service.id);
-        final inCurated = state.isInCuratedPortfolio(service.id);
 
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      StatusChip(
-                        service.categoryName,
-                        color: tk.providerAccent,
-                      ),
-                      if (inTop3)
-                        StatusChip(
-                          'Top 3 Automático',
-                          color: tk.providerAccent,
-                          icon: Icons.auto_awesome_rounded,
-                        ),
-                      if (inCurated)
-                        StatusChip(
-                          'Destaque Escolhido',
-                          color: tk.info,
-                          icon: Icons.push_pin_rounded,
-                        ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Fechar',
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close_rounded),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              service.title,
-              key: const ValueKey('detail-sheet-service-title'),
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                height: 1.25,
-              ),
-            ),
-            const SizedBox(height: 12),
+        final photos = service.beforeAfterPhotoCaptionsOrUrls;
 
-            // Selo de Segurança de Conclusão via PIN
-            Container(
-              key: const ValueKey('detail-sheet-pin-seal'),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: tk.successSoft,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: tk.success.withValues(alpha: 0.45)),
-              ),
-              child: Row(
+        return SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+            children: [
+              // Selos de cabeçalho
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Icon(Icons.verified_user_rounded, color: tk.success),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  Container(
+                    key: const ValueKey('detail-sheet-pin-seal'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tk.successSoft,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'Serviço concluído e validado com PIN do cliente (${service.validatedClientPin})',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 13.2,
-                            color: tk.successInk,
-                          ),
+                        Icon(
+                          Icons.verified_user_rounded,
+                          size: 15,
+                          color: tk.success,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Certificado de Garantia: ${service.warrantyCertificateCode} • Pedido ${service.orderId}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: tk.successInk,
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            isOwner
+                                ? 'Validado com PIN do Cliente (${service.validatedClientPin})'
+                                : 'Serviço Auditado & Verificado na Plataforma',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: tk.success,
+                            ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tk.providerSoft,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      service.categoryName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: tk.providerAccent,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: tk.surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: tk.border),
+                    ),
+                    child: Text(
+                      service.lifecycleStage.label,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: tk.text,
+                      ),
+                    ),
+                  ),
                 ],
               ),
-            ),
-
-            const SizedBox(height: 14),
-            AppCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _DetailMetaRow(
-                    icon: Icons.event_available_rounded,
-                    label: 'Concluído em',
-                    value: dateLong(service.completedAt),
-                  ),
-                  _DetailMetaRow(
-                    icon: Icons.place_outlined,
-                    label: 'Cidade / UF',
-                    value: service.cityAndState,
-                  ),
-                  _DetailMetaRow(
-                    icon: Icons.timer_outlined,
-                    label: 'Duração da execução',
-                    value: service.executionDurationText,
-                  ),
-                  _DetailMetaRow(
-                    icon: Icons.payments_outlined,
-                    label: 'Valor do serviço',
-                    value: brl(service.serviceValue),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 14),
-            const Text(
-              'Relatório Técnico do Serviço Realizado',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-            ),
-            const SizedBox(height: 6),
-            AppCard(
-              child: Text(
-                service.detailedExecutionReport,
-                key: const ValueKey('detail-sheet-execution-report'),
-                style: const TextStyle(height: 1.45, fontSize: 14),
-              ),
-            ),
-
-            if (service.toolsAndMaterialsUsed.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              const Text(
-                'Ferramentas e Materiais Utilizados',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              const SizedBox(height: 12),
+              Text(
+                service.title,
+                key: const ValueKey('detail-sheet-service-title'),
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 20,
+                  color: tk.text,
+                ),
               ),
               const SizedBox(height: 6),
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Text(
+                '${service.cityAndState} • Concluído em ${dateShort(service.completedAt)} • Certificado ${service.warrantyCertificateCode}',
+                style: TextStyle(fontSize: 12.5, color: tk.textMuted),
+              ),
+              const SizedBox(height: 16),
+
+              // ===============================================================
+              // METADADOS OPERACIONAIS (VALORES VISÍVEIS APENAS PARA O PROFISSIONAL)
+              // ===============================================================
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Row(
                   children: [
-                    for (final item in service.toolsAndMaterialsUsed)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Icon(Icons.build_circle_outlined, size: 17, color: tk.providerAccent),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                item,
-                                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
-                              ),
-                            ),
-                          ],
+                    if (isOwner) ...[
+                      Expanded(
+                        child: _MetricTile(
+                          label: 'Líquido (100% Pago)',
+                          value: brl(service.serviceValue),
                         ),
                       ),
+                      if (service.materialsAmount > 0)
+                        Expanded(
+                          child: _MetricTile(
+                            label: 'Peças (Taxa 0%)',
+                            value: brl(service.materialsAmount),
+                          ),
+                        ),
+                    ],
+                    Expanded(
+                      child: _MetricTile(
+                        label: 'Tempo de Execução',
+                        value: service.executionDurationText,
+                      ),
+                    ),
+                    Expanded(
+                      child: _MetricTile(
+                        label: 'Cliente',
+                        value: service.clientDisplayName ?? 'Verificado',
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ],
+              const SizedBox(height: 18),
 
-            if (service.beforeAfterPhotoCaptionsOrUrls.isNotEmpty) ...[
-              const SizedBox(height: 14),
-              const Text(
-                'Evidências Fotográficas (Antes e Depois)',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+              // ===============================================================
+              // 1. O QUE FOI SOLICITADO PELO CLIENTE (IMUTÁVEL)
+              // ===============================================================
+              Text(
+                'O que foi solicitado pelo Cliente',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: tk.text,
+                ),
               ),
               const SizedBox(height: 6),
-              for (final caption in service.beforeAfterPhotoCaptionsOrUrls)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: AppCard(
-                    color: tk.surface,
-                    child: Row(
-                      children: [
-                        Icon(Icons.camera_alt_rounded, color: tk.providerAccent),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            caption,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                          ),
-                        ),
-                      ],
-                    ),
+              Container(
+                key: const ValueKey('detail-sheet-client-request'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Text(
+                  service.hasClientRequestedDescription
+                      ? service.clientRequestedDescription
+                      : 'Solicitação de atendimento técnico em ${service.categoryName}: ${service.title}.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: tk.text,
                   ),
                 ),
-            ],
+              ),
+              const SizedBox(height: 18),
 
-            const SizedBox(height: 14),
-            const Text(
-              'Avaliação do Cliente sobre este Serviço',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-            ),
-            const SizedBox(height: 6),
-            if (service.isReviewedByClient)
-              AppCard(
-                key: const ValueKey('detail-sheet-client-review-card'),
-                color: tk.successSoft,
-                borderColor: tk.success.withValues(alpha: 0.4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        RatingStars(value: service.clientRating ?? 5.0, size: 20),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${(service.clientRating ?? 5.0).toStringAsFixed(1).replaceAll('.', ',')} / 5,0',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                            color: tk.successInk,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (service.clientReviewedAt != null)
-                          Text(
-                            dateShort(service.clientReviewedAt!),
-                            style: TextStyle(fontSize: 12, color: tk.textMuted),
-                          ),
-                      ],
-                    ),
-                    if ((service.clientReviewComment ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '"${service.clientReviewComment}"',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          fontWeight: FontWeight.w600,
-                        ),
+              // ===============================================================
+              // 2. SOLUÇÃO TÉCNICA APLICADA NA CONCLUSÃO (IMUTÁVEL 🔒)
+              // ===============================================================
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Solução Técnica Aplicada na Conclusão',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 15,
+                        color: tk.text,
                       ),
-                    ],
-                    if (service.clientPraiseTags.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
+                    ),
+                  ),
+                  if (isOwner)
+                    Container(
+                      key: const ValueKey('detail-sheet-immutable-lock-badge'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tk.surface,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: tk.border),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          for (final tag in service.clientPraiseTags)
-                            StatusChip(
-                              tag,
-                              color: tk.successInk,
-                              icon: Icons.thumb_up_alt_rounded,
+                          Icon(
+                            Icons.lock_outline_rounded,
+                            size: 12,
+                            color: tk.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Registro Original Imutável',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w800,
+                              color: tk.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                key: const ValueKey('detail-sheet-execution-report'),
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Text(
+                  service.detailedExecutionReport,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.45,
+                    color: tk.text,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // ===============================================================
+              // 3. NOTAS TÉCNICAS COMPLEMENTARES (EDITÁVEL APENAS PELO PROFISSIONAL)
+              // ===============================================================
+              if (isOwner || service.hasComplementaryTechnicalNotes) ...[
+                Container(
+                  key: const ValueKey('detail-sheet-complementary-notes-section'),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: tk.providerSoft.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: tk.providerAccent.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.engineering_rounded,
+                            size: 18,
+                            color: tk.providerAccent,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Notas Técnicas Complementares',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14.5,
+                                    color: tk.text,
+                                  ),
+                                ),
+                                if (isOwner)
+                                  Text(
+                                    'Adicione detalhes técnicos complementares pós-obra para destacar sua execução no Portfólio.',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: tk.textMuted,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (isOwner && !_editingComplementaryNotes)
+                            TextButton.icon(
+                              key: const ValueKey('btn-edit-complementary-notes'),
+                              onPressed: () {
+                                _notesController.text =
+                                    service.complementaryTechnicalNotes ?? '';
+                                setState(
+                                  () => _editingComplementaryNotes = true,
+                                );
+                              },
+                              icon: const Icon(Icons.edit_note_rounded, size: 18),
+                              label: Text(
+                                service.hasComplementaryTechnicalNotes
+                                    ? 'Editar'
+                                    : 'Adicionar',
+                              ),
                             ),
                         ],
                       ),
-                    ],
-                  ],
-                ),
-              )
-            else
-              AppCard(
-                key: const ValueKey('detail-sheet-pending-review-card'),
-                color: tk.warningSoft,
-                borderColor: tk.warningInk.withValues(alpha: 0.35),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.hourglass_bottom_rounded, color: tk.warningInk),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Aguardando avaliação do cliente — assim que o cliente avaliar, '
-                            'a nota e o comentário aparecerão automaticamente aqui e no Histórico.',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: tk.warningInk,
-                              height: 1.38,
-                            ),
+                      const SizedBox(height: 8),
+                      if (isOwner && _editingComplementaryNotes) ...[
+                        TextField(
+                          key: const ValueKey('input-complementary-notes'),
+                          controller: _notesController,
+                          maxLines: 4,
+                          maxLength: 2000,
+                          decoration: const InputDecoration(
+                            hintText:
+                                'Ex.: Especificação das peças aplicadas, normas técnicas ABNT atendidas e recomendações de manutenção preventiva...',
+                            border: OutlineInputBorder(),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.tonalIcon(
-                        key: const ValueKey('btn-simulate-client-review-now'),
-                        onPressed: () {
-                          store.simulateFutureClientReviewForService(service.id);
-                          showSnack(
-                            context,
-                            'Avaliação 5,0 ★ sincronizada no Meu Portfólio e no Histórico!',
-                          );
-                        },
-                        icon: const Icon(Icons.stars_rounded, size: 18),
-                        label: const Text(
-                          'Simular Avaliação do Cliente Agora (5,0 ★)',
-                          style: TextStyle(fontWeight: FontWeight.w800),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            TextButton(
+                              onPressed: _savingNotes
+                                  ? null
+                                  : () => setState(
+                                        () =>
+                                            _editingComplementaryNotes = false,
+                                      ),
+                              child: const Text('Cancelar'),
+                            ),
+                            FilledButton.icon(
+                              key: const ValueKey('btn-save-complementary-notes'),
+                              style: FilledButton.styleFrom(
+                                minimumSize: Size.zero,
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                              ),
+                              onPressed: _savingNotes
+                                  ? null
+                                  : () => _saveComplementaryNotes(service),
+                              icon: const Icon(Icons.check_rounded, size: 18),
+                              label: const Text('Salvar Notas Complementares'),
+                            ),
+                          ],
                         ),
+                      ] else if (service.hasComplementaryTechnicalNotes)
+                        Text(
+                          service.complementaryTechnicalNotes!,
+                          key: const ValueKey('text-complementary-notes-value'),
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            height: 1.45,
+                            color: tk.text,
+                          ),
+                        )
+                      else if (isOwner)
+                        Text(
+                          'Nenhuma nota complementar adicionada ainda. Toque em "Adicionar" para detalhar materiais, normas ou diferenciais deste serviço.',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            color: tk.textMuted,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+              ],
+
+              // ===============================================================
+              // 4. GALERIA DE FOTOS DESLIZÁVEL (DA 1ª À ÚLTIMA FOTO — IMUTÁVEL)
+              // ===============================================================
+              if (photos.isNotEmpty) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Fotos do Serviço (${_currentPhotoIndex + 1} de ${photos.length})',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                          color: tk.text,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      'Arraste para o lado ➔',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: tk.providerAccent,
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 230,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      PageView.builder(
+                        key: const ValueKey('detail-sheet-photo-pageview'),
+                        controller: _pageController,
+                        itemCount: photos.length,
+                        onPageChanged: (idx) =>
+                            setState(() => _currentPhotoIndex = idx),
+                        itemBuilder: (context, idx) {
+                          final item = photos[idx];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: GestureDetector(
+                              key: ValueKey('portfolio-photo-slide-$idx'),
+                              onTap: () => PortfolioFullScreenPhotoViewer.open(
+                                context,
+                                photos: photos,
+                                initialIndex: idx,
+                                serviceTitle: service.title,
+                              ),
+                              child: _PortfolioPhotoSlideCard(
+                                photoOrCaption: item,
+                                index: idx,
+                                total: photos.length,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      if (photos.length > 1 && _currentPhotoIndex > 0)
+                        Positioned(
+                          left: 8,
+                          child: IconButton.filledTonal(
+                            key: const ValueKey('btn-photo-prev'),
+                            onPressed: () => _pageController.previousPage(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                            ),
+                            icon: const Icon(Icons.chevron_left_rounded),
+                          ),
+                        ),
+                      if (photos.length > 1 &&
+                          _currentPhotoIndex < photos.length - 1)
+                        Positioned(
+                          right: 8,
+                          child: IconButton.filledTonal(
+                            key: const ValueKey('btn-photo-next'),
+                            onPressed: () => _pageController.nextPage(
+                              duration: const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                            ),
+                            icon: const Icon(Icons.chevron_right_rounded),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                if (photos.length > 1) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      for (var i = 0; i < photos.length; i++)
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: i == _currentPhotoIndex ? 20 : 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: i == _currentPhotoIndex
+                                ? tk.providerAccent
+                                : tk.border,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 18),
+              ],
+
+              if (service.toolsAndMaterialsUsed.isNotEmpty) ...[
+                Text(
+                  'Ferramental e Insumos Aplicados',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    color: tk.text,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final tool in service.toolsAndMaterialsUsed)
+                      Chip(
+                        label: Text(
+                          tool,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+              ],
+
+              // ===============================================================
+              // 5. AVALIAÇÃO REATIVA DO CLIENTE
+              // ===============================================================
+              Text(
+                'Avaliação do Cliente',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                  color: tk.text,
+                ),
               ),
-          ],
+              const SizedBox(height: 8),
+              if (service.isReviewedByClient)
+                Container(
+                  key: const ValueKey('detail-sheet-client-review-box'),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: tk.warning.withValues(alpha: 0.45),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          for (var s = 0; s < 5; s++)
+                            Icon(
+                              Icons.star_rounded,
+                              size: 18,
+                              color: s < (service.clientRating ?? 5).round()
+                                  ? tk.warning
+                                  : tk.border,
+                            ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${(service.clientRating ?? 5.0).toStringAsFixed(1)} • ${service.clientDisplayName ?? 'Cliente Verificado'}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 13.5,
+                                color: tk.text,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if ((service.clientReviewComment ?? '')
+                          .trim()
+                          .isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '"${service.clientReviewComment}"',
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            fontStyle: FontStyle.italic,
+                            height: 1.4,
+                            color: tk.text,
+                          ),
+                        ),
+                      ],
+                      if (service.clientPraiseTags.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final tag in service.clientPraiseTags)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: tk.successSoft,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  tag,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: tk.success,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: tk.border),
+                  ),
+                  child: Text(
+                    'Este serviço já foi concluído e auditado. Assim que o cliente registrar sua avaliação, a nota e o comentário aparecerão automaticamente aqui.',
+                    style: TextStyle(fontSize: 12.5, color: tk.textMuted),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
   }
 }
 
-class _DetailMetaRow extends StatelessWidget {
-  const _DetailMetaRow({
-    required this.icon,
-    required this.label,
-    required this.value,
+class _PortfolioPhotoSlideCard extends StatelessWidget {
+  const _PortfolioPhotoSlideCard({
+    required this.photoOrCaption,
+    required this.index,
+    required this.total,
   });
 
-  final IconData icon;
-  final String label;
-  final String value;
+  final String photoOrCaption;
+  final int index;
+  final int total;
+
+  bool get _isStoragePathOrUrl {
+    final p = photoOrCaption.trim();
+    return p.startsWith('http://') ||
+        p.startsWith('https://') ||
+        (p.contains('/') && !p.contains(' '));
+  }
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          Icon(icon, size: 17, color: tk.textMuted),
-          const SizedBox(width: 8),
-          Text('$label: ', style: TextStyle(color: tk.textMuted, fontSize: 13)),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+          if (_isStoragePathOrUrl)
+            SignedImage(
+              path: photoOrCaption,
+              height: 230,
+              width: double.infinity,
+              radius: 16,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    tk.surface,
+                    tk.providerSoft,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(color: tk.border),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.camera_enhance_rounded,
+                    size: 40,
+                    color: tk.providerAccent,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    photoOrCaption,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      height: 1.38,
+                      color: tk.text,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Positioned(
+            top: 10,
+            left: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.68),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                'Foto ${index + 1} de $total',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 10,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.68),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.zoom_out_map_rounded, size: 13, color: Colors.white),
+                  SizedBox(width: 4),
+                  Text(
+                    'Toque para ampliar',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -1166,15 +1941,213 @@ class _DetailMetaRow extends StatelessWidget {
   }
 }
 
-/// Tela dedicada do **"Histórico de Serviços Prestados"** (permanente e imutável).
-/// Exibe todos os serviços já realizados e validados pelo PIN do cliente,
-/// com contadores, filtros e ação direta para destacar no Meu Portfólio.
-class ProviderFullHistoryScreen extends StatefulWidget {
-  const ProviderFullHistoryScreen({super.key});
+/// Visualizador em tela cheia deslizável (`PageView.builder` + `InteractiveViewer`)
+/// permitindo navegar da 1ª até a última foto do serviço com pinça de zoom.
+class PortfolioFullScreenPhotoViewer extends StatefulWidget {
+  const PortfolioFullScreenPhotoViewer({
+    super.key,
+    required this.photos,
+    required this.initialIndex,
+    required this.serviceTitle,
+  });
 
-  static Future<void> open(BuildContext context) {
+  final List<String> photos;
+  final int initialIndex;
+  final String serviceTitle;
+
+  static Future<void> open(
+    BuildContext context, {
+    required List<String> photos,
+    required int initialIndex,
+    required String serviceTitle,
+  }) {
     return Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ProviderFullHistoryScreen()),
+      MaterialPageRoute(
+        builder: (_) => PortfolioFullScreenPhotoViewer(
+          photos: photos,
+          initialIndex: initialIndex,
+          serviceTitle: serviceTitle,
+        ),
+      ),
+    );
+  }
+
+  @override
+  State<PortfolioFullScreenPhotoViewer> createState() =>
+      _PortfolioFullScreenPhotoViewerState();
+}
+
+class _PortfolioFullScreenPhotoViewerState
+    extends State<PortfolioFullScreenPhotoViewer> {
+  late int _index = widget.initialIndex;
+  late final PageController _controller =
+      PageController(initialPage: widget.initialIndex);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.photos.length;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(
+          'Foto ${_index + 1} de $total • ${widget.serviceTitle}',
+          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+        ),
+      ),
+      body: Stack(
+        alignment: Alignment.center,
+        children: [
+          PageView.builder(
+            key: const ValueKey('fullscreen-photo-pageview'),
+            controller: _controller,
+            itemCount: total,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (context, idx) {
+              final item = widget.photos[idx];
+              final isPath = item.trim().startsWith('http://') ||
+                  item.trim().startsWith('https://') ||
+                  (item.contains('/') && !item.contains(' '));
+              return InteractiveViewer(
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: isPath
+                        ? SignedImage(
+                            path: item,
+                            height: 480,
+                            width: double.infinity,
+                            radius: 16,
+                          )
+                        : Container(
+                            padding: const EdgeInsets.all(28),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF141923),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.camera_enhance_rounded,
+                                  size: 56,
+                                  color: Colors.orangeAccent,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  item,
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                ),
+              );
+            },
+          ),
+          Positioned(
+            bottom: 24,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white12,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                'Deslize para o lado para ver todas as fotos (${_index + 1}/$total)',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: tk.textMuted,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w900,
+            color: tk.text,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Tela completa do **"Histórico de Serviços Prestados"** exclusiva do Usuário Profissional.
+///
+/// Exibe os 4 estados reais do ciclo de vida pós-contratação:
+/// 1. **Concluídos & 100% Liquidados** (`settledAndPaid` — únicos elegíveis para o Meu Portfólio)
+/// 2. **Sob Proteção Pós-Serviço** (`underPostServiceProtection` — *Em Cobertura Técnica & Maturação*)
+/// 3. **Em Mediação** (`inMediation`)
+/// 4. **Cancelados** (`canceled`)
+class ProviderFullHistoryScreen extends StatefulWidget {
+  const ProviderFullHistoryScreen({
+    super.key,
+    this.initialFilter = 'all',
+    this.syncOnMount = true,
+  });
+
+  final String initialFilter;
+  final bool syncOnMount;
+
+  static Future<void> open(
+    BuildContext context, {
+    String initialFilter = 'all',
+  }) {
+    return Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProviderFullHistoryScreen(
+          initialFilter: initialFilter,
+        ),
+      ),
     );
   }
 
@@ -1184,21 +2157,35 @@ class ProviderFullHistoryScreen extends StatefulWidget {
 }
 
 class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
-  String _filter = 'all'; // 'all' | 'top3' | 'eligible' | 'reviewed'
+  late String _filter = widget.initialFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.syncOnMount) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ProviderPortfolioStore.instance.syncFromSupabase();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final store = ProviderPortfolioStore.instance;
+    final tk = context.tk;
+
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
         final state = store.state;
-        final tk = context.tk;
         final all = state.fullHistory;
         final filtered = switch (_filter) {
+          'settled' => state.settledEligibleHistory,
+          'protection' => state.underProtectionServices,
+          'mediation' => state.inMediationServices,
+          'canceled' => state.canceledServices,
           'top3' => state.automaticTopThree,
           'eligible' => state.eligibleHistoryPool,
-          'reviewed' => all.where((s) => s.isReviewedByClient).toList(),
           _ => all,
         };
 
@@ -1225,7 +2212,7 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Registro Permanente Auditado (${state.totalCompletedCount} serviços)',
+                            'Registro Permanente Auditado (${state.totalHistoryRecordsCount} registros)',
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 15,
@@ -1236,8 +2223,9 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Todos os serviços concluídos com validação do PIN do cliente ficam salvos permanentemente aqui. '
-                      'Nenhum serviço realizado é apagado quando sai dos 3 mais recentes do Portfólio.',
+                      'Acompanhe todos os seus atendimentos reais divididos em: Concluídos & 100% Liquidados, '
+                      'Sob Proteção Pós-Serviço (Em Cobertura Técnica & Maturação), Em Mediação e Cancelados. '
+                      'Apenas serviços 100% liquidados após o período de proteção pós-serviço podem compor o Meu Portfólio.',
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.38,
@@ -1248,33 +2236,55 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              _PinSimulationToolbar(state: state),
-              const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   ChoiceChip(
+                    key: const ValueKey('history-chip-all'),
                     label: Text('Todos (${all.length})'),
                     selected: _filter == 'all',
                     onSelected: (_) => setState(() => _filter = 'all'),
                   ),
                   ChoiceChip(
-                    label: Text('Top 3 Recentes (${state.automaticTopThree.length})'),
-                    selected: _filter == 'top3',
-                    onSelected: (_) => setState(() => _filter = 'top3'),
+                    key: const ValueKey('history-chip-settled'),
+                    label: Text(
+                      'Concluídos 100% Pagos (${state.settledEligibleHistory.length})',
+                    ),
+                    selected: _filter == 'settled',
+                    onSelected: (_) => setState(() => _filter = 'settled'),
                   ),
                   ChoiceChip(
-                    label: Text('Elegíveis p/ Destaque (${state.eligibleHistoryPool.length})'),
+                    key: const ValueKey('history-chip-protection'),
+                    label: Text(
+                      'Sob Proteção Pós-Serviço (${state.underProtectionServices.length})',
+                    ),
+                    selected: _filter == 'protection',
+                    onSelected: (_) => setState(() => _filter = 'protection'),
+                  ),
+                  ChoiceChip(
+                    key: const ValueKey('history-chip-mediation'),
+                    label: Text(
+                      'Em Mediação (${state.inMediationServices.length})',
+                    ),
+                    selected: _filter == 'mediation',
+                    onSelected: (_) => setState(() => _filter = 'mediation'),
+                  ),
+                  ChoiceChip(
+                    key: const ValueKey('history-chip-canceled'),
+                    label: Text(
+                      'Cancelados (${state.canceledServices.length})',
+                    ),
+                    selected: _filter == 'canceled',
+                    onSelected: (_) => setState(() => _filter = 'canceled'),
+                  ),
+                  ChoiceChip(
+                    key: const ValueKey('history-chip-eligible'),
+                    label: Text(
+                      'Elegíveis p/ Destaque (${state.eligibleHistoryPool.length})',
+                    ),
                     selected: _filter == 'eligible',
                     onSelected: (_) => setState(() => _filter = 'eligible'),
-                  ),
-                  ChoiceChip(
-                    label: Text(
-                      'Com Avaliação (${all.where((s) => s.isReviewedByClient).length})',
-                    ),
-                    selected: _filter == 'reviewed',
-                    onSelected: (_) => setState(() => _filter = 'reviewed'),
                   ),
                 ],
               ),
@@ -1282,8 +2292,9 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
               if (filtered.isEmpty)
                 const EmptyView(
                   icon: Icons.history_rounded,
-                  title: 'Nenhum serviço neste filtro',
-                  subtitle: 'Use os controles acima para visualizar todos os serviços concluídos.',
+                  title: 'Nenhum serviço registrado neste filtro',
+                  subtitle:
+                      'Seus atendimentos reais entre você e os clientes aparecerão automaticamente aqui conforme avançarem de etapa.',
                 )
               else
                 for (var i = 0; i < filtered.length; i++) ...[
@@ -1292,15 +2303,23 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                       final s = filtered[i];
                       final inTop3 = state.isInAutomaticTopThree(s.id);
                       final inCurated = state.isInCuratedPortfolio(s.id);
-                      final canPick = state.canAddMoreCuratedServices &&
+                      final canPick = s.isEligibleForPortfolio &&
+                          state.canAddMoreCuratedServices &&
                           !inTop3 &&
                           !inCurated;
-                      final rankIndex = all.indexWhere((e) => e.id == s.id);
-                      final badge = inTop3
-                          ? '#${rankIndex + 1} (No Top 3 Automático)'
-                          : (inCurated
-                              ? 'Destaque Escolhido no Portfólio'
-                              : 'Salvo no Histórico (#${rankIndex + 1})');
+                      final rankIndex = state.settledRankOf(s.id);
+                      final String badge;
+                      if (!s.isEligibleForPortfolio) {
+                        badge = s.lifecycleStage.label;
+                      } else if (inTop3) {
+                        badge = '#${rankIndex + 1} (No Top 3 Automático)';
+                      } else if (inCurated) {
+                        badge = 'Destaque Escolhido no Portfólio';
+                      } else {
+                        badge =
+                            'Concluído & 100% Liquidado (#${rankIndex + 1})';
+                      }
+
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Column(
@@ -1310,13 +2329,17 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                               service: s,
                               positionBadge: badge,
                               isAutomaticTopThree: inTop3,
+                              showPrice: true,
                               onTap: () => PortfolioServiceDetailSheet.show(
                                 context,
                                 serviceId: s.id,
+                                isOwner: true,
                               ),
                               onRemoveFromPortfolio: inCurated
                                   ? () {
-                                      store.removeCuratedServiceFromPortfolio(s.id);
+                                      store.removeCuratedServiceFromPortfolio(
+                                        s.id,
+                                      );
                                       showSnack(
                                         context,
                                         'Removido dos destaques do Portfólio (mantido no Histórico).',
@@ -1330,10 +2353,14 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                                 child: SizedBox(
                                   width: double.infinity,
                                   child: OutlinedButton.icon(
-                                    key: ValueKey('history-add-to-portfolio-${s.id}'),
+                                    key: ValueKey(
+                                      'history-add-to-portfolio-${s.id}',
+                                    ),
                                     onPressed: () {
                                       final ok = store
-                                          .addServiceFromHistoryToPortfolio(s.id);
+                                          .addServiceFromHistoryToPortfolio(
+                                        s.id,
+                                      );
                                       if (ok) {
                                         showSnack(
                                           context,
@@ -1341,9 +2368,12 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                                         );
                                       }
                                     },
-                                    icon: const Icon(Icons.push_pin_outlined, size: 17),
+                                    icon: const Icon(
+                                      Icons.push_pin_outlined,
+                                      size: 17,
+                                    ),
                                     label: Text(
-                                      'Destacar no Meu Portfólio (+1 • ${state.curatedPortfolioServices.length}/3)',
+                                      'Destacar no Meu Portfólio (+1 • ${state.curatedPortfolioServices.length}/$kMaxCuratedPortfolioServices)',
                                     ),
                                   ),
                                 ),

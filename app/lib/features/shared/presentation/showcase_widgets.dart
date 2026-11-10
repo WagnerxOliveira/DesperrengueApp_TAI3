@@ -231,15 +231,29 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
   }
 }
 
-class _CaseBody extends StatelessWidget {
+class _CaseBody extends StatefulWidget {
   const _CaseBody({required this.detail});
 
   final CaseDetail detail;
 
   @override
+  State<_CaseBody> createState() => _CaseBodyState();
+}
+
+class _CaseBodyState extends State<_CaseBody> {
+  int _photoIndex = 0;
+  late final PageController _pageController = PageController();
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final d = detail;
+    final d = widget.detail;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
       children: [
@@ -256,16 +270,78 @@ class _CaseBody extends StatelessWidget {
           _CaseVideo(path: d.video!),
         ],
         if (d.photos.isNotEmpty) ...[
-          const SectionTitle('Galeria'),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: d.photos.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.25),
-            itemBuilder: (context, i) => GestureDetector(
-              onTap: () => _zoom(context, d.photos, i),
-              child: SignedImage(path: d.photos[i], radius: 14),
+          SectionTitle(
+            'Galeria (${_photoIndex + 1} de ${d.photos.length})',
+            trailing: Text(
+              'Arraste para o lado ➔',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: tk.providerAccent),
             ),
+          ),
+          SizedBox(
+            height: 224,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                PageView.builder(
+                  key: const ValueKey('case-detail-photo-pageview'),
+                  controller: _pageController,
+                  itemCount: d.photos.length,
+                  onPageChanged: (idx) => setState(() => _photoIndex = idx),
+                  itemBuilder: (context, i) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: GestureDetector(
+                      onTap: () => _zoom(context, d.photos, i),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          SignedImage(path: d.photos[i], radius: 14, height: 224, width: double.infinity),
+                          Positioned(
+                            top: 10,
+                            left: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.65), borderRadius: BorderRadius.circular(999)),
+                              child: Text('Foto ${i + 1} de ${d.photos.length}', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                if (d.photos.length > 1 && _photoIndex > 0)
+                  Positioned(
+                    left: 8,
+                    child: IconButton.filledTonal(
+                      onPressed: () => _pageController.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic),
+                      icon: const Icon(Icons.chevron_left_rounded),
+                    ),
+                  ),
+                if (d.photos.length > 1 && _photoIndex < d.photos.length - 1)
+                  Positioned(
+                    right: 8,
+                    child: IconButton.filledTonal(
+                      onPressed: () => _pageController.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic),
+                      icon: const Icon(Icons.chevron_right_rounded),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (d.hasClientRequestDescription) ...[
+          const SectionTitle('O que foi solicitado pelo cliente'),
+          AppCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.assignment_outlined, color: tk.info),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  d.clientRequestDescription!.trim(),
+                  style: TextStyle(height: 1.4, color: tk.text),
+                ),
+              ),
+            ]),
           ),
         ],
         const SectionTitle('Relatório técnico'),
@@ -281,6 +357,21 @@ class _CaseBody extends StatelessWidget {
             ),
           ]),
         ),
+        if (d.hasComplementaryNotes) ...[
+          const SectionTitle('Notas Técnicas Complementares'),
+          AppCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.engineering_rounded, color: tk.providerAccent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  d.complementaryNotes!.trim(),
+                  style: TextStyle(height: 1.4, color: tk.text),
+                ),
+              ),
+            ]),
+          ),
+        ],
         const SectionTitle('Avaliação do cliente'),
         AppCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -320,7 +411,11 @@ class _CaseBody extends StatelessWidget {
           PageView.builder(
             controller: PageController(initialPage: start),
             itemCount: photos.length,
-            itemBuilder: (_, i) => InteractiveViewer(child: Center(child: SignedImage(path: photos[i], radius: 0, fit: BoxFit.contain))),
+            itemBuilder: (_, i) => InteractiveViewer(
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: Center(child: SignedImage(path: photos[i], radius: 0, fit: BoxFit.contain)),
+            ),
           ),
           SafeArea(child: Align(alignment: Alignment.topRight, child: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(context)))),
         ]),

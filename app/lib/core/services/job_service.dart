@@ -83,14 +83,14 @@ class JobService {
     return null;
   }
 
-  /// Serviços concluídos/cancelados do cliente logado, mais recentes primeiro
-  /// (conclusão/aprovação > criação). Alimenta o "Histórico de serviços".
+  /// Serviços concluídos, sob proteção pós-serviço, em mediação ou cancelados do cliente logado,
+  /// mais recentes primeiro (conclusão/aprovação > criação). Alimenta o "Histórico de serviços".
   Future<List<Job>> fetchMyFinishedJobs() async {
     final rows = await _client
         .from('jobs')
         .select()
         .eq('client_id', uid)
-        .inFilter('status', ['completed', 'canceled'])
+        .inFilter('status', ['completed', 'disputed', 'canceled'])
         .order('created_at', ascending: false);
     final jobs = rows.map(Job.fromMap).toList();
     DateTime when(Job j) => j.approvedAt ?? j.finishedAt ?? j.createdAt;

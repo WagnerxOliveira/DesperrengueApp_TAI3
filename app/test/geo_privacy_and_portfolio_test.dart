@@ -216,9 +216,10 @@ void main() {
   });
 
   // ===========================================================================
-  // FRENTE 2: MEU PORTFÓLIO INTELIGENTE + HISTÓRICO PERMANENTE VIA PIN
+  // FRENTE 2: MEU PORTFÓLIO INTELIGENTE (TOP 3 LIFO + ATÉ 5 DESTAQUES) E
+  //           HISTÓRICO REAL EM 4 ESTADOS + ISOLAMENTO CLIENTE VS PROFISSIONAL
   // ===========================================================================
-  group('Frente 2 — Rotação Automática por PIN, Desbloqueio no 4º Serviço e Avaliação Reativa', () {
+  group('Frente 2 — Zero Fake Data, Elegibilidade Pós-Proteção 100%, Top 3 LIFO + Até 5 Destaques e Notas Complementares', () {
     late ProviderPortfolioStore store;
 
     setUp(() {
@@ -227,19 +228,22 @@ void main() {
     });
 
     tearDown(() {
-      // Restaura o estado padrão com 4 serviços após os testes
-      store.resetToCount(
-        4,
-        curatedIds: <String>[kSamplePinCompletedServices.first.id],
-      );
+      store.resetToCount(0);
     });
 
-    CompletedServiceRecord makeService(int n, {bool reviewed = false}) {
+    CompletedServiceRecord makeService(
+      int n, {
+      bool reviewed = false,
+      ServiceHistoryLifecycleStage stage =
+          ServiceHistoryLifecycleStage.settledAndPaid,
+      bool isPaid100Percent = true,
+    }) {
       return CompletedServiceRecord(
         id: 'test-srv-$n',
         orderId: 'test-order-$n',
         title: 'Serviço Técnico #$n',
         categoryName: 'Elétrica',
+        clientRequestedDescription: 'O cliente solicitou reparo elétrico completo #$n.',
         detailedExecutionReport: 'Relatório técnico completo do serviço #$n.',
         cityAndState: 'Poços de Caldas - MG',
         completedAt: DateTime(2026, 11, 1, 10, n),
@@ -247,16 +251,69 @@ void main() {
         serviceValue: 150.0 + (n * 20),
         executionDurationText: '1h 15min',
         toolsAndMaterialsUsed: <String>['Ferramenta #$n'],
-        beforeAfterPhotoCaptionsOrUrls: <String>['Antes/Depois #$n'],
+        beforeAfterPhotoCaptionsOrUrls: <String>[
+          'ANTES: Estado inicial #$n',
+          'DEPOIS: Execução finalizada #$n',
+          'DETALHE: Acabamento técnico #$n',
+        ],
         warrantyCertificateCode: 'GAR-TEST-$n',
+        lifecycleStage: stage,
+        isPaid100Percent: isPaid100Percent,
         isReviewedByClient: reviewed,
         clientRating: reviewed ? 5.0 : null,
         clientReviewComment: reviewed ? 'Avaliação inicial #$n' : null,
       );
     }
 
-    test('com 1, 2 ou 3 serviços concluídos via PIN: isAddFromHistoryUnlocked == false e não permite adicionar do Histórico', () {
-      // 1º serviço
+    test('Zero Fake Data: inicia vazio e bloqueia serviços Sob Proteção Pós-Serviço, Em Mediação ou Cancelados de entrarem no Portfólio', () {
+      expect(store.state.fullHistory, isEmpty);
+      expect(store.state.automaticTopThree, isEmpty);
+      expect(store.state.curatedPortfolioServices, isEmpty);
+
+      // Registra serviços em Sob Proteção Pós-Serviço, Em Mediação e Cancelado:
+      store.completeAndValidateServiceWithPin(
+        makeService(
+          101,
+          stage: ServiceHistoryLifecycleStage.underPostServiceProtection,
+          isPaid100Percent: false,
+        ),
+      );
+      store.completeAndValidateServiceWithPin(
+        makeService(
+          102,
+          stage: ServiceHistoryLifecycleStage.inMediation,
+          isPaid100Percent: false,
+        ),
+      );
+      store.completeAndValidateServiceWithPin(
+        makeService(
+          103,
+          stage: ServiceHistoryLifecycleStage.canceled,
+          isPaid100Percent: false,
+        ),
+      );
+
+      // Estão registrados no Histórico de Serviços Prestados:
+      expect(store.state.totalHistoryRecordsCount, 3);
+      expect(store.state.underProtectionServices, hasLength(1));
+      expect(store.state.inMediationServices, hasLength(1));
+      expect(store.state.canceledServices, hasLength(1));
+
+      // Mas NENHUM entra no Meu Portfólio (Top 3 ou Destaques):
+      expect(store.state.totalCompletedCount, 0);
+      expect(store.state.automaticTopThree, isEmpty);
+      expect(store.addServiceFromHistoryToPortfolio('test-srv-101'), isFalse);
+      expect(store.addServiceFromHistoryToPortfolio('test-srv-102'), isFalse);
+      expect(store.addServiceFromHistoryToPortfolio('test-srv-103'), isFalse);
+
+      // Quando o serviço 101 conclui a janela Sob Proteção Pós-Serviço e recebe 100% do pagamento:
+      expect(store.markProtectionCompletedAnd100PercentPaid('test-srv-101'), isTrue);
+      expect(store.state.totalCompletedCount, 1);
+      expect(store.state.underProtectionServices, isEmpty);
+      expect(store.state.automaticTopThree.map((s) => s.id), <String>['test-srv-101']);
+    });
+
+    test('com 1, 2 ou 3 serviços 100% liquidados: isAddFromHistoryUnlocked == false e não permite adicionar do Histórico', () {
       store.completeAndValidateServiceWithPin(makeService(1));
       expect(store.state.totalCompletedCount, 1);
       expect(store.state.automaticTopThree.map((s) => s.id), <String>['test-srv-1']);
@@ -264,7 +321,6 @@ void main() {
       expect(store.state.eligibleHistoryPool, isEmpty);
       expect(store.addServiceFromHistoryToPortfolio('test-srv-1'), isFalse);
 
-      // 2º serviço
       store.completeAndValidateServiceWithPin(makeService(2));
       expect(store.state.totalCompletedCount, 2);
       expect(
@@ -273,7 +329,6 @@ void main() {
       );
       expect(store.state.isAddFromHistoryUnlocked, isFalse);
 
-      // 3º serviço
       store.completeAndValidateServiceWithPin(makeService(3));
       expect(store.state.totalCompletedCount, 3);
       expect(
@@ -285,13 +340,10 @@ void main() {
       expect(store.addServiceFromHistoryToPortfolio('test-srv-1'), isFalse);
     });
 
-    test('ao concluir o 4º serviço via PIN: entra em #1, empurra o 1º para eligibleHistoryPool (mantendo-o em fullHistory) e desbloqueia adição 1 por vez até 3', () {
-      store.completeAndValidateServiceWithPin(makeService(1));
-      store.completeAndValidateServiceWithPin(makeService(2));
-      store.completeAndValidateServiceWithPin(makeService(3));
-
-      // Conclui o 4º serviço via PIN:
-      store.completeAndValidateServiceWithPin(makeService(4));
+    test('ao concluir o 4º ao 9º serviço 100% liquidado: Top 3 LIFO rotaciona e permite escolher até 5 destaques do Histórico (bloqueando o 6º)', () {
+      for (var i = 1; i <= 4; i++) {
+        store.completeAndValidateServiceWithPin(makeService(i));
+      }
 
       expect(store.state.totalCompletedCount, 4);
       expect(store.state.isAddFromHistoryUnlocked, isTrue);
@@ -302,10 +354,6 @@ void main() {
         <String>['test-srv-4', 'test-srv-3', 'test-srv-2'],
       );
       expect(
-        store.state.fullHistory.map((s) => s.id),
-        <String>['test-srv-4', 'test-srv-3', 'test-srv-2', 'test-srv-1'],
-      );
-      expect(
         store.state.eligibleHistoryPool.map((s) => s.id),
         <String>['test-srv-1'],
       );
@@ -314,84 +362,84 @@ void main() {
       expect(store.addServiceFromHistoryToPortfolio('test-srv-4'), isFalse);
       expect(store.addServiceFromHistoryToPortfolio('test-srv-3'), isFalse);
 
-      // Adicionar o 1º serviço elegível do Histórico funciona (1 por vez):
+      // Adicionar o 1º serviço elegível do Histórico funciona:
       expect(store.addServiceFromHistoryToPortfolio('test-srv-1'), isTrue);
       expect(
         store.state.curatedPortfolioServices.map((s) => s.id),
         <String>['test-srv-1'],
       );
 
-      // Conclui 5º, 6º e 7º serviços via PIN para testar o limite máximo de 3 destaques escolhidos:
-      store.completeAndValidateServiceWithPin(makeService(5));
-      store.completeAndValidateServiceWithPin(makeService(6));
-      store.completeAndValidateServiceWithPin(makeService(7));
+      // Conclui do 5º ao 9º serviço para testar o limite máximo de 5 destaques escolhidos:
+      for (var i = 5; i <= 9; i++) {
+        store.completeAndValidateServiceWithPin(makeService(i));
+      }
 
-      expect(store.state.totalCompletedCount, 7);
+      expect(store.state.totalCompletedCount, 9);
       expect(
         store.state.automaticTopThree.map((s) => s.id),
-        <String>['test-srv-7', 'test-srv-6', 'test-srv-5'],
+        <String>['test-srv-9', 'test-srv-8', 'test-srv-7'],
       );
       expect(
         store.state.eligibleHistoryPool.map((s) => s.id),
-        <String>['test-srv-4', 'test-srv-3', 'test-srv-2', 'test-srv-1'],
+        <String>[
+          'test-srv-6',
+          'test-srv-5',
+          'test-srv-4',
+          'test-srv-3',
+          'test-srv-2',
+          'test-srv-1',
+        ],
       );
 
       expect(store.addServiceFromHistoryToPortfolio('test-srv-2'), isTrue);
       expect(store.addServiceFromHistoryToPortfolio('test-srv-3'), isTrue);
-      expect(store.state.curatedPortfolioServices, hasLength(3));
+      expect(store.addServiceFromHistoryToPortfolio('test-srv-4'), isTrue);
+      expect(store.addServiceFromHistoryToPortfolio('test-srv-5'), isTrue);
+      expect(store.state.curatedPortfolioServices, hasLength(5));
 
-      // Tentar adicionar um 4º destaque escolhido retorna false (limite máximo = 3):
-      expect(store.addServiceFromHistoryToPortfolio('test-srv-4'), isFalse);
-      expect(store.state.curatedPortfolioServices, hasLength(3));
+      // Tentar adicionar um 6º destaque escolhido retorna false (limite máximo = 5):
+      expect(store.addServiceFromHistoryToPortfolio('test-srv-6'), isFalse);
+      expect(store.state.curatedPortfolioServices, hasLength(5));
 
       // Remover um serviço de curatedPortfolioServices remove apenas da vitrine, mantendo fullHistory intacto:
       expect(store.removeCuratedServiceFromPortfolio('test-srv-2'), isTrue);
-      expect(
-        store.state.curatedPortfolioServices.map((s) => s.id),
-        <String>['test-srv-1', 'test-srv-3'],
-      );
-      expect(store.state.fullHistory, hasLength(7));
+      expect(store.state.curatedPortfolioServices, hasLength(4));
+      expect(store.state.fullHistory, hasLength(9));
     });
 
-    test('syncClientEvaluationToHistoryAndPortfolio sincroniza nota e comentário reativamente no Histórico e no Portfólio', () {
+    test('Imutabilidade Pós-Conclusão + Notas Técnicas Complementares e Avaliação Reativa', () async {
       store.completeAndValidateServiceWithPin(makeService(1, reviewed: false));
       store.completeAndValidateServiceWithPin(makeService(2, reviewed: false));
       store.completeAndValidateServiceWithPin(makeService(3, reviewed: false));
       store.completeAndValidateServiceWithPin(makeService(4, reviewed: false));
       store.addServiceFromHistoryToPortfolio('test-srv-1');
 
-      expect(store.state.automaticTopThree.first.isReviewedByClient, isFalse);
-      expect(store.state.curatedPortfolioServices.first.isReviewedByClient, isFalse);
+      // Atualiza Notas Técnicas Complementares do serviço #4:
+      final updatedNotes = await store.updateComplementaryTechnicalNotes(
+        serviceId: 'test-srv-4',
+        notes: 'Aplicados disjuntores curva C Siemens e cabo 4mm².',
+      );
+      expect(updatedNotes, isTrue);
 
-      // Cliente avalia o serviço #4 (no Top 3) e o serviço #1 (nos Destaques Escolhidos do Histórico):
+      final s4 = store.state.findById('test-srv-4')!;
+      expect(s4.complementaryTechnicalNotes, 'Aplicados disjuntores curva C Siemens e cabo 4mm².');
+      // Solicitação original do cliente e relatório de conclusão permanecem imutáveis:
+      expect(s4.clientRequestedDescription, 'O cliente solicitou reparo elétrico completo #4.');
+      expect(s4.detailedExecutionReport, 'Relatório técnico completo do serviço #4.');
+      expect(s4.beforeAfterPhotoCaptionsOrUrls, hasLength(3));
+
+      // Sincroniza avaliação do cliente:
       final okTop = store.syncClientEvaluationToHistoryAndPortfolio(
         serviceId: 'test-srv-4',
         rating: 5.0,
         comment: 'Serviço #4 impecável!',
         praiseTags: const <String>['Pontual', 'Excelente'],
       );
-      final okCurated = store.syncClientEvaluationToHistoryAndPortfolio(
-        orderId: 'test-order-1',
-        rating: 4.8,
-        comment: 'Serviço #1 muito bem feito!',
-        praiseTags: const <String>['Limpo'],
-      );
-
       expect(okTop, isTrue);
-      expect(okCurated, isTrue);
-
-      final top4 = store.state.automaticTopThree.firstWhere((s) => s.id == 'test-srv-4');
-      expect(top4.isReviewedByClient, isTrue);
-      expect(top4.clientRating, 5.0);
-      expect(top4.clientReviewComment, 'Serviço #4 impecável!');
-
-      final curated1 = store.state.curatedPortfolioServices.firstWhere((s) => s.id == 'test-srv-1');
-      expect(curated1.isReviewedByClient, isTrue);
-      expect(curated1.clientRating, 4.8);
-      expect(curated1.clientReviewComment, 'Serviço #1 muito bem feito!');
+      expect(store.state.findById('test-srv-4')!.clientRating, 5.0);
     });
 
-    testWidgets('UI ProviderSmartPortfolioSection oculta botão de adicionar com <= 3 serviços, desbloqueia no 4º e abre detalhes completos ao clicar', (tester) async {
+    testWidgets('UI Profissional vs Cliente: Galeria deslizável (1ª à última foto), edição de Notas Complementares pelo Profissional e omissão silenciosa de valores para o Cliente', (tester) async {
       tester.view.physicalSize = const Size(1080, 3200);
       tester.view.devicePixelRatio = 2.0;
       addTearDown(tester.view.reset);
@@ -403,7 +451,10 @@ void main() {
         _wrapWithTheme(
           const Padding(
             padding: EdgeInsets.all(16),
-            child: ProviderSmartPortfolioSection(isOwner: true),
+            child: ProviderSmartPortfolioSection(
+              isOwner: true,
+              syncOnMount: false,
+            ),
           ),
         ),
       );
@@ -412,23 +463,91 @@ void main() {
       // Com 3 serviços, o botão de adicionar do Histórico NÃO existe e o aviso de bloqueio aparece:
       expect(find.byKey(const ValueKey('portfolio-curated-locked-card')), findsOneWidget);
       expect(find.byKey(const ValueKey('btn-add-from-history-one-by-one')), findsNothing);
+      expect(find.byKey(const ValueKey('btn-open-full-history')), findsOneWidget);
 
-      // Simula a conclusão do 4º serviço com PIN pela própria UI:
-      await tester.tap(find.byKey(const ValueKey('btn-simulate-next-pin-service')));
+      // Conclui o 4º serviço 100% liquidado:
+      store.simulateNextPinCompletedService();
       await tester.pumpAndSettle();
 
       expect(store.state.totalCompletedCount, 4);
       expect(find.byKey(const ValueKey('portfolio-curated-locked-card')), findsNothing);
       expect(find.byKey(const ValueKey('btn-add-from-history-one-by-one')), findsOneWidget);
 
-      // Toca no 1º card do Top 3 para abrir o modal de detalhes completos:
+      // Toca no 1º card do Top 3 para abrir o modal de detalhes completos como PROFISSIONAL:
       final top1Id = store.state.automaticTopThree.first.id;
       await tester.tap(find.byKey(ValueKey('portfolio-top3-card-0-$top1Id')));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('detail-sheet-service-title')), findsOneWidget);
-      expect(find.byKey(const ValueKey('detail-sheet-pin-seal')), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-sheet-client-request')), findsOneWidget);
       expect(find.byKey(const ValueKey('detail-sheet-execution-report')), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-sheet-immutable-lock-badge')), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-sheet-complementary-notes-section')), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-sheet-photo-pageview')), findsOneWidget);
+      expect(find.text('Foto 1 de 3'), findsOneWidget);
+
+      // Desliza para o lado na galeria de fotos (da 1ª para a 2ª foto):
+      await tester.drag(
+        find.byKey(const ValueKey('detail-sheet-photo-pageview')),
+        const Offset(-400, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Foto 2 de 3'), findsOneWidget);
+
+      // Edita e salva Notas Técnicas Complementares como Profissional:
+      await tester.tap(find.byKey(const ValueKey('btn-edit-complementary-notes')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('input-complementary-notes')),
+        'Nota técnica complementar adicionada pelo profissional no pós-obra.',
+      );
+      await tester.tap(find.byKey(const ValueKey('btn-save-complementary-notes')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Nota técnica complementar adicionada pelo profissional no pós-obra.'),
+        findsOneWidget,
+      );
+
+      // Fecha o modal do profissional:
+      Navigator.of(tester.element(find.byKey(const ValueKey('detail-sheet-service-title')))).pop();
+      await tester.pumpAndSettle();
+
+      // =======================================================================
+      // VISÃO DO USUÁRIO CLIENTE (`isOwner: false`):
+      // - NÃO vê botão de Histórico do Profissional;
+      // - NÃO vê valores em R$ nem avisos dizendo que valores estão ocultos;
+      // - NÃO vê botões de editar;
+      // - Vê o que foi solicitado, a solução aplicada, as Notas Complementares e as fotos.
+      // =======================================================================
+      await tester.pumpWidget(
+        _wrapWithTheme(
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: ProviderSmartPortfolioSection(
+              isOwner: false,
+              syncOnMount: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('btn-open-full-history')), findsNothing);
+      expect(find.textContaining('R\$'), findsNothing);
+
+      await tester.tap(find.byKey(ValueKey('portfolio-top3-card-0-$top1Id')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('detail-sheet-client-request')), findsOneWidget);
+      expect(find.byKey(const ValueKey('detail-sheet-execution-report')), findsOneWidget);
+      expect(
+        find.text('Nota técnica complementar adicionada pelo profissional no pós-obra.'),
+        findsOneWidget,
+      );
+      // Nenhum botão de edição, nenhum aviso de bloqueio e nenhum valor R$ para o Cliente:
+      expect(find.byKey(const ValueKey('btn-edit-complementary-notes')), findsNothing);
+      expect(find.byKey(const ValueKey('detail-sheet-immutable-lock-badge')), findsNothing);
+      expect(find.textContaining('R\$'), findsNothing);
     });
   });
 }

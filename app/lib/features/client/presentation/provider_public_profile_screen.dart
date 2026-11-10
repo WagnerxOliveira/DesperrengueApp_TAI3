@@ -7,10 +7,12 @@ import '../../../core/services/provider_service.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../provider/presentation/provider_portfolio_widgets.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/showcase_widgets.dart';
 import 'request_wizard.dart';
+import '../../../core/state/provider_portfolio_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 
 /// Perfil público do profissional (protótipos 3, 4 e 5).
@@ -141,8 +143,27 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
                         children: [for (final s in p.specialties) Chip(label: Text(s), avatar: Icon(categoryIcon(s), size: 16))],
                       ),
                     ],
-                    // Vitrine LIFO: os últimos serviços (máx. 4) com o dossiê técnico de cada um.
+                    // Vitrine de serviços verificados: Top 3 recentes (LIFO) + até 5 destaques escolhidos.
                     ShowcaseStrip(providerId: p.id),
+                    ListenableBuilder(
+                      listenable: ProviderPortfolioStore.instance,
+                      builder: (context, _) {
+                        final publicServices = ProviderPortfolioStore
+                            .instance
+                            .state
+                            .publicPortfolioServices;
+                        if (publicServices.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        return const Padding(
+                          padding: EdgeInsets.only(top: 16),
+                          child: ProviderSmartPortfolioSection(
+                            isOwner: false,
+                            syncOnMount: false,
+                          ),
+                        );
+                      },
+                    ),
                     const SectionTitle('Portfólio'),
                     FutureBuilder<List<PortfolioItem>>(
                       future: _portfolio,
@@ -154,13 +175,22 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
                         if (items.isEmpty) {
                           return Text('Ainda sem trabalhos publicados.', style: TextStyle(color: context.tk.textMuted));
                         }
+                        final allPaths = items.map((e) => e.imagePath).toList();
                         return SizedBox(
                           height: 130,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: items.length,
                             separatorBuilder: (_, _) => const SizedBox(width: 10),
-                            itemBuilder: (_, i) => PublicImage(path: items[i].imagePath, width: 130, height: 130, radius: 16),
+                            itemBuilder: (_, i) => GestureDetector(
+                              onTap: () => PortfolioFullScreenPhotoViewer.open(
+                                context,
+                                photos: allPaths,
+                                initialIndex: i,
+                                serviceTitle: items[i].caption ?? p.fullName,
+                              ),
+                              child: PublicImage(path: items[i].imagePath, width: 130, height: 130, radius: 16),
+                            ),
                           ),
                         );
                       },

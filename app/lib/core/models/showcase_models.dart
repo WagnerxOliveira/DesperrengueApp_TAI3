@@ -56,8 +56,10 @@ class CaseDetail {
     required this.tags,
     required this.clientName,
     required this.pinned,
+    this.clientRequestDescription,
     this.finishedAt,
     this.report,
+    this.complementaryNotes,
     this.video,
     this.comment,
     this.reply,
@@ -67,10 +69,16 @@ class CaseDetail {
   final String providerId;
   final String title;
   final String category;
+
+  /// Descrição original do que foi solicitado pelo cliente (imutável).
+  final String? clientRequestDescription;
   final DateTime? finishedAt;
 
-  /// Relatório técnico redigido pelo profissional (pode não existir em serviços antigos).
+  /// Relatório técnico / solução aplicada pelo profissional na conclusão (imutável).
   final String? report;
+
+  /// Notas Técnicas Complementares adicionadas pelo profissional no pós-obra.
+  final String? complementaryNotes;
 
   /// Caminhos no bucket privado (visão geral, detalhe, outro ângulo, ambiente limpo).
   final List<String> photos;
@@ -82,15 +90,21 @@ class CaseDetail {
   final String clientName;
   final bool pinned;
 
+  bool get hasClientRequestDescription =>
+      (clientRequestDescription ?? '').trim().isNotEmpty;
   bool get hasReport => (report ?? '').trim().isNotEmpty;
+  bool get hasComplementaryNotes =>
+      (complementaryNotes ?? '').trim().isNotEmpty;
 
   factory CaseDetail.fromMap(Map<String, dynamic> m) => CaseDetail(
         jobId: m['job_id'] as String,
         providerId: m['provider_id'] as String,
         title: (m['title'] as String?) ?? 'Serviço',
         category: (m['category'] as String?) ?? '',
+        clientRequestDescription: m['client_request_description'] as String?,
         finishedAt: DateTime.tryParse((m['finished_at'] as String?) ?? ''),
         report: m['report'] as String?,
+        complementaryNotes: m['complementary_notes'] as String?,
         photos: ((m['photos'] as List?) ?? const []).whereType<String>().toList(),
         video: m['video'] as String?,
         rating: (m['rating'] as num?)?.toInt() ?? 0,

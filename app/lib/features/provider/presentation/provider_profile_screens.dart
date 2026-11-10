@@ -420,11 +420,19 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                       ),
                     ),
                   ),
-                  for (final it in items)
+                  for (var idx = 0; idx < items.length; idx++)
                     Stack(
                       fit: StackFit.expand,
                       children: [
-                        PublicImage(path: it.imagePath, radius: 16),
+                        GestureDetector(
+                          onTap: () => PortfolioFullScreenPhotoViewer.open(
+                            context,
+                            photos: items.map((e) => e.imagePath).toList(),
+                            initialIndex: idx,
+                            serviceTitle: items[idx].caption ?? 'Galeria do Meu Portfólio',
+                          ),
+                          child: PublicImage(path: items[idx].imagePath, radius: 16),
+                        ),
                         Positioned(
                           right: 8,
                           top: 8,
@@ -433,7 +441,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                             shape: const CircleBorder(),
                             child: InkWell(
                               customBorder: const CircleBorder(),
-                              onTap: () => _delete(it),
+                              onTap: () => _delete(items[idx]),
                               child: Padding(padding: EdgeInsets.all(8), child: Icon(Icons.delete_outline_rounded, size: 20, color: context.tk.danger)),
                             ),
                           ),

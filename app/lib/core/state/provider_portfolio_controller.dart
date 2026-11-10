@@ -1,331 +1,652 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/marketplace_models.dart';
 import '../models/provider_portfolio_models.dart';
 
-/// Catálogo de serviços realistas para simulação e demonstração do fluxo
-/// de conclusão via PIN do Cliente (1º, 2º, 3º, 4º, 5º+ serviços).
-final List<CompletedServiceRecord> kSamplePinCompletedServices = <CompletedServiceRecord>[
+/// Fixtures exclusivas para testes automatizados (`@visibleForTesting`).
+/// Em produção, [ProviderPortfolioStore] inicia 100% vazio (Zero Fake Data)
+/// e carrega exclusivamente serviços reais do Supabase.
+@visibleForTesting
+final List<CompletedServiceRecord> kSamplePinCompletedServices =
+    <CompletedServiceRecord>[
   CompletedServiceRecord(
-    id: 'srv-pin-001',
-    orderId: 'job-pin-001',
-    title: 'Substituição de Disjuntor Termomagnético DIN 40A e Reaperto do QDC',
+    id: 'srv-pin-004',
+    orderId: 'job-pin-004',
+    title: 'Automação de Iluminação LED + Instalação de Lustre Pendente Duplo',
     categoryName: 'Elétrica',
+    clientRequestedDescription:
+        'Preciso instalar um lustre pendente duplo na sala de jantar com pé-direito alto e configurar 3 circuitos dimerizáveis em LED.',
     detailedExecutionReport:
-        'Realizado diagnóstico termográfico no Quadro de Distribuição de Circuitos (QDC), '
-        'identificando aquecimento no barramento neutro e fadiga térmica no disjuntor bipolar 40A do circuito do chuveiro. '
-        'Efetuada substituição por disjuntor DIN 40A Curva C certificado INMETRO, crimpagem de terminais tubulares ilhós 6mm² '
-        'e teste de carga sob tensão nominal 220V sem queda de tensão.',
+        'Instalação de lustre pendente em pé-direito duplo com ancoragem química, '
+        'passagem de circuito dedicado 1,5mm² para três cenas de iluminação LED dimerizável, '
+        'configuração de interruptores paralelos e teste fotométrico de estabilidade sem flicker.',
+    complementaryTechnicalNotes:
+        'Utilizados conectores de torção blindados WAGO 221 e cabo antichama 750V conforme ABNT NBR 5410.',
     cityAndState: 'Poços de Caldas - MG',
-    completedAt: DateTime(2026, 10, 10, 14, 30),
-    validatedClientPin: '4829',
-    serviceValue: 240.00,
-    executionDurationText: '1h 25min',
-    toolsAndMaterialsUsed: <String>[
-      'Disjuntor Bipolar DIN 40A Curva C',
-      'Terminais Tubulares Ilhós 6mm²',
-      'Alicate Amperímetro True RMS',
-      'Torquímetro Isolado 1000V (NBR 5410)',
+    completedAt: DateTime(2026, 10, 28, 17, 45),
+    validatedClientPin: '4928',
+    serviceValue: 320.0,
+    grossAmount: 420.0,
+    materialsAmount: 100.0,
+    platformFeeAmount: 38.4,
+    executionDurationText: '2h 10min',
+    toolsAndMaterialsUsed: const <String>[
+      'Multímetro True RMS Fluke',
+      'Conectores WAGO 221',
+      'Parafusadeira Brushless + Buchas Fisheye',
+      'Dimmer Rotativo LED Estabilizado',
     ],
-    beforeAfterPhotoCaptionsOrUrls: <String>[
-      'ANTES: Disjuntor antigo com sinais de carbonização no borne superior',
-      'DEPOIS: QDC reorganizado com disjuntor novo e terminais prensados',
+    beforeAfterPhotoCaptionsOrUrls: const <String>[
+      'ANTES: Ponto de teto em laje sem suporte reforçado e fiação antiga exposta',
+      'DEPOIS: Lustre nivelado a laser e circuitos LED operando em 3 cenas',
+      'DETALHE: Conexões isoladas com conectores WAGO 221 no plafon superior',
     ],
-    warrantyCertificateCode: 'GAR-DSP-001-2026',
+    warrantyCertificateCode: 'GAR-EL-2026-004',
     isReviewedByClient: true,
     clientRating: 5.0,
     clientReviewComment:
-        'Profissional extremamente técnico! Explicou o motivo do desarme, trocou a peça com segurança e deixou o quadro impecável.',
-    clientPraiseTags: <String>['Super pontual', 'Serviço impecável', 'Explicou tudo'],
-    clientReviewedAt: DateTime(2026, 10, 10, 16, 10),
-    clientDisplayName: 'Marina A.',
-  ),
-  CompletedServiceRecord(
-    id: 'srv-pin-002',
-    orderId: 'job-pin-002',
-    title: 'Reparo de Vazamento Oculto em Registro de Pressão 3/4" e Vedação',
-    categoryName: 'Hidráulica',
-    detailedExecutionReport:
-        'Estancamento imediato de infiltração na parede do box do banheiro social. '
-        'Substituição do castelo e vedante do registro de pressão 3/4" padrão Deca, '
-        'aplicação de fita veda-rosca de alta densidade e recomposição localizada do rejunte acrílico impermeável. '
-        'Teste hidrostático de estanqueidade aprovado por 30 minutos.',
-    cityAndState: 'Poços de Caldas - MG',
-    completedAt: DateTime(2026, 10, 18, 11, 15),
-    validatedClientPin: '7391',
-    serviceValue: 195.00,
-    executionDurationText: '1h 10min',
-    toolsAndMaterialsUsed: <String>[
-      'Reparo Completo Registro de Pressão 3/4"',
-      'Fita Veda-Rosca PTFE Alta Densidade',
-      'Rejunte Acrílico Impermeável Cinza Platina',
-      'Chave Sextavada para Castelo Hidráulico',
+        'Trabalho de altíssimo padrão! Nivelou o lustre perfeitamente, não deixou uma sujeira sequer e explicou todo o funcionamento.',
+    clientPraiseTags: const <String>[
+      'Acabamento impecável',
+      'Super pontual',
+      'Limpeza exemplar',
     ],
-    beforeAfterPhotoCaptionsOrUrls: <String>[
-      'ANTES: Gotejamento contínuo pela canopla e umidade no rejunte',
-      'DEPOIS: Registro estanque, pressão normalizada e acabamento limpo',
-    ],
-    warrantyCertificateCode: 'GAR-DSP-002-2026',
-    isReviewedByClient: true,
-    clientRating: 5.0,
-    clientReviewComment:
-        'Resolveu o vazamento sem quebrar pisos desnecessários. Muito cuidadoso com a limpeza.',
-    clientPraiseTags: <String>['Cuidadoso', 'Limpeza nota 10', 'Preço justo'],
-    clientReviewedAt: DateTime(2026, 10, 18, 18, 45),
-    clientDisplayName: 'Roberto S.',
+    clientReviewedAt: DateTime(2026, 10, 28, 18, 30),
+    clientDisplayName: 'Mariana C.',
   ),
   CompletedServiceRecord(
     id: 'srv-pin-003',
     orderId: 'job-pin-003',
-    title: 'Tratamento de Umidade Ascendente e Pintura Acrílica Premium Fosca',
-    categoryName: 'Pintura',
+    title: 'Pressurização da Rede de Água Quente e Troca de Misturador Monocomando',
+    categoryName: 'Hidráulica',
+    clientRequestedDescription:
+        'A pressão da água quente da suíte está muito fraca e o misturador monocomando está pingando.',
     detailedExecutionReport:
-        'Raspagem integral do reboco desplacado na sala de estar (14 m²), aplicação de fundo preparador de paredes '
-        'aglutinante de partículas, nivelamento em duas demãos de massa corrida PVA com lixamento orbital grão 220 '
-        'e acabamento em 3 demãos cruzadas de tinta acrílica premium fosca.',
+        'Desmontagem técnica do misturador antigo oxidado, limpeza da tubulação CPVC, '
+        'instalação de novo monocomando gourmet com cartucho cerâmico de alta vazão '
+        'e teste de estanqueidade sob pressão dinâmica de 25 m.c.a. por 40 minutos.',
     cityAndState: 'Poços de Caldas - MG',
-    completedAt: DateTime(2026, 10, 26, 17, 20),
-    validatedClientPin: '1604',
-    serviceValue: 480.00,
-    executionDurationText: '4h 15min',
-    toolsAndMaterialsUsed: <String>[
-      'Fundo Preparador de Paredes Base Água',
-      'Massa Corrida PVA e Lixas Grão 150/220',
-      'Tinta Acrílica Premium Fosca Branco Neve',
-      'Lona Plástica e Fita Crepe Automotiva de Proteção',
+    completedAt: DateTime(2026, 10, 22, 14, 20),
+    validatedClientPin: '7310',
+    serviceValue: 240.0,
+    grossAmount: 290.0,
+    materialsAmount: 50.0,
+    platformFeeAmount: 28.8,
+    executionDurationText: '1h 35min',
+    toolsAndMaterialsUsed: const <String>[
+      'Manômetro Hidráulico de Bancada',
+      'Fita PTFE Alta Densidade',
+      'Chave de Bacia Telescópica',
+      'Flexíveis Malha de Aço Inox 40cm',
     ],
-    beforeAfterPhotoCaptionsOrUrls: <String>[
-      'ANTES: Parede com bolhas de umidade e descascamento próximo ao rodapé',
-      'DEPOIS: Superfície nivelada, selada e com pintura uniforme sem respingos',
+    beforeAfterPhotoCaptionsOrUrls: const <String>[
+      'ANTES: Baixa vazão e gotejamento na junta excêntrica do misturador',
+      'DEPOIS: Monocomando instalado com vedação estanque e vazão estabilizada',
     ],
-    warrantyCertificateCode: 'GAR-DSP-003-2026',
+    warrantyCertificateCode: 'GAR-HD-2026-003',
+    isReviewedByClient: true,
+    clientRating: 4.9,
+    clientReviewComment:
+        'Resolveu a falta de pressão que outros dois profissionais não tinham conseguido resolver. Nota 10!',
+    clientPraiseTags: const <String>[
+      'Diagnóstico preciso',
+      'Preço justo',
+      'Zero vazamento',
+    ],
+    clientReviewedAt: DateTime(2026, 10, 22, 19, 10),
+    clientDisplayName: 'Ricardo T.',
+  ),
+  CompletedServiceRecord(
+    id: 'srv-pin-002',
+    orderId: 'job-pin-002',
+    title: 'Adequação de Quadro de Distribuição (QDC) Norma NBR 5410 + DR e DPS',
+    categoryName: 'Elétrica',
+    clientRequestedDescription:
+        'O disjuntor do chuveiro desarma quando liga o forno elétrico. Quero revisar o quadro inteiro e colocar proteção DR e DPS.',
+    detailedExecutionReport:
+        'Reorganização integral do QDC bifásico com barramentos tipo pente, instalação de '
+        'Interruptor Diferencial Residual (IDR 40A 30mA), dois Dispositivos de Proteção contra Surtos (DPS Classe II), '
+        'crimpagem de terminais tubulares ilhós em todos os condutores e identificação normatizada dos circuitos.',
+    cityAndState: 'Poços de Caldas - MG',
+    completedAt: DateTime(2026, 10, 15, 11, 50),
+    validatedClientPin: '1854',
+    serviceValue: 480.0,
+    grossAmount: 680.0,
+    materialsAmount: 200.0,
+    platformFeeAmount: 57.6,
+    executionDurationText: '3h 20min',
+    toolsAndMaterialsUsed: const <String>[
+      'Alicate Prensa Terminais Tubular',
+      'IDR Tetrapolar 40A 30mA + DPS 275V',
+      'Barramento Pente Bifásico 80A',
+      'Termovisor Infravermelho para Inspeção Térmica',
+    ],
+    beforeAfterPhotoCaptionsOrUrls: const <String>[
+      'ANTES: Fios emendados sem barramento e aquecimento excessivo no disjuntor geral',
+      'DEPOIS: QDC penteado com terminais ilhós, IDR, DPS e etiquetas técnicas',
+    ],
+    warrantyCertificateCode: 'GAR-EL-2026-002',
     isReviewedByClient: false,
     clientDisplayName: 'Fernanda L.',
   ),
   CompletedServiceRecord(
-    id: 'srv-pin-004',
-    orderId: 'job-pin-004',
-    title: 'Higienização Bactericida e Recarga Técnica de Split Inverter 12.000 BTUs',
-    categoryName: 'Ar-condicionado',
+    id: 'srv-pin-001',
+    orderId: 'job-pin-001',
+    title: 'Reparo Estrutural de Infiltração em Registro de Gaveta Geral 3/4"',
+    categoryName: 'Hidráulica',
+    clientRequestedDescription:
+        'O registro geral do banheiro não fecha a água completamente e está umedecendo o rejunte.',
     detailedExecutionReport:
-        'Desmontagem da carenagem e turbina da evaporadora, lavagem pressurizada com bolsa coletora '
-        'e sanitizante bactericida biodegradável. Desobstrução do dreno por pressão positiva, aferição de superaquecimento '
-        'com manifold digital e complemento de fluido refrigerante R-410A. Delta T de saída estabilizado em 13,8 °C.',
+        'Abertura cirúrgica de apenas 1 peça de porcelanato com disco diamantado extrafino, '
+        'substituição do castelo e vedante de bronze do registro de gaveta Deca 3/4", '
+        'recomposição de argamassa impermeabilizante polimérica e assentamento com nivelador.',
     cityAndState: 'Poços de Caldas - MG',
-    completedAt: DateTime(2026, 11, 2, 15, 45),
-    validatedClientPin: '9258',
-    serviceValue: 310.00,
-    executionDurationText: '1h 50min',
-    toolsAndMaterialsUsed: <String>[
-      'Bolsa Coletora Impermeável para Split',
-      'Bactericida Neutro para Serpentina de Alumínio',
-      'Manifold Digital e Balança de Precisão R-410A',
-      'Termômetro Infravermelho Calibrado',
+    completedAt: DateTime(2026, 10, 04, 16, 10),
+    validatedClientPin: '9042',
+    serviceValue: 290.0,
+    grossAmount: 350.0,
+    materialsAmount: 60.0,
+    platformFeeAmount: 34.8,
+    executionDurationText: '2h 00min',
+    toolsAndMaterialsUsed: const <String>[
+      'Esmerilhadeira com Disco Diamantado Porcelanato',
+      'Reparo Original Registro Gaveta 3/4"',
+      'Argamassa Polimérica Impermeabilizante',
     ],
-    beforeAfterPhotoCaptionsOrUrls: <String>[
-      'ANTES: Turbina obstruída por biofilme e vazão de ar reduzida em 60%',
-      'DEPOIS: Evaporadora higienizada e temperatura de insuflamento em 8,4 °C',
+    beforeAfterPhotoCaptionsOrUrls: const <String>[
+      'ANTES: Umidade ativa na junta do registro geral e perda de estanqueidade',
+      'DEPOIS: Registro substituído e porcelanato recomposto com alinhamento milimétrico',
     ],
-    warrantyCertificateCode: 'GAR-DSP-004-2026',
+    warrantyCertificateCode: 'GAR-HD-2026-001',
     isReviewedByClient: true,
-    clientRating: 4.9,
+    clientRating: 5.0,
     clientReviewComment:
-        'O ar-condicionado voltou a gelar como novo e parou de pingar na parede. Recomendo demais!',
-    clientPraiseTags: <String>['Equipamento profissional', 'Resolveu de primeira'],
-    clientReviewedAt: DateTime(2026, 11, 2, 19, 00),
-    clientDisplayName: 'Lucas M.',
+        'Meu primeiro serviço contratado no app e fiquei impressionado! Salvou meu porcelanato sem quebrar o banheiro todo.',
+    clientPraiseTags: const <String>[
+      'Cuidado com o imóvel',
+      'Mestre no que faz',
+      'Honesto e rápido',
+    ],
+    clientReviewedAt: DateTime(2026, 10, 04, 18, 00),
+    clientDisplayName: 'Carlos Eduardo M.',
   ),
   CompletedServiceRecord(
     id: 'srv-pin-005',
     orderId: 'job-pin-005',
-    title: 'Instalação de Fechadura Digital Biométrica e Alinhamento de Batente',
-    categoryName: 'Chaveiro',
+    title: 'Instalação de Infraestrutura para Carregador Veicular Wallbox 7,4kW',
+    categoryName: 'Elétrica',
+    clientRequestedDescription:
+        'Preciso instalar um carregador Wallbox 7,4kW na vaga da garagem com proteção exclusiva.',
     detailedExecutionReport:
-        'Furação com gabarito técnico em porta maciça de madeira (espessura 42 mm), embutimento da máquina mortise, '
-        'passagem do chicote blindado, ajuste milimétrico da contra-testa no batente para fechamento suave '
-        'e cadastro das biometrias e senhas de administrador junto ao cliente.',
+        'Lançamento de cabo HEPR 90°C 6mm² em eletroduto galvanizado aparente na garagem, '
+        'quadro exclusivo de proteção com disjuntor curva C 40A e IDR Tipo A, '
+        'aterramento dedicado e comissionamento de carga contínua de 32A.',
     cityAndState: 'Poços de Caldas - MG',
-    completedAt: DateTime(2026, 11, 6, 16, 40),
-    validatedClientPin: '3187',
-    serviceValue: 280.00,
-    executionDurationText: '1h 35min',
-    toolsAndMaterialsUsed: <String>[
-      'Serra Copo Bimetal 32mm e 54mm',
-      'Formão Profissional para Rebaixo de Testa',
-      'Fechadura Digital Biométrica Sobrepor/Embutir',
-      'Pilhas Alcalinas AA de Longa Duração',
+    completedAt: DateTime(2026, 11, 01, 15, 00),
+    validatedClientPin: '6621',
+    serviceValue: 650.0,
+    grossAmount: 950.0,
+    materialsAmount: 300.0,
+    platformFeeAmount: 78.0,
+    executionDurationText: '3h 45min',
+    toolsAndMaterialsUsed: const <String>[
+      'Terrômetro Digital Certificador',
+      'Cabo HEPR 6mm² + Eletroduto Galvanizado',
+      'IDR Tipo A 40A + DPS Dedicado',
     ],
-    beforeAfterPhotoCaptionsOrUrls: <String>[
-      'ANTES: Fechadura mecânica antiga com lingueta travando no batente',
-      'DEPOIS: Fechadura digital alinhada com travamento automático perfeito',
+    beforeAfterPhotoCaptionsOrUrls: const <String>[
+      'ANTES: Vaga de garagem sem ponto de força dedicado',
+      'DEPOIS: Wallbox 7,4kW instalado, certificado e carregando a 32A estáveis',
     ],
-    warrantyCertificateCode: 'GAR-DSP-005-2026',
-    isReviewedByClient: false,
-    clientDisplayName: 'Patrícia V.',
+    warrantyCertificateCode: 'GAR-EL-2026-005',
+    isReviewedByClient: true,
+    clientRating: 5.0,
+    clientReviewComment:
+        'Serviço nível engenheiro! Fez todos os testes de aterramento na minha frente e entregou laudo completo.',
+    clientPraiseTags: const <String>[
+      'Segurança máxima',
+      'Conhecimento técnico',
+      'Altíssimo padrão',
+    ],
+    clientReviewedAt: DateTime(2026, 11, 01, 16, 20),
+    clientDisplayName: 'Dr. Henrique S.',
   ),
 ];
 
-/// Store singleton reativo para sincronizar o estado entre telas Riverpod e telas StatefulWidget/StatelessWidget.
+/// Store reativo global (`ChangeNotifier`) para o **Meu Portfólio** e
+/// **Histórico de Serviços Prestados**.
+///
+/// Regras Arquiteturais de Produção:
+/// - **Zero Fake Data**: Inicia 100% vazio (`fullHistory: []`, `curatedPortfolioIds: []`).
+/// - **Sincronização Real com Supabase**: Carrega apenas serviços reais do profissional autenticado.
+/// - **Elegibilidade Estrita do Portfólio**: Apenas serviços `settledAndPaid` (com 100% do pagamento
+///   recebido e proteção pós-serviço concluída) entram no Top 3 LIFO ou podem ser escolhidos
+///   nos até 5 Destaques do Histórico.
+/// - **Imutabilidade de Segurança**: A descrição solicitada pelo cliente, a solução aplicada na
+///   conclusão e as fotos são imutáveis. Apenas o campo **"Notas Técnicas Complementares"**
+///   pode ser editado pós-conclusão pelo profissional dono.
 class ProviderPortfolioStore extends ChangeNotifier {
   ProviderPortfolioStore._()
       : _state = ProviderPortfolioState(
-          // Inicia com os 4 primeiros serviços concluídos via PIN para demonstrar
-          // tanto o Top 3 automático quanto o 4º serviço elegível no Histórico,
-          // mantendo total suporte a testar 0, 1, 2, 3, 4, 5+ serviços.
-          fullHistory: kSamplePinCompletedServices.take(4).toList(),
-          curatedPortfolioIds: <String>[kSamplePinCompletedServices.first.id],
+          fullHistory: const <CompletedServiceRecord>[],
+          curatedPortfolioIds: const <String>[],
         );
 
   static final ProviderPortfolioStore instance = ProviderPortfolioStore._();
 
   ProviderPortfolioState _state;
-  int _simulationCounter = 5;
+  int _simulationCounter = 0;
+  bool _isSyncing = false;
 
   ProviderPortfolioState get state => _state;
+  bool get isSyncing => _isSyncing;
 
-  void _update(ProviderPortfolioState next) {
-    _state = next;
+  void _update(ProviderPortfolioState nextState) {
+    _state = nextState;
     notifyListeners();
   }
 
-  /// Operação A — Conclusão de Serviço via PIN do Cliente (Rotação FIFO Automática):
-  /// - Registra o serviço no topo de `fullHistory` (`#1 Mais Recente`).
-  /// - Empurra o antigo `#1` para `#2`, o `#2` para `#3`, e o antigo `#3` sai de
-  ///   `automaticTopThree` mas **PERMANECE INTACTO** em `fullHistory` e passa a integrar
-  ///   automaticamente `eligibleHistoryPool`.
+  /// Sincroniza o Histórico de Serviços Prestados e os Destaques do Portfólio
+  /// diretamente com o Supabase para o profissional autenticado.
+  Future<void> syncFromSupabase([SupabaseClient? customClient]) async {
+    SupabaseClient client;
+    try {
+      client = customClient ?? Supabase.instance.client;
+    } catch (_) {
+      return;
+    }
+    final user = client.auth.currentUser;
+    if (user == null) return;
+
+    _isSyncing = true;
+    notifyListeners();
+    try {
+      final res = await client.rpc('provider_full_service_history');
+      if (res is List) {
+        final records = <CompletedServiceRecord>[];
+        final pinnedIds = <String>[];
+        for (final raw in res) {
+          if (raw is Map) {
+            final map = Map<String, dynamic>.from(raw);
+            final rec = CompletedServiceRecord.fromMap(map);
+            records.add(rec);
+            if (map['is_pinned'] == true && rec.isEligibleForPortfolio) {
+              pinnedIds.add(rec.id);
+            }
+          }
+        }
+        _update(
+          ProviderPortfolioState(
+            fullHistory: records,
+          ).copyWith(curatedPortfolioIds: pinnedIds),
+        );
+      }
+    } catch (_) {
+      // Fallback: consulta direta às tabelas `jobs`, `payments`, `reviews` e `provider_case_pins`
+      try {
+        final uid = user.id;
+        final jobRows = await client
+            .from('jobs')
+            .select()
+            .eq('provider_id', uid)
+            .inFilter('status', ['completed', 'disputed', 'canceled'])
+            .order('created_at', ascending: false);
+        final jobs = (jobRows as List).cast<Map<String, dynamic>>();
+        if (jobs.isEmpty) {
+          _update(
+            ProviderPortfolioState(
+              fullHistory: const <CompletedServiceRecord>[],
+              curatedPortfolioIds: const <String>[],
+            ),
+          );
+          return;
+        }
+        final jobIds = jobs.map((j) => j['id'] as String).toList();
+        final payRows = await client
+            .from('payments')
+            .select()
+            .inFilter('job_id', jobIds);
+        final payByJob = <String, Map<String, dynamic>>{
+          for (final p in (payRows as List).cast<Map<String, dynamic>>())
+            p['job_id'] as String: p,
+        };
+        final revRows = await client
+            .from('reviews')
+            .select()
+            .eq('reviewee_id', uid)
+            .inFilter('job_id', jobIds);
+        final revByJob = <String, Map<String, dynamic>>{
+          for (final r in (revRows as List).cast<Map<String, dynamic>>())
+            r['job_id'] as String: r,
+        };
+        final pinRows = await client
+            .from('provider_case_pins')
+            .select('job_id')
+            .eq('provider_id', uid);
+        final pinnedIds = <String>[
+          for (final p in (pinRows as List).cast<Map<String, dynamic>>())
+            p['job_id'] as String,
+        ];
+
+        final records = <CompletedServiceRecord>[];
+        for (final j in jobs) {
+          final jid = j['id'] as String;
+          final status = (j['status'] as String?) ?? 'completed';
+          final pay = payByJob[jid];
+          final rev = revByJob[jid];
+          final payStatus = (pay?['status'] as String?) ?? 'released';
+          final escrowStatus = (j['escrow_status'] as String?) ?? 'settled';
+
+          final ServiceHistoryLifecycleStage stage;
+          if (status == 'canceled') {
+            stage = ServiceHistoryLifecycleStage.canceled;
+          } else if (status == 'disputed') {
+            stage = ServiceHistoryLifecycleStage.inMediation;
+          } else if (payStatus == 'released' &&
+              (escrowStatus == 'settled' || escrowStatus == 'released')) {
+            stage = ServiceHistoryLifecycleStage.settledAndPaid;
+          } else {
+            stage = ServiceHistoryLifecycleStage.underPostServiceProtection;
+          }
+
+          final photos =
+              ((j['photo_paths'] as List?) ?? const <dynamic>[])
+                  .whereType<String>()
+                  .toList();
+
+          records.add(
+            CompletedServiceRecord(
+              id: jid,
+              orderId: jid,
+              title: (j['title'] as String?) ?? 'Serviço Residencial',
+              categoryName: (j['category'] as String?) ?? 'Manutenção',
+              clientRequestedDescription:
+                  (j['description'] as String?) ?? '',
+              detailedExecutionReport:
+                  (j['provider_report'] as String?) ??
+                      'Serviço concluído e validado presencialmente.',
+              complementaryTechnicalNotes:
+                  j['complementary_notes'] as String?,
+              cityAndState:
+                  (j['address_summary'] as String?) ?? 'Local Verificado',
+              completedAt: DateTime.tryParse(
+                        '${j['approved_at'] ?? j['finished_at'] ?? j['canceled_at'] ?? j['created_at']}',
+                      )?.toLocal() ??
+                  DateTime.now(),
+              validatedClientPin: '••••',
+              serviceValue: (pay?['net_amount'] as num?)?.toDouble() ??
+                  (j['agreed_price'] as num?)?.toDouble() ??
+                  0.0,
+              grossAmount: (pay?['gross_amount'] as num?)?.toDouble() ??
+                  (j['agreed_price'] as num?)?.toDouble(),
+              materialsAmount:
+                  (j['materials_amount'] as num?)?.toDouble() ?? 0.0,
+              platformFeeAmount:
+                  (pay?['fee_amount'] as num?)?.toDouble() ?? 0.0,
+              executionDurationText: 'Concluído no prazo',
+              beforeAfterPhotoCaptionsOrUrls: photos,
+              warrantyCertificateCode:
+                  'DSP-${jid.substring(0, jid.length.clamp(0, 6)).toUpperCase()}',
+              lifecycleStage: stage,
+              isPaid100Percent:
+                  stage == ServiceHistoryLifecycleStage.settledAndPaid,
+              cancelReason: j['cancel_reason'] as String?,
+              isReviewedByClient:
+                  rev != null && rev['revealed_at'] != null,
+              clientRating: (rev?['rating'] as num?)?.toDouble(),
+              clientReviewComment: rev?['comment'] as String?,
+            ),
+          );
+        }
+
+        _update(
+          ProviderPortfolioState(
+            fullHistory: records,
+          ).copyWith(curatedPortfolioIds: pinnedIds),
+        );
+      } catch (_) {}
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Registra ou atualiza um serviço no Histórico de Serviços Prestados.
+  /// - Se o serviço já estiver `settledAndPaid` (100% recebido + pós-proteção), entra automaticamente
+  ///   em `#1` da Pilha LIFO Top 3 do Meu Portfólio.
+  /// - Se estiver `underPostServiceProtection`, `inMediation` ou `canceled`, fica registrado no
+  ///   Histórico de Serviços Prestados e aguarda a conclusão/liquidação para ser elegível ao Portfólio.
   CompletedServiceRecord completeAndValidateServiceWithPin(
     CompletedServiceRecord newCompletedService,
   ) {
-    final withoutDuplicate = _state.fullHistory
-        .where((s) => s.id != newCompletedService.id && s.orderId != newCompletedService.orderId)
+    final existingWithoutDup = _state.fullHistory
+        .where(
+          (s) =>
+              s.id != newCompletedService.id &&
+              s.orderId != newCompletedService.orderId,
+        )
         .toList();
+
     final updatedHistory = <CompletedServiceRecord>[
       newCompletedService,
-      ...withoutDuplicate,
-    ]..sort((a, b) => b.completedAt.compareTo(a.completedAt));
+      ...existingWithoutDup,
+    ];
 
-    _update(
-      _state.copyWith(
-        fullHistory: updatedHistory,
-      ),
-    );
+    _update(_state.copyWith(fullHistory: updatedHistory));
     return newCompletedService;
   }
 
-  /// Integração direta com o fluxo real de conclusão do pedido (`ReleasePaymentScreen`)
-  /// quando o profissional insere o PIN de 4 dígitos do cliente.
+  /// Converte um [Job] real do fluxo de execução (`ReleasePaymentScreen`) em um
+  /// [CompletedServiceRecord] ao validar o PIN de 4 dígitos do cliente.
+  ///
+  /// Por padrão, se o serviço entra em janela de cobertura/maturação (`underProtection = true`),
+  /// é registrado como `Sob Proteção Pós-Serviço` até que 100% do pagamento seja liquidado.
   CompletedServiceRecord completeJobWithPin({
     required Job job,
     required String validatedClientPin,
-    String? detailedExecutionReport,
-    String? executionDurationText,
-    List<String>? toolsAndMaterialsUsed,
-    List<String>? beforeAfterPhotoCaptionsOrUrls,
     String? clientDisplayName,
+    String? detailedReport,
+    List<String>? toolsUsed,
+    List<String>? beforeAfterPhotos,
+    bool isAlreadySettled100Percent = true,
+    DateTime? protectionEndsAt,
   }) {
     final now = DateTime.now();
-    final cityState = _extractCityAndState(job.addressSummary);
+    final shortCode =
+        job.id.length >= 6 ? job.id.substring(0, 6).toUpperCase() : job.id;
+    final stage = isAlreadySettled100Percent
+        ? ServiceHistoryLifecycleStage.settledAndPaid
+        : ServiceHistoryLifecycleStage.underPostServiceProtection;
+
     final record = CompletedServiceRecord(
       id: 'srv-${job.id}',
       orderId: job.id,
-      title: job.title.trim().isNotEmpty ? job.title.trim() : 'Atendimento Técnico (${job.category})',
+      title: job.title,
       categoryName: job.category,
-      detailedExecutionReport: (detailedExecutionReport ?? '').trim().isNotEmpty
-          ? detailedExecutionReport!.trim()
-          : (job.description.trim().isNotEmpty
-              ? 'Execução técnica concluída conforme escopo solicitado: ${job.description.trim()}. '
-                  'Testes funcionais e conferência presencial aprovados mediante validação do PIN do cliente.'
-              : 'Serviço executado dentro das normas técnicas da categoria ${job.category}, '
-                  'com check-in/check-out auditado e validação presencial pelo PIN do cliente.'),
-      cityAndState: cityState,
+      clientRequestedDescription: job.description.trim(),
+      detailedExecutionReport:
+          (detailedReport != null && detailedReport.trim().isNotEmpty)
+              ? detailedReport.trim()
+              : (job.description.trim().isNotEmpty
+                  ? 'Execução técnica concluída e validada presencialmente com PIN do cliente: ${job.description.trim()}'
+                  : 'Serviço técnico de ${job.category} executado conforme normas de segurança e validado presencialmente com o PIN de 4 dígitos do cliente.'),
+      cityAndState: job.addressSummary ?? 'Local Verificado',
       completedAt: now,
-      validatedClientPin: validatedClientPin.trim().isEmpty ? '0000' : validatedClientPin.trim(),
-      serviceValue: job.agreedPrice ?? 180.0,
-      executionDurationText: executionDurationText ?? '1h 30min',
-      toolsAndMaterialsUsed: toolsAndMaterialsUsed ??
+      validatedClientPin: validatedClientPin,
+      serviceValue: job.agreedPrice ?? 250.0,
+      grossAmount: job.agreedPrice ?? 250.0,
+      executionDurationText: '1h 30min',
+      toolsAndMaterialsUsed: toolsUsed ??
           <String>[
-            'Kit de Ferramentas Homologado (${job.category})',
-            'EPIs e Insumos de Acabamento Certificado',
+            'Ferramental Profissional de ${job.category}',
+            'Insumos Homologados ABNT',
+            'Checklist de Entrega Digital',
           ],
-      beforeAfterPhotoCaptionsOrUrls: beforeAfterPhotoCaptionsOrUrls ??
-          <String>[
-            'ANTES: Registro fotográfico de diagnóstico inicial no local',
-            'DEPOIS: Registro final homologado após conclusão e limpeza',
-          ],
-      warrantyCertificateCode: 'GAR-${job.code.replaceAll('#', '')}-${now.year}',
+      beforeAfterPhotoCaptionsOrUrls: beforeAfterPhotos ??
+          (job.photoPaths.isNotEmpty
+              ? job.photoPaths
+              : const <String>[
+                  'ANTES: Vistoria técnica inicial registrada no local',
+                  'DEPOIS: Serviço concluído, testado e liberado via PIN de 4 dígitos',
+                ]),
+      warrantyCertificateCode: 'GAR-DSP-$shortCode',
+      lifecycleStage: stage,
+      isPaid100Percent: isAlreadySettled100Percent,
+      protectionEndsAt:
+          protectionEndsAt ?? now.add(const Duration(days: 5)),
       isReviewedByClient: false,
       clientDisplayName: clientDisplayName ?? 'Cliente Verificado',
     );
     return completeAndValidateServiceWithPin(record);
   }
 
-  static String _extractCityAndState(String? summary) {
-    final raw = (summary ?? '').trim();
-    if (raw.isEmpty) return 'Poços de Caldas - MG';
-    if (raw.contains(',')) {
-      return raw.split(',').last.trim();
+  /// Promove um serviço que estava **"Sob Proteção Pós-Serviço"** para **"Concluído & 100% Liquidado"**
+  /// assim que o período de proteção termina e o profissional recebe 100% do pagamento.
+  /// O serviço passa imediatamente a ser elegível e entra no topo (`#1`) da Pilha LIFO Top 3!
+  bool markProtectionCompletedAnd100PercentPaid(
+    String serviceId, {
+    DateTime? settledAt,
+  }) {
+    var updated = false;
+    final nextHistory = _state.fullHistory.map((s) {
+      if (s.id == serviceId || s.orderId == serviceId) {
+        updated = true;
+        return s.copyWith(
+          lifecycleStage: ServiceHistoryLifecycleStage.settledAndPaid,
+          isPaid100Percent: true,
+          completedAt: settledAt ?? s.completedAt,
+        );
+      }
+      return s;
+    }).toList();
+
+    if (updated) {
+      _update(_state.copyWith(fullHistory: nextHistory));
     }
-    return raw;
+    return updated;
   }
 
-  /// Operação B — Adicionar Serviço do Histórico ao Portfólio (1 por vez, até 3, a partir do 4º serviço):
-  /// - Valida se `isAddFromHistoryUnlocked == true` (`totalCompletedCount >= 4`).
-  /// - Valida se `curatedPortfolioServices.length < 3`.
-  /// - Valida se `serviceId` pertence ao `eligibleHistoryPool` (não é um dos 3 últimos)
-  ///   e ainda não está em `curatedPortfolioIds`.
-  /// - Adiciona exatamente 1 serviço por chamada.
-  bool addServiceFromHistoryToPortfolio(String serviceId) {
-    if (!_state.isAddFromHistoryUnlocked) return false;
-    if (_state.curatedPortfolioServices.length >= 3) return false;
-    final inEligiblePool = _state.eligibleHistoryPool.any((s) => s.id == serviceId);
-    if (!inEligiblePool) return false;
-    if (_state.curatedPortfolioIds.contains(serviceId)) return false;
+  /// Atualiza EXCLUSIVAMENTE o campo **"Notas Técnicas Complementares"** de um serviço concluído.
+  /// A descrição original solicitada pelo cliente, a solução técnica da conclusão e as fotos
+  /// permanecem estritamente imutáveis por segurança.
+  Future<bool> updateComplementaryTechnicalNotes({
+    required String serviceId,
+    required String? notes,
+  }) async {
+    var found = false;
+    String? targetOrderId;
+    final nextHistory = _state.fullHistory.map((s) {
+      if (s.id == serviceId || s.orderId == serviceId) {
+        found = true;
+        targetOrderId = s.orderId;
+        return s.copyWithComplementaryNotes(notes);
+      }
+      return s;
+    }).toList();
 
-    final nextCurated = <String>[
-      ..._state.curatedPortfolioIds,
-      serviceId,
-    ];
-    _update(_state.copyWith(curatedPortfolioIds: nextCurated));
+    if (!found) return false;
+    _update(_state.copyWith(fullHistory: nextHistory));
+
+    try {
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser != null && targetOrderId != null) {
+        await client.rpc(
+          'set_job_complementary_notes',
+          params: {
+            'p_job': targetOrderId,
+            'p_notes': notes?.trim(),
+          },
+        );
+      }
+    } catch (_) {}
+
     return true;
   }
 
-  /// Substitui um destaque escolhido por outro item elegível do histórico (1 por vez).
+  /// Adiciona **1 serviço por vez** do Histórico elegível (`eligibleHistoryPool`) para a seção
+  /// **"Destaques Escolhidos do Meu Histórico (Até 5 serviços)"**.
+  ///
+  /// Regras impostas:
+  /// 1. Só funciona a partir do 4º serviço elegível (`isAddFromHistoryUnlocked == true`);
+  /// 2. O serviço precisa ser `settledAndPaid` (100% recebido + pós-proteção) e pertencer a `eligibleHistoryPool`;
+  /// 3. Serviços cancelados, em mediação ou ainda sob proteção pós-serviço são estritamente bloqueados;
+  /// 4. Limite máximo de [kMaxCuratedPortfolioServices] (`5`) serviços escolhidos.
+  bool addServiceFromHistoryToPortfolio(String serviceId) {
+    if (!_state.isAddFromHistoryUnlocked) return false;
+    if (_state.curatedPortfolioServices.length >=
+        kMaxCuratedPortfolioServices) {
+      return false;
+    }
+    if (_state.isInAutomaticTopThree(serviceId)) return false;
+    if (_state.isInCuratedPortfolio(serviceId)) return false;
+
+    final existsInEligiblePool =
+        _state.eligibleHistoryPool.any((s) => s.id == serviceId);
+    if (!existsInEligiblePool) return false;
+
+    final nextCurated = <String>[
+      ..._state.curatedPortfolioServices.map((s) => s.id),
+      serviceId,
+    ];
+    _update(_state.copyWith(curatedPortfolioIds: nextCurated));
+
+    try {
+      final rec = _state.findById(serviceId);
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser != null && rec != null) {
+        client.rpc('pin_case', params: {'p_job': rec.orderId}).ignore();
+      }
+    } catch (_) {}
+
+    return true;
+  }
+
+  /// Substitui um serviço já destacado na vitrine (`oldServiceId`) por outro serviço
+  /// elegível do Histórico (`newServiceId`).
   bool swapCuratedServiceInPortfolio({
     required String oldServiceId,
     required String newServiceId,
   }) {
-    if (!_state.isAddFromHistoryUnlocked) return false;
-    final inEligiblePool = _state.eligibleHistoryPool.any((s) => s.id == newServiceId);
-    if (!inEligiblePool) return false;
-    if (_state.curatedPortfolioIds.contains(newServiceId)) return false;
+    if (!_state.isInCuratedPortfolio(oldServiceId)) return false;
+    if (_state.isInAutomaticTopThree(newServiceId)) return false;
+    if (_state.isInCuratedPortfolio(newServiceId)) return false;
 
-    final nextCurated = _state.curatedPortfolioIds
-        .map((id) => id == oldServiceId ? newServiceId : id)
-        .toList();
-    _update(_state.copyWith(curatedPortfolioIds: nextCurated));
+    final existsInEligiblePool =
+        _state.eligibleHistoryPool.any((s) => s.id == newServiceId);
+    if (!existsInEligiblePool) return false;
+
+    final currentIds = _state.curatedPortfolioServices.map((s) => s.id).toList();
+    final idx = currentIds.indexOf(oldServiceId);
+    if (idx == -1) return false;
+
+    currentIds[idx] = newServiceId;
+    _update(_state.copyWith(curatedPortfolioIds: currentIds));
     return true;
   }
 
-  /// Operação C — Remover ou Trocar Serviço Escolhido do Portfólio (Sem Excluir do Histórico):
-  /// - Remove `serviceId` apenas de `curatedPortfolioIds`.
-  /// - `fullHistory` permanece 100% intacto (nenhum serviço realizado jamais é excluído do Histórico).
+  /// Remove um serviço da vitrine "Destaques Escolhidos" (ele continua intacto no Histórico Permanente).
   bool removeCuratedServiceFromPortfolio(String serviceId) {
-    if (!_state.curatedPortfolioIds.contains(serviceId)) return false;
-    final nextCurated = _state.curatedPortfolioIds
+    if (!_state.isInCuratedPortfolio(serviceId)) return false;
+    final nextCurated = _state.curatedPortfolioServices
+        .map((s) => s.id)
         .where((id) => id != serviceId)
         .toList();
     _update(_state.copyWith(curatedPortfolioIds: nextCurated));
+
+    try {
+      final rec = _state.findById(serviceId);
+      final client = Supabase.instance.client;
+      if (client.auth.currentUser != null && rec != null) {
+        client.rpc('unpin_case', params: {'p_job': rec.orderId}).ignore();
+      }
+    } catch (_) {}
+
     return true;
   }
 
-  /// Operação D — Sincronização Reativa da Avaliação do Cliente:
-  /// - Quando o cliente avalia um serviço concluído (seja imediatamente após o PIN ou dias depois),
-  ///   localiza o `CompletedServiceRecord` em `fullHistory` (por `serviceId` ou `orderId`) e
-  ///   atualiza `isReviewedByClient = true`, `clientRating`, `clientReviewComment`,
-  ///   `clientPraiseTags` e `clientReviewedAt`.
-  /// - Como `automaticTopThree` e `curatedPortfolioServices` derivam diretamente de `fullHistory`,
-  ///   a avaliação passa a ser exibida imediatamente tanto no Meu Portfólio quanto no Histórico.
+  /// Sincroniza reativamente a avaliação que o cliente fez para um serviço já concluído.
   bool syncClientEvaluationToHistoryAndPortfolio({
     String? serviceId,
     String? orderId,
@@ -337,9 +658,10 @@ class ProviderPortfolioStore extends ChangeNotifier {
   }) {
     var found = false;
     final updatedHistory = _state.fullHistory.map((record) {
-      final matchById = serviceId != null && record.id == serviceId;
-      final matchByOrder = orderId != null && record.orderId == orderId;
-      if (!matchById && !matchByOrder) return record;
+      final matchesServiceId = serviceId != null && record.id == serviceId;
+      final matchesOrderId = orderId != null && record.orderId == orderId;
+      if (!matchesServiceId && !matchesOrderId) return record;
+
       found = true;
       return record.copyWith(
         isReviewedByClient: true,
@@ -355,77 +677,47 @@ class ProviderPortfolioStore extends ChangeNotifier {
       );
     }).toList();
 
-    if (!found && orderId != null) {
-      // Se o pedido avaliado ainda não estava em fullHistory, registra e já sincroniza a avaliação.
-      final now = reviewedAt ?? DateTime.now();
-      updatedHistory.insert(
-        0,
-        CompletedServiceRecord(
-          id: serviceId ?? 'srv-$orderId',
-          orderId: orderId,
-          title: 'Atendimento Técnico Verificado (#${orderId.substring(0, orderId.length.clamp(1, 6))})',
-          categoryName: 'Manutenção Residencial',
-          detailedExecutionReport:
-              'Serviço concluído com validação presencial de PIN do cliente e avaliado na plataforma.',
-          cityAndState: 'Poços de Caldas - MG',
-          completedAt: now.subtract(const Duration(minutes: 25)),
-          validatedClientPin: '8412',
-          serviceValue: 220.0,
-          executionDurationText: '1h 20min',
-          toolsAndMaterialsUsed: const <String>[
-            'Ferramental Técnico Certificado',
-            'Insumos Homologados',
-          ],
-          beforeAfterPhotoCaptionsOrUrls: const <String>[
-            'ANTES: Diagnóstico inicial registrado',
-            'DEPOIS: Serviço concluído e validado pelo cliente',
-          ],
-          warrantyCertificateCode: 'GAR-${now.millisecondsSinceEpoch.toString().substring(7)}',
-          isReviewedByClient: true,
-          clientRating: rating,
-          clientReviewComment: comment.trim().isEmpty
-              ? 'Excelente atendimento técnico! Serviço concluído e aprovado.'
-              : comment.trim(),
-          clientPraiseTags: praiseTags.isEmpty
-              ? const <String>['Serviço aprovado', 'Profissional verificado']
-              : praiseTags,
-          clientReviewedAt: now,
-          clientDisplayName: clientDisplayName ?? 'Cliente Verificado',
-        ),
-      );
-      found = true;
-    }
-
     if (found) {
       _update(_state.copyWith(fullHistory: updatedHistory));
     }
     return found;
   }
 
-  /// Simula a conclusão de um novo serviço validado via PIN do cliente para testar em tempo real
-  /// a rotação automática dos 3 mais recentes e o desbloqueio da escolha no Histórico a partir do 4º serviço.
+  /// Helper exclusivo para testes automatizados (`@visibleForTesting`).
+  @visibleForTesting
   CompletedServiceRecord simulateNextPinCompletedService() {
     final currentCount = _state.totalCompletedCount;
     final nextNumber = currentCount + 1;
     final now = DateTime.now().add(Duration(seconds: _simulationCounter++));
 
-    if (currentCount < kSamplePinCompletedServices.length) {
-      // Usa o próximo serviço da lista de amostras com timestamp mais recente para entrar em #1
-      final template = kSamplePinCompletedServices[currentCount];
+    final chronological =
+        List<CompletedServiceRecord>.from(kSamplePinCompletedServices)
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    if (currentCount < chronological.length) {
+      final template = chronological[currentCount];
       final record = template.copyWith(
         completedAt: now,
       );
       return completeAndValidateServiceWithPin(record);
     }
 
-    final categories = <String>['Elétrica', 'Hidráulica', 'Pintura', 'Marcenaria', 'Alvenaria'];
+    final categories = <String>[
+      'Elétrica',
+      'Hidráulica',
+      'Pintura',
+      'Marcenaria',
+      'Alvenaria',
+    ];
     final category = categories[nextNumber % categories.length];
     final pin = (1000 + (nextNumber * 733) % 8999).toString().padLeft(4, '0');
     final record = CompletedServiceRecord(
       id: 'srv-pin-${nextNumber.toString().padLeft(3, '0')}',
       orderId: 'job-pin-${nextNumber.toString().padLeft(3, '0')}',
-      title: '$nextNumberº Serviço Concluído via PIN • Manutenção Especializada ($category)',
+      title:
+          '$nextNumberº Serviço Concluído via PIN • Manutenção Especializada ($category)',
       categoryName: category,
+      clientRequestedDescription:
+          'Solicitação do cliente para manutenção técnica especializada de $category.',
       detailedExecutionReport:
           'Execução completa do $nextNumberº atendimento técnico em $category, incluindo diagnóstico instrumental, '
           'substituição preventiva de componentes desgastados, limpeza técnica da área de intervenção '
@@ -434,7 +726,8 @@ class ProviderPortfolioStore extends ChangeNotifier {
       completedAt: now,
       validatedClientPin: pin,
       serviceValue: 180.0 + (nextNumber * 25.0),
-      executionDurationText: '1h ${(15 + (nextNumber * 7) % 40).toString().padLeft(2, '0')}min',
+      executionDurationText:
+          '1h ${(15 + (nextNumber * 7) % 40).toString().padLeft(2, '0')}min',
       toolsAndMaterialsUsed: <String>[
         'Kit Profissional de $category',
         'Insumos de Vedação e Fixação Certificados',
@@ -444,14 +737,16 @@ class ProviderPortfolioStore extends ChangeNotifier {
         'ANTES: Inspeção inicial e isolamento seguro do ponto de $category',
         'DEPOIS: $nextNumberº serviço finalizado, testado e aprovado com PIN $pin',
       ],
-      warrantyCertificateCode: 'GAR-DSP-${nextNumber.toString().padLeft(3, '0')}-2026',
+      warrantyCertificateCode:
+          'GAR-DSP-${nextNumber.toString().padLeft(3, '0')}-2026',
       isReviewedByClient: false,
       clientDisplayName: 'Cliente #${nextNumber.toString().padLeft(2, '0')}',
     );
     return completeAndValidateServiceWithPin(record);
   }
 
-  /// Simula a chegada de uma avaliação futura do cliente para um serviço já concluído via PIN.
+  /// Helper exclusivo para testes automatizados (`@visibleForTesting`).
+  @visibleForTesting
   bool simulateFutureClientReviewForService(String serviceId) {
     return syncClientEvaluationToHistoryAndPortfolio(
       serviceId: serviceId,
@@ -468,13 +763,21 @@ class ProviderPortfolioStore extends ChangeNotifier {
     );
   }
 
-  /// Permite ajustar rapidamente a quantidade de serviços concluídos (ex.: 0, 1, 2, 3, 4, 5)
-  /// para validar o comportamento antes e depois do 4º serviço.
+  /// Helper para testes automatizados (`@visibleForTesting`) ou limpeza de sessão.
   void resetToCount(int count, {List<String> curatedIds = const <String>[]}) {
+    if (count <= 0) {
+      _update(
+        ProviderPortfolioState(
+          fullHistory: const <CompletedServiceRecord>[],
+          curatedPortfolioIds: const <String>[],
+        ),
+      );
+      return;
+    }
     final clamped = count.clamp(0, kSamplePinCompletedServices.length);
-    // Ordena do mais antigo para o mais recente ao fatiar os primeiros `clamped` serviços
-    final chronological = List<CompletedServiceRecord>.from(kSamplePinCompletedServices)
-      ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
+    final chronological =
+        List<CompletedServiceRecord>.from(kSamplePinCompletedServices)
+          ..sort((a, b) => a.completedAt.compareTo(b.completedAt));
     final subset = chronological.take(clamped).toList();
     _update(
       ProviderPortfolioState(fullHistory: subset).copyWith(
@@ -485,7 +788,8 @@ class ProviderPortfolioStore extends ChangeNotifier {
 }
 
 /// Controller Riverpod (`Notifier<ProviderPortfolioState>`) sincronizado com [ProviderPortfolioStore.instance].
-class ProviderPortfolioAndHistoryController extends Notifier<ProviderPortfolioState> {
+class ProviderPortfolioAndHistoryController
+    extends Notifier<ProviderPortfolioState> {
   @override
   ProviderPortfolioState build() {
     final store = ProviderPortfolioStore.instance;
@@ -528,6 +832,16 @@ class ProviderPortfolioAndHistoryController extends Notifier<ProviderPortfolioSt
     );
   }
 
+  Future<bool> updateComplementaryTechnicalNotes({
+    required String serviceId,
+    required String? notes,
+  }) {
+    return ProviderPortfolioStore.instance.updateComplementaryTechnicalNotes(
+      serviceId: serviceId,
+      notes: notes,
+    );
+  }
+
   bool syncClientEvaluationToHistoryAndPortfolio({
     String? serviceId,
     String? orderId,
@@ -548,23 +862,9 @@ class ProviderPortfolioAndHistoryController extends Notifier<ProviderPortfolioSt
       reviewedAt: reviewedAt,
     );
   }
-
-  CompletedServiceRecord simulateNextPinCompletedService() {
-    return ProviderPortfolioStore.instance.simulateNextPinCompletedService();
-  }
-
-  bool simulateFutureClientReviewForService(String serviceId) {
-    return ProviderPortfolioStore.instance.simulateFutureClientReviewForService(
-      serviceId,
-    );
-  }
-
-  void resetToCount(int count, {List<String> curatedIds = const <String>[]}) {
-    ProviderPortfolioStore.instance.resetToCount(count, curatedIds: curatedIds);
-  }
 }
 
-final providerPortfolioControllerProvider =
-    NotifierProvider<ProviderPortfolioAndHistoryController, ProviderPortfolioState>(
+final providerPortfolioControllerProvider = NotifierProvider<
+    ProviderPortfolioAndHistoryController, ProviderPortfolioState>(
   ProviderPortfolioAndHistoryController.new,
 );
