@@ -10,6 +10,7 @@ import '../../../core/utils/format.dart';
 import '../../shared/presentation/support_screens.dart';
 import 'dossie_servico_profissional_screen.dart';
 import 'pix_withdraw_screen.dart';
+import 'provider_job_screen.dart';
 
 /// Dados da carteira: pagamentos, serviços (por id) e total já sacado.
 typedef WalletData = (List<Payment>, Map<String, Job>, double);
@@ -210,7 +211,7 @@ class _WalletTabState extends State<WalletTab> {
                           SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Saldo Garantido em Maturação (D+5) • 0% Taxa s/ Peças (13,5% Op. + 1,5% Fundo Garantia s/ Mão de Obra)',
+                              'Pagamento protegido pela plataforma • 0% de taxa sobre peças e materiais',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 11.5,
@@ -269,6 +270,11 @@ class _WalletTabState extends State<WalletTab> {
                       final disputed = job?.status == JobStatus.disputed;
                       return AppCard(
                         margin: const EdgeInsets.only(bottom: 10),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ProviderJobScreen(jobId: p.jobId),
+                          ),
+                        ),
                         color: disputed
                             ? context.tk.warningSoft
                             : context.tk.card,
@@ -299,7 +305,7 @@ class _WalletTabState extends State<WalletTab> {
                                   ),
                                   Text(
                                     disputed
-                                        ? 'Em mediação'
+                                        ? 'Em mediação • Toque para abrir'
                                         : 'Libera na conclusão (PIN do cliente)',
                                     style: TextStyle(
                                       color: context.tk.textMuted,
@@ -310,13 +316,19 @@ class _WalletTabState extends State<WalletTab> {
                               ),
                             ),
                             Text(
-                              brl(p.netAmount),
+                              PrivacyMode.money(brl(p.netAmount), hidden: _hidden),
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
                                 color: disputed
                                     ? context.tk.warningInk
                                     : context.tk.successInk,
                               ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: context.tk.textMuted,
                             ),
                           ],
                         ),

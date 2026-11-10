@@ -38,15 +38,336 @@ class BadgeChips extends StatelessWidget {
   }
 }
 
+/// Metadados educativos e dicas práticas de conquista para cada um dos 6 selos.
+({String howToEarn, List<String> tips, String benefit}) badgeGuide(ProviderBadge b) => switch (b) {
+      ProviderBadge.superPro => (
+          howToEarn: 'Receba nota máxima (5 estrelas) nos seus últimos 20 serviços concluídos.',
+          tips: const <String>[
+            'Alinhe o que será feito pelo chat antes de iniciar e cumpra o horário combinado.',
+            'Registre fotos nítidas do antes e depois e revise o funcionamento junto com o cliente.',
+          ],
+          benefit: 'Destaca seu perfil com o selo máximo de excelência, aumentando a preferência dos clientes pelos seus orçamentos.',
+        ),
+      ProviderBadge.organizacao => (
+          howToEarn: 'Receba o elogio "Limpou tudo depois" de 15 clientes ao finalizar seus atendimentos.',
+          tips: const <String>[
+            'Proteja a área de trabalho antes de começar e recolha embalagens ou resíduos ao terminar.',
+            'Registre a última foto mostrando o local limpo e organizado na entrega.',
+          ],
+          benefit: 'Transmite tranquilidade para clientes que valorizam cuidado e capricho dentro de casa.',
+        ),
+      ProviderBadge.pontual => (
+          howToEarn: 'Receba o elogio "Super pontual" de 15 clientes por chegar no horário combinado.',
+          tips: const <String>[
+            'Avise pelo chat assim que sair a caminho do endereço do cliente.',
+            'Caso surja qualquer imprevisto no trânsito, comunique com antecedência pelo chat.',
+          ],
+          benefit: 'Aumenta sua conversão em pedidos com horário agendado e emergências.',
+        ),
+      ProviderBadge.mestre => (
+          howToEarn: 'Receba o elogio "Mestre no que faz" de 15 clientes pela qualidade técnica do serviço.',
+          tips: const <String>[
+            'Explique de forma simples e clara a causa do problema e a solução aplicada.',
+            'Teste o serviço na frente do cliente antes de pedir o código PIN de conclusão.',
+          ],
+          benefit: 'Comprova seu domínio técnico no perfil público, valorizando sua mão de obra.',
+        ),
+      ProviderBadge.honesto => (
+          howToEarn: 'Receba o elogio "Preço honesto" de 15 clientes pela transparência nos seus orçamentos.',
+          tips: const <String>[
+            'Detalhe no orçamento o que é mão de obra e o que são peças ou materiais.',
+            'Mantenha o valor combinado sem cobranças surpresa fora do aplicativo.',
+          ],
+          benefit: 'Reduz a hesitação do cliente na hora de aprovar o seu orçamento.',
+        ),
+      ProviderBadge.confiavel => (
+          howToEarn: 'Receba o elogio "Educado e confiável" de 15 clientes pelo atendimento respeitoso e seguro.',
+          tips: const <String>[
+            'Apresente-se com cordialidade ao chegar e respeite as regras da residência ou condomínio.',
+            'Esclareça dúvidas com paciência e mantenha toda a comunicação registrada no chat.',
+          ],
+          benefit: 'Gera confiança imediata para famílias e moradores contratarem você.',
+        ),
+    };
+
+/// Abre o modal informativo elegante explicando como conquistar o selo [badge].
+Future<void> showProviderBadgeInfoSheet(
+  BuildContext context,
+  ProviderBadge badge, {
+  required int currentCount,
+  required bool isEarned,
+}) {
+  final style = badgeStyle(context, badge);
+  final guide = badgeGuide(badge);
+  final clamped = currentCount.clamp(0, badge.goal);
+  final progress = isEarned ? 1.0 : (clamped / badge.goal).clamp(0.0, 1.0);
+
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (ctx) {
+      final tk = ctx.tk;
+      return SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: style.color.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: style.color.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Icon(style.icon, color: style.color, size: 30),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          badge.label,
+                          key: ValueKey('badge-sheet-title-${badge.code}'),
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                            color: tk.text,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isEarned
+                                ? tk.successSoft
+                                : style.color.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            isEarned
+                                ? 'Selo conquistado ✓'
+                                : 'Progresso: $clamped de ${badge.goal}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: isEarned ? tk.successInk : style.color,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  color: isEarned ? tk.success : style.color,
+                  backgroundColor: tk.border,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.flag_rounded,
+                          size: 18,
+                          color: style.color,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Como conquistar',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            color: tk.text,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      guide.howToEarn,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        height: 1.4,
+                        color: tk.text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.tips_and_updates_rounded,
+                          size: 18,
+                          color: tk.providerAccent,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Dicas práticas no dia a dia',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            color: tk.text,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    for (final tip in guide.tips)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.check_circle_outline_rounded,
+                              size: 16,
+                              color: tk.success,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                tip,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  height: 1.38,
+                                  color: tk.textMuted,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: style.color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: style.color.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.verified_rounded, size: 18, color: style.color),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Vantagem real no perfil',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            color: tk.text,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      guide.benefit,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        fontWeight: FontWeight.w600,
+                        color: tk.text,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('btn-badge-sheet-close'),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Entendi'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 /// Mural de selos no perfil: conquistados em destaque e os próximos com progresso.
+/// Todos os 6 selos são clicáveis e abrem um informativo elegante explicando como conquistá-los.
 class BadgeWall extends StatelessWidget {
-  const BadgeWall({super.key, required this.earned, this.tagCounts = const {}, this.showProgress = false});
+  const BadgeWall({
+    super.key,
+    required this.earned,
+    this.tagCounts = const {},
+    this.fiveStarCount = 0,
+    this.showProgress = false,
+  });
 
   final List<String> earned;
 
   /// Contagem de cada pílula nas avaliações reveladas (para o progresso).
   final Map<String, int> tagCounts;
+
+  /// Contagem de avaliações 5 estrelas recentes (para o progresso de Super Profissional 0/20).
+  final int fiveStarCount;
   final bool showProgress;
+
+  int _countFor(ProviderBadge b) {
+    if (earned.contains(b.code)) return b.goal;
+    if (b == ProviderBadge.superPro) return fiveStarCount.clamp(0, b.goal);
+    return (b.tag == null ? 0 : (tagCounts[b.tag] ?? 0)).clamp(0, b.goal);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,78 +376,184 @@ class BadgeWall extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (earned.isEmpty)
-          Text('Nenhum selo ainda. Eles são concedidos automaticamente pelas avaliações dos clientes.',
-              style: TextStyle(color: context.tk.textMuted, height: 1.4))
+          Text(
+            'Nenhum selo conquistado ainda. Toque em qualquer selo abaixo para ver como conquistá-lo.',
+            style: TextStyle(color: context.tk.textMuted, height: 1.4),
+          )
         else
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: [for (final c in earned) _tile(context, ProviderBadge.parse(c), true, 1)],
+            children: [
+              for (final c in earned)
+                _tile(context, ProviderBadge.parse(c)),
+            ],
           ),
         if (showProgress && locked.isNotEmpty) ...[
           const SizedBox(height: 14),
-          const Text('Próximos selos', style: TextStyle(fontWeight: FontWeight.w900)),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Próximos selos',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                'Toque para saber como ganhar',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: context.tk.providerAccent,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           for (final b in locked)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _progress(context, b),
+              child: _progressCard(context, b),
             ),
         ],
       ],
     );
   }
 
-  Widget _tile(BuildContext context, ProviderBadge? b, bool on, double progress) {
+  Widget _tile(BuildContext context, ProviderBadge? b) {
     if (b == null) return const SizedBox.shrink();
     final s = badgeStyle(context, b);
-    return Container(
-      width: 150,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: s.color.withValues(alpha: 0.10),
+    return Material(
+      color: s.color.withValues(alpha: 0.10),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: ValueKey('badge-item-${b.code}'),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: s.color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(s.icon, color: s.color, size: 28),
-          const SizedBox(height: 6),
-          Text(b.label, style: TextStyle(fontWeight: FontWeight.w900, color: s.color, height: 1.15)),
-        ],
+        onTap: () => showProviderBadgeInfoSheet(
+          context,
+          b,
+          currentCount: b.goal,
+          isEarned: true,
+        ),
+        child: Container(
+          width: 155,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: s.color.withValues(alpha: 0.35)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Icon(s.icon, color: s.color, size: 26),
+                  Icon(Icons.info_outline_rounded, size: 16, color: s.color),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                b.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: s.color,
+                  height: 1.15,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _progress(BuildContext context, ProviderBadge b) {
+  Widget _progressCard(BuildContext context, ProviderBadge b) {
+    final tk = context.tk;
     final s = badgeStyle(context, b);
-    final count = b.tag == null ? 0 : (tagCounts[b.tag] ?? 0);
-    final frac = b.tag == null ? 0.0 : (count / b.goal).clamp(0.0, 1.0);
-    return Row(
-      children: [
-        CircleAvatar(radius: 18, backgroundColor: context.tk.surface, child: Icon(s.icon, size: 18, color: context.tk.textMuted)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final count = _countFor(b);
+    final frac = (count / b.goal).clamp(0.0, 1.0);
+
+    return Material(
+      color: tk.card,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: ValueKey('badge-item-${b.code}'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => showProviderBadgeInfoSheet(
+          context,
+          b,
+          currentCount: count,
+          isEarned: false,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: tk.border),
+          ),
+          child: Row(
             children: [
-              Text(b.label, style: const TextStyle(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 2),
-              Text(b.description, style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
-              if (b.tag != null) ...[
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(value: frac, minHeight: 6, color: s.color, backgroundColor: context.tk.border),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: s.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(height: 2),
-                Text('$count/${b.goal}', style: TextStyle(fontSize: 11, color: context.tk.textMuted)),
-              ],
+                child: Icon(s.icon, size: 20, color: s.color),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            b.label,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          '$count/${b.goal}',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: tk.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      b.description,
+                      style: TextStyle(color: tk.textMuted, fontSize: 12),
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: frac,
+                        minHeight: 6,
+                        color: s.color,
+                        backgroundColor: tk.border,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: tk.textMuted,
+              ),
             ],
           ),
         ),
-      ],
+      ),
     );
   }
 }

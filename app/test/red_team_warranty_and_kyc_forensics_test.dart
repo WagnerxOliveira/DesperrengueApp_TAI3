@@ -639,7 +639,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('Saldo Garantido em Maturação (D+5)'),
+        find.textContaining('Pagamento protegido pela plataforma • 0% de taxa sobre peças e materiais'),
         findsOneWidget,
       );
       expect(

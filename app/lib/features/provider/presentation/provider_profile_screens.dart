@@ -430,6 +430,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                             photos: items.map((e) => e.imagePath).toList(),
                             initialIndex: idx,
                             serviceTitle: items[idx].caption ?? 'Galeria do Meu Portfólio',
+                            usePublicBucket: true,
                           ),
                           child: PublicImage(path: items[idx].imagePath, radius: 16),
                         ),
@@ -675,6 +676,14 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
               counts[t] = (counts[t] ?? 0) + 1;
             }
           }
+          var fiveStarStreak = 0;
+          for (final r in reviews) {
+            if (r.rating == 5) {
+              fiveStarStreak++;
+            } else {
+              break;
+            }
+          }
           final avg = card?.ratingAvg ?? 0;
           final count = card?.ratingCount ?? 0;
           return ListView(
@@ -719,7 +728,12 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
                 icon: Icons.visibility_off_rounded,
               ),
               const SectionTitle('Meus selos'),
-              BadgeWall(earned: card?.badges ?? const [], tagCounts: counts, showProgress: true),
+              BadgeWall(
+                earned: card?.badges ?? const [],
+                tagCounts: counts,
+                fiveStarCount: fiveStarStreak,
+                showProgress: true,
+              ),
               const SectionTitle('Avaliações recebidas'),
               if (reviews.isEmpty)
                 Padding(

@@ -145,7 +145,7 @@ class _ProviderSmartPortfolioSectionState
                           children: [
                             Text(
                               isOwner
-                                  ? 'Meu Portfólio Auditado'
+                                  ? 'Meu Portfólio'
                                   : 'Portfólio de Serviços Verificados',
                               style: TextStyle(
                                 fontWeight: FontWeight.w900,
@@ -156,7 +156,7 @@ class _ProviderSmartPortfolioSectionState
                             const SizedBox(height: 2),
                             Text(
                               isOwner
-                                  ? '$totalCount serviço(s) 100% liquidado(s) • Top 3 recentes + até $kMaxCuratedPortfolioServices destaques'
+                                  ? '$totalCount serviço(s) concluído(s) • 3 recentes + até $kMaxCuratedPortfolioServices destaques'
                                   : '${topThree.length + curated.length} serviço(s) verificado(s) e concluído(s) na plataforma',
                               style: TextStyle(
                                 fontSize: 12.5,
@@ -191,9 +191,8 @@ class _ProviderSmartPortfolioSectionState
                   const SizedBox(height: 10),
                   Text(
                     isOwner
-                        ? 'Apenas serviços reais cujo período de Proteção Pós-Serviço já foi concluído e com 100% do pagamento recebido entram no Meu Portfólio. '
-                            'Os 3 mais recentes entram automaticamente no topo (Pilha LIFO) e, a partir do 4º serviço, você pode escolher até $kMaxCuratedPortfolioServices destaques do seu Histórico.'
-                        : 'Toque em qualquer serviço abaixo para ver o que foi solicitado, a solução técnica aplicada pelo profissional, as notas complementares e deslizar pelas fotos.',
+                        ? 'Seus 3 últimos serviços concluídos entram aqui automaticamente. A partir do 4º serviço, você pode escolher até $kMaxCuratedPortfolioServices destaques do seu Histórico.'
+                        : 'Toque em qualquer serviço abaixo para ver o que foi solicitado, a solução aplicada pelo profissional e as fotos.',
                     style: TextStyle(
                       fontSize: 12.5,
                       height: 1.4,
@@ -230,7 +229,7 @@ class _ProviderSmartPortfolioSectionState
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                '${state.underProtectionServices.length} serviço(s) Sob Proteção Pós-Serviço (Em Cobertura Técnica & Maturação) — entrarão no Portfólio após 100% da liquidação.',
+                                '${state.underProtectionServices.length} serviço(s) Sob Proteção Pós-Serviço — entrarão no Portfólio após a liberação final.',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
@@ -255,7 +254,7 @@ class _ProviderSmartPortfolioSectionState
             const SizedBox(height: 18),
 
             // =================================================================
-            // SEÇÃO 1: ÚLTIMOS 3 SERVIÇOS REALIZADOS (PILHA LIFO AUTOMÁTICA)
+            // SEÇÃO 1: ÚLTIMOS 3 SERVIÇOS REALIZADOS (AUTOMÁTICO)
             // =================================================================
             Row(
               children: [
@@ -268,7 +267,7 @@ class _ProviderSmartPortfolioSectionState
                 Expanded(
                   child: Text(
                     isOwner
-                        ? 'Últimos 3 Serviços Realizados (Automático)'
+                        ? 'Últimos 3 Serviços Realizados'
                         : 'Serviços Recentes Verificados',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
@@ -297,54 +296,33 @@ class _ProviderSmartPortfolioSectionState
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              isOwner
-                  ? 'Atualizado automaticamente assim que um serviço conclui o período Sob Proteção Pós-Serviço e 100% do pagamento é recebido.'
-                  : 'Registros reais validados presencialmente na conclusão do atendimento.',
-              style: TextStyle(fontSize: 12.5, color: tk.textMuted),
-            ),
             const SizedBox(height: 10),
 
             if (topThree.isEmpty)
               Container(
                 key: const ValueKey('portfolio-empty-top3-card'),
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: tk.surface,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: tk.border),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.verified_outlined,
-                          color: tk.providerAccent,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Sua vitrine automática está pronta para o 1º serviço 100% liquidado',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                              color: tk.text,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      Icons.verified_outlined,
+                      color: tk.providerAccent,
+                      size: 22,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Nenhum dado fictício é exibido aqui. Assim que você concluir um serviço real com PIN do cliente, finalizar o período Sob Proteção Pós-Serviço e receber 100% do pagamento, ele entrará automaticamente na posição #1 desta pilha.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1.4,
-                        color: tk.textMuted,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Nenhum serviço concluído ainda. Assim que você finalizar seu 1º atendimento, ele aparecerá automaticamente aqui.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.4,
+                          color: tk.textMuted,
+                        ),
                       ),
                     ),
                   ],
@@ -356,7 +334,7 @@ class _ProviderSmartPortfolioSectionState
                   key: ValueKey('portfolio-top3-card-$i-${topThree[i].id}'),
                   service: topThree[i],
                   positionBadge: isOwner
-                      ? '#${i + 1} Mais Recente (Automático)'
+                      ? '#${i + 1} Mais Recente'
                       : 'Serviço Verificado #${i + 1}',
                   isAutomaticTopThree: true,
                   showPrice: isOwner,
@@ -386,7 +364,7 @@ class _ProviderSmartPortfolioSectionState
                   Expanded(
                     child: Text(
                       isOwner
-                          ? 'Destaques Escolhidos do Meu Histórico (Até $kMaxCuratedPortfolioServices serviços)'
+                          ? 'Destaques do Meu Histórico (Até $kMaxCuratedPortfolioServices)'
                           : 'Destaques Selecionados pelo Especialista',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
@@ -413,7 +391,7 @@ class _ProviderSmartPortfolioSectionState
                       child: Text(
                         unlocked
                             ? '${curated.length}/$kMaxCuratedPortfolioServices escolhidos'
-                            : 'Desbloqueia no 4º serviço',
+                            : 'Libera no 4º serviço',
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w800,
@@ -423,7 +401,7 @@ class _ProviderSmartPortfolioSectionState
                     ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               if (!unlocked && isOwner)
                 Container(
                   key: const ValueKey('portfolio-curated-locked-card'),
@@ -434,7 +412,7 @@ class _ProviderSmartPortfolioSectionState
                     border: Border.all(color: tk.border),
                   ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.lock_clock_rounded,
@@ -444,11 +422,10 @@ class _ProviderSmartPortfolioSectionState
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Você possui atualmente $totalCount serviço(s) 100% liquidado(s) (faltam ${(4 - totalCount).clamp(0, 4)} para liberar esta seção). '
-                          'Assim que concluir e liquidar o 4º serviço, o 1º sairá dos 3 mais recentes, ficará salvo no Histórico de Serviços Prestados e você poderá escolher até $kMaxCuratedPortfolioServices serviços para destacar aqui.',
+                          'Disponível a partir do 4º serviço concluído (faltam ${(4 - totalCount).clamp(0, 4)}). Você poderá fixar até $kMaxCuratedPortfolioServices serviços do seu Histórico aqui.',
                           style: TextStyle(
                             fontSize: 12.5,
-                            height: 1.4,
+                            height: 1.38,
                             color: tk.textMuted,
                           ),
                         ),
@@ -1838,6 +1815,16 @@ class _PortfolioPhotoSlideCard extends StatelessWidget {
         (p.contains('/') && !p.contains(' '));
   }
 
+  bool get _isPublicPath {
+    final p = photoOrCaption.trim();
+    return p.startsWith('http://') ||
+        p.startsWith('https://') ||
+        p.contains('/portfolio_') ||
+        p.startsWith('portfolio/') ||
+        p.contains('/avatar_') ||
+        p.startsWith('avatar/');
+  }
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
@@ -1847,12 +1834,19 @@ class _PortfolioPhotoSlideCard extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (_isStoragePathOrUrl)
-            SignedImage(
-              path: photoOrCaption,
-              height: 230,
-              width: double.infinity,
-              radius: 16,
-            )
+            _isPublicPath
+                ? PublicImage(
+                    path: photoOrCaption,
+                    height: 230,
+                    width: double.infinity,
+                    radius: 16,
+                  )
+                : SignedImage(
+                    path: photoOrCaption,
+                    height: 230,
+                    width: double.infinity,
+                    radius: 16,
+                  )
           else
             Container(
               padding: const EdgeInsets.all(20),
@@ -1949,17 +1943,20 @@ class PortfolioFullScreenPhotoViewer extends StatefulWidget {
     required this.photos,
     required this.initialIndex,
     required this.serviceTitle,
+    this.usePublicBucket = false,
   });
 
   final List<String> photos;
   final int initialIndex;
   final String serviceTitle;
+  final bool usePublicBucket;
 
   static Future<void> open(
     BuildContext context, {
     required List<String> photos,
     required int initialIndex,
     required String serviceTitle,
+    bool usePublicBucket = false,
   }) {
     return Navigator.of(context).push(
       MaterialPageRoute(
@@ -1967,6 +1964,7 @@ class PortfolioFullScreenPhotoViewer extends StatefulWidget {
           photos: photos,
           initialIndex: initialIndex,
           serviceTitle: serviceTitle,
+          usePublicBucket: usePublicBucket,
         ),
       ),
     );
@@ -1989,6 +1987,17 @@ class _PortfolioFullScreenPhotoViewerState
     super.dispose();
   }
 
+  bool _isPublicPath(String raw) {
+    final p = raw.trim();
+    return widget.usePublicBucket ||
+        p.startsWith('http://') ||
+        p.startsWith('https://') ||
+        p.contains('/portfolio_') ||
+        p.startsWith('portfolio/') ||
+        p.contains('/avatar_') ||
+        p.startsWith('avatar/');
+  }
+
   @override
   Widget build(BuildContext context) {
     final total = widget.photos.length;
@@ -1997,9 +2006,16 @@ class _PortfolioFullScreenPhotoViewerState
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           'Foto ${_index + 1} de $total • ${widget.serviceTitle}',
-          style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ),
       body: Stack(
@@ -2015,6 +2031,7 @@ class _PortfolioFullScreenPhotoViewerState
               final isPath = item.trim().startsWith('http://') ||
                   item.trim().startsWith('https://') ||
                   (item.contains('/') && !item.contains(' '));
+              final usePublic = _isPublicPath(item);
               return InteractiveViewer(
                 minScale: 1.0,
                 maxScale: 4.0,
@@ -2022,12 +2039,21 @@ class _PortfolioFullScreenPhotoViewerState
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: isPath
-                        ? SignedImage(
-                            path: item,
-                            height: 480,
-                            width: double.infinity,
-                            radius: 16,
-                          )
+                        ? (usePublic
+                            ? PublicImage(
+                                path: item,
+                                height: 480,
+                                width: double.infinity,
+                                fit: BoxFit.contain,
+                                radius: 16,
+                              )
+                            : SignedImage(
+                                path: item,
+                                height: 480,
+                                width: double.infinity,
+                                fit: BoxFit.contain,
+                                radius: 16,
+                              ))
                         : Container(
                             padding: const EdgeInsets.all(28),
                             decoration: BoxDecoration(
@@ -2212,7 +2238,7 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Registro Permanente Auditado (${state.totalHistoryRecordsCount} registros)',
+                            'Seus atendimentos (${state.totalHistoryRecordsCount} registros)',
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 15,
@@ -2223,9 +2249,7 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Acompanhe todos os seus atendimentos reais divididos em: Concluídos & 100% Liquidados, '
-                      'Sob Proteção Pós-Serviço (Em Cobertura Técnica & Maturação), Em Mediação e Cancelados. '
-                      'Apenas serviços 100% liquidados após o período de proteção pós-serviço podem compor o Meu Portfólio.',
+                      'Consulte todos os seus serviços por etapa. Após concluir a proteção pós-serviço e liberar o pagamento, você pode destacá-los no seu Portfólio.',
                       style: TextStyle(
                         fontSize: 12.5,
                         height: 1.38,
@@ -2236,57 +2260,63 @@ class _ProviderFullHistoryScreenState extends State<ProviderFullHistoryScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  ChoiceChip(
-                    key: const ValueKey('history-chip-all'),
-                    label: Text('Todos (${all.length})'),
-                    selected: _filter == 'all',
-                    onSelected: (_) => setState(() => _filter = 'all'),
+              SizedBox(
+                height: 44,
+                child: SingleChildScrollView(
+                  key: const ValueKey('history-filter-strip'),
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      ChoiceChip(
+                        key: const ValueKey('history-chip-all'),
+                        showCheckmark: false,
+                        label: Text('Todos (${all.length})'),
+                        selected: _filter == 'all',
+                        onSelected: (_) => setState(() => _filter = 'all'),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        key: const ValueKey('history-chip-settled'),
+                        showCheckmark: false,
+                        label: Text(
+                          'Concluídos 100% Pagos (${state.settledEligibleHistory.length})',
+                        ),
+                        selected: _filter == 'settled',
+                        onSelected: (_) => setState(() => _filter = 'settled'),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        key: const ValueKey('history-chip-protection'),
+                        showCheckmark: false,
+                        label: Text(
+                          'Sob Proteção Pós-Serviço (${state.underProtectionServices.length})',
+                        ),
+                        selected: _filter == 'protection',
+                        onSelected: (_) => setState(() => _filter = 'protection'),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        key: const ValueKey('history-chip-mediation'),
+                        showCheckmark: false,
+                        label: Text(
+                          'Em Mediação (${state.inMediationServices.length})',
+                        ),
+                        selected: _filter == 'mediation',
+                        onSelected: (_) => setState(() => _filter = 'mediation'),
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        key: const ValueKey('history-chip-canceled'),
+                        showCheckmark: false,
+                        label: Text(
+                          'Cancelados (${state.canceledServices.length})',
+                        ),
+                        selected: _filter == 'canceled',
+                        onSelected: (_) => setState(() => _filter = 'canceled'),
+                      ),
+                    ],
                   ),
-                  ChoiceChip(
-                    key: const ValueKey('history-chip-settled'),
-                    label: Text(
-                      'Concluídos 100% Pagos (${state.settledEligibleHistory.length})',
-                    ),
-                    selected: _filter == 'settled',
-                    onSelected: (_) => setState(() => _filter = 'settled'),
-                  ),
-                  ChoiceChip(
-                    key: const ValueKey('history-chip-protection'),
-                    label: Text(
-                      'Sob Proteção Pós-Serviço (${state.underProtectionServices.length})',
-                    ),
-                    selected: _filter == 'protection',
-                    onSelected: (_) => setState(() => _filter = 'protection'),
-                  ),
-                  ChoiceChip(
-                    key: const ValueKey('history-chip-mediation'),
-                    label: Text(
-                      'Em Mediação (${state.inMediationServices.length})',
-                    ),
-                    selected: _filter == 'mediation',
-                    onSelected: (_) => setState(() => _filter = 'mediation'),
-                  ),
-                  ChoiceChip(
-                    key: const ValueKey('history-chip-canceled'),
-                    label: Text(
-                      'Cancelados (${state.canceledServices.length})',
-                    ),
-                    selected: _filter == 'canceled',
-                    onSelected: (_) => setState(() => _filter = 'canceled'),
-                  ),
-                  ChoiceChip(
-                    key: const ValueKey('history-chip-eligible'),
-                    label: Text(
-                      'Elegíveis p/ Destaque (${state.eligibleHistoryPool.length})',
-                    ),
-                    selected: _filter == 'eligible',
-                    onSelected: (_) => setState(() => _filter = 'eligible'),
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 14),
               if (filtered.isEmpty)

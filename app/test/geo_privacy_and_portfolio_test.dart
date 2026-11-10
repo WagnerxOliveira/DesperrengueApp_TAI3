@@ -5,11 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:desperrengue_app/core/models/client_dossier_models.dart';
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/provider_portfolio_models.dart';
+import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/services/accurate_geo_routing_service.dart';
 import 'package:desperrengue_app/core/state/provider_portfolio_controller.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/features/client/presentation/detalhe_servico_cliente_screen.dart';
 import 'package:desperrengue_app/features/provider/presentation/provider_portfolio_widgets.dart';
+import 'package:desperrengue_app/features/shared/presentation/review_widgets.dart';
 
 Widget _wrapWithTheme(Widget child) {
   return ProviderScope(
@@ -548,6 +550,97 @@ void main() {
       expect(find.byKey(const ValueKey('btn-edit-complementary-notes')), findsNothing);
       expect(find.byKey(const ValueKey('detail-sheet-immutable-lock-badge')), findsNothing);
       expect(find.textContaining('R\$'), findsNothing);
+    });
+
+    test('UserProfile humaniza e-mail em fullName para displayName ("Wagner Oliveira") e firstName ("Wagner") sem exibir "Olá, você"', () {
+      const profile = UserProfile(
+        id: 'u1',
+        fullName: 'wagneroliveira9819@gmail.com',
+        isClient: true,
+        isProvider: true,
+      );
+      expect(profile.displayName, 'Wagner Oliveira');
+      expect(profile.firstName, 'Wagner');
+      expect(profile.emailAddressIfPresent, 'wagneroliveira9819@gmail.com');
+    });
+
+    testWidgets('Meus selos (BadgeWall): todos os 6 selos exibem barra de progresso e abrem informativo elegante ao tocar (ex.: Super Profissional)', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 2.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        _wrapWithTheme(
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: BadgeWall(
+              earned: <String>[],
+              tagCounts: <String, int>{'Super pontual': 4},
+              fiveStarCount: 3,
+              showProgress: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Super Profissional mostra 3/20 e Sempre Pontual mostra 4/15:
+      expect(find.text('3/20'), findsOneWidget);
+      expect(find.text('4/15'), findsOneWidget);
+
+      // Toca em "Super Profissional" e abre o informativo elegante:
+      await tester.tap(find.byKey(const ValueKey('badge-item-super')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('badge-sheet-title-super')), findsOneWidget);
+      expect(find.text('Como conquistar'), findsOneWidget);
+      expect(find.text('Dicas práticas no dia a dia'), findsOneWidget);
+      expect(find.text('Vantagem real no perfil'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const ValueKey('btn-badge-sheet-close')));
+      await tester.tap(find.byKey(const ValueKey('btn-badge-sheet-close')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('badge-sheet-title-super')), findsNothing);
+    });
+
+    testWidgets('ProviderFullHistoryScreen: filtros em faixa horizontal única com showCheckmark: false garantem zero quebra para baixo ao clicar em Sob Proteção Pós-Serviço ou Em Mediação', (tester) async {
+      tester.view.physicalSize = const Size(1600, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      store.resetToCount(2);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            theme: AppTheme.resolve(null, Brightness.light),
+            home: const ProviderFullHistoryScreen(syncOnMount: false),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('history-filter-strip')), findsOneWidget);
+      final initialStripHeight = tester.getSize(find.byKey(const ValueKey('history-filter-strip'))).height;
+      final initialProtectionDy = tester.getTopLeft(find.byKey(const ValueKey('history-chip-protection'))).dy;
+
+      // Clica em "Sob Proteção Pós-Serviço":
+      await tester.ensureVisible(find.byKey(const ValueKey('history-chip-protection')));
+      await tester.tap(find.byKey(const ValueKey('history-chip-protection')));
+      await tester.pumpAndSettle();
+
+      final afterProtectionStripHeight = tester.getSize(find.byKey(const ValueKey('history-filter-strip'))).height;
+      final afterProtectionDy = tester.getTopLeft(find.byKey(const ValueKey('history-chip-protection'))).dy;
+      expect(afterProtectionStripHeight, equals(initialStripHeight));
+      expect(afterProtectionDy, equals(initialProtectionDy));
+
+      // Clica em "Em Mediação":
+      await tester.ensureVisible(find.byKey(const ValueKey('history-chip-mediation')));
+      await tester.tap(find.byKey(const ValueKey('history-chip-mediation')));
+      await tester.pumpAndSettle();
+
+      final afterMediationStripHeight = tester.getSize(find.byKey(const ValueKey('history-filter-strip'))).height;
+      expect(afterMediationStripHeight, equals(initialStripHeight));
     });
   });
 }

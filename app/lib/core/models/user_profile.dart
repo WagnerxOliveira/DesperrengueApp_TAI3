@@ -197,12 +197,110 @@ class UserProfile {
         pixKeyCpfMatched: (map['pix_key_cpf_matched'] as bool?) ?? false,
       );
 
-  /// Primeiro nome para saudações. Se `full_name` for um e-mail (cadastro rápido), nunca o exibe:
-  /// cai em "você" ("Olá, você!").
-  String get firstName {
+  static const List<String> _commonBrazilianSurnames = <String>[
+    'oliveira',
+    'silva',
+    'santos',
+    'souza',
+    'sousa',
+    'pereira',
+    'costa',
+    'ferreira',
+    'almeida',
+    'nascimento',
+    'lima',
+    'araujo',
+    'fernandes',
+    'carvalho',
+    'gomes',
+    'martins',
+    'rocha',
+    'ribeiro',
+    'alves',
+    'monteiro',
+    'mendes',
+    'barros',
+    'freitas',
+    'barbosa',
+    'pinto',
+    'moura',
+    'cavalcanti',
+    'dias',
+    'castro',
+    'campos',
+    'cardoso',
+    'teixeira',
+    'correia',
+    'moreira',
+    'vieira',
+    'marques',
+    'machado',
+    'lopes',
+    'ramos',
+    'melo',
+    'nunes',
+  ];
+
+  static String _capitalizeToken(String w) {
+    if (w.isEmpty) return '';
+    return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
+  }
+
+  /// Extrai um nome humano elegante quando `full_name` ainda contém um e-mail
+  /// (ex.: `wagneroliveira9819@gmail.com` -> `Wagner Oliveira`).
+  static String? _humanizeEmailLocalPart(String raw) {
+    final trimmed = raw.trim();
+    if (!trimmed.contains('@')) return null;
+    final local = trimmed.split('@').first.replaceAll(RegExp(r'[0-9]+'), '');
+    final parts = local
+        .split(RegExp(r'[._\-]+'))
+        .map((e) => e.replaceAll(RegExp(r'[^a-zA-ZÀ-ÿ]'), '').trim())
+        .where((e) => e.length >= 2)
+        .toList();
+    if (parts.isEmpty) return null;
+    if (parts.length >= 2) {
+      return parts.map(_capitalizeToken).join(' ');
+    }
+    final single = parts.first.toLowerCase();
+    if (single.length < 3) return null;
+    for (final surname in _commonBrazilianSurnames) {
+      if (single.endsWith(surname) && single.length >= surname.length + 3) {
+        final given = single.substring(0, single.length - surname.length);
+        return '${_capitalizeToken(given)} ${_capitalizeToken(surname)}';
+      }
+    }
+    return _capitalizeToken(single);
+  }
+
+  /// Nome de exibição limpo (nunca exibe um endereço de e-mail cru como título).
+  String get displayName {
+    final verified = verifiedFullName?.trim() ?? '';
+    if (verified.isNotEmpty && !verified.contains('@')) {
+      return verified;
+    }
     final n = fullName.trim();
-    if (n.isEmpty || n.contains('@')) return 'você';
-    return n.split(' ').first;
+    if (n.isNotEmpty && !n.contains('@') && n != 'Usuário') {
+      return n;
+    }
+    final fromEmail = _humanizeEmailLocalPart(n);
+    if (fromEmail != null && fromEmail.isNotEmpty) {
+      return fromEmail;
+    }
+    return n.isEmpty || n.contains('@') ? 'Usuário' : n;
+  }
+
+  /// Se `full_name` foi salvo como e-mail, retorna o e-mail para exibição discreta em 1 linha.
+  String? get emailAddressIfPresent {
+    final n = fullName.trim();
+    return n.contains('@') ? n : null;
+  }
+
+  /// Primeiro nome para saudações. Se `full_name` for um e-mail (ex.: `wagneroliveira9819@gmail.com`),
+  /// extrai o primeiro nome real ("Wagner") ou cai em "você" se não houver nome identificável.
+  String get firstName {
+    final clean = displayName;
+    if (clean.isEmpty || clean == 'Usuário') return 'você';
+    return clean.split(RegExp(r'\s+')).first;
   }
 
   bool get hasBothModes => isClient && isProvider;
@@ -215,11 +313,13 @@ class UserProfile {
       kycBiometricVerified ||
       clientKycStatus == 'APPROVED';
 
-  /// Nome civil homologado pelo OCR (ou `fullName` caso ainda não homologado).
+  /// Nome civil homologado pelo OCR (ou `displayName` limpo caso ainda não homologado).
   String get officialCivilName =>
-      (verifiedFullName != null && verifiedFullName!.trim().isNotEmpty)
+      (verifiedFullName != null &&
+              verifiedFullName!.trim().isNotEmpty &&
+              !verifiedFullName!.contains('@'))
           ? verifiedFullName!.trim()
-          : fullName;
+          : displayName;
 
   /// Cálculo determinístico $O(1)$ do Score de Confiança Relativo (`RN-MZ-02`):
   /// $RTS = \text{clamp}(P_{KYC} + P_{MEI} + P_{CERT} + P_{HIST} - P_{PEN}, 0, 100)$.

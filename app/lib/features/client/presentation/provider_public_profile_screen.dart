@@ -188,6 +188,7 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
                                 photos: allPaths,
                                 initialIndex: i,
                                 serviceTitle: items[i].caption ?? p.fullName,
+                                usePublicBucket: true,
                               ),
                               child: PublicImage(path: items[i].imagePath, width: 130, height: 130, radius: 16),
                             ),

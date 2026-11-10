@@ -272,6 +272,7 @@ class ClientProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final emailSubtitle = profile.emailAddressIfPresent;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -284,7 +285,7 @@ class ClientProfileTab extends StatelessWidget {
           children: [
             EditableAvatar(
               url: profile.avatarUrl,
-              name: profile.fullName,
+              name: profile.officialCivilName,
               radius: 36,
             ),
             const SizedBox(width: 14),
@@ -294,11 +295,25 @@ class ClientProfileTab extends StatelessWidget {
                 children: [
                   Text(
                     profile.officialCivilName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  if (emailSubtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      emailSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: context.tk.textMuted,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   Wrap(
                     spacing: 8,
@@ -409,11 +424,6 @@ class ClientProfileTab extends StatelessWidget {
           onPressed: () => AppSession.instance.choose(UserMode.provider),
         ),
         const SizedBox(height: 10),
-        TextButton.icon(
-          onPressed: AppSession.instance.switchMode,
-          icon: const Icon(Icons.apps_rounded),
-          label: const Text('Trocar de modo'),
-        ),
         TextButton.icon(
           onPressed: () async {
             final ok = await confirmDialog(

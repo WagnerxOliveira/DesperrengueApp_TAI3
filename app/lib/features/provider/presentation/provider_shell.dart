@@ -21,7 +21,6 @@ import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/delete_account_screen.dart';
 import '../../shared/presentation/live_location_map.dart';
-import '../../shared/presentation/showcase_widgets.dart';
 import '../../shared/presentation/theme_picker.dart';
 import '../../shared/presentation/notifications_screen.dart';
 import '../../shared/presentation/support_screens.dart';
@@ -163,49 +162,6 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
     }
   }
 
-  ({int rts, String tierLabel, String settlementBadge, String nextMilestone, double progress}) _computeReputationMetrics(Map<String, dynamic>? row) {
-    final rawRts = (row?['relative_trust_score'] as num?)?.toInt();
-    final done = (row?['jobs_done'] as num?)?.toInt() ?? 0;
-    final ratingAvg = (row?['rating_avg'] as num?)?.toDouble() ?? 5.0;
-    final rts = (rawRts ?? (68 + (done * 4).clamp(0, 22) + ((ratingAvg - 4.0) * 10).round().clamp(0, 10))).clamp(50, 100);
-
-    if (rts >= 85) {
-      return (
-        rts: rts,
-        tierLabel: '1º Degrau • Prioridade Elite',
-        settlementBadge: 'PIX Instantâneo D+0 ⚡',
-        nextMilestone: 'Prioridade máxima ativa no radar SOS e liquidação imediata.',
-        progress: (rts / 100.0).clamp(0.85, 1.0),
-      );
-    } else if (rts >= 75) {
-      final missing = 85 - rts;
-      return (
-        rts: rts,
-        tierLabel: '2º Degrau • Alta Confiança',
-        settlementBadge: 'PIX Rápido D+2',
-        nextMilestone: 'Faltam $missing pts de RTS para subir ao 1º Degrau e destravar PIX D+0.',
-        progress: (rts / 85.0).clamp(0.5, 0.96),
-      );
-    } else if (rts >= 65) {
-      final missing = 75 - rts;
-      return (
-        rts: rts,
-        tierLabel: '3º Degrau • Verificado Ativo',
-        settlementBadge: 'Maturação Padrão D+5',
-        nextMilestone: 'Faltam $missing pts de RTS para subir ao 2º Degrau (PIX D+2).',
-        progress: (rts / 75.0).clamp(0.4, 0.95),
-      );
-    } else {
-      return (
-        rts: rts,
-        tierLabel: '4º Degrau • Marco Zero',
-        settlementBadge: 'Proteção Inicial D+5',
-        nextMilestone: 'Conclua atendimentos com PIN e fotos Antes/Depois para subir de degrau.',
-        progress: (rts / 65.0).clamp(0.25, 0.9),
-      );
-    }
-  }
-
   Future<void> _showSmartSplitCalculatorSheet(BuildContext context) async {
     final laborCtrl = TextEditingController(text: '250');
     final materialsCtrl = TextEditingController(text: '150');
@@ -226,7 +182,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
             final savedOnMaterials = materials * feeRate;
 
             return SafeArea(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   20,
                   4,
@@ -253,11 +209,11 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Simulador Rápido Smart Split',
+                                'Simular ganho de orçamento',
                                 style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: tk.text),
                               ),
                               Text(
-                                'Mão de Obra vs. Peças/Materiais (0% de Taxa sobre Insumos)',
+                                'Veja quanto sobra livre separando mão de obra e materiais (0% de taxa em peças)',
                                 style: TextStyle(fontSize: 12, color: tk.textMuted),
                               ),
                             ],
@@ -289,7 +245,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             onChanged: (_) => setModalState(() {}),
                             decoration: const InputDecoration(
-                              labelText: 'Peças c/ Nota (Taxa 0%)',
+                              labelText: 'Peças e Materiais (0%)',
                               prefixText: 'R\$ ',
                               border: OutlineInputBorder(),
                             ),
@@ -308,33 +264,62 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                       child: Column(
                         children: [
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Total cobrado do Cliente:', style: TextStyle(color: tk.textMuted, fontSize: 13)),
-                              Text(brl(labor + materials), style: TextStyle(fontWeight: FontWeight.w800, color: tk.text)),
+                              Expanded(
+                                child: Text(
+                                  'Total do orçamento:',
+                                  style: TextStyle(color: tk.textMuted, fontSize: 13),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                brl(labor + materials),
+                                style: TextStyle(fontWeight: FontWeight.w800, color: tk.text),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Reembolso de Peças (Taxa 0%):', style: TextStyle(color: tk.success, fontWeight: FontWeight.w700, fontSize: 13)),
-                              Text('+ ${brl(materials)} (100% seu)', style: TextStyle(fontWeight: FontWeight.w900, color: tk.success)),
+                              Expanded(
+                                child: Text(
+                                  'Peças e materiais (sem taxa):',
+                                  style: TextStyle(color: tk.success, fontWeight: FontWeight.w700, fontSize: 13),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '+ ${brl(materials)} (100% seu)',
+                                style: TextStyle(fontWeight: FontWeight.w900, color: tk.success, fontSize: 13),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Economia por isenção em peças:', style: TextStyle(color: tk.providerAccent, fontSize: 12.5, fontWeight: FontWeight.w700)),
-                              Text('Você economiza ${brl(savedOnMaterials)}', style: TextStyle(color: tk.providerAccent, fontWeight: FontWeight.w900, fontSize: 12.5)),
+                              Expanded(
+                                child: Text(
+                                  'Economia na taxa de peças:',
+                                  style: TextStyle(color: tk.providerAccent, fontSize: 12.5, fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '+ ${brl(savedOnMaterials)}',
+                                style: TextStyle(color: tk.providerAccent, fontWeight: FontWeight.w900, fontSize: 12.5),
+                              ),
                             ],
                           ),
                           const Divider(height: 20),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text('Você Recebe Líquido (PIX):', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: tk.text)),
+                              Expanded(
+                                child: Text(
+                                  'Você recebe livre no PIX:',
+                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: tk.text),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
                               Text(
                                 brl(totalNet),
                                 key: const ValueKey('smart-split-net-result'),
@@ -360,12 +345,12 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
     final nextGoal = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Definir Meta Semanal'),
+        title: const Text('Definir Meta da Semana'),
         content: TextField(
           controller: ctrl,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'Meta de faturamento na semana (R\$)',
+            labelText: 'Meta de ganhos na semana (R\$)',
             prefixText: 'R\$ ',
             border: OutlineInputBorder(),
           ),
@@ -400,14 +385,13 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
           final online = _online ?? (d?.row?['accepting_jobs'] != false);
           final radiusKm = (d?.row?['service_radius_km'] as num?)?.toInt() ?? 15;
           final active = d?.jobs.where((j) => j.status == JobStatus.scheduled || j.status == JobStatus.inProgress || j.status == JobStatus.awaitingApproval || j.status == JobStatus.awaitingPayment || j.status == JobStatus.disputed).toList() ?? const <Job>[];
-          final rep = _computeReputationMetrics(d?.row);
 
           return ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
               // ===============================================================
-              // 1. HEADER EXECUTIVO + PRIVACIDADE + NOTIFICAÇÕES
+              // 1. HEADER LIMPO E HUMANO + PRIVACIDADE + NOTIFICAÇÕES
               // ===============================================================
               Row(
                 children: [
@@ -417,23 +401,28 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                     onPressed: AppSession.instance.switchMode,
                     icon: Icon(Icons.arrow_back_ios_new_rounded, size: 20, color: tk.text),
                   ),
-                  UserAvatar(url: widget.profile.avatarUrl, name: widget.profile.fullName, radius: 24, verified: true),
+                  UserAvatar(url: widget.profile.avatarUrl, name: widget.profile.displayName, radius: 24, verified: true),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Olá, ${widget.profile.firstName}', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: tk.providerAccent)),
+                        Text(
+                          'Olá, ${widget.profile.firstName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: tk.providerAccent),
+                        ),
                         Row(
                           children: [
-                            Icon(Icons.circle, size: 10, color: online ? tk.success : tk.textMuted),
-                            const SizedBox(width: 6),
+                            Icon(Icons.verified_rounded, size: 14, color: tk.success),
+                            const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                online ? 'Online • Radar ${radiusKm}km ativo' : 'Offline • Radar pausado',
+                                'Profissional verificado',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: tk.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
+                                style: TextStyle(color: tk.textMuted, fontSize: 12.5, fontWeight: FontWeight.w700),
                               ),
                             ),
                           ],
@@ -461,7 +450,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
               const SizedBox(height: 6),
 
               // ===============================================================
-              // 2. INTERRUPTOR TÁTIL DE DISPONIBILIDADE NO RADAR
+              // 2. INTERRUPTOR ÚNICO DE DISPONIBILIDADE (SEM DUPLICIDADE)
               // ===============================================================
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
@@ -474,11 +463,14 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                   contentPadding: EdgeInsets.zero,
                   value: online,
                   onChanged: _toggleOnline,
-                  title: const Text('Disponível para novos serviços', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                  title: Text(
+                    online ? 'Disponível para serviços' : 'Indisponível no momento',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5),
+                  ),
                   subtitle: Text(
                     online
-                        ? 'Você está visível na cascata de despacho da sua região.'
-                        : 'Desligue para pausar sem perder suas avaliações.',
+                        ? 'Visível para clientes em até $radiusKm km de você.'
+                        : 'Ative quando quiser receber novos chamados na sua região.',
                     style: TextStyle(fontSize: 12, color: tk.textMuted),
                   ),
                 ),
@@ -489,93 +481,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
               if (d == null && !snap.hasError) const Padding(padding: EdgeInsets.all(40), child: LoadingView()),
               if (d != null) ...[
                 // =============================================================
-                // 3. CARD DE PRIORIDADE NA CASCATA (1º AO 5º DEGRAU + RTS + PIX)
-                // =============================================================
-                Container(
-                  key: const ValueKey('provider-dashboard-rts-tier-card'),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        tk.providerSoft,
-                        tk.surface,
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: tk.providerAccent.withValues(alpha: 0.38)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: tk.providerAccent,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(Icons.military_tech_rounded, color: Colors.white, size: 20),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  rep.tierLabel,
-                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: tk.text),
-                                ),
-                                Text(
-                                  'Score de Confiança RTS: ${rep.rts}/100',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: tk.providerAccent),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: tk.successSoft,
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: tk.success.withValues(alpha: 0.4)),
-                            ),
-                            child: Text(
-                              rep.settlementBadge,
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: tk.success),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      TweenAnimationBuilder<double>(
-                        tween: Tween<double>(begin: 0, end: rep.progress),
-                        duration: const Duration(milliseconds: 550),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, val, _) => ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(
-                            value: val,
-                            minHeight: 7,
-                            backgroundColor: tk.border,
-                            valueColor: AlwaysStoppedAnimation<Color>(tk.providerAccent),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        rep.nextMilestone,
-                        style: TextStyle(fontSize: 12, color: tk.textMuted, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                // =============================================================
-                // 4. COCKPIT FINANCEIRO BIPARTIDO + BARRA DE META SEMANAL
+                // 3. RESUMO FINANCEIRO CLARO + META SEMANAL + SIMULADOR
                 // =============================================================
                 ValueListenableBuilder<bool>(
                   valueListenable: PrivacyMode.instance.hidden,
@@ -583,6 +489,9 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                     String m(double v) => PrivacyMode.money(brl(v), hidden: hidden);
                     final done = (d.row?['jobs_done'] as num?)?.toInt() ?? 0;
                     final rated = ((d.row?['rating_count'] as num?) ?? 0) > 0;
+                    final ratingText = rated
+                        ? '${((d.row?['rating_avg'] as num).toDouble()).toStringAsFixed(1).replaceAll('.', ',')} ★'
+                        : 'Novo';
                     final goalProgress = (_weeklyGoal <= 0 ? 0.0 : (d.wallet.week / _weeklyGoal)).clamp(0.0, 1.0);
                     final goalPct = (goalProgress * 100).round();
 
@@ -593,8 +502,8 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                             Expanded(
                               child: _Stat(
                                 icon: Icons.account_balance_wallet_rounded,
-                                label: 'Saldo disponível',
-                                subtitle: 'Livre para saque PIX',
+                                label: 'Disponível para saque',
+                                subtitle: 'Livre para transferir via PIX',
                                 value: m(d.wallet.available),
                                 onTap: widget.onSeeWallet,
                               ),
@@ -602,9 +511,11 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: _Stat(
-                                icon: Icons.shield_moon_rounded,
-                                label: 'Em custódia',
-                                subtitle: 'Sob Proteção Pós-Serviço',
+                                icon: Icons.schedule_send_rounded,
+                                label: 'Valores a liberar',
+                                subtitle: active.isNotEmpty
+                                    ? '${active.length} serviço(s) em andamento'
+                                    : 'Liberado após conclusão',
                                 value: m(d.wallet.held),
                                 onTap: widget.onSeeWallet,
                               ),
@@ -616,23 +527,25 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                           children: [
                             Expanded(
                               child: _Stat(
-                                icon: Icons.payments_rounded,
-                                label: 'Faturado na semana',
-                                subtitle: '0% taxa sobre peças',
-                                value: m(d.wallet.week),
-                                onTap: widget.onSeeWallet,
+                                icon: Icons.check_circle_rounded,
+                                label: 'Serviços concluídos',
+                                subtitle: 'Ver histórico completo',
+                                value: '$done',
+                                onTap: () => ProviderFullHistoryScreen.open(context),
                               ),
                             ),
                             const SizedBox(width: 10),
                             Expanded(
                               child: _Stat(
-                                icon: Icons.check_circle_rounded,
-                                label: 'Serviços concluídos',
-                                subtitle: rated
-                                    ? 'Nota: ${((d.row?['rating_avg'] as num).toDouble()).toStringAsFixed(1).replaceAll('.', ',')} ★'
-                                    : 'Sua nota: Novo',
-                                value: '$done',
-                                onTap: () => ProviderFullHistoryScreen.open(context),
+                                icon: Icons.star_rounded,
+                                label: 'Sua avaliação',
+                                subtitle: 'Ver avaliações e selos',
+                                value: ratingText,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => MyReviewsScreen(profile: widget.profile),
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -654,7 +567,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      'Meta Semanal: ${m(d.wallet.week)} de ${m(_weeklyGoal)} ($goalPct%)',
+                                      'Meta da semana: ${m(d.wallet.week)} de ${m(_weeklyGoal)} ($goalPct%)',
                                       style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: tk.text),
                                     ),
                                   ),
@@ -681,18 +594,22 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Sua nota: ${rated ? ((d.row?['rating_avg'] as num).toDouble()).toStringAsFixed(1).replaceAll('.', ',') : 'Novo'}',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: tk.textMuted),
+                              Text(
+                                '0% de taxa sobre peças e materiais informados no orçamento',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: tk.success),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: FilledButton.tonalIcon(
+                                  key: const ValueKey('btn-open-smart-split-calculator'),
+                                  onPressed: () => _showSmartSplitCalculatorSheet(context),
+                                  icon: const Icon(Icons.calculate_outlined, size: 18),
+                                  label: const Text('Simular ganho de orçamento'),
+                                  style: FilledButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
                                   ),
-                                  Text(
-                                    'Isenção Smart Split: 0% taxa em materiais',
-                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: tk.success),
-                                  ),
-                                ],
+                                ),
                               ),
                             ],
                           ),
@@ -705,61 +622,8 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
                 const SizedBox(height: 16),
 
                 // =============================================================
-                // 5. FERRAMENTAS RÁPIDAS DO PROFISSIONAL (SEM POLUIÇÃO VISUAL)
+                // 4. OPERAÇÃO EM CAMPO: CHAMADOS, SERVIÇOS E ORÇAMENTOS
                 // =============================================================
-                const SectionTitle('Ferramentas Rápidas do Especialista'),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _QuickToolTile(
-                        key: const ValueKey('btn-open-smart-split-calculator'),
-                        icon: Icons.calculate_rounded,
-                        title: 'Simulador Smart Split',
-                        subtitle: 'Cálculo líquido (0% peças)',
-                        onTap: () => _showSmartSplitCalculatorSheet(context),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickToolTile(
-                        key: const ValueKey('btn-quick-open-portfolio'),
-                        icon: Icons.workspace_premium_rounded,
-                        title: 'Meu Portfólio',
-                        subtitle: '3 recentes + 5 destaques',
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const PortfolioScreen()),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _QuickToolTile(
-                        key: const ValueKey('btn-quick-open-history'),
-                        icon: Icons.history_edu_rounded,
-                        title: 'Histórico Auditado',
-                        subtitle: 'Concluídos, proteção e mais',
-                        onTap: () => ProviderFullHistoryScreen.open(context),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _QuickToolTile(
-                        key: const ValueKey('btn-quick-open-opportunities'),
-                        icon: Icons.radar_rounded,
-                        title: 'Radar de Chamados',
-                        subtitle: 'Orçar 100% gratuito',
-                        onTap: widget.onSeeOpportunities,
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 18),
-                ShowcaseStrip(providerId: widget.profile.id, isOwner: true),
                 if (d.invites.isNotEmpty) ...[
                   const SectionTitle('Solicitações diretas para você'),
                   for (final i in d.invites) _InviteTile(job: i.job, invite: i.invite),
@@ -836,74 +700,6 @@ class _Stat extends StatelessWidget {
             Text(subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.tk.textMuted, fontSize: 11)),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _QuickToolTile extends StatelessWidget {
-  const _QuickToolTile({
-    super.key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = context.tk;
-    return Material(
-      color: tk.card,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: tk.border),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: tk.providerSoft,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, size: 18, color: tk.providerAccent),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tk.text),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 11, color: tk.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1031,8 +827,25 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
             children: [
-              const Text('Oportunidades', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Oportunidades',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Atualizar oportunidades',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _refresh,
+                    icon: Icon(Icons.refresh_rounded, color: context.tk.textMuted),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
               Text('Serviços próximos que combinam com suas especialidades.', style: TextStyle(color: context.tk.textMuted)),
               if (invites.isNotEmpty) ...[
                 const SectionTitle('Solicitações diretas'),
@@ -1130,6 +943,7 @@ class ProviderProfileTab extends StatelessWidget {
       onTap: onTap,
     );
     void push(Widget w) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
+    final emailSubtitle = profile.emailAddressIfPresent;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -1137,13 +951,27 @@ class ProviderProfileTab extends StatelessWidget {
         const SizedBox(height: 18),
         Row(
           children: [
-            EditableAvatar(url: profile.avatarUrl, name: profile.fullName, radius: 36, verified: true),
+            EditableAvatar(url: profile.avatarUrl, name: profile.displayName, radius: 36, verified: true),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(profile.fullName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  Text(
+                    profile.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                  ),
+                  if (emailSubtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      emailSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: context.tk.textMuted),
+                    ),
+                  ],
                   const SizedBox(height: 4),
                   StatusChip('Profissional verificado', color: context.tk.success, icon: Icons.verified_rounded),
                 ],
@@ -1155,12 +983,11 @@ class ProviderProfileTab extends StatelessWidget {
         const AppQuickUpdateButton(compact: false),
         const SizedBox(height: 14),
         tile(Icons.edit_rounded, 'Editar perfil', 'Foto, bio, especialidades e preços', () => push(const EditProviderProfileScreen())),
-        tile(Icons.photo_library_rounded, 'Meu portfólio', '3 últimos automáticos + até 5 destaques do Histórico', () => push(const PortfolioScreen())),
-        tile(Icons.history_edu_rounded, 'Histórico de Serviços Prestados', 'Concluídos 100% pagos, Sob Proteção Pós-Serviço, Em Mediação e Cancelados', () => push(const ProviderFullHistoryScreen())),
+        tile(Icons.photo_library_rounded, 'Meu portfólio', '3 últimos serviços + até 5 destaques do Histórico', () => push(const PortfolioScreen())),
+        tile(Icons.history_edu_rounded, 'Histórico de Serviços Prestados', 'Consulte todos os seus atendimentos por etapa', () => push(const ProviderFullHistoryScreen())),
         tile(Icons.workspace_premium_rounded, 'Meus certificados', 'Cofre de qualificações', () => push(const CertificatesScreen())),
         tile(Icons.reviews_rounded, 'Minhas avaliações', 'Nota, selos e respostas aos clientes', () => push(MyReviewsScreen(profile: profile))),
-        tile(Icons.emoji_events_rounded, 'Minhas conquistas', 'Troféus por serviços, avaliações e mais', () => push(AchievementsScreen(providerId: profile.id, providerName: profile.fullName, isOwner: true))),
-        tile(Icons.push_pin_rounded, 'Vitrine de cases', 'Fixe seus melhores serviços no topo', () => push(const CaseCurationScreen())),
+        tile(Icons.emoji_events_rounded, 'Minhas conquistas', 'Troféus por serviços, avaliações e mais', () => push(AchievementsScreen(providerId: profile.id, providerName: profile.displayName, isOwner: true))),
         tile(Icons.support_agent_rounded, 'Ajuda e suporte', 'Central e chamados', () => push(const SupportCenterScreen(asProvider: true))),
         AppearanceTile(accent: context.tk.providerAccent, soft: context.tk.providerSoft),
         tile(Icons.delete_forever_rounded, 'Excluir conta', 'Receba seu dossiê e apague seus dados', () => push(const DeleteAccountScreen(asProvider: true))),
@@ -1179,7 +1006,6 @@ class ProviderProfileTab extends StatelessWidget {
           onPressed: () => AppSession.instance.choose(UserMode.client),
         ),
         const SizedBox(height: 10),
-        TextButton.icon(onPressed: AppSession.instance.switchMode, icon: const Icon(Icons.apps_rounded), label: const Text('Trocar de modo')),
         TextButton.icon(
           onPressed: () async {
             final ok = await confirmDialog(context, title: 'Sair da conta?', message: 'Você precisará entrar novamente.', confirmLabel: 'Sair', destructive: true);
