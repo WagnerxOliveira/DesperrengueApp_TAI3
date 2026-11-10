@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="navyBg" cx="45%" cy="38%" r="75%">
+      <stop offset="0%" stop-color="#1A2E52"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </radialGradient>
+    <linearGradient id="orangeAccent" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF6D00"/>
+      <stop offset="100%" stop-color="#FF8524"/>
+    </linearGradient>
+  </defs>
+  <!-- Background Quiet Luxury Fintech Navy -->
+  <rect width="1024" height="1024" rx="224" fill="url(#navyBg)"/>
+  <!-- Monograma Arquitetônico Casa-Escudo "D" (Sweet Spot 48% - Tangência G1 Exata) -->
+  <g transform="translate(266, 266)">
+    <path d="M 103.3 292.7 L 103.3 413.3 Q 103.3 447.7 137.8 447.7 L 241.1 447.7 A 172.2 172.2 0 0 0 362.9 153.8 L 273.1 64.0 Q 241.1 32.0 209.1 64.0 L 51.7 221.4"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="64.0"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+    <!-- Check de Resolução em Espaço Negativo Central -->
+    <path d="M 187.0 273.1 L 231.2 317.3 L 307.5 223.9"
+          fill="none"
+          stroke="url(#orangeAccent)"
+          stroke-width="60.0"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
+</svg>

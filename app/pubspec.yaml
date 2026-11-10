@@ -1,7 +1,7 @@
 name: desperrengue_app
 description: "Desperrengue: marketplace de serviços residenciais."
 publish_to: "none"
-version: 2.8.1+202611082
+version: 2.8.2+202611101
 
 environment:
   sdk: ^3.13.4
@@ -47,14 +47,15 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   image_path: "assets/icons/app_icon_padded.png"
-  adaptive_icon_background: "#0C1424"
+  adaptive_icon_background: "assets/icons/app_icon_background.png"
   adaptive_icon_foreground: "assets/icons/app_icon_foreground.png"
+  adaptive_icon_monochrome: "assets/icons/app_icon_monochrome.png"
   min_sdk_android: 21
   web:
     generate: true
     image_path: "assets/icons/app_icon_padded.png"
-    background_color: "#0C1424"
-    theme_color: "#0C1424"
+    background_color: "#0F172A"
+    theme_color: "#0F172A"
   windows:
     generate: true
     image_path: "assets/icons/app_icon_padded.png"
@@ -69,13 +70,13 @@ flutter:
     - assets/splash/logo.png
 
 # Splash NATIVA (renderizada pelo Android/iOS antes do Flutter subir; sem tela branca).
-# Mesmo azul da animacao (#1E3B70) nos temas claro e escuro. Gerar com:
+# Mesmo azul-noite Quiet Luxury (#0F172A) da animacao nos temas claro e escuro. Gerar com:
 #   dart run flutter_native_splash:create
 flutter_native_splash:
-  color: "#1E3B70"
+  color: "#0F172A"
   image: assets/splash/logo.png
   android_12:
-    color: "#1E3B70"
+    color: "#0F172A"
     image: assets/splash/logo.png
   fullscreen: false
 
