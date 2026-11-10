@@ -4,13 +4,15 @@ import '../models/marketplace_models.dart';
 import '../services/media_service.dart';
 import 'app_theme.dart';
 import './app_tokens.dart';
+import 'category_brand_emblem.dart';
+export 'category_brand_emblem.dart';
 
 IconData categoryIcon(String name) {
   switch (name) {
     case 'Elétrica':
       return Icons.bolt_rounded;
     case 'Encanador':
-      return Icons.water_drop_rounded;
+      return Icons.plumbing_rounded;
     case 'Limpeza':
       return Icons.cleaning_services_rounded;
     case 'Montagem':
@@ -18,47 +20,47 @@ IconData categoryIcon(String name) {
     case 'Pintura':
       return Icons.format_paint_rounded;
     case 'Chaveiro':
-      return Icons.key_rounded;
+      return Icons.vpn_key_rounded;
     case 'Pedreiro':
       return Icons.construction_rounded;
     case 'Gesso':
-      return Icons.layers_rounded;
+      return Icons.light_rounded;
     case 'Marcenaria':
       return Icons.carpenter_rounded;
     case 'Ar-condicionado':
-      return Icons.ac_unit_rounded;
+      return Icons.air_rounded;
     case 'Pequenos Reparos':
-      return Icons.build_circle_rounded;
+      return Icons.home_repair_service_rounded;
     case 'Jardinagem':
       return Icons.yard_rounded;
     case 'Dedetização':
       return Icons.pest_control_rounded;
     case 'Vidraceiro':
-      return Icons.window_rounded;
+      return Icons.sensor_window_rounded;
     case 'Serralheria':
       return Icons.fence_rounded;
     case 'Telhados e Calhas':
       return Icons.roofing_rounded;
     case 'Impermeabilização':
-      return Icons.water_damage_rounded;
+      return Icons.shield_rounded;
     case 'Desentupidora':
-      return Icons.plumbing_rounded;
+      return Icons.water_drop_rounded;
     case 'Piscina':
       return Icons.pool_rounded;
     case 'Eletrodomésticos':
-      return Icons.kitchen_rounded;
+      return Icons.local_laundry_service_rounded;
     case 'TV e Antenas':
-      return Icons.tv_rounded;
+      return Icons.connected_tv_rounded;
     case 'Câmeras e Alarmes':
-      return Icons.videocam_rounded;
+      return Icons.security_rounded;
     case 'Portões e Interfones':
-      return Icons.garage_rounded;
+      return Icons.settings_remote_rounded;
     case 'Energia Solar':
       return Icons.solar_power_rounded;
     case 'Gás e Aquecedores':
       return Icons.local_fire_department_rounded;
     case 'Pisos e Revestimentos':
-      return Icons.grid_view_rounded;
+      return Icons.layers_rounded;
     case 'Cortinas e Persianas':
       return Icons.curtains_rounded;
     case 'Estofados e Tapetes':
@@ -66,7 +68,7 @@ IconData categoryIcon(String name) {
     case 'Mudanças e Fretes':
       return Icons.local_shipping_rounded;
     case 'Informática e Redes':
-      return Icons.computer_rounded;
+      return Icons.wifi_tethering_rounded;
     case 'Cuidador de Idosos':
       return Icons.elderly_rounded;
     case 'Babá':
@@ -77,11 +79,13 @@ IconData categoryIcon(String name) {
       return Icons.handyman_rounded;
   }
 }
+
 Color categoryColor(String name) {
+  final spec = resolveCategoryBrandSpec(name);
   for (final c in kCategories) {
-    if (c.name == name) return Color(c.colorValue);
+    if (c.name == name) return spec.primaryColor.withValues(alpha: 0.20);
   }
-  return AppColors.surface; // pastel fixo (sem context): ícones sobre ele usam AppColors.ink
+  return AppColors.surface;
 }
 
 /// Imagem de bucket PRIVADO (URL assinada, com cache).

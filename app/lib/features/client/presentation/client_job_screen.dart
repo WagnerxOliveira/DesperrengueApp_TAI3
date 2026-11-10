@@ -11,7 +11,6 @@ import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/scheduling_service.dart';
-import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -372,7 +371,7 @@ class _OrderSummary extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(radius: 20, backgroundColor: categoryColor(job.category), child: Icon(categoryIcon(job.category), size: 20, color: AppColors.ink)),
+              CategoryBrandEmblem(categoryName: job.category, size: 42, showCornerBadge: false),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

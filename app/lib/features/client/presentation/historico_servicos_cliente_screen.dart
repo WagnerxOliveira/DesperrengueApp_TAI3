@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/services/job_service.dart';
-import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/job_labels.dart';
 import '../../../core/ui/media_widgets.dart';
@@ -155,10 +154,10 @@ class _HistoryItem extends StatelessWidget {
       onTap: () => openClientServiceDetail(context, job.id),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: categoryColor(job.category),
-            child: Icon(categoryIcon(job.category), color: AppColors.ink.withValues(alpha: 0.75)),
+          CategoryBrandEmblem(
+            categoryName: job.category,
+            size: 50,
+            showCornerBadge: false,
           ),
           const SizedBox(width: 12),
           Expanded(

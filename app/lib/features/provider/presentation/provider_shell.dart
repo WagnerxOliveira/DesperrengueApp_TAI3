@@ -11,7 +11,6 @@ import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
-import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/job_labels.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -721,7 +720,7 @@ class _InviteTile extends StatelessWidget {
       onTap: () => openProviderJob(context, job.id),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: categoryColor(job.category), child: Icon(urgent ? Icons.bolt_rounded : categoryIcon(job.category), color: AppColors.ink)),
+          CategoryBrandEmblem(categoryName: job.category, size: 44, showCornerBadge: false),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -753,7 +752,7 @@ class _JobTile extends StatelessWidget {
       onTap: () => openProviderJob(context, job.id),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: categoryColor(job.category), child: Icon(categoryIcon(job.category), color: AppColors.ink)),
+          CategoryBrandEmblem(categoryName: job.category, size: 44, showCornerBadge: false),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -871,7 +870,7 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
                       children: [
                         Row(
                           children: [
-                            CircleAvatar(backgroundColor: categoryColor(j.category), child: Icon(categoryIcon(j.category), color: AppColors.ink)),
+                            CategoryBrandEmblem(categoryName: j.category, size: 44, showCornerBadge: false),
                             const SizedBox(width: 12),
                             Expanded(child: Text(j.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
                           ],

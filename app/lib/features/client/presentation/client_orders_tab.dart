@@ -6,7 +6,6 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
-import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/job_labels.dart';
 import '../../../core/ui/media_widgets.dart';
@@ -215,13 +214,10 @@ class _List extends StatelessWidget {
           onTap: () => onOpen(context, j),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 26,
-                backgroundColor: categoryColor(j.category),
-                child: Icon(
-                  categoryIcon(j.category),
-                  color: AppColors.ink.withValues(alpha: 0.75),
-                ),
+              CategoryBrandEmblem(
+                categoryName: j.category,
+                size: 50,
+                showCornerBadge: false,
               ),
               const SizedBox(width: 12),
               Expanded(

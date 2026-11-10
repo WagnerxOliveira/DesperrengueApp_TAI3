@@ -9,6 +9,7 @@ import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/ui/app_scaffold.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/ui/app_tokens.dart';
+import 'package:desperrengue_app/core/ui/category_brand_emblem.dart';
 import 'package:desperrengue_app/features/client/presentation/category_picker.dart';
 import 'package:desperrengue_app/features/client/presentation/client_job_screen.dart';
 import 'package:desperrengue_app/features/shared/presentation/profile_photo_viewer.dart';
@@ -167,6 +168,46 @@ void main() {
       await t.enterText(find.byKey(const ValueKey('category-search')), 'astronauta');
       await t.pump();
       expect(find.text('Nenhuma categoria encontrada.'), findsOneWidget);
+    });
+
+    test('33 Emblemas Customizados (CategoryBrandEmblem): todas as 33 categorias possuem especificação vetorial única e 6 famílias cromáticas', () {
+      expect(kCategoryBrandSpecs, hasLength(33));
+      final familiesUsed = <CategoryColorFamily>{};
+      for (final cat in kCategories) {
+        final spec = resolveCategoryBrandSpec(cat.name);
+        expect(spec.name, cat.name);
+        expect(spec.primaryIconifyId, contains(':'));
+        expect(spec.badgeIconifyId, contains(':'));
+        familiesUsed.add(spec.family);
+      }
+      expect(familiesUsed, containsAll([
+        CategoryColorFamily.waterClimate,
+        CategoryColorFamily.constructionRepair,
+        CategoryColorFamily.electricTech,
+        CategoryColorFamily.bioCleaning,
+        CategoryColorFamily.careMobility,
+      ]));
+    });
+
+    testWidgets('CategoryTile usa CategoryBrandEmblem (Dark Glass Squircle) e FittedBox em palavras longas únicas para nunca quebrar sílabas', (t) async {
+      tall(t, h: 9000);
+      await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: CategoryGrid(onPick: (_) {})))));
+      await t.tap(find.byKey(const ValueKey('categories-see-all')));
+      await t.pumpAndSettle();
+
+      expect(
+        find.descendant(of: find.byType(DraggableScrollableSheet), matching: find.byType(CategoryBrandEmblem)),
+        findsNWidgets(kCategories.length),
+      );
+
+      final imperTile = find.byKey(const ValueKey('category:Impermeabilização'));
+      expect(imperTile, findsOneWidget);
+      expect(find.descendant(of: imperTile, matching: find.byType(FittedBox)), findsOneWidget);
+
+      await t.tap(find.byKey(const ValueKey('category-family:agua_clima')));
+      await t.pumpAndSettle();
+      final aguaTiles = find.descendant(of: find.byType(DraggableScrollableSheet), matching: find.byType(CategoryTile));
+      expect(aguaTiles, findsNWidgets(6));
     });
   });
 
