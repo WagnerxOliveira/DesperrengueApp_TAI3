@@ -207,7 +207,9 @@ class ClientAchievementInput {
 int profileCompletionSteps(UserProfile p) {
   var n = 0;
   final name = p.fullName.trim();
-  if (name.isNotEmpty && name != 'Usuário' && !name.contains('@')) n++;
+  if (p.hasVerifiedCivilIdentity) return 4;
+  final verifiedName = (p.verifiedFullName ?? '').trim();
+  if ((name.isNotEmpty && name != 'Usuário' && !name.contains('@')) || (verifiedName.isNotEmpty && !verifiedName.contains('@'))) n++;
   if ((p.phone ?? '').trim().isNotEmpty) n++;
   if ((p.addressLine ?? '').trim().isNotEmpty) n++;
   if (p.clientSetupDone) n++;

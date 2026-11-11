@@ -9,7 +9,9 @@ import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/ui/app_scaffold.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/ui/app_tokens.dart';
+import 'package:desperrengue_app/core/models/achievements.dart';
 import 'package:desperrengue_app/core/ui/category_brand_emblem.dart';
+import 'package:desperrengue_app/core/ui/profile_and_achievement_emblems.dart';
 import 'package:desperrengue_app/features/client/presentation/category_picker.dart';
 import 'package:desperrengue_app/features/client/presentation/client_job_screen.dart';
 import 'package:desperrengue_app/features/shared/presentation/profile_photo_viewer.dart';
@@ -208,6 +210,29 @@ void main() {
       await t.pumpAndSettle();
       final aguaTiles = find.descendant(of: find.byType(DraggableScrollableSheet), matching: find.byType(CategoryTile));
       expect(aguaTiles, findsNWidgets(6));
+    });
+
+    testWidgets('AchievementMedalForge (Cinza Claro #CBD5E1 bloqueado vs Evolução Colorida) e ProfileMenuEmblem renderizam todas as 15 trilhas e 18 ícones de perfil', (t) async {
+      expect(kAchievementTrackVisualSpecs, hasLength(15)); // 6 Cliente + 9 Profissional
+      expect(ProfileMenuIconKind.deleteAccount.primaryColor, const Color(0xFFF43F5E));
+      await t.pumpWidget(host(
+        Scaffold(
+          body: SingleChildScrollView(
+            child: Wrap(
+              children: [
+                for (final k in ProfileMenuIconKind.values) ProfileMenuEmblem(kind: k, size: 42),
+                for (final s in kAchievementTrackVisualSpecs) ...[
+                  AchievementMedalForge(trackCode: s.code, tier: AchievementTier.bronze, level: 1, size: 56, locked: true),
+                  AchievementMedalForge(trackCode: s.code, tier: AchievementTier.diamond, level: 10, size: 56, locked: false),
+                ],
+              ],
+            ),
+          ),
+        ),
+        b: Brightness.dark,
+      ));
+      expect(find.byType(ProfileMenuEmblem), findsNWidgets(ProfileMenuIconKind.values.length));
+      expect(find.byType(AchievementMedalForge), findsNWidgets(30));
     });
   });
 

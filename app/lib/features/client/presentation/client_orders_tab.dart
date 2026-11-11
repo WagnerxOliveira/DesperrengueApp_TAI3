@@ -332,7 +332,7 @@ class ClientProfileTab extends StatelessWidget {
         const AppQuickUpdateButton(compact: false),
         const SizedBox(height: 16),
         _Tile(
-          icon: Icons.home_work_rounded,
+          kind: ProfileMenuIconKind.clientPassport,
           title: 'Prontuário da Casa (Passaporte)',
           subtitle: 'Histórico auditado e PDF para vistoria/seguradora',
           onTap: () => Navigator.of(context).push(
@@ -345,7 +345,7 @@ class ClientProfileTab extends StatelessWidget {
           ),
         ),
         _Tile(
-          icon: Icons.place_outlined,
+          kind: ProfileMenuIconKind.clientAddress,
           title: 'Meu endereço',
           subtitle:
               (profile.addressLine ?? 'Adicionar endereço').split(' | ').first,
@@ -356,7 +356,7 @@ class ClientProfileTab extends StatelessWidget {
           ),
         ),
         _Tile(
-          icon: Icons.account_balance_wallet_rounded,
+          kind: ProfileMenuIconKind.clientWallet,
           title: 'Minha carteira',
           subtitle: 'Saldo, valor em garantia e extrato',
           onTap: () => Navigator.of(context).push(
@@ -364,7 +364,7 @@ class ClientProfileTab extends StatelessWidget {
           ),
         ),
         _Tile(
-          icon: Icons.history_rounded,
+          kind: ProfileMenuIconKind.clientHistory,
           title: 'Histórico de serviços',
           subtitle: 'Reveja serviços concluídos, fotos e conversas',
           onTap: () => Navigator.of(context).push(
@@ -374,7 +374,7 @@ class ClientProfileTab extends StatelessWidget {
           ),
         ),
         _Tile(
-          icon: Icons.emoji_events_rounded,
+          kind: ProfileMenuIconKind.clientAchievements,
           title: 'Minhas conquistas',
           subtitle: 'Troféus por pedidos, avaliações e mais',
           onTap: () => Navigator.of(context).push(
@@ -384,7 +384,7 @@ class ClientProfileTab extends StatelessWidget {
           ),
         ),
         _Tile(
-          icon: Icons.support_agent_rounded,
+          kind: ProfileMenuIconKind.clientSupport,
           title: 'Ajuda e suporte',
           subtitle: 'Fale com a central e acompanhe seus chamados',
           onTap: () => Navigator.of(context).push(
@@ -394,9 +394,10 @@ class ClientProfileTab extends StatelessWidget {
         AppearanceTile(
           accent: context.tk.clientAccent,
           soft: context.tk.clientSoft,
+          kind: ProfileMenuIconKind.clientAppearance,
         ),
         _Tile(
-          icon: Icons.delete_forever_rounded,
+          kind: ProfileMenuIconKind.deleteAccount,
           title: 'Excluir conta',
           subtitle: 'Receba seu dossiê e apague seus dados',
           onTap: () => Navigator.of(context).push(
@@ -445,13 +446,13 @@ class ClientProfileTab extends StatelessWidget {
 
 class _Tile extends StatelessWidget {
   const _Tile({
-    required this.icon,
+    required this.kind,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
-  final IconData icon;
+  final ProfileMenuIconKind kind;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -460,10 +461,7 @@ class _Tile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(
-        backgroundColor: context.tk.clientSoft,
-        child: Icon(icon, color: context.tk.clientAccent),
-      ),
+      leading: ProfileMenuEmblem(kind: kind, size: 42),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       trailing: const Icon(Icons.chevron_right_rounded),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/state/theme_controller.dart';
 import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/profile_and_achievement_emblems.dart';
 
 /// Seletor de aparência (Automático · Claro · Escuro), persistido no cache.
 /// Entrada: `showThemePicker(context)` a partir do Perfil (cliente e profissional).
@@ -14,17 +15,23 @@ Future<void> showThemePicker(BuildContext context) => showModalBottomSheet<void>
 
 /// Linha de menu "Aparência" com o valor atual — usada nos dois perfis.
 class AppearanceTile extends ConsumerWidget {
-  const AppearanceTile({super.key, required this.accent, required this.soft});
+  const AppearanceTile({
+    super.key,
+    required this.accent,
+    required this.soft,
+    this.kind = ProfileMenuIconKind.clientAppearance,
+  });
 
   final Color accent;
   final Color soft;
+  final ProfileMenuIconKind kind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(themeModeProvider);
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(backgroundColor: soft, child: Icon(mode.icon, color: accent)),
+      leading: ProfileMenuEmblem(kind: kind, size: 42),
       title: const Text('Aparência', style: TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text('Tema ${mode.label.toLowerCase()}'),
       trailing: const Icon(Icons.chevron_right_rounded),

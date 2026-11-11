@@ -933,9 +933,9 @@ class ProviderProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget tile(IconData icon, String title, String subtitle, VoidCallback onTap) => ListTile(
+    Widget tile(ProfileMenuIconKind kind, String title, String subtitle, VoidCallback onTap) => ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: CircleAvatar(backgroundColor: context.tk.providerSoft, child: Icon(icon, color: context.tk.providerAccent)),
+      leading: ProfileMenuEmblem(kind: kind, size: 42),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
       subtitle: Text(subtitle),
       trailing: const Icon(Icons.chevron_right_rounded),
@@ -981,15 +981,15 @@ class ProviderProfileTab extends StatelessWidget {
         const SizedBox(height: 14),
         const AppQuickUpdateButton(compact: false),
         const SizedBox(height: 14),
-        tile(Icons.edit_rounded, 'Editar perfil', 'Foto, bio, especialidades e preços', () => push(const EditProviderProfileScreen())),
-        tile(Icons.photo_library_rounded, 'Meu portfólio', '3 últimos serviços + até 5 destaques do Histórico', () => push(const PortfolioScreen())),
-        tile(Icons.history_edu_rounded, 'Histórico de Serviços Prestados', 'Consulte todos os seus atendimentos por etapa', () => push(const ProviderFullHistoryScreen())),
-        tile(Icons.workspace_premium_rounded, 'Meus certificados', 'Cofre de qualificações', () => push(const CertificatesScreen())),
-        tile(Icons.reviews_rounded, 'Minhas avaliações', 'Nota, selos e respostas aos clientes', () => push(MyReviewsScreen(profile: profile))),
-        tile(Icons.emoji_events_rounded, 'Minhas conquistas', 'Troféus por serviços, avaliações e mais', () => push(AchievementsScreen(providerId: profile.id, providerName: profile.displayName, isOwner: true))),
-        tile(Icons.support_agent_rounded, 'Ajuda e suporte', 'Central e chamados', () => push(const SupportCenterScreen(asProvider: true))),
-        AppearanceTile(accent: context.tk.providerAccent, soft: context.tk.providerSoft),
-        tile(Icons.delete_forever_rounded, 'Excluir conta', 'Receba seu dossiê e apague seus dados', () => push(const DeleteAccountScreen(asProvider: true))),
+        tile(ProfileMenuIconKind.providerEditProfile, 'Editar perfil', 'Foto, bio, especialidades e preços', () => push(const EditProviderProfileScreen())),
+        tile(ProfileMenuIconKind.providerPortfolio, 'Meu portfólio', '3 últimos serviços + até 5 destaques do Histórico', () => push(const PortfolioScreen())),
+        tile(ProfileMenuIconKind.providerHistory, 'Histórico de Serviços Prestados', 'Consulte todos os seus atendimentos por etapa', () => push(const ProviderFullHistoryScreen())),
+        tile(ProfileMenuIconKind.providerCertificates, 'Meus certificados', 'Cofre de qualificações', () => push(const CertificatesScreen())),
+        tile(ProfileMenuIconKind.providerReviews, 'Minhas avaliações', 'Nota, selos e respostas aos clientes', () => push(MyReviewsScreen(profile: profile))),
+        tile(ProfileMenuIconKind.providerAchievements, 'Minhas conquistas', 'Troféus por serviços, avaliações e mais', () => push(AchievementsScreen(providerId: profile.id, providerName: profile.displayName, isOwner: true))),
+        tile(ProfileMenuIconKind.providerSupport, 'Ajuda e suporte', 'Central e chamados', () => push(const SupportCenterScreen(asProvider: true))),
+        AppearanceTile(accent: context.tk.providerAccent, soft: context.tk.providerSoft, kind: ProfileMenuIconKind.providerAppearance),
+        tile(ProfileMenuIconKind.deleteAccount, 'Excluir conta', 'Receba seu dossiê e apague seus dados', () => push(const DeleteAccountScreen(asProvider: true))),
         const Divider(height: 32),
         InfoBanner(
           profile.isClient
@@ -1001,7 +1001,7 @@ class ProviderProfileTab extends StatelessWidget {
         const SizedBox(height: 12),
         SecondaryButton(
           label: profile.isClient ? 'Ir para o modo Cliente' : 'Preciso de um serviço (modo Cliente)',
-          icon: Icons.home_repair_service_rounded,
+          icon: Icons.home_rounded,
           onPressed: () => AppSession.instance.choose(UserMode.client),
         ),
         const SizedBox(height: 10),

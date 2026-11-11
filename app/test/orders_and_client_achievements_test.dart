@@ -141,6 +141,13 @@ void main() {
         clientSetupDone: true,
       );
       expect(profileCompletionSteps(completo), 4);
+      const kycAprovado = UserProfile(
+        id: '2',
+        fullName: 'wagner@gmail.com',
+        livenessVerified: true,
+        ocrVerified: true,
+      );
+      expect(profileCompletionSteps(kycAprovado), 4, reason: 'KYC biométrico + OCR desbloqueia Cliente Verificado (4/4)');
     });
 
     test('Avaliador Colaborativo: só conta avaliação de serviço CONCLUÍDO', () {
