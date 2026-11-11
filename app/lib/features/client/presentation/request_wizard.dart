@@ -174,11 +174,29 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   // ------------------------------------------------------------------- ações
 
   Future<void> _addImage() async {
-    final img = await pickImage(context);
+    final img = await pickImage(
+      context,
+      promptContextStudio: true,
+      categoryName: _category,
+      photoIndex: _images.length,
+    );
     if (img != null && mounted) setState(() => _images.add(img));
   }
 
-  /// Executa a Triagem Inteligente Multimodal (descrição + transcrição de voz + anexos).
+  Future<void> _editImage(int index) async {
+    if (index < 0 || index >= _images.length) return;
+    final updated = await showPhotoContextStudioSheet(
+      context,
+      image: _images[index],
+      photoIndex: index,
+      categoryName: _category,
+    );
+    if (updated != null && mounted) {
+      setState(() => _images[index] = updated);
+    }
+  }
+
+  /// Executa a Triagem Inteligente Multimodal (descrição + transcrição de voz + anexos + legendas das fotos).
   void _runSmartTriage({bool silentIfEmpty = false}) {
     final raw = _description.text.trim();
     if (raw.length < 4 && _images.isEmpty && _category == null) {
@@ -189,17 +207,22 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     }
     setState(() => _analyzingTriage = true);
     final attachments = _images.map((i) => i.name).toList();
+    final photoNotes = [
+      for (final img in _images)
+        if (img.hasContextAnnotation) img.combinedSummary,
+    ].join('. ');
+    final enrichedText = photoNotes.isEmpty ? raw : (raw.isEmpty ? photoNotes : '$raw. $photoNotes');
     final container = maybeProviderContainer(context);
     SmartTriageResult result;
     if (container != null) {
       result = container.read(smartTriageControllerProvider.notifier).analyzeDraft(
-            rawText: raw,
+            rawText: enrichedText,
             mediaAttachments: attachments,
             currentCategory: _category,
           );
     } else {
       result = SmartTriageService.instance.analyze(
-        rawText: raw,
+        rawText: enrichedText,
         mediaAttachments: attachments,
         currentCategory: _category,
       );
@@ -268,16 +291,27 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     try {
       final media = MediaService();
       final paths = <String>[];
+      final photoAnnotations = <Map<String, dynamic>>[];
       for (var i = 0; i < _images.length; i++) {
-        paths.add(await media.uploadPrivate(_images[i].bytes, _images[i].ext, prefix: 'job'));
+        final path = await media.uploadPrivate(_images[i].bytes, _images[i].ext, prefix: 'job');
+        paths.add(path);
+        photoAnnotations.add(_images[i].toAnnotationMap(path: path, index: i));
       }
 
       final text = _description.text.trim();
       final title = text.length <= 48 ? text : '${text.substring(0, 45).trimRight()}…';
+      final annotatedLines = <String>[
+        for (var i = 0; i < _images.length; i++)
+          if (_images[i].hasContextAnnotation)
+            '📷 Foto ${i + 1}: ${_images[i].combinedSummary}',
+      ];
+      final fullDescription = annotatedLines.isEmpty
+          ? text
+          : '$text\n\n${annotatedLines.join('\n')}';
 
       jobId = await _jobs.createJob(
         title: title,
-        description: text,
+        description: fullDescription,
         category: _category!,
         emergency: _emergency,
         direct: _provider != null,
@@ -290,6 +324,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         latitude: _pinLat ?? (_override != null ? _override!.latitude : widget.profile.latitude),
         longitude: _pinLng ?? (_override != null ? _override!.longitude : widget.profile.longitude),
         photoPaths: paths,
+        photoAnnotations: photoAnnotations,
       );
 
       // Sem coordenadas no pedido: o app do cliente geocodifica (Nominatim) e registra o ponto em
@@ -558,7 +593,27 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         Text('Fotos ajudam o profissional a avaliar o problema e a enviar um orçamento justo.',
             style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
         const SizedBox(height: 10),
-        MediaPickerRow(images: _images, onAdd: _addImage, onRemove: (i) => setState(() => _images.removeAt(i))),
+        MediaPickerRow(
+          images: _images,
+          onAdd: _addImage,
+          onEdit: _editImage,
+          onRemove: (i) => setState(() => _images.removeAt(i)),
+        ),
+        if (_images.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(Icons.touch_app_rounded, size: 14, color: context.tk.clientAccent),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'Toque em uma foto anexada para adicionar ou editar a descrição breve ou sugestão.',
+                  style: TextStyle(color: context.tk.textMuted, fontSize: 11.5, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         SmartTriageTriggerBar(
           hasResult: _triage != null,
@@ -712,6 +767,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (final img in _images)
                     ClipRRect(
@@ -720,6 +776,41 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                     ),
                 ],
               ),
+              if (_images.any((i) => i.hasContextAnnotation)) ...[
+                const SizedBox(height: 10),
+                Container(
+                  key: const ValueKey('review-photo-annotations'),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: context.tk.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: context.tk.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (var i = 0; i < _images.length; i++)
+                        if (_images[i].hasContextAnnotation)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(Icons.photo_camera_outlined, size: 15, color: context.tk.clientAccent),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    'Foto ${i + 1}: ${_images[i].combinedSummary}',
+                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.3),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

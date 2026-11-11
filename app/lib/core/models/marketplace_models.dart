@@ -92,6 +92,7 @@ class Job {
     this.scheduledFor,
     this.addressSummary,
     this.photoPaths = const [],
+    this.photoAnnotations = const [],
     this.quoteCount = 0,
     this.pinAttempts = 0,
     this.latitude,
@@ -119,6 +120,7 @@ class Job {
   final DateTime? scheduledFor;
   final String? addressSummary;
   final List<String> photoPaths;
+  final List<Map<String, dynamic>> photoAnnotations;
   final int quoteCount;
   final int pinAttempts;
   final double? latitude;
@@ -159,6 +161,10 @@ class Job {
     scheduledFor: _dt(m['scheduled_for']),
     addressSummary: m['address_summary'] as String?,
     photoPaths: ((m['photo_paths'] as List?) ?? const []).cast<String>(),
+    photoAnnotations: [
+      for (final item in ((m['photo_annotations'] as List?) ?? const []))
+        if (item is Map) Map<String, dynamic>.from(item),
+    ],
     quoteCount: (m['quote_count'] as num?)?.toInt() ?? 0,
     pinAttempts: (m['pin_attempts'] as num?)?.toInt() ?? 0,
     latitude: _num(m['latitude']),
@@ -392,6 +398,16 @@ class AppNotification {
   final DateTime? readAt;
 
   bool get unread => readAt == null;
+
+  AppNotification copyWith({DateTime? readAt}) => AppNotification(
+    id: id,
+    kind: kind,
+    title: title,
+    body: body,
+    jobId: jobId,
+    createdAt: createdAt,
+    readAt: readAt ?? this.readAt,
+  );
 
   factory AppNotification.fromMap(Map<String, dynamic> m) => AppNotification(
     id: m['id'] as String,

@@ -10,6 +10,8 @@ import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/scheduling_models.dart';
 import 'package:desperrengue_app/core/models/geocode_models.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
+import 'package:desperrengue_app/core/services/job_service.dart';
+import 'package:desperrengue_app/core/services/social_service.dart';
 import 'package:desperrengue_app/core/services/speech_service.dart';
 import 'package:desperrengue_app/core/services/text_refine_service.dart';
 import 'package:desperrengue_app/core/utils/provider_filters.dart';
@@ -23,6 +25,7 @@ import 'package:desperrengue_app/features/client/presentation/request_wizard.dar
 import 'package:desperrengue_app/features/client/presentation/voice_dictation.dart';
 import 'package:desperrengue_app/features/shared/presentation/achievement_widgets.dart';
 import 'package:desperrengue_app/features/shared/presentation/live_location_map.dart';
+import 'package:desperrengue_app/features/shared/presentation/notifications_screen.dart';
 
 // ---------------------------------------------------------------- utilitários
 
@@ -864,6 +867,196 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('Progresso: 0/3 categorias'), findsOneWidget);
       expect(find.text('Solicite serviços em categorias diferentes: do chuveiro ao jardim.'), findsOneWidget);
+    });
+  });
+
+  // ======================================================= MÓDULO 7: Estúdio Pós-Captura de Foto
+  group('PhotoContextStudioSheet & Anotações de Fotos no Pedido', () {
+    testWidgets('abre após tirar a foto, aplica chip rápido + pino focal e salva descrição e sugestão', (t) async {
+      bigScreen(t, h: 3000);
+      PickedImage? result;
+      final raw = PickedImage(pngBytes, 'png', 'vazamento.png');
+
+      await t.pumpWidget(host(Builder(
+        builder: (ctx) => Scaffold(
+          body: ElevatedButton(
+            onPressed: () async {
+              result = await showPhotoContextStudioSheet(
+                ctx,
+                image: raw,
+                photoIndex: 0,
+                categoryName: 'Encanador',
+              );
+            },
+            child: const Text('abrir-estudio'),
+          ),
+        ),
+      )));
+
+      await t.tap(find.text('abrir-estudio'));
+      await t.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('photo-context-studio-sheet')), findsOneWidget);
+      expect(find.text('Foto 1 Confirmada • Detalhar Evidência'), findsOneWidget);
+
+      // Toque no preview para marcar o pino focal
+      await t.tap(find.byKey(const ValueKey('photo-studio-preview')));
+      await t.pump();
+      expect(find.text('Ponto de atenção marcado na foto ✓'), findsOneWidget);
+
+      // Toque no 1º chip rápido da categoria Encanador
+      await t.tap(find.byKey(const ValueKey('photo-preset-chip-0')));
+      await t.pump();
+
+      // Salva contexto da foto
+      await t.tap(find.byKey(const ValueKey('photo-studio-save-btn')));
+      await t.pumpAndSettle();
+
+      expect(result, isNotNull);
+      expect(result!.hasContextAnnotation, isTrue);
+      expect(result!.caption, 'Vazamento visível na conexão / tubulação');
+      expect(result!.actionSuggestion, 'Refazer vedação ou substituir conexão trincada');
+      expect(result!.focalPoint, isNotNull);
+      expect(
+        result!.combinedSummary,
+        contains('Sugestão: Refazer vedação ou substituir conexão trincada'),
+      );
+    });
+
+    testWidgets('revisão do pedido exibe as descrições e sugestões das fotos anexadas', (t) async {
+      bigScreen(t, h: 3000);
+      final annotatedImg = PickedImage(
+        pngBytes,
+        'png',
+        'disjuntor.png',
+        caption: 'Disjuntor derretido no quadro principal',
+        actionSuggestion: 'Trocar disjuntor bipolar 40A e refazer terminal',
+      );
+
+      await t.pumpWidget(host(RequestWizardScreen(
+        profile: profile,
+        category: 'Elétrica',
+        speechEngine: FakeSpeech(),
+        textRefiner: const NoRefine(),
+        openRequestsCounter: () async => 0,
+        debugStep: 2,
+        debugDescription: 'Cheiro de queimado no quadro de luz.',
+        debugImages: [annotatedImg],
+      )));
+      await t.pump();
+      await t.pump();
+
+      expect(find.byKey(const ValueKey('review-photo-annotations')), findsOneWidget);
+      expect(
+        find.textContaining('Foto 1: Disjuntor derretido no quadro principal — Sugestão: Trocar disjuntor bipolar 40A'),
+        findsOneWidget,
+      );
+    });
+  });
+
+  // ======================================================= MÓDULO 8: Sincronização Imediata em Meus Pedidos
+  group('Sincronização Imediata em Meus Pedidos (JobService.onJobsChanged)', () {
+    testWidgets('pedido recém-publicado aparece imediatamente em "Meus Pedidos" sem reiniciar o app', (t) async {
+      bigScreen(t, h: 3000);
+      final currentJobs = <Job>[];
+      final controller = StreamController<List<Job>>.broadcast();
+      addTearDown(controller.close);
+
+      final sub = JobService.onJobsChanged.listen((_) {
+        controller.add(List<Job>.from(currentJobs));
+      });
+      addTearDown(sub.cancel);
+
+      await t.pumpWidget(host(Scaffold(
+        body: ClientOrdersTab(jobsStream: controller.stream),
+      )));
+
+      // Estado inicial: nenhum pedido
+      controller.add(const []);
+      await t.pump();
+      expect(find.text('Você não tem pedidos em andamento.'), findsOneWidget);
+
+      // Cliente publica um novo pedido -> JobService.notifyJobsChanged() dispara
+      currentJobs.add(job('novo-12345', JobStatus.open, title: 'Conserto de vazamento na pia'));
+      JobService.notifyJobsChanged();
+      await t.pump();
+      await t.pump();
+
+      expect(find.text('Conserto de vazamento na pia'), findsOneWidget);
+      expect(find.text('Aguardando Orçamento'), findsOneWidget);
+    });
+  });
+
+  // ======================================================= MÓDULO 9: Notificações Vistas Imediatamente
+  group('Notificações (Cliente e Profissional): estado "Vista" imediato no Sininho', () {
+    setUp(() {
+      SocialService.resetOptimisticReadState();
+    });
+
+    testWidgets('tocar em uma notificação marca imediatamente como "Vista" e reduz o contador do sininho', (t) async {
+      bigScreen(t, h: 3000);
+      final markedIds = <String>[];
+      final openedJobIds = <String>[];
+      final initialItems = [
+        AppNotification(
+          id: 'n1',
+          kind: 'new_quote',
+          title: 'Novo orçamento recebido',
+          body: 'Carlos enviou R\$ 150,00 para o seu pedido.',
+          jobId: 'job-101',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        ),
+        AppNotification(
+          id: 'n2',
+          kind: 'new_invite',
+          title: 'Nova oportunidade na sua região',
+          body: 'Cliente precisa de reparo hidráulico.',
+          jobId: 'job-202',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 2)),
+        ),
+      ];
+
+      await t.pumpWidget(host(Scaffold(
+        appBar: AppBar(
+          actions: [
+            UnreadBell(
+              notificationsStream: Stream.value(initialItems),
+              onMarkRead: (id) async => markedIds.add(id),
+              onOpenJob: (_, jobId) => openedJobIds.add(jobId),
+            ),
+          ],
+        ),
+        body: NotificationsScreen(
+          notificationsStream: Stream.value(initialItems),
+          onMarkRead: (id) async => markedIds.add(id),
+          onOpenJob: (_, jobId) => openedJobIds.add(jobId),
+        ),
+      )));
+      await t.pump();
+      await t.pump();
+
+      // Inicialmente ambas estão "Nova" (não vistas) e o sininho mostra "2"
+      expect(find.byKey(const ValueKey('notif-unread-badge-n1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('notif-unread-badge-n2')), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
+
+      // Usuário toca na notificação n1
+      await t.tap(find.byKey(const ValueKey('notif-tile-n1')));
+      await t.pump();
+
+      // Imediatamente n1 vira "Vista", sininho cai para "1" e o job correspondente é aberto
+      expect(find.byKey(const ValueKey('notif-unread-badge-n1')), findsNothing);
+      expect(find.byKey(const ValueKey('notif-read-badge-n1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('notif-unread-badge-n2')), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+      expect(markedIds, ['n1']);
+      expect(openedJobIds, ['job-101']);
+
+      // Tocar em "Marcar lidas" marca todas como "Vista"
+      await t.tap(find.byKey(const ValueKey('notif-mark-all-read-btn')));
+      await t.pump();
+      expect(find.byKey(const ValueKey('notif-read-badge-n1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('notif-read-badge-n2')), findsOneWidget);
     });
   });
 }

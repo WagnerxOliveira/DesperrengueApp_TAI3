@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,10 +17,65 @@ class JobService {
 
   final SupabaseClient _client;
 
+  static final StreamController<void> _jobsChangedController =
+      StreamController<void>.broadcast();
+
+  /// Barramento reativo local disparado sempre que um pedido é criado, alterado
+  /// ou quando o usuário navega para a aba "Meus Pedidos", garantindo atualização
+  /// instantânea (< 16ms) sem precisar fechar e reabrir o aplicativo.
+  static Stream<void> get onJobsChanged => _jobsChangedController.stream;
+
+  /// Notifica todos os ouvintes ativos (`ClientOrdersTab`, painéis) para
+  /// sincronizar imediatamente a lista de pedidos.
+  static void notifyJobsChanged() {
+    if (!_jobsChangedController.isClosed) {
+      _jobsChangedController.add(null);
+    }
+  }
+
   String get uid {
     final u = _client.auth.currentUser;
     if (u == null) throw const AuthException('Sessão expirada.');
     return u.id;
+  }
+
+  Stream<List<Job>> _reactiveJobStream({
+    required Stream<List<Job>> Function() realtimeFactory,
+    required Future<List<Job>> Function() fetchFallback,
+  }) {
+    late StreamController<List<Job>> controller;
+    StreamSubscription<List<Job>>? realtimeSub;
+    StreamSubscription<void>? localBusSub;
+
+    Future<void> refreshFromDb() async {
+      try {
+        final fresh = await fetchFallback();
+        if (!controller.isClosed) {
+          controller.add(fresh);
+        }
+      } catch (_) {
+        // Falha transitória no re-fetch secundário não interrompe o stream principal.
+      }
+    }
+
+    controller = StreamController<List<Job>>.broadcast(
+      onListen: () {
+        realtimeSub = realtimeFactory().listen(
+          (rows) {
+            if (!controller.isClosed) controller.add(rows);
+          },
+          onError: (Object err, StackTrace st) {
+            if (!controller.isClosed) controller.addError(err, st);
+          },
+        );
+        localBusSub = onJobsChanged.listen((_) => refreshFromDb());
+      },
+      onCancel: () async {
+        await realtimeSub?.cancel();
+        await localBusSub?.cancel();
+      },
+    );
+    return controller.stream;
   }
 
   // ---------------------------------------------------------------- cliente
@@ -38,8 +94,9 @@ class JobService {
     double? latitude,
     double? longitude,
     List<String> photoPaths = const [],
+    List<Map<String, dynamic>> photoAnnotations = const [],
   }) async {
-    final row = await _client.from('jobs').insert({
+    final basePayload = <String, dynamic>{
       'client_id': uid,
       'title': title,
       'description': description,
@@ -51,7 +108,30 @@ class JobService {
       'latitude': latitude,
       'longitude': longitude,
       'photo_paths': photoPaths,
-    }).select('id').single();
+    };
+
+    Map<String, dynamic> row;
+    if (photoAnnotations.isNotEmpty) {
+      try {
+        row = await _client
+            .from('jobs')
+            .insert({
+              ...basePayload,
+              'photo_annotations': photoAnnotations,
+            })
+            .select('id')
+            .single();
+      } on PostgrestException catch (e) {
+        if (e.message.contains('photo_annotations')) {
+          row = await _client.from('jobs').insert(basePayload).select('id').single();
+        } else {
+          rethrow;
+        }
+      }
+    } else {
+      row = await _client.from('jobs').insert(basePayload).select('id').single();
+    }
+
     final id = row['id'] as String;
 
     await _client.from('job_addresses').insert({
@@ -60,6 +140,7 @@ class JobService {
       'complement': complement,
       'reference': reference,
     });
+    notifyJobsChanged();
     return id;
   }
 
@@ -68,6 +149,7 @@ class JobService {
       'p_job_id': jobId,
       'p_provider_ids': providerIds,
     });
+    notifyJobsChanged();
     return (r as num?)?.toInt() ?? 0;
   }
 
@@ -113,12 +195,15 @@ class JobService {
     return rows.map(Job.fromMap).toList();
   }
 
-  Stream<List<Job>> streamMyJobs() => _client
-      .from('jobs')
-      .stream(primaryKey: ['id'])
-      .eq('client_id', uid)
-      .order('created_at', ascending: false)
-      .map((rows) => rows.map(Job.fromMap).toList());
+  Stream<List<Job>> streamMyJobs() => _reactiveJobStream(
+        realtimeFactory: () => _client
+            .from('jobs')
+            .stream(primaryKey: ['id'])
+            .eq('client_id', uid)
+            .order('created_at', ascending: false)
+            .map((rows) => rows.map(Job.fromMap).toList()),
+        fetchFallback: fetchMyJobs,
+      );
 
   /// Serviços em mediação em que o usuário participa (como cliente OU como profissional).
   /// Alimenta a seção "Mediações" de Perfil > Ajuda e suporte: só existe quando há uma aberta.
@@ -132,6 +217,7 @@ class JobService {
         .order('created_at', ascending: false);
     return rows.map(Job.fromMap).toList();
   }
+
   /// Quantos pedidos do cliente estão em aberto aguardando orçamentos agora.
   /// Alimenta o contador "1º, 2º, 3º" da revisão do pedido.
   Future<int> countMyOpenRequests() async => countOpenRequests(await fetchMyJobs());
@@ -176,20 +262,35 @@ class JobService {
       .eq('job_id', jobId)
       .map((rows) => rows.map(JobInvite.fromMap).toList());
 
-  Future<void> acceptQuote(String quoteId) => _client.rpc('accept_quote', params: {'p_quote_id': quoteId});
-  Future<void> rejectQuote(String quoteId) => _client.rpc('reject_quote', params: {'p_quote_id': quoteId});
-  Future<void> cancelJob(String jobId) => _client.rpc('cancel_job', params: {'p_job_id': jobId});
+  Future<void> acceptQuote(String quoteId) async {
+    await _client.rpc('accept_quote', params: {'p_quote_id': quoteId});
+    notifyJobsChanged();
+  }
+
+  Future<void> rejectQuote(String quoteId) async {
+    await _client.rpc('reject_quote', params: {'p_quote_id': quoteId});
+    notifyJobsChanged();
+  }
+
+  Future<void> cancelJob(String jobId) async {
+    await _client.rpc('cancel_job', params: {'p_job_id': jobId});
+    notifyJobsChanged();
+  }
 
   /// Checkout MOCK: só o método escolhido trafega (nunca dados de cartão).
-  Future<void> payJob(String jobId, String method, {DateTime? scheduledFor}) =>
-      _client.rpc('pay_job_mock', params: {
-        'p_job_id': jobId,
-        'p_method': method,
-        'p_scheduled_for': scheduledFor?.toUtc().toIso8601String(),
-      });
+  Future<void> payJob(String jobId, String method, {DateTime? scheduledFor}) async {
+    await _client.rpc('pay_job_mock', params: {
+      'p_job_id': jobId,
+      'p_method': method,
+      'p_scheduled_for': scheduledFor?.toUtc().toIso8601String(),
+    });
+    notifyJobsChanged();
+  }
 
-  Future<void> requestEmergency(String jobId, String method) =>
-      _client.rpc('request_emergency_mock', params: {'p_job_id': jobId, 'p_method': method});
+  Future<void> requestEmergency(String jobId, String method) async {
+    await _client.rpc('request_emergency_mock', params: {'p_job_id': jobId, 'p_method': method});
+    notifyJobsChanged();
+  }
 
   /// PIN de 4 dígitos que o CLIENTE mostra ao profissional (RLS: só o dono lê).
   Future<String?> jobPin(String jobId) async {
@@ -224,18 +325,33 @@ class JobService {
       'message': (message == null || message.trim().isEmpty) ? null : message.trim(),
       'estimated_hours': estimatedHours,
     });
+    notifyJobsChanged();
   }
 
-  Future<void> withdrawQuote(String jobId) => _client.rpc('withdraw_quote', params: {'p_job_id': jobId});
-  Future<void> declineInvite(String jobId) => _client.rpc('decline_invite', params: {'p_job_id': jobId});
-  Future<void> acceptEmergency(String jobId) => _client.rpc('accept_emergency', params: {'p_job_id': jobId});
+  Future<void> withdrawQuote(String jobId) async {
+    await _client.rpc('withdraw_quote', params: {'p_job_id': jobId});
+    notifyJobsChanged();
+  }
+
+  Future<void> declineInvite(String jobId) async {
+    await _client.rpc('decline_invite', params: {'p_job_id': jobId});
+    notifyJobsChanged();
+  }
+
+  Future<void> acceptEmergency(String jobId) async {
+    await _client.rpc('accept_emergency', params: {'p_job_id': jobId});
+    notifyJobsChanged();
+  }
 
   /// Valida o PIN no servidor. O banco devolve 'ok', 'invalid:N' (N = tentativas
   /// restantes) ou 'locked' (e persiste a tentativa); aqui vira exceção legível.
   Future<void> completeWithPin(String jobId, String pin) async {
     final r = await _client.rpc('complete_job_with_pin', params: {'p_job_id': jobId, 'p_pin': pin});
     final s = (r as String?) ?? '';
-    if (s == 'ok') return;
+    if (s == 'ok') {
+      notifyJobsChanged();
+      return;
+    }
     if (s == 'locked') throw 'PIN_LOCKED';
     if (s.startsWith('invalid:')) throw 'PIN_INVALID:${s.substring(8)}';
     throw 'Não foi possível concluir o serviço.';
@@ -295,7 +411,6 @@ class JobService {
     return jobs.where((j) => !quotedIds.contains(j.id) && j.quoteCount < 3).toList();
   }
 
-
   /// Serviços em que o profissional é o contratado.
   Future<List<Job>> providerJobs() async {
     final rows = await _client
@@ -306,12 +421,15 @@ class JobService {
     return rows.map(Job.fromMap).toList();
   }
 
-  Stream<List<Job>> streamProviderJobs() => _client
-      .from('jobs')
-      .stream(primaryKey: ['id'])
-      .eq('provider_id', uid)
-      .order('created_at', ascending: false)
-      .map((rows) => rows.map(Job.fromMap).toList());
+  Stream<List<Job>> streamProviderJobs() => _reactiveJobStream(
+        realtimeFactory: () => _client
+            .from('jobs')
+            .stream(primaryKey: ['id'])
+            .eq('provider_id', uid)
+            .order('created_at', ascending: false)
+            .map((rows) => rows.map(Job.fromMap).toList()),
+        fetchFallback: providerJobs,
+      );
 
   /// Orçamentos que o profissional enviou e ainda aguardam resposta.
   Future<List<({Quote quote, Job? job})>> myPendingQuotes() async {

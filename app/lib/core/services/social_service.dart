@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/chat_models.dart';
@@ -20,6 +23,59 @@ class SocialService {
   SocialService([SupabaseClient? client]) : _client = client ?? Supabase.instance.client;
 
   final SupabaseClient _client;
+
+  /// IDs de notificações marcadas como lidas na sessão atual (atualização otimista < 16ms
+  /// compartilhada entre `NotificationsScreen` e `UnreadBell` tanto para Cliente quanto Profissional).
+  static final Set<String> _optimisticallyReadIds = <String>{};
+  static DateTime? _markedAllReadAt;
+  static final StreamController<void> _notificationsChangedController =
+      StreamController<void>.broadcast();
+
+  /// Stream disparado sempre que qualquer notificação é marcada como lida/vista.
+  static Stream<void> get onNotificationsChanged =>
+      _notificationsChangedController.stream;
+
+  /// Verifica se a notificação já foi vista (no banco ou otimisticamente na sessão).
+  static bool isOptimisticallyRead(AppNotification n) {
+    if (!n.unread) return true;
+    if (_optimisticallyReadIds.contains(n.id)) return true;
+    if (_markedAllReadAt != null && !n.createdAt.isAfter(_markedAllReadAt!)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Aplica o estado otimista de leitura sobre uma notificação.
+  static AppNotification applyOptimisticRead(AppNotification n) {
+    if (!n.unread) return n;
+    if (isOptimisticallyRead(n)) {
+      return n.copyWith(readAt: DateTime.now());
+    }
+    return n;
+  }
+
+  /// Marca instantaneamente em memória uma notificação como vista e notifica a UI.
+  static void markOptimisticallyRead(String id) {
+    _optimisticallyReadIds.add(id);
+    if (!_notificationsChangedController.isClosed) {
+      _notificationsChangedController.add(null);
+    }
+  }
+
+  /// Marca instantaneamente todas as notificações atuais como vistas em memória e notifica a UI.
+  static void markAllOptimisticallyRead([Iterable<String> ids = const []]) {
+    _optimisticallyReadIds.addAll(ids);
+    _markedAllReadAt = DateTime.now().add(const Duration(seconds: 2));
+    if (!_notificationsChangedController.isClosed) {
+      _notificationsChangedController.add(null);
+    }
+  }
+
+  @visibleForTesting
+  static void resetOptimisticReadState() {
+    _optimisticallyReadIds.clear();
+    _markedAllReadAt = null;
+  }
 
   String get uid {
     final u = _client.auth.currentUser;
@@ -86,26 +142,87 @@ class SocialService {
     return null;
   }
 
-
   // -------------------------------------------------------- notificações
 
-  Stream<List<AppNotification>> streamNotifications() => _client
-      .from('notifications')
-      .stream(primaryKey: ['id'])
-      .eq('user_id', uid)
-      .order('created_at', ascending: false)
-      .map((rows) => rows.map(AppNotification.fromMap).toList());
+  Future<List<AppNotification>> fetchNotifications() async {
+    final rows = await _client
+        .from('notifications')
+        .select()
+        .eq('user_id', uid)
+        .order('created_at', ascending: false);
+    return rows.map(AppNotification.fromMap).map(applyOptimisticRead).toList();
+  }
 
-  Future<void> markRead(String id) => _client
-      .from('notifications')
-      .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-      .eq('id', id);
+  Stream<List<AppNotification>> streamNotifications() {
+    late StreamController<List<AppNotification>> controller;
+    StreamSubscription<List<AppNotification>>? realtimeSub;
+    StreamSubscription<void>? localSub;
+    List<AppNotification>? latestRaw;
 
-  Future<void> markAllRead() => _client
-      .from('notifications')
-      .update({'read_at': DateTime.now().toUtc().toIso8601String()})
-      .eq('user_id', uid)
-      .isFilter('read_at', null);
+    void emitCurrent() {
+      if (controller.isClosed || latestRaw == null) return;
+      controller.add(latestRaw!.map(applyOptimisticRead).toList());
+    }
+
+    controller = StreamController<List<AppNotification>>.broadcast(
+      onListen: () {
+        realtimeSub = _client
+            .from('notifications')
+            .stream(primaryKey: ['id'])
+            .eq('user_id', uid)
+            .order('created_at', ascending: false)
+            .map((rows) => rows.map(AppNotification.fromMap).toList())
+            .listen(
+              (items) {
+                latestRaw = items;
+                emitCurrent();
+              },
+              onError: (Object err, StackTrace st) {
+                if (!controller.isClosed) controller.addError(err, st);
+              },
+            );
+        localSub = onNotificationsChanged.listen((_) {
+          emitCurrent();
+        });
+      },
+      onCancel: () async {
+        await realtimeSub?.cancel();
+        await localSub?.cancel();
+      },
+    );
+    return controller.stream;
+  }
+
+  Future<void> markRead(String id) async {
+    markOptimisticallyRead(id);
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    try {
+      await _client
+          .from('notifications')
+          .update({'read_at': nowIso})
+          .eq('id', id);
+    } catch (_) {
+      try {
+        await _client.rpc('mark_notification_read', params: {'p_notification_id': id});
+      } catch (_) {}
+    }
+  }
+
+  Future<void> markAllRead() async {
+    markAllOptimisticallyRead();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    try {
+      await _client
+          .from('notifications')
+          .update({'read_at': nowIso})
+          .eq('user_id', uid)
+          .isFilter('read_at', null);
+    } catch (_) {
+      try {
+        await _client.rpc('mark_notification_read');
+      } catch (_) {}
+    }
+  }
 
   // ------------------------------------------------------------ avaliações
 

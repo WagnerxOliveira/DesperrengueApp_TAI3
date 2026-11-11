@@ -34,10 +34,17 @@ class ClientShell extends StatefulWidget {
 class _ClientShellState extends State<ClientShell> {
   int _index = 0;
 
+  void _selectTab(int i) {
+    if (i == 1) {
+      JobService.notifyJobsChanged();
+    }
+    setState(() => _index = i);
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
-      ClientHomeTab(profile: widget.profile, onSeeOrders: () => setState(() => _index = 1)),
+      ClientHomeTab(profile: widget.profile, onSeeOrders: () => _selectTab(1)),
       const ClientOrdersTab(),
       ClientProfileTab(profile: widget.profile),
     ];
@@ -50,7 +57,7 @@ class _ClientShellState extends State<ClientShell> {
         body: SafeArea(child: IndexedStack(index: _index, children: pages)),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
+          onDestinationSelected: _selectTab,
           backgroundColor: context.tk.card,
           indicatorColor: context.tk.clientSoft,
           destinations: const [
@@ -81,6 +88,7 @@ class ClientHomeTab extends StatefulWidget {
 class _ClientHomeTabState extends State<ClientHomeTab> {
   final _search = TextEditingController();
   final _jobs = JobService();
+  late final Stream<List<Job>> _myJobsStream = _jobs.streamMyJobs();
 
   @override
   void dispose() {
@@ -199,7 +207,7 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         ),
         const SizedBox(height: 18),
         StreamBuilder<List<Job>>(
-          stream: _jobs.streamMyJobs(),
+          stream: _myJobsStream,
           builder: (context, snap) {
             final active = (snap.data ?? const []).where((j) => j.status.isActive).toList();
             if (active.isEmpty) return const SizedBox.shrink();
@@ -220,9 +228,12 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
           },
         ),
         _OpenJobBanner(
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => RequestWizardScreen(profile: widget.profile)),
-          ),
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => RequestWizardScreen(profile: widget.profile)),
+            );
+            JobService.notifyJobsChanged();
+          },
         ),
         const SizedBox(height: 20),
         const SectionTitle('Categorias'),

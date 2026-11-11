@@ -204,58 +204,62 @@ class _List extends StatelessWidget {
         subtitle: hint,
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(20),
-      itemCount: jobs.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 12),
-      itemBuilder: (context, i) {
-        final j = jobs[i];
-        return AppCard(
-          onTap: () => onOpen(context, j),
-          child: Row(
-            children: [
-              CategoryBrandEmblem(
-                categoryName: j.category,
-                size: 50,
-                showCornerBadge: false,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      j.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${j.code} • ${relativeTime(j.createdAt)}',
-                      style: TextStyle(
-                        color: context.tk.textMuted,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    JobStatusChip(j),
-                  ],
+    return RefreshIndicator(
+      onRefresh: () async => JobService.notifyJobsChanged(),
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(20),
+        itemCount: jobs.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (context, i) {
+          final j = jobs[i];
+          return AppCard(
+            onTap: () => onOpen(context, j),
+            child: Row(
+              children: [
+                CategoryBrandEmblem(
+                  categoryName: j.category,
+                  size: 50,
+                  showCornerBadge: false,
                 ),
-              ),
-              if (j.agreedPrice != null)
-                Text(
-                  brl(j.agreedPrice),
-                  style: const TextStyle(fontWeight: FontWeight.w900),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        j.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${j.code} • ${relativeTime(j.createdAt)}',
+                        style: TextStyle(
+                          color: context.tk.textMuted,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      JobStatusChip(j),
+                    ],
+                  ),
                 ),
-              Icon(Icons.chevron_right_rounded, color: context.tk.textMuted),
-            ],
-          ),
-        );
-      },
+                if (j.agreedPrice != null)
+                  Text(
+                    brl(j.agreedPrice),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                Icon(Icons.chevron_right_rounded, color: context.tk.textMuted),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
