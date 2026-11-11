@@ -7,6 +7,7 @@ import 'package:desperrengue_app/core/models/fintech_warranty_models.dart';
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/security/perceptual_hash_guard.dart';
+import 'package:desperrengue_app/core/security/zero_trust_bilateral_security_engine.dart';
 import 'package:desperrengue_app/core/services/desperrengue_official_pdf_service.dart';
 import 'package:desperrengue_app/core/services/document_ocr_and_liveness_service.dart';
 import 'package:desperrengue_app/core/state/anti_bypass_fintech_controller.dart';
@@ -969,6 +970,329 @@ void main() {
       expect(submittedOcr, isNotNull);
       expect(submittedOcr!.extractedFullName, 'WAGNER OLIVEIRA CLAUDIANO');
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('ZERO-TRUST BILATERAL SECURITY ENGINE (v2.8.5 — SEÇÃO 10.1 VETORES 1 A 6)', () {
+    test('Vetor 1 (Screen-Flash Fotométrico Ativo + Play Integrity/App Attest + IMU Sync): '
+        'Bloqueia vídeo pré-renderizado VCam/OBS (cos < 0.72) e aprova rosto humano iluminado pela tela', () async {
+      const coral = RgbSampleVector(244, 63, 94);
+      const cyan = RgbSampleVector(0, 194, 255);
+      const emerald = RgbSampleVector(16, 185, 129);
+      const baselineSkin = RgbSampleVector(150, 118, 102);
+
+      // 1. Ataque VCam/OBS: vídeo pré-renderizado não reflete as cores pulsadas pela tela na pele
+      final vcamAttempt = await ActiveScreenFlashPhotometricGuard.verifyInIsolate(
+        userId: 'u-attacker-vcam',
+        nonceId: 'nonce-001',
+        selfiePhash64: 0x1122334455667788,
+        docFrontPhash64: 0x8877665544332211,
+        pulses: const <ScreenFlashPulseObservation>[
+          ScreenFlashPulseObservation(
+            emittedColor: coral,
+            baselineFaceRoiRgb: baselineSkin,
+            illuminatedFaceRoiRgb: RgbSampleVector(151, 119, 103),
+          ),
+          ScreenFlashPulseObservation(
+            emittedColor: cyan,
+            baselineFaceRoiRgb: baselineSkin,
+            illuminatedFaceRoiRgb: RgbSampleVector(152, 117, 100), // Sem reflexão ciano
+          ),
+          ScreenFlashPulseObservation(
+            emittedColor: emerald,
+            baselineFaceRoiRgb: baselineSkin,
+            illuminatedFaceRoiRgb: RgbSampleVector(150, 118, 102),
+          ),
+        ],
+        gyroYawSamplesRadPerSec: const <double>[0.1, 0.3, 0.6, 0.4, 0.1],
+        opticalFlowYawVelocityRadPerSec: const <double>[0.11, 0.29, 0.58, 0.41, 0.1],
+        physiologicalTremorHz: 9.5,
+        attestationVerdict: HardwareAttestationVerdict.meetsStrongIntegrity,
+      );
+      expect(vcamAttempt.isAuthenticLiveHuman, isFalse);
+      expect(vcamAttempt.auditReason, contains('VIRTUAL_CAMERA_DETECTED'));
+
+      // 2. Humano real em frente à tela: reflexão cromática física (cos >= 0.72) + IMU r >= 0.82
+      final liveHuman = await ActiveScreenFlashPhotometricGuard.verifyInIsolate(
+        userId: 'u-wagner-real',
+        nonceId: 'nonce-002',
+        selfiePhash64: 0xABCDEF0123456789,
+        docFrontPhash64: 0x123456789ABCDEF0,
+        pulses: const <ScreenFlashPulseObservation>[
+          ScreenFlashPulseObservation(
+            emittedColor: coral,
+            baselineFaceRoiRgb: baselineSkin,
+            illuminatedFaceRoiRgb: RgbSampleVector(174, 124, 111),
+          ),
+          ScreenFlashPulseObservation(
+            emittedColor: cyan,
+            baselineFaceRoiRgb: baselineSkin,
+            illuminatedFaceRoiRgb: RgbSampleVector(151, 138, 128),
+          ),
+          ScreenFlashPulseObservation(
+            emittedColor: emerald,
+            baselineFaceRoiRgb: baselineSkin,
+            illuminatedFaceRoiRgb: RgbSampleVector(152, 137, 115),
+          ),
+        ],
+        gyroYawSamplesRadPerSec: const <double>[0.12, 0.35, 0.62, 0.44, 0.15, -0.20],
+        opticalFlowYawVelocityRadPerSec: const <double>[0.11, 0.34, 0.60, 0.43, 0.14, -0.19],
+        physiologicalTremorHz: 9.8,
+        attestationVerdict: HardwareAttestationVerdict.meetsStrongIntegrity,
+      );
+      expect(liveHuman.isAuthenticLiveHuman, isTrue);
+      expect(liveHuman.minChromaticCosine, greaterThanOrEqualTo(0.72));
+      expect(liveHuman.imuOpticalCorrelation, greaterThanOrEqualTo(0.82));
+      expect(liveHuman.requestHashSha256.length, 64);
+    });
+
+    test('Vetor 2 (Validação Fiscal em 4 Camadas: Chave 44 Módulo 11 + Recibo MEI Teto R\$ 150 + ELA + Fase 2 SEFAZ 26h): '
+        'Valida notas com e sem QR Code, bloqueia edição Photoshop (ELA > 0.18) e aplica Clawback em nota cancelada', () {
+      // Monta chave de 44 dígitos legítima (UF 35 SP, AAMM 2611, CNPJ válido 11.222.333/0001-81, Mod 65 NFC-e)
+      const first43 = '3526111122233300018165001000000123112345678';
+      final dv = FiscalDocumentForensicsEngine.computeNfeCheckDigitMod11(first43);
+      final validKey44 = '$first43$dv';
+
+      // 1. Nota NFC-e / DANFE com chave de 44 dígitos (via QR Code, Código de Barras 1D ou OCR) -> Isenção 0% ilimitada
+      final nfeVerdict = FiscalDocumentForensicsEngine.evaluateFiscalDocument(
+        mode: FiscalDocumentMode.nfce65,
+        captureChannel: FiscalCaptureChannel.barcode1dCode128c,
+        declaredMaterialAmount: 480.00,
+        elaTamperScore: 0.04,
+        rawAccessKeyOrQrPayload: validKey44,
+        ncmCodes: const <String>['85362000', '74111010'], // Disjuntor + Tubo de cobre
+      );
+      expect(nfeVerdict.isApprovedForZeroTaxSplit, isTrue);
+      expect(nfeVerdict.approvedZeroTaxAmount, 480.00);
+      expect(nfeVerdict.requiresPhase2SefazRecheckAt26h, isTrue);
+
+      // 2. Recibo MEI sem QR Code dentro do Teto Fiscal Inteligente (<= R$ 150,00) -> Aprovado
+      final meiValid = FiscalDocumentForensicsEngine.evaluateFiscalDocument(
+        mode: FiscalDocumentMode.meiReceiptCgsn140,
+        captureChannel: FiscalCaptureChannel.ocrMeiReceipt,
+        declaredMaterialAmount: 120.00,
+        elaTamperScore: 0.05,
+        rawMeiCnpj: '11.222.333/0001-81',
+        isMeiCnaeCompatible: true,
+        meiItemPrices: const <double>[75.00, 45.00],
+      );
+      expect(meiValid.isApprovedForZeroTaxSplit, isTrue);
+      expect(meiValid.approvedZeroTaxAmount, 120.00);
+
+      // 3. Recibo MEI sem QR Code tentando isentar R$ 350,00 (> R$ 150,00) -> Bloqueado pelo Smart Fiscal Cap
+      final meiCapExceeded = FiscalDocumentForensicsEngine.evaluateFiscalDocument(
+        mode: FiscalDocumentMode.meiReceiptCgsn140,
+        captureChannel: FiscalCaptureChannel.ocrMeiReceipt,
+        declaredMaterialAmount: 350.00,
+        elaTamperScore: 0.05,
+        rawMeiCnpj: '11.222.333/0001-81',
+        isMeiCnaeCompatible: true,
+        meiItemPrices: const <double>[350.00],
+      );
+      expect(meiCapExceeded.isApprovedForZeroTaxSplit, isFalse);
+      expect(meiCapExceeded.approvedZeroTaxAmount, 150.00);
+      expect(meiCapExceeded.excessTaxableAsLaborAmount, 200.00);
+      expect(meiCapExceeded.auditMessage, contains('SMART_FISCAL_CAP_EXCEEDED'));
+
+      // 4. Edição gráfica via Photoshop/Canva (ELA > 0.18) -> Bloqueado imediatamente
+      final elaBlocked = FiscalDocumentForensicsEngine.evaluateFiscalDocument(
+        mode: FiscalDocumentMode.nfce65,
+        captureChannel: FiscalCaptureChannel.ocrAccessKey44,
+        declaredMaterialAmount: 200.00,
+        elaTamperScore: 0.31,
+        rawAccessKeyOrQrPayload: validKey44,
+      );
+      expect(elaBlocked.isApprovedForZeroTaxSplit, isFalse);
+      expect(elaBlocked.auditMessage, contains('FISCAL_IMAGE_SPLICE_DETECTED'));
+
+      // 5. Golpe "Compra-Escaneia-Cancela" detectado na Fase 2 SEFAZ (> 26h, cStat 101) -> Clawback de 15%
+      final phase2Cancel = FiscalDocumentForensicsEngine.auditPhase2SefazRecheck(
+        declaredMaterialAmount: 400.00,
+        sefazStatusRecheck: 101,
+      );
+      expect(phase2Cancel.wasCanceledByProviderAfterUpload, isTrue);
+      expect(phase2Cancel.platformOperationalFeeRecovered, 54.00); // 13.5% de 400
+      expect(phase2Cancel.warrantyReserveFeeRecovered, 6.00); // 1.5% de 400
+      expect(phase2Cancel.totalClawbackDebitedFromProvider, 60.00); // 15% recuperado
+    });
+
+    test('Vetor 3 (Coroa Circular Equiprovável 0.4..8.0 km + Anti-Sniper < 350m + Base < 300m + Anomaly Hold D+5): '
+        'Bloqueia cúmplice estacionado na esquina (100m), Sniper recém-online e vizinho de pernoite', () {
+      const candidates = <RescueCandidateProfile>[
+        // Cúmplice estacionado a 100m do imóvel (< 400m da coroa circular) -> BLOQUEADO
+        RescueCandidateProfile(
+          providerId: 'prov-cumplice-porta-100m',
+          tier: 1,
+          rtsScore: 90.0,
+          distanceFromPropertyKm: 0.10,
+          roostDistanceFromPropertyKm: 4.5,
+          roostDistanceFromOffenderKm: 5.0,
+          minutesSinceWentOnline: 120,
+        ),
+        // Vizinho de pernoite do infrator original (roost = 180m < 300m) -> BLOQUEADO
+        RescueCandidateProfile(
+          providerId: 'prov-vizinho-infrator',
+          tier: 1,
+          rtsScore: 88.0,
+          distanceFromPropertyKm: 2.5,
+          roostDistanceFromPropertyKm: 3.0,
+          roostDistanceFromOffenderKm: 0.18,
+          minutesSinceWentOnline: 90,
+        ),
+        // Especialista legítimo dentro da Coroa Circular (3.2 km) -> ELEGÍVEL
+        RescueCandidateProfile(
+          providerId: 'prov-legitimo-coroa-3km',
+          tier: 1,
+          rtsScore: 91.0,
+          distanceFromPropertyKm: 3.2,
+          roostDistanceFromPropertyKm: 3.5,
+          roostDistanceFromOffenderKm: 6.1,
+          minutesSinceWentOnline: 180,
+        ),
+      ];
+
+      final eligible = ZeroLinkageAnnularDispatchEngine.filterEligibleAnnularCandidates(candidates);
+      expect(eligible.length, 1);
+      expect(eligible.single.providerId, 'prov-legitimo-coroa-3km');
+
+      final anomaly = ZeroLinkageAnnularDispatchEngine.evaluateDynamicAnomalyHold(
+        laborAmount: 950.0,
+        categoryP85TicketAmount: 450.0,
+        actualExecutionMinutes: 8,
+        expectedCategoryMinutes: 60,
+        isNewClientProviderPair: true,
+      );
+      expect(anomaly.forceD5AnomalyHold, isTrue);
+      expect(anomaly.netCollusionPayoffRatio, equals(-0.15));
+    });
+
+    testWidgets('Vetor 4 (Custódia de Peça em 3 Atos + Proof-of-Leave Atômico no PIN de 4 Dígitos): '
+        'Isenta insumos de consumo, exige foto de entrega para peça substituída e renderiza no Card do PIN', (tester) async {
+      // 1. Insumos de consumo (fita, gás, silicone) -> não exige foto de devolução de peça antiga
+      final consumableReceipt = ComponentCustodyProofOfLeaveEngine.validateAndBuildAtomicPinReceipt(
+        scope: MaterialSplitScopeKind.consumableSupplies,
+      );
+      expect(consumableReceipt.isReadyForPinRelease, isTrue);
+
+      // 2. Substituição de peça sem foto de entrega (Proof-of-Leave) -> bloqueado até fotografar
+      final missingLeavePhoto = ComponentCustodyProofOfLeaveEngine.validateAndBuildAtomicPinReceipt(
+        scope: MaterialSplitScopeKind.componentReplacement,
+        applianceNameplateOcr: 'CONSUL CRM50 • S/N 99881122',
+        inSituConnectedOldPartPhash64: 0x1111222233334444,
+        oldVsNewPartMacroPhash64: 0x5555666677778888,
+        oldPartLeavePhotoPhash64: null,
+      );
+      expect(missingLeavePhoto.isReadyForPinRelease, isFalse);
+      expect(missingLeavePhoto.auditError, contains('PROOF_OF_LEAVE_REQUIRED'));
+
+      // 3. Substituição de peça com foto de entrega válida -> gera recibo atômico no PIN
+      final validLeaveReceipt = ComponentCustodyProofOfLeaveEngine.validateAndBuildAtomicPinReceipt(
+        scope: MaterialSplitScopeKind.componentReplacement,
+        applianceNameplateOcr: 'CONSUL CRM50 • S/N 99881122',
+        inSituConnectedOldPartPhash64: 0x1111222233334444,
+        oldVsNewPartMacroPhash64: 0x5555666677778888,
+        oldPartLeavePhotoPhash64: 0x9999AAAABBBBCCCC,
+        checkInPhash64: 0x0000111100001111,
+      );
+      expect(validLeaveReceipt.isReadyForPinRelease, isTrue);
+      expect(validLeaveReceipt.clientPinBannerNotice, contains('Proof-of-Leave'));
+
+      // 4. Verifica renderização no PinFourDigitApprovalCard
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.resolve(null, Brightness.dark),
+          home: Scaffold(
+            body: PinFourDigitApprovalCard(
+              initialRemaining: const Duration(hours: 23, minutes: 59),
+              materialScope: MaterialSplitScopeKind.componentReplacement,
+              applianceNameplateOcr: 'CONSUL CRM50 • S/N 99881122',
+              oldPartLeavePhotoPhash64: 0x9999AAAABBBBCCCC,
+              onConfirmPin: (_) {},
+            ),
+          ),
+        ),
+      );
+      expect(find.byKey(const ValueKey('pin-atomic-proof-of-leave-box')), findsOneWidget);
+      expect(find.byKey(const ValueKey('pin-bilateral-copresence-badge')), findsOneWidget);
+      expect(find.textContaining('CONSUL CRM50'), findsOneWidget);
+    });
+
+    test('Vetor 5 (Zero Unfunded Lock + Indenização de Deslocamento SOS Revertida ao Especialista): '
+        'Convites sem depósito nunca travam agenda; cancelamento após >= 250m credita taxa ao técnico', () {
+      // Convite ou orçamento sem pagamento em custódia -> agenda livre!
+      expect(
+        SosSlotProtectionAndSlashingEngine.isProviderSlotLocked(
+          isEscrowFunded100Percent: false,
+          hasProviderAcceptedOrder: true,
+        ),
+        isFalse,
+      );
+
+      // Cancelamento após o técnico percorrer 620 metros (ou 6 min) -> indenização creditada ao técnico
+      final slashing = SosSlotProtectionAndSlashingEngine.evaluateCancellationSlashing(
+        lockedEscrowTotalBrl: 240.00,
+        hasProviderAccepted: true,
+        providerDisplacedMeters: 620.0,
+        activeRouteMinutes: 6.5,
+        recentSosCancellationsIn24h: 1,
+      );
+      expect(slashing.isSlashingApplicable, isTrue);
+      expect(slashing.compensatoryFeeToProviderBrl, 36.00); // 15% de R$ 240 = R$ 36,00 para o especialista
+      expect(slashing.netRefundToClientBrl, 204.00);
+      expect(slashing.cooldownMinutesAppliedToClient, 30);
+    });
+
+    test('Vetor 6 (Telemetria Bruta GNSS AGC x C/N0 + Prova Criptográfica Bilateral QR TOTP 15s / Ultrassom): '
+        'Bloqueia emulador SDR HackRF (variância C/N0 plana < 1.2) e valida handshake HMAC-SHA256', () {
+      final bucket = GnssAndCoPresenceSecurityEngine.computeTotpBucket(
+        DateTime.utc(2026, 11, 10, 23, 45, 0),
+      );
+      final validHmac = GnssAndCoPresenceSecurityEngine.generateBilateralCoPresenceHmac(
+        jobId: 'job-7788',
+        stage: 'CHECKIN',
+        totpWindowBucket: bucket,
+        jobPresenceSecret: 'secret-dsp-998877',
+      );
+
+      // 1. Ataque SDR HackRF (todos os satélites com C/N0 artificialmente plano = 45.0 dB-Hz e AGC saturado -8 dB)
+      final sdrSpoofAttempt = GnssAndCoPresenceSecurityEngine.verifyGnssAndCoPresence(
+        jobId: 'job-7788',
+        stage: 'CHECKIN',
+        totpWindowBucket: bucket,
+        jobPresenceSecret: 'secret-dsp-998877',
+        capturedPeerTokenHmacHex: validHmac,
+        gnssTelemetry: const GnssRawConstellationTelemetry(
+          constellationsObserved: 3,
+          carrierToNoiseDbHzSamples: <double>[45.0, 45.1, 45.0, 44.9, 45.0],
+          automaticGainControlDb: -8.2,
+          dopplerVelocityDiscrepancyMps: 0.4,
+        ),
+      );
+      expect(sdrSpoofAttempt.isPhysicalCoPresenceProven, isFalse);
+      expect(sdrSpoofAttempt.isGnssRadioAuthentic, isFalse);
+      expect(sdrSpoofAttempt.auditMessage, contains('SDR_OR_KERNEL_GNSS_SPOOFING'));
+
+      // 2. Ambiente real + Handshake Presencial (QR TOTP 15s / Ultrassom 18.5-19.5 kHz) -> Aprovado!
+      final authenticCoPresence = GnssAndCoPresenceSecurityEngine.verifyGnssAndCoPresence(
+        jobId: 'job-7788',
+        stage: 'CHECKIN',
+        totpWindowBucket: bucket,
+        jobPresenceSecret: 'secret-dsp-998877',
+        capturedPeerTokenHmacHex: validHmac,
+        gnssTelemetry: const GnssRawConstellationTelemetry(
+          constellationsObserved: 4,
+          carrierToNoiseDbHzSamples: <double>[28.5, 34.2, 41.0, 24.8, 38.6, 31.0],
+          automaticGainControlDb: -1.4,
+          dopplerVelocityDiscrepancyMps: 0.3,
+        ),
+      );
+      expect(authenticCoPresence.isPhysicalCoPresenceProven, isTrue);
+      expect(authenticCoPresence.isGnssRadioAuthentic, isTrue);
+      expect(authenticCoPresence.isBilateralTokenValid, isTrue);
+      expect(
+        authenticCoPresence.ultrasonicFskFrequenciesHz.every((f) => f >= 18500 && f <= 19500),
+        isTrue,
+      );
     });
   });
 }

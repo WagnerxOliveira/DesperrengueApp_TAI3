@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/models/fintech_warranty_models.dart';
+import '../../../core/security/zero_trust_bilateral_security_engine.dart';
 import '../../../core/services/desperrengue_official_pdf_service.dart';
 import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/ui/app_scaffold.dart';
@@ -2912,10 +2913,20 @@ class PinFourDigitApprovalCard extends StatefulWidget {
     super.key,
     required this.initialRemaining,
     required this.onConfirmPin,
+    this.materialScope = MaterialSplitScopeKind.none,
+    this.applianceNameplateOcr,
+    this.oldPartLeavePhotoPhash64,
+    this.oldPartDisposalAuthorizedByClient = false,
+    this.isCoPresenceVerified = true,
   });
 
   final Duration initialRemaining;
   final ValueChanged<String> onConfirmPin;
+  final MaterialSplitScopeKind materialScope;
+  final String? applianceNameplateOcr;
+  final int? oldPartLeavePhotoPhash64;
+  final bool oldPartDisposalAuthorizedByClient;
+  final bool isCoPresenceVerified;
 
   @override
   State<PinFourDigitApprovalCard> createState() => _PinFourDigitApprovalCardState();
@@ -2960,6 +2971,108 @@ class _PinFourDigitApprovalCardState extends State<PinFourDigitApprovalCard> {
         children: [
           const Text(
             'Aprovação Presencial (PIN de 4 Dígitos) ou Liberação em 24h',
+            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            key: const ValueKey('pin-bilateral-copresence-badge'),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: widget.isCoPresenceVerified ? tk.successSoft : tk.warningSoft,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: widget.isCoPresenceVerified
+                    ? tk.success.withValues(alpha: 0.45)
+                    : tk.warningInk.withValues(alpha: 0.45),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  widget.isCoPresenceVerified
+                      ? Icons.spatial_audio_off_rounded
+                      : Icons.warning_amber_rounded,
+                  size: 16,
+                  color: widget.isCoPresenceVerified ? tk.successInk : tk.warningInk,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.isCoPresenceVerified
+                        ? 'Co-Presença Física Confirmada (QR TOTP 15s / Token Ultrassônico + GNSS AGC)'
+                        : 'Aguardando Handshake Presencial de Co-Presença com o aparelho do cliente',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color:
+                          widget.isCoPresenceVerified ? tk.successInk : tk.warningInk,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (widget.materialScope == MaterialSplitScopeKind.componentReplacement) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const ValueKey('pin-atomic-proof-of-leave-box'),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: tk.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: tk.clientAccent.withValues(alpha: 0.45)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.verified_user_rounded,
+                        size: 17,
+                        color: tk.clientAccent,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          'Custódia da Peça Substituída (Proof-of-Leave)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12.5,
+                            color: tk.text,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if ((widget.applianceNameplateOcr ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Equipamento: ${widget.applianceNameplateOcr} • Entrega Auditada',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: tk.textMuted,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.oldPartDisposalAuthorizedByClient
+                        ? 'Confira o reparo concluído. Ao informar o PIN ao profissional, você confirma a conclusão do serviço e a autorização de descarte da peça antiga.'
+                        : 'Confira sua peça substituída na foto de entrega (Proof-of-Leave). Ao informar o PIN ao profissional, você confirma a conclusão do serviço e o recebimento da peça antiga.',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.35,
+                      color: tk.text,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const Text(
+            'Contagem Regressiva de Proteção',
             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
           ),
           const SizedBox(height: 6),
