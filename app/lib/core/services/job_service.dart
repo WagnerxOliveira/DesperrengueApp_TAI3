@@ -181,6 +181,16 @@ class JobService {
     }
   }
 
+  /// Ponto/endereço EXATO para o cliente dono (após a trava, `jobs.latitude/longitude` são nulos).
+  /// Retorna null se a RPC negar, falhar, ou se o chamador não for dono/admin com exato liberado
+  /// (nunca devolve a visão fuzzy como se fosse exata).
+  Future<ProviderLocationView?> fetchOwnerExactLocation(String jobId) async {
+    final v = await fetchLocationForViewer(jobId);
+    if (v == null || !v.exactUnlocked || !v.canShowExactMap) return null;
+    if (v.phase != GeoPrivacyPhase.ownerFull) return null;
+    return v;
+  }
+
   /// Serviços concluídos, sob proteção pós-serviço, em mediação ou cancelados do cliente logado,
   /// mais recentes primeiro (conclusão/aprovação > criação). Alimenta o "Histórico de serviços".
   Future<List<Job>> fetchMyFinishedJobs() async {
