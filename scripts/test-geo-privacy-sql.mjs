@@ -603,6 +603,21 @@ check('11. Auditoria cumulativa de TODAS as funções SECURITY DEFINER nas 27 mi
   assert.deepEqual(missingRevoke, [], `Funções SECURITY DEFINER sem REVOKE de public/anon: ${missingRevoke.join(', ')}`);
 });
 
+check('12. Cadeia limpa para `supabase db reset`/`db push`: zero `.concat(`, `public.users` ou `m.phase` legado nas 27 migrations', () => {
+  const files = fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  for (const f of files) {
+    const content = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
+    lexSql(content, f);
+    const noLineComments = content.replace(/--.*$/gm, '');
+    assert.doesNotMatch(noLineComments, /\.concat\s*\(/i, `${f}: sintaxe JS .concat() inválida em SQL/PLpgSQL`);
+    assert.doesNotMatch(noLineComments, /\bpublic\.users\b/i, `${f}: relação inexistente public.users`);
+    assert.doesNotMatch(noLineComments, /\bm\.phase\b/i, `${f}: coluna inexistente m.phase em job_mediations`);
+  }
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {

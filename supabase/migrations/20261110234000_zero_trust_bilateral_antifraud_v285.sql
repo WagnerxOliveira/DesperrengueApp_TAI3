@@ -25,7 +25,8 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.kyc_liveness_nonces (
     nonce_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    -- fix: tabela de contas públicas no schema é public.profiles (não existe public.users)
+    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     pulse_rgb_hex_sequence TEXT[] NOT NULL DEFAULT ARRAY['#F43F5E', '#00C2FF', '#10B981'],
     required_yaw_direction TEXT NOT NULL CHECK (required_yaw_direction IN ('LEFT', 'RIGHT')),
     issued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -306,7 +307,8 @@ $$;
 CREATE TABLE IF NOT EXISTS public.job_fiscal_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
-    provider_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+    -- fix: referência correta para public.profiles(id)
+    provider_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
     fiscal_document_mode TEXT NOT NULL CHECK (
         fiscal_document_mode IN ('NFE_55', 'NFCE_65', 'MEI_RECEIPT_CGSN140')
     ),
@@ -606,7 +608,8 @@ BEGIN
     SELECT pp.user_id
       INTO v_selected_rescuer
       FROM public.provider_profiles pp
-      JOIN public.users u ON u.id = pp.user_id
+      -- fix: tabela real é public.profiles (usa apenas u.id)
+      JOIN public.profiles u ON u.id = pp.user_id
      WHERE pp.is_online = TRUE
        AND pp.schedule_locked_for_warranty = FALSE
        AND pp.rts_score >= 75.0
