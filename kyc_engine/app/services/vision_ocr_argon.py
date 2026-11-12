@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 _CONNECTIVE_STOPWORDS = frozenset({"de", "da", "do", "das", "dos", "e"})
 _RE_NON_ALPHA_SPACE = re.compile(r"[^a-z\s]")
 _RE_NON_DIGIT = re.compile(r"\D")
+_MAX_INJECTION_SCAN_BYTES = 2 * 1024 * 1024  # 2 MB scan window for trailer/comment prompt injection
 
 # Padrões de ferramentas/equipamentos permanentes que NÃO são insumos consumíveis no Smart Split (0% peças)
 _NON_CONSUMABLE_TOOL_KEYWORDS = (
@@ -87,7 +88,8 @@ def compute_civil_name_compatibility(
     3. O primeiro nome (prenome) deve coincidir para impedir aprovação de parentes/homônimos parciais.
     4. Quando todos os tokens significativos do nome digitado formam um subconjunto ordenado
        legítimo do nome civil extraído (com prenome coincidente), retorna 1.0.
-    5. Caso contrário, combina cobertura de tokens e similaridade léxica, exigindo >= 0.80 para aprovação.
+    5. Caso contrário, usa len(typed_tokens) como denominador de cobertura para impedir que
+       sobrenomes fabricados em typed_name inflamem o score, exigindo >= 0.80 para aprovação.
     """
     typed_tokens = _normalize_ascii_tokens(typed_name)
     extracted_tokens = _normalize_ascii_tokens(extracted_name)
@@ -127,8 +129,7 @@ def compute_civil_name_compatibility(
     if matched_count < 2:
         return round(matched_count / max(len(typed_tokens), len(extracted_tokens)) * 0.5, 4)
 
-    smaller_len = min(len(typed_tokens), len(extracted_tokens))
-    coverage_ratio = matched_count / float(smaller_len)
+    coverage_ratio = matched_count / float(len(typed_tokens))
     seq_ratio = difflib.SequenceMatcher(
         None,
         " ".join(typed_tokens),
@@ -138,11 +139,29 @@ def compute_civil_name_compatibility(
     return round(min(1.0, max(0.0, combined)), 4)
 
 
+def _normalize_exif_orientation_jpeg(image_bytes: bytes) -> bytes:
+    """
+    Normaliza tags EXIF de orientação antes de enviar ao modelo de visão,
+    evitando dupla rotação entre EXIF e canonical_rotation_deg.
+    """
+    if not image_bytes:
+        raise ValueError("image_bytes não pode ser vazio.")
+    with Image.open(io.BytesIO(image_bytes)) as raw_img:
+        exif_orient = raw_img.getexif().get(0x0112, 1)
+        if exif_orient == 1 and raw_img.format == "JPEG" and raw_img.mode == "RGB":
+            return image_bytes
+        transposed = ImageOps.exif_transpose(raw_img)
+        rgb_img = transposed.convert("RGB") if transposed.mode != "RGB" else transposed.copy()
+        out_buf = io.BytesIO()
+        rgb_img.save(out_buf, format="JPEG", quality=95, subsampling=0)
+        return out_buf.getvalue()
+
+
 def rotate_to_canonical_orientation(image_bytes: bytes, rotation_deg: int = 0) -> bytes:
     """
     Corrige imagens fotografadas a 0°, 90°, 180° ou 270° para a orientação
     horizontal canônica utilizando Pillow (ImageOps.exif_transpose + rotação exata
-    com expand=True para preservar 100% da geometria das bordas).
+    para preservar 100% da geometria das bordas).
     """
     if not image_bytes:
         raise ValueError("image_bytes não pode ser vazio.")
@@ -336,10 +355,12 @@ class ArgonDocumentVisionService:
     ) -> ExtractedDocumentDossierArgon:
         """
         Modo determinístico de homologação/dev quando GEMINI_API_KEY não está configurada
-        no ambiente local, inspecionando propriedades reais da imagem (dimensões, EXIF/comentários
-        adversários e orientação) para manter o pipeline testável offline.
+        no ambiente local, inspecionando propriedades reais da imagem (dimensões, comentários/trailers
+        adversários em todo o buffer de até 2 MB e orientação) para manter o pipeline testável offline.
         """
-        combined_raw_upper = (front_jpeg_bytes[:4096] + back_jpeg_bytes[:4096]).decode("latin-1", errors="ignore").upper()
+        combined_raw_upper = (
+            front_jpeg_bytes[:_MAX_INJECTION_SCAN_BYTES] + back_jpeg_bytes[:_MAX_INJECTION_SCAN_BYTES]
+        ).decode("latin-1", errors="ignore").upper()
         injection_markers = (
             "IGNORE AS INSTRU",
             "IGNORE PREVIOUS INSTRUCTIONS",
@@ -352,6 +373,13 @@ class ArgonDocumentVisionService:
         with Image.open(io.BytesIO(front_jpeg_bytes)) as front_img:
             w, h = front_img.size
             detected_rot = 90 if h > w else 0
+
+        # Coordenadas no espaço canônico horizontal [0..1000]; se a imagem veio em pé (detected_rot=90),
+        # invertemos por 270° para representar as coordenadas no espaço de entrada pré-rotação.
+        canon_face = NormalizedBoundingBox2D(ymin=220, xmin=80, ymax=680, xmax=380, confidence=0.98)
+        canon_qr = NormalizedBoundingBox2D(ymin=140, xmin=520, ymax=760, xmax=920, confidence=0.99)
+        canon_sig = NormalizedBoundingBox2D(ymin=740, xmin=120, ymax=900, xmax=640, confidence=0.95)
+        inv_rot = (360 - detected_rot) % 360
 
         clean_cpf = _RE_NON_DIGIT.sub("", user_typed_cpf or "")
         cpf_valid = validate_cpf_mod11(clean_cpf)
@@ -369,9 +397,9 @@ class ArgonDocumentVisionService:
                 detected_document_type="CNH",
             ),
             spatial_rois=SpatialRegionsOfInterest(
-                face_portrait_box_2d=NormalizedBoundingBox2D(ymin=220, xmin=80, ymax=680, xmax=380, confidence=0.98),
-                qr_code_vio_box_2d=NormalizedBoundingBox2D(ymin=140, xmin=520, ymax=760, xmax=920, confidence=0.99),
-                signature_box_2d=NormalizedBoundingBox2D(ymin=740, xmin=120, ymax=900, xmax=640, confidence=0.95),
+                face_portrait_box_2d=canon_face.rotate_canonical(inv_rot),
+                qr_code_vio_box_2d=canon_qr.rotate_canonical(inv_rot),
+                signature_box_2d=canon_sig.rotate_canonical(inv_rot),
             ),
             full_civil_name=(user_typed_name or "").strip().upper() or None,
             cpf_11_digits=clean_cpf if len(clean_cpf) == 11 else None,
@@ -398,19 +426,23 @@ class ArgonDocumentVisionService:
         user_typed_name: str,
     ) -> ArgonProcessedArtifacts:
         """
-        Executa a triagem óptica Tier-1, rotação canônica (0°, 90°, 180°, 270°),
-        recorte subpixel 2D da Foto 3x4 (JPEG quality=95) e do QR Code VIO (PNG lossless),
-        e validação determinística de CPF Módulo 11 e compatibilidade nominal (>= 0.80).
+        Executa a triagem óptica Tier-1, normalização EXIF prévia, rotação canônica
+        (0°, 90°, 180°, 270°) tanto da imagem quanto das ROIs 2D, recorte subpixel da
+        Foto 3x4 (JPEG quality=95) e do QR Code VIO (PNG lossless), e validação
+        determinística de CPF Módulo 11 e compatibilidade nominal (>= 0.80).
         """
         if not front_jpeg_bytes or not back_jpeg_bytes:
             raise ValueError("As imagens da Frente e do Verso do documento são obrigatórias.")
 
+        normalized_front_input = _normalize_exif_orientation_jpeg(front_jpeg_bytes)
+        normalized_back_input = _normalize_exif_orientation_jpeg(back_jpeg_bytes)
+
         if self._dossier_responder is not None:
-            dossier = self._dossier_responder(front_jpeg_bytes, back_jpeg_bytes)
+            dossier = self._dossier_responder(normalized_front_input, normalized_back_input)
         elif self._client is not None:
             parts = [
-                types.Part.from_bytes(data=front_jpeg_bytes, mime_type="image/jpeg"),
-                types.Part.from_bytes(data=back_jpeg_bytes, mime_type="image/jpeg"),
+                types.Part.from_bytes(data=normalized_front_input, mime_type="image/jpeg"),
+                types.Part.from_bytes(data=normalized_back_input, mime_type="image/jpeg"),
                 (
                     "<untrusted_visual_ocr_stream>"
                     "Analise a Frente (Imagem 1) e o Verso (Imagem 2) deste documento civil brasileiro. "
@@ -426,28 +458,30 @@ class ArgonDocumentVisionService:
             )
         else:
             dossier = self._homologation_fallback_dossier(
-                front_jpeg_bytes=front_jpeg_bytes,
-                back_jpeg_bytes=back_jpeg_bytes,
+                front_jpeg_bytes=normalized_front_input,
+                back_jpeg_bytes=normalized_back_input,
                 user_typed_cpf=user_typed_cpf,
                 user_typed_name=user_typed_name,
             )
 
         rotation_deg = dossier.quality_gate.canonical_rotation_deg
-        canonical_front = rotate_to_canonical_orientation(front_jpeg_bytes, rotation_deg)
-        canonical_back = rotate_to_canonical_orientation(back_jpeg_bytes, rotation_deg)
+        canonical_front = rotate_to_canonical_orientation(normalized_front_input, rotation_deg)
+        canonical_back = rotate_to_canonical_orientation(normalized_back_input, rotation_deg)
 
         cropped_portrait_jpeg: Optional[bytes] = None
         if dossier.spatial_rois.face_portrait_box_2d is not None:
+            canonical_face_box = dossier.spatial_rois.face_portrait_box_2d.rotate_canonical(rotation_deg)
             cropped_portrait_jpeg = self._crop_box_as_jpeg(
                 canonical_front,
-                dossier.spatial_rois.face_portrait_box_2d,
+                canonical_face_box,
             )
 
         cropped_qr_png: Optional[bytes] = None
         if dossier.spatial_rois.qr_code_vio_box_2d is not None:
+            canonical_qr_box = dossier.spatial_rois.qr_code_vio_box_2d.rotate_canonical(rotation_deg)
             cropped_qr_png = self._crop_box_as_lossless_png(
                 canonical_back,
-                dossier.spatial_rois.qr_code_vio_box_2d,
+                canonical_qr_box,
             )
 
         typed_cpf_digits = _RE_NON_DIGIT.sub("", user_typed_cpf or "")

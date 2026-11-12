@@ -19,6 +19,7 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ?? "";
 const GEMINI_ARGON_MODEL = Deno.env.get("GEMINI_ARGON_MODEL") ?? "gemini-4-argon-high";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const KYC_ENV = (Deno.env.get("KYC_ENV") ?? "production").trim().toLowerCase();
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -32,27 +33,10 @@ const jsonResponse = (body: unknown, status = 200): Response =>
 
 const CONNECTIVE_STOPWORDS = new Set(["de", "da", "do", "das", "dos", "e"]);
 
-const FORBIDDEN_USER_JARGON = [
-  "SHAP",
-  "ASN.1",
-  "VIO",
-  "YCBCR",
-  "EAR",
-  "DHASH",
-  "PHASH",
-  "MAD",
-  "MTLS",
-  "TIER-0",
-  "TIER-1",
-  "LAPLACIANO",
-  "MOD 11",
-  "MOD-11",
-  "MOD11",
-  "MRZ",
-  "ICAO",
-  "PKCS#7",
-  "ECDSA",
-];
+// Regex com word-boundary para impedir vazamento de jargões técnicos na UI sem falso positivo
+// em palavras legítimas do português (como "envio", "camada", "clarear").
+const RE_FORBIDDEN_USER_JARGON =
+  /\b(?:SHAP|ASN\.1|VIO|YCBCR|EAR|YAW|DHASH|PHASH|MAD|MTLS|TIER-0|TIER-1|LAPLACIANO|LAPLACIAN|MOD[\s\-]?11|MRZ|ICAO|ROI|PKCS#7|ECDSA)\b/i;
 
 const NON_CONSUMABLE_TOOL_KEYWORDS = [
   "furadeira",
@@ -101,10 +85,7 @@ export function maskCpfLgpd(cpfRaw: string | null | undefined): string {
 export function sanitizeUserMessage(text: string | null | undefined, fallback: string): string {
   const cleaned = (text ?? "").trim();
   if (!cleaned) return fallback;
-  const upper = cleaned.toUpperCase();
-  for (const jargon of FORBIDDEN_USER_JARGON) {
-    if (upper.includes(jargon)) return fallback;
-  }
+  if (RE_FORBIDDEN_USER_JARGON.test(cleaned)) return fallback;
   return cleaned;
 }
 
@@ -281,7 +262,7 @@ export function computeCivilNameCompatibility(
     }
   }
   if (matchedCount < 2) return 0.0;
-  return Number((matchedCount / Math.min(typedTokens.length, extractedTokens.length)).toFixed(4));
+  return Number((matchedCount / typedTokens.length).toFixed(4));
 }
 
 function isConsumableMaterialDescription(desc: string): boolean {
@@ -305,7 +286,7 @@ async function callGeminiArgonJson(
   responseSchema: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const geminiUrl =
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_ARGON_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_ARGON_MODEL}:generateContent`;
 
   const payload = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -320,7 +301,10 @@ async function callGeminiArgonJson(
 
   const resp = await fetch(geminiUrl, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": GEMINI_API_KEY,
+    },
     body: JSON.stringify(payload),
   });
 
@@ -334,6 +318,18 @@ async function callGeminiArgonJson(
   }
   return JSON.parse(rawText);
 }
+
+const BOX_2D_SCHEMA = {
+  type: "OBJECT",
+  nullable: true,
+  properties: {
+    ymin: { type: "INTEGER" },
+    xmin: { type: "INTEGER" },
+    ymax: { type: "INTEGER" },
+    xmax: { type: "INTEGER" },
+    confidence: { type: "NUMBER" },
+  },
+};
 
 const KYC_DOCUMENT_RESPONSE_SCHEMA = {
   type: "OBJECT",
@@ -373,28 +369,10 @@ const KYC_DOCUMENT_RESPONSE_SCHEMA = {
     spatial_rois: {
       type: "OBJECT",
       properties: {
-        face_portrait_box_2d: {
-          type: "OBJECT",
-          nullable: true,
-          properties: {
-            ymin: { type: "INTEGER" },
-            xmin: { type: "INTEGER" },
-            ymax: { type: "INTEGER" },
-            xmax: { type: "INTEGER" },
-            confidence: { type: "NUMBER" },
-          },
-        },
-        qr_code_vio_box_2d: {
-          type: "OBJECT",
-          nullable: true,
-          properties: {
-            ymin: { type: "INTEGER" },
-            xmin: { type: "INTEGER" },
-            ymax: { type: "INTEGER" },
-            xmax: { type: "INTEGER" },
-            confidence: { type: "NUMBER" },
-          },
-        },
+        face_portrait_box_2d: BOX_2D_SCHEMA,
+        qr_code_vio_box_2d: BOX_2D_SCHEMA,
+        signature_box_2d: BOX_2D_SCHEMA,
+        mrz_box_2d: BOX_2D_SCHEMA,
       },
     },
     full_civil_name: { type: "STRING", nullable: true },
@@ -405,6 +383,8 @@ const KYC_DOCUMENT_RESPONSE_SCHEMA = {
     cnh_register_number: { type: "STRING", nullable: true },
     cnh_security_code_11: { type: "STRING", nullable: true },
     cnh_renach: { type: "STRING", nullable: true },
+    issue_date_iso: { type: "STRING", nullable: true },
+    expiry_date_iso: { type: "STRING", nullable: true },
     mrz_raw_lines: { type: "ARRAY", nullable: true, items: { type: "STRING" } },
     front_back_cpf_consistent: { type: "BOOLEAN" },
     cpf_mod11_valid: { type: "BOOLEAN" },
@@ -474,17 +454,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "Empty Bearer token" }, 401);
     }
 
-    let authenticatedUserId = "homologation-local-user";
+    const isHomologationEnv = ["homologation", "development", "test"].includes(KYC_ENV);
     const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
       ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
       : null;
 
+    let authenticatedUserId = "00000000-0000-0000-0000-000000000000";
     if (supabase) {
       const { data: userData, error: authErr } = await supabase.auth.getUser(token);
       if (authErr || !userData?.user) {
         return jsonResponse({ error: "Unauthorized token" }, 401);
       }
       authenticatedUserId = userData.user.id;
+    } else if (!isHomologationEnv) {
+      return jsonResponse({ error: "Service authentication unavailable" }, 503);
     }
 
     const body = await req.json().catch(() => null);
@@ -666,6 +649,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         spatial_rois: {
           face_portrait_box_2d: { ymin: 220, xmin: 80, ymax: 680, xmax: 380, confidence: 0.98 },
           qr_code_vio_box_2d: { ymin: 140, xmin: 520, ymax: 760, xmax: 920, confidence: 0.99 },
+          signature_box_2d: { ymin: 740, xmin: 120, ymax: 900, xmax: 640, confidence: 0.95 },
+          mrz_box_2d: null,
         },
         full_civil_name: typedFullName.trim().toUpperCase(),
         cpf_11_digits: cleanTypedCpf,
@@ -747,12 +732,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
 
     if (supabase && body.persistSubmission !== false) {
-      await supabase.from("kyc_submissions").insert({
+      const docType = ["CNH", "CIN", "RG", "CPF"].includes(String(qg.detected_document_type))
+        ? String(qg.detected_document_type)
+        : "CNH";
+      const frontPath = typeof body.docFrontPath === "string" && body.docFrontPath.trim()
+        ? body.docFrontPath.trim()
+        : `kyc-argon/${authenticatedUserId}/front.jpg`;
+      const backPath = typeof body.docBackPath === "string" && body.docBackPath.trim()
+        ? body.docBackPath.trim()
+        : `kyc-argon/${authenticatedUserId}/back.jpg`;
+      const selfiePath = typeof body.selfiePath === "string" && body.selfiePath.trim()
+        ? body.selfiePath.trim()
+        : `kyc-argon/${authenticatedUserId}/selfie.jpg`;
+      const registryNumber = typeof body.registryNumber === "string" && body.registryNumber.trim()
+        ? body.registryNumber.trim()
+        : maskedCpf;
+
+      const { error: insertErr } = await supabase.from("kyc_submissions").insert({
         user_id: authenticatedUserId,
         role_scope: body.roleScope === "provider" ? "provider" : "client",
-        document_type: ["CNH", "CIN", "RG", "CPF"].includes(String(qg.detected_document_type))
-          ? String(qg.detected_document_type)
-          : "CNH",
+        document_type: docType,
+        front_path: frontPath,
+        back_path: backPath,
+        selfie_path: selfiePath,
+        registry_type: "Outro",
+        registry_number: registryNumber,
         ocr_extracted_payload: {
           cpf_masked: maskedCpf,
           name_compatibility_score: nameCompatibilityScore,
@@ -761,8 +765,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           shap_top_3_explainability_factors: shapFactors,
           ready_for_serpro_and_carbon: readyForSerproAndCarbon,
         },
-        status: readyForSerproAndCarbon ? "PENDING_REVIEW" : "REJECTED",
-      }).then(() => null).catch(() => null);
+        status: readyForSerproAndCarbon ? "PENDING" : "REJECTED",
+      });
+
+      if (insertErr) {
+        console.warn(`[kyc-argon-vision-gate] insert_error_code=${insertErr.code ?? "UNKNOWN"}`);
+      }
     }
 
     return jsonResponse({

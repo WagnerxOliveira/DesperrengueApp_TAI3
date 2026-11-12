@@ -10,23 +10,12 @@ _RE_HAS_ALPHA = re.compile(r"[A-Za-z]")
 _RE_MRZ_ALLOWED = re.compile(r"^[A-Z0-9<]+$")
 _RE_CNH_RENACH = re.compile(r"^[A-Z]{2}\d{9}$")
 
-# Jargões técnicos proibidos em mensagens voltadas ao usuário final (Zero Technical Jargon Gate)
-_FORBIDDEN_USER_JARGON = (
-    "SHAP",
-    "ASN.1",
-    "YCBCR",
-    "DHASH",
-    "PHASH",
-    "MTLS",
-    "TIER-0",
-    "TIER-1",
-    "LAPLACIANO",
-    "LAPLACIAN",
-    "MOD 11",
-    "MOD-11",
-    "MOD11",
-    "PKCS#7",
-    "ECDSA",
+# Regex com word-boundary para bloquear jargões técnicos na UI sem falso positivo
+# em palavras legítimas da língua portuguesa (como "envio", "camada", "clarear").
+_RE_FORBIDDEN_USER_JARGON = re.compile(
+    r"\b(?:SHAP|ASN\.1|VIO|YCBCR|EAR|YAW|DHASH|PHASH|MAD|MTLS|TIER-0|TIER-1|"
+    r"LAPLACIANO|LAPLACIAN|MOD[\s\-]?11|MRZ|ICAO|ROI|PKCS#7|ECDSA)\b",
+    re.IGNORECASE,
 )
 
 
@@ -34,8 +23,7 @@ def _sanitize_user_guidance(text: str, fallback: str) -> str:
     cleaned = (text or "").strip()
     if not cleaned:
         return fallback
-    upper = cleaned.upper()
-    if any(token in upper for token in _FORBIDDEN_USER_JARGON):
+    if _RE_FORBIDDEN_USER_JARGON.search(cleaned):
         return fallback
     return cleaned
 
@@ -164,11 +152,6 @@ def validate_icao_mrz_lines(mrz_lines: Sequence[str]) -> bool:
         l1, l2, l3 = cleaned
         if not (_RE_MRZ_ALLOWED.match(l1) and _RE_MRZ_ALLOWED.match(l2) and _RE_MRZ_ALLOWED.match(l3)):
             return False
-        # TD1:
-        # l1[5:14] -> doc number, l1[14] -> check digit
-        # l2[0:6]  -> birth date YYMMDD, l2[6] -> check digit
-        # l2[8:14] -> expiry date YYMMDD, l2[14] -> check digit
-        # l2[29]   -> composite check digit sobre l1[5:30] + l2[0:7] + l2[8:15] + l2[18:29]
         if not _check_mrz_digit_matches(l1[5:14], l1[14]):
             return False
         if not _check_mrz_digit_matches(l2[0:6], l2[6]):
@@ -184,12 +167,6 @@ def validate_icao_mrz_lines(mrz_lines: Sequence[str]) -> bool:
         l1, l2 = cleaned
         if not (_RE_MRZ_ALLOWED.match(l1) and _RE_MRZ_ALLOWED.match(l2)):
             return False
-        # TD3:
-        # l2[0:9]   -> passport number, l2[9] -> check digit
-        # l2[13:19] -> birth date YYMMDD, l2[19] -> check digit
-        # l2[21:27] -> expiry date YYMMDD, l2[27] -> check digit
-        # l2[28:42] -> personal number, l2[42] -> check digit (aceita '<' se campo todo '<')
-        # l2[43]    -> composite check digit sobre l2[0:10] + l2[13:20] + l2[21:43]
         if not _check_mrz_digit_matches(l2[0:9], l2[9]):
             return False
         if not _check_mrz_digit_matches(l2[13:19], l2[19]):
@@ -258,6 +235,43 @@ class NormalizedBoundingBox2D(BaseModel):
         if self.xmax <= self.xmin:
             raise ValueError(f"xmax ({self.xmax}) deve ser estritamente maior que xmin ({self.xmin}).")
         return self
+
+    def rotate_canonical(self, rotation_deg: int = 0) -> NormalizedBoundingBox2D:
+        """
+        Transforma as coordenadas normalizadas [0..1000] pela mesma rotação anti-horária
+        aplicada por Image.Transpose.ROTATE_{90,180,270} na imagem de entrada:
+        - 0°:   (ymin, xmin, ymax, xmax)
+        - 90°:  (1000 - xmax, ymin, 1000 - xmin, ymax)
+        - 180°: (1000 - ymax, 1000 - xmax, 1000 - ymin, 1000 - xmin)
+        - 270°: (xmin, 1000 - ymax, xmax, 1000 - ymin)
+        """
+        if rotation_deg == 0:
+            return self
+        if rotation_deg == 90:
+            return NormalizedBoundingBox2D(
+                ymin=1000 - self.xmax,
+                xmin=self.ymin,
+                ymax=1000 - self.xmin,
+                xmax=self.ymax,
+                confidence=self.confidence,
+            )
+        if rotation_deg == 180:
+            return NormalizedBoundingBox2D(
+                ymin=1000 - self.ymax,
+                xmin=1000 - self.xmax,
+                ymax=1000 - self.ymin,
+                xmax=1000 - self.xmin,
+                confidence=self.confidence,
+            )
+        if rotation_deg == 270:
+            return NormalizedBoundingBox2D(
+                ymin=self.xmin,
+                xmin=1000 - self.ymax,
+                ymax=self.xmax,
+                xmax=1000 - self.ymin,
+                confidence=self.confidence,
+            )
+        raise ValueError(f"Rotação canônica inválida para caixa 2D: {rotation_deg}")
 
     def to_pixel_crop(
         self,
