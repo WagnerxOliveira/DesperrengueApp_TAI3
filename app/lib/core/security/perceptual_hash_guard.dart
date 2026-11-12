@@ -187,6 +187,37 @@ class PerceptualHashGuard {
     return dHash;
   }
 
+  /// Calcula o `dHash` de 64 bits diretamente a partir dos bytes de imagem (`Uint8List`)
+  /// sobre o Core ROI Inset (padrão `12%`).
+  static int computeCoreRoiDHash64(
+    Uint8List imageBytes, {
+    double insetRatio = 0.12,
+  }) {
+    final img.Image? decoded = img.decodeImage(imageBytes);
+    if (decoded == null) {
+      throw ArgumentError('Imagem ilegível para cálculo de dHash64.');
+    }
+    return compute64BitDifferenceHashRoi(decoded, insetRatio: insetRatio);
+  }
+
+  /// Atalho compatível para cálculo de `dHash` de 64 bits sobre bytes de imagem.
+  static int computeDHash64(
+    Uint8List imageBytes, {
+    double insetRatio = 0.0,
+  }) {
+    final img.Image? decoded = img.decodeImage(imageBytes);
+    if (decoded == null) {
+      throw ArgumentError('Imagem ilegível para cálculo de dHash64.');
+    }
+    return compute64BitDifferenceHashRoi(decoded, insetRatio: insetRatio);
+  }
+
+  /// Formata um inteiro de 64 bits em string hexadecimal de 16 caracteres sem sinal.
+  static String toHex64(int hash64) {
+    final BigInt unsigned = BigInt.from(hash64).toUnsigned(64);
+    return unsigned.toRadixString(16).padLeft(16, '0');
+  }
+
   /// Avalia matematicamente a distinção estrutural entre Frente e Verso do documento sobre o
   /// Recorte Interno de Segurança (Core ROI Inset de 12%), combinando:
   /// 1. `dHash` de Gradiente Horizontal (`9x8`)
@@ -254,6 +285,33 @@ class PerceptualHashGuard {
       backBytes,
       insetRatio,
     ).isDuplicate;
+  }
+
+  /// Executa a verificação combinada (`Core ROI 12%` + `dHash 64-bit` + `MAD 64x64`)
+  /// em um Isolate secundário (`Isolate.run`), mantendo 120 FPS na thread principal.
+  static Future<DocumentRoiDistinctionMetrics>
+      evaluateDocumentFrontBackDistinctionInIsolate(
+    Uint8List frontBytes,
+    Uint8List backBytes, {
+    double insetRatio = 0.12,
+  }) {
+    return Isolate.run(
+      () => evaluateDocumentFrontBackDistinction(
+        frontBytes,
+        backBytes,
+        insetRatio,
+      ),
+    );
+  }
+
+  /// Calcula o `dHash` de 64 bits da região central (`Core ROI Inset 12%`) em `Isolate.run`.
+  static Future<int> computeCoreRoiDHash64InIsolate(
+    Uint8List imageBytes, {
+    double insetRatio = 0.12,
+  }) {
+    return Isolate.run(
+      () => computeCoreRoiDHash64(imageBytes, insetRatio: insetRatio),
+    );
   }
 
   static List<double> _extractNormalizedGray64x64(

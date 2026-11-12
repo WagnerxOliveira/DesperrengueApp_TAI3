@@ -504,7 +504,7 @@ void main() {
       // Digita CPF válido Mod-11 -> valida e avança para o Passo 2
       await tester.enterText(find.byKey(const ValueKey('client-setup-cpf')), '52998224725');
       await tester.pump();
-      expect(find.text('CPF matematicamente válido (Módulo 11 RFB)'), findsOneWidget);
+      expect(find.text('CPF válido e verificado com sucesso'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('client-setup-step0-continue')));
       await tester.pumpAndSettle();
@@ -939,7 +939,10 @@ void main() {
       await tester.ensureVisible(startLivenessBtn);
       await tester.tap(startLivenessBtn);
       await tester.pumpAndSettle();
-      expect(find.textContaining('ERR_NO_HUMAN_FACE_IN_OVAL'), findsOneWidget);
+      expect(
+        find.textContaining('Não conseguimos identificar seu rosto com clareza na moldura oval'),
+        findsOneWidget,
+      );
 
       // Agora posiciona rosto humano real na câmera frontal -> APROVADO!
       simulateMonitorInSelfie = false;

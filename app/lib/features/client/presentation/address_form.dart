@@ -385,7 +385,10 @@ class _AddressFormState extends State<AddressForm> {
         icon: _locatingPin
             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
             : Icon(Icons.pin_drop_outlined, color: accent),
-        label: Text(_locatingPin ? 'Localizando o endereço...' : 'Confirmar o ponto exato no mapa'),
+        label: Text(
+          _locatingPin ? 'Localizando o endereço...' : 'Confirmar o ponto exato no mapa',
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }
@@ -419,7 +422,10 @@ class _AddressFormState extends State<AddressForm> {
           icon: _loadingGps
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.my_location_rounded),
-          label: Text(_loadingGps ? 'Buscando seu endereço...' : 'Usar minha localização atual'),
+          label: Text(
+            _loadingGps ? 'Buscando seu endereço...' : 'Usar minha localização atual',
+            textAlign: TextAlign.center,
+          ),
         ),
         const SizedBox(height: 18),
         Center(child: Text('Ou digite o CEP e o resto é por nossa conta', style: TextStyle(color: context.tk.textMuted))),
