@@ -144,37 +144,44 @@ class MedalTile extends StatelessWidget {
     final labelColor = locked
         ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B))
         : context.tk.text;
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: SizedBox(
-        width: width,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Column(
-            children: [
-              MedalBadge(
-                icon: icon,
-                tier: tier,
-                trackCode: trackCode,
-                level: level,
-                size: size,
-                locked: locked,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                title,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: locked ? FontWeight.w600 : FontWeight.w800,
-                  height: 1.15,
-                  color: labelColor,
+    return Semantics(
+      button: onTap != null,
+      label: '$title, ${locked ? "bloqueada" : "desbloqueada"}',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: SizedBox(
+          width: width,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MedalBadge(
+                  icon: icon,
+                  tier: tier,
+                  trackCode: trackCode,
+                  level: level,
+                  size: size,
+                  locked: locked,
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: locked ? FontWeight.w600 : FontWeight.w800,
+                      height: 1.15,
+                      color: labelColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -216,8 +223,10 @@ class _EdgeFadeMedalCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.45);
+    final effectiveHeight = height + ((textScale - 1.0) * 68.0).clamp(0.0, 34.0);
     return SizedBox(
-      height: height,
+      height: effectiveHeight,
       child: ShaderMask(
         blendMode: BlendMode.dstIn,
         shaderCallback: (rect) => const LinearGradient(
@@ -244,9 +253,10 @@ Future<void> showAchievementDetail(BuildContext context, Achievement a, {DateTim
   final spec = resolveAchievementTrackSpec(a.category.code);
   return showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
     builder: (ctx) => SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -268,7 +278,9 @@ Future<void> showAchievementDetail(BuildContext context, Achievement a, {DateTim
                 children: [
                   Icon(Icons.check_circle_rounded, color: context.tk.success, size: 20),
                   const SizedBox(width: 6),
-                  Text('Desbloqueada em ${_date(unlockedAt)}', style: TextStyle(fontWeight: FontWeight.w800, color: context.tk.successInk)),
+                  Flexible(
+                    child: Text('Desbloqueada em ${_date(unlockedAt)}', style: TextStyle(fontWeight: FontWeight.w800, color: context.tk.successInk)),
+                  ),
                 ],
               )
             else if (count != null) ...[
@@ -950,9 +962,10 @@ class ClientAchievementCard extends StatelessWidget {
     final spec = resolveAchievementTrackSpec(def.code.name);
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -978,7 +991,9 @@ class ClientAchievementCard extends StatelessWidget {
                   children: [
                     Icon(Icons.check_circle_rounded, color: ctx.tk.success, size: 20),
                     const SizedBox(width: 6),
-                    Text('Conquista desbloqueada!', style: TextStyle(fontWeight: FontWeight.w800, color: ctx.tk.successInk)),
+                    Flexible(
+                      child: Text('Conquista desbloqueada!', style: TextStyle(fontWeight: FontWeight.w800, color: ctx.tk.successInk)),
+                    ),
                   ],
                 )
               else ...[

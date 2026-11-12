@@ -31,8 +31,8 @@ class HomeAdminScreen extends StatelessWidget {
             children: [
               Icon(Icons.admin_panel_settings_rounded, size: 72, color: context.tk.brand),
               SizedBox(height: 16),
-              Text(
-                'A revisão de KYC e a mediação de disputas são feitas pelo dashboard do Supabase (funções admin_review_kyc e admin_resolve_dispute).',
+              const Text(
+                'A validação de documentos (KYC) e a mediação de chamados são gerenciadas pela equipe de segurança no painel administrativo.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, height: 1.4),
               ),

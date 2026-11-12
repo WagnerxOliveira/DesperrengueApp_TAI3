@@ -129,6 +129,7 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
             suffixIcon: IconButton(
               icon: const Icon(Icons.close_rounded),
+              tooltip: 'Limpar busca',
               onPressed: () {
                 _controller.clear();
                 _category = null;
