@@ -40,6 +40,25 @@ void main() {
     });
   });
 
+  group('AddressPrivacy.maskForThirdParty (texto enviado a corretor externo)', () {
+    test('mascara e-mail, números e "Rua ..." preservando o comprimento', () {
+      const t =
+          'Moro na Rua das Flores 123, apto 45. Fale com ana@mail.com ou 11 98765-4321, CPF 123.456.789-09 e CEP 37701-000.';
+      final m = AddressPrivacy.maskForThirdParty(t);
+      expect(m.length, t.length);
+      for (final bad in ['Flores', '123', 'ana@mail.com', '98765', '123.456.789-09', '37701']) {
+        expect(m, isNot(contains(bad)), reason: bad);
+      }
+      expect(m, contains('Moro na'));
+      expect(m, contains('Fale com'));
+    });
+
+    test('texto sem PII passa intacto', () {
+      const t = 'O chuveiro eletrico nao esquenta e disjuntor desarma';
+      expect(AddressPrivacy.maskForThirdParty(t), t);
+    });
+  });
+
   group('runOffMainThread', () {
     test('executa a tarefa e devolve o resultado (isolate ou inline)', () async {
       expect(await runOffMainThread(() => _square(12)), 144);
