@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
-import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
@@ -20,7 +19,7 @@ import '../../../core/state/privacy_mode.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/delete_account_screen.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/theme_picker.dart';
 import '../../shared/presentation/notifications_screen.dart';
 import '../../shared/presentation/support_screens.dart';
@@ -891,33 +890,7 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
                           runSpacing: 6,
                           children: [
                             StatusChip(j.category, color: context.tk.providerAccent),
-                            if (j.addressSummary != null)
-                              Builder(
-                                builder: (context) {
-                                  final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
-                                    fullAddressLine: j.addressSummary,
-                                    addressSummary: j.addressSummary,
-                                    scheduledDate: j.scheduledFor,
-                                    status: j.status,
-                                    isEmergency: j.isEmergency,
-                                  );
-                                  return InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: privacy.isUnlocked
-                                        ? () => LiveLocationMapSheet.show(
-                                              context,
-                                              addressLine: j.addressSummary!,
-                                              summary: j.addressSummary,
-                                            )
-                                        : null,
-                                    child: StatusChip(
-                                      privacy.primaryTitle,
-                                      color: privacy.isUnlocked ? context.tk.info : context.tk.warningInk,
-                                      icon: privacy.isUnlocked ? Icons.place_rounded : Icons.radar_rounded,
-                                    ),
-                                  );
-                                },
-                              ),
+                            ProviderAreaLine(jobId: j.id),
                             StatusChip('${j.quoteCount}/3 orçamentos', color: j.quoteCount >= 2 ? context.tk.warningInk : context.tk.info),
                           ],
                         ),

@@ -8,7 +8,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/achievements.dart';
 import '../../../core/models/marketplace_models.dart';
-import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/social_service.dart';
@@ -19,7 +18,7 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
@@ -49,8 +48,6 @@ class ServiceExecutionScreen extends StatefulWidget {
 class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
   final _jobs = JobService();
   Timer? _tick;
-  String? _address;
-  String? _reference;
   Map<String, dynamic>? _client;
 
   @override
@@ -72,14 +69,9 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
 
   Future<void> _load() async {
     try {
-      final a = await _jobs.jobAddress(widget.job.id);
       final c = await _jobs.clientCard(widget.job.id);
       if (!mounted) return;
-      setState(() {
-        _address = a?['address_line'] as String?;
-        _reference = a?['reference'] as String?;
-        _client = c;
-      });
+      setState(() => _client = c);
     } catch (_) {}
   }
 
@@ -156,24 +148,10 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                ProviderPrivacyAddressCard(
-                  view: AccurateGeoRoutingService.resolveProviderAddressView(
-                    fullAddressLine: _address ?? job.addressSummary,
-                    addressSummary: job.addressSummary,
-                    scheduledDate: job.scheduledFor,
-                    status: job.status,
-                    isEmergency: true,
-                  ),
-                  reference: _reference,
-                  onOpenMapRoute: () {
-                    final line = _address ?? job.addressSummary ?? '';
-                    if (line.isEmpty) return;
-                    LiveLocationMapSheet.show(
-                      context,
-                      addressLine: line,
-                      summary: job.addressSummary,
-                    );
-                  },
+                ProviderLocationBuilder(
+                  jobId: job.id,
+                  builder: (context, view, loading) =>
+                      view == null ? ProviderLocationPending(loading: loading) : ProviderLocationPanel(view: view),
                 ),
                 if (job.scheduledFor != null) ...[
                   const SizedBox(height: 10),
@@ -198,12 +176,18 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          ValueListenableBuilder(
+          ProviderLocationBuilder(
+            jobId: job.id,
+            builder: (context, locView, _) => ValueListenableBuilder(
             valueListenable: FintechLedgerStore.instance,
             builder: (context, _, _) {
+              // Nunca usa `job.addressSummary` (pode conter rua): só o endereço liberado pelo
+              // servidor ou, antes disso, Bairro • Cidade-UF.
               final dossier = FintechLedgerStore.instance.resolveForJob(
                 job,
-                addressOverride: _address ?? job.addressSummary,
+                addressOverride: locView != null && locView.exactUnlocked
+                    ? exactAddressLineOf(locView)
+                    : protectedAreaTitle(locView),
               );
               return Column(
                 children: [
@@ -239,6 +223,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                 ],
               );
             },
+          ),
           ),
         ],
       ),
