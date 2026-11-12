@@ -198,7 +198,35 @@ class UnreadOrdersBadgeController extends ChangeNotifier {
     return _persistUserSet(uid);
   }
 
-  Future<void> _persistUserSet(String uid) async {
+  /// Escritas em andamento por usuário: `markViewed` em sequência (ex.: abrir 30
+  /// pedidos) coalesce em NO MÁXIMO uma escrita ativa + uma pendente, em vez de
+  /// 30 gravações de até 1000 assinaturas.
+  final Map<String, Future<void>> _persistInFlight = <String, Future<void>>{};
+  final Set<String> _persistDirty = <String>{};
+
+  Future<void> _persistUserSet(String uid) {
+    final running = _persistInFlight[uid];
+    if (running != null) {
+      _persistDirty.add(uid); // o loop abaixo regrava com o estado mais novo
+      return running;
+    }
+    // ATENÇÃO: o callback NÃO pode retornar o valor de `remove` (é o próprio Future;
+    // `whenComplete` aguardaria a si mesmo = deadlock).
+    final f = _persistLoop(uid).whenComplete(() {
+      _persistInFlight.remove(uid);
+    });
+    _persistInFlight[uid] = f;
+    return f;
+  }
+
+  Future<void> _persistLoop(String uid) async {
+    do {
+      _persistDirty.remove(uid);
+      await _persistOnce(uid);
+    } while (_persistDirty.contains(uid));
+  }
+
+  Future<void> _persistOnce(String uid) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = _prefsKey(uid);
@@ -208,20 +236,26 @@ class UnreadOrdersBadgeController extends ChangeNotifier {
         set.addAll(existing);
         _loadedUsers.add(uid);
       }
-      final entries = set.length > _kMaxStoredSignaturesPerUser
-          ? set.skip(set.length - _kMaxStoredSignaturesPerUser).toList()
-          : set.toList();
-      await prefs.setStringList(key, entries);
+      // Limita também a memória (antes só o disco era limitado): descarta as
+      // assinaturas mais antigas (ordem de inserção do LinkedHashSet).
+      if (set.length > _kMaxStoredSignaturesPerUser) {
+        final drop = set.length - _kMaxStoredSignaturesPerUser;
+        for (final old in set.take(drop).toList()) {
+          set.remove(old);
+        }
+      }
+      await prefs.setStringList(key, set.toList());
     } catch (_) {
       // Falha de armazenamento local nunca interrompe a UI.
     }
   }
-
   @visibleForTesting
   void resetForTesting() {
     _viewedByUser.clear();
     _loadedUsers.clear();
     _loadingByUser.clear();
+    _persistDirty.clear();
+    _persistInFlight.clear();
     notifyListeners();
   }
 }

@@ -1,9 +1,11 @@
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+
+import '../utils/money.dart';
+import '../utils/off_thread.dart';
 
 // =============================================================================
 // DESPERRENGUE — MOTOR ZERO-TRUST DE SEGURANÇA BILATERAL (v2.8.5)
@@ -172,7 +174,7 @@ class ActiveScreenFlashPhotometricGuard {
     required double physiologicalTremorHz,
     required HardwareAttestationVerdict attestationVerdict,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => verifySync(
         userId: userId,
         nonceId: nonceId,
@@ -891,12 +893,13 @@ class FiscalDocumentForensicsEngine {
       );
     }
 
-    final opFee =
-        double.parse((declaredMaterialAmount * 0.135).toStringAsFixed(2));
-    final reserveFee =
-        double.parse((declaredMaterialAmount * 0.015).toStringAsFixed(2));
-    final totalClawback =
-        double.parse((opFee + reserveFee).toStringAsFixed(2));
+    // Centavos inteiros (13,5% + 1,5%): sem ruído binário de double.
+    final materialCents = Money.toCents(declaredMaterialAmount);
+    final opFeeCents = Money.percentOfCents(materialCents, 1350);
+    final reserveFeeCents = Money.percentOfCents(materialCents, 150);
+    final opFee = Money.fromCents(opFeeCents);
+    final reserveFee = Money.fromCents(reserveFeeCents);
+    final totalClawback = Money.fromCents(opFeeCents + reserveFeeCents);
 
     return SefazPhase2CancellationAuditResult(
       wasCanceledByProviderAfterUpload: true,
@@ -1256,13 +1259,15 @@ class SosSlotProtectionAndSlashingEngine {
       );
     }
 
-    final rawFee = double.parse((lockedEscrowTotalBrl * 0.15).toStringAsFixed(2));
-    final boundedFee = math.min(
-      lockedEscrowTotalBrl,
-      rawFee.clamp(minCompensatoryFeeBrl, maxCompensatoryFeeBrl),
+    // Centavos inteiros: taxa + estorno == escrow, sempre, sem centavo perdido.
+    final escrowCents = Money.toCents(lockedEscrowTotalBrl);
+    final rawFeeCents = Money.percentOfCents(escrowCents, 1500);
+    final boundedFeeCents = math.min(
+      escrowCents,
+      rawFeeCents.clamp(Money.toCents(minCompensatoryFeeBrl), Money.toCents(maxCompensatoryFeeBrl)),
     );
-    final refund =
-        double.parse((lockedEscrowTotalBrl - boundedFee).toStringAsFixed(2));
+    final boundedFee = Money.fromCents(boundedFeeCents);
+    final refund = Money.fromCents(escrowCents - boundedFeeCents);
     final cooldown = 15 * (1 << recentSosCancellationsIn24h.clamp(0, 4));
 
     return SosDisplacementSlashingVerdict(

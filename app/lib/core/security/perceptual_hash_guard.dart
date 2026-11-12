@@ -1,10 +1,11 @@
-import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+
+import '../utils/off_thread.dart';
 
 /// Evidência fotográfica capturada exclusivamente pela câmera nativa em tempo real,
 /// autenticada por Hash Perceptual de 64 bits (`pHash`) e telemetria GPS anti-spoofing.
@@ -87,7 +88,7 @@ class PerceptualHashGuard {
     }
 
     final Uint8List bytes = await photo.readAsBytes();
-    final int pHash = await Isolate.run(() => compute64BitPerceptualHash(bytes));
+    final int pHash = await runOffMainThread(() => compute64BitPerceptualHash(bytes));
 
     return CapturedForensicPhoto(
       bytes: bytes,
@@ -295,7 +296,7 @@ class PerceptualHashGuard {
     Uint8List backBytes, {
     double insetRatio = 0.12,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => evaluateDocumentFrontBackDistinction(
         frontBytes,
         backBytes,
@@ -309,7 +310,7 @@ class PerceptualHashGuard {
     Uint8List imageBytes, {
     double insetRatio = 0.12,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => computeCoreRoiDHash64(imageBytes, insetRatio: insetRatio),
     );
   }

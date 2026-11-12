@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/fintech_warranty_models.dart';
 import '../models/marketplace_models.dart';
+import '../utils/address_privacy.dart';
 
 /// Estado imutável de um pedido no ecossistema Anti-Bypass Fintech + Garantia em 3 Camadas.
 @immutable
@@ -391,7 +392,7 @@ class FintechLedgerStore extends ValueNotifier<AntiBypassFintechGlobalState> {
       clientName: 'Wagner Oliveira',
       providerId: job.providerId ?? 'prov-credenciado',
       providerName: 'Profissional Verificado Desperrengue',
-      propertyAddress: addressOverride ?? job.addressSummary ?? 'Endereço residencial verificado via GPS',
+      propertyAddress: addressOverride ?? AddressPrivacy.coarseArea(job.addressSummary, fallback: 'Endereço residencial verificado via GPS'),
       serviceLaborAmount: (job.agreedPrice != null && job.agreedPrice! > 0) ? job.agreedPrice! : 150.0,
     );
   }
