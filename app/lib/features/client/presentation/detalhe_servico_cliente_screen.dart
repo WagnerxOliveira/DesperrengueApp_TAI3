@@ -2,27 +2,26 @@ import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/models/client_dossier_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/scheduling_models.dart' show DestinationPrecision;
 import '../../../core/services/geocoding_service.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/state/unread_orders_badge_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/names.dart';
 import '../../shared/presentation/chat_screen.dart';
-import '../../shared/presentation/live_location_map.dart';
-import '../../shared/presentation/service_map_widgets.dart' show MapAttribution, buildTileLayer;
+import '../../shared/presentation/order_live_map_modal_screen.dart';
 import 'client_job_screen.dart';
 import 'provider_public_profile_screen.dart';
 
@@ -96,7 +95,26 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
 
   Future<ClientDossier?> _load() async {
     final d = await (widget.dossierLoader != null ? widget.dossierLoader!(widget.jobId) : JobService().clientJobDossier(widget.jobId));
-    if (d != null && widget.dossierLoader == null) unawaited(_maybeRefine(d));
+    if (d != null) {
+      unawaited(
+        UnreadOrdersBadgeController.instance.markViewedByIdAndStatus(
+          jobId: d.jobId,
+          status: JobStatus.parse(d.status),
+          providerId: d.provider?.id,
+          price: d.amount > 0 ? d.amount : null,
+        ),
+      );
+      EagerImagePrefetcher.prefetchUrls([d.provider?.avatarUrl]);
+      if (widget.imageBuilder == null) {
+        EagerImagePrefetcher.prefetchStoragePaths([
+          ...d.photoPaths,
+          ...d.requiredPhotos.map((e) => e.path),
+        ]);
+      }
+      if (widget.dossierLoader == null) {
+        unawaited(_maybeRefine(d));
+      }
+    }
     return d;
   }
 
@@ -121,10 +139,14 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
   }
 
   Future<List<DetailQuote>> _loadQuotes() async {
-    if (widget.quotesLoader != null) return widget.quotesLoader!(widget.jobId);
+    if (widget.quotesLoader != null) {
+      final loaded = await widget.quotesLoader!(widget.jobId);
+      EagerImagePrefetcher.prefetchUrls(loaded.map((q) => q.avatarUrl));
+      return loaded;
+    }
     final quotes = await JobService().fetchQuotes(widget.jobId);
     final cards = await ProviderService().byIds(quotes.map((q) => q.providerId));
-    return [
+    final list = [
       for (final q in quotes)
         DetailQuote(
           providerName: friendlyName(cards[q.providerId]?.fullName, fallback: 'Profissional'),
@@ -134,6 +156,8 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
           status: q.status,
         ),
     ];
+    EagerImagePrefetcher.prefetchUrls(list.map((q) => q.avatarUrl));
+    return list;
   }
 
   void _reload() => setState(() {
@@ -144,39 +168,27 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
   Widget _image(BuildContext context, String path, BoxFit fit) =>
       widget.imageBuilder != null ? widget.imageBuilder!(context, path, fit) : SignedImage(path: path, fit: fit, radius: 0);
 
-  /// Toque na foto: tela cheia com zoom/pan (pinça).
-  void _zoom(String path, String label) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => Dialog.fullscreen(
-        backgroundColor: Colors.black,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: InteractiveViewer(
-                minScale: 1,
-                maxScale: 5,
-                child: Center(child: _image(ctx, path, BoxFit.contain)),
-              ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    IconButton(
-                      tooltip: 'Fechar',
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                    Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+  /// Toque na foto: galeria fullscreen com swipe + zoom/pan (pinça).
+  void _zoom(
+    String path,
+    String label, {
+    List<String>? allPaths,
+    List<String?>? allLabels,
+    int initialIndex = 0,
+  }) {
+    final paths = allPaths ?? [path];
+    final labels = allLabels ?? [label];
+    FullscreenSwipePhotoGallery.show(
+      context,
+      items: [
+        for (var i = 0; i < paths.length; i++)
+          (
+            path: paths[i],
+            label: (i < labels.length ? labels[i] : null) ?? label,
+          ),
+      ],
+      initialIndex: initialIndex,
+      imageBuilder: widget.imageBuilder,
     );
   }
 
@@ -261,6 +273,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
 
   Widget _content(BuildContext context, ClientDossier d) {
     return ListView(
+      cacheExtent: 2400,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
         _header(context, d),
@@ -279,22 +292,103 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
   // ------------------------------------------------------------ blocos comuns
 
   Widget _header(BuildContext context, ClientDossier d) {
+    final tk = context.tk;
     final s = _status(context, d);
+    final headline = SmartOrderHeadlineFormatter.formatHeadline(
+      d.title,
+      category: d.category,
+      fallbackDescription: d.description,
+    );
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Andar 1: Pílula de Especialidade com CategoryBrandEmblem + StatusChip flexível (seguro em 320px)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(child: Text(d.title, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900))),
-              const SizedBox(width: 8),
+              Container(
+                key: const ValueKey('detail-category-pill'),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: tk.surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CategoryBrandEmblem(
+                      categoryName: d.category.isEmpty ? 'Pequenos Reparos' : d.category,
+                      size: 26,
+                      showCornerBadge: false,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        d.category.isEmpty ? 'Dossiê do serviço' : 'Especialidade • ${d.category}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: tk.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               StatusChip(s.label, color: s.color, icon: s.icon),
             ],
           ),
           const SizedBox(height: 12),
-          _InfoRow(icon: Icons.tag_rounded, label: 'ID do serviço', value: d.code),
-          if (d.category.isNotEmpty) _InfoRow(icon: Icons.handyman_outlined, label: 'Categoria', value: d.category),
-          if (d.createdAt != null) _InfoRow(icon: Icons.add_task_rounded, label: 'Pedido criado em', value: dateLong(d.createdAt!)),
+          // Andar 2: Título semântico ocupando 100% da largura horizontal livre (fim da quebra vertical!)
+          SizedBox(
+            width: double.infinity,
+            child: Text(
+              headline,
+              key: const ValueKey('detail-headline-title'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w900,
+                height: 1.28,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Divider(height: 1, color: tk.border),
+          const SizedBox(height: 10),
+          ExecutiveMetaTile(
+            key: const ValueKey('detail-meta-id'),
+            icon: Icons.tag_rounded,
+            secondaryIcon: Icons.qr_code_2_rounded,
+            label: 'ID do serviço',
+            value: d.code,
+            copyable: true,
+            copyMessage: 'ID ${d.code} copiado para a área de transferência',
+          ),
+          if (d.category.isNotEmpty)
+            ExecutiveMetaTile(
+              key: const ValueKey('detail-meta-category'),
+              icon: Icons.handyman_outlined,
+              secondaryIcon: Icons.verified_rounded,
+              label: 'Categoria',
+              value: d.category,
+            ),
+          if (d.createdAt != null)
+            ExecutiveMetaTile(
+              key: const ValueKey('detail-meta-created-at'),
+              icon: Icons.add_task_rounded,
+              secondaryIcon: Icons.schedule_rounded,
+              label: 'Pedido criado em',
+              value: dateLong(d.createdAt!),
+            ),
         ],
       ),
     );
@@ -302,11 +396,32 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
 
   /// Horários: agendado, início e término reais.
   List<Widget> _times(BuildContext context, ClientDossier d) {
+    final tk = context.tk;
     final rows = <Widget>[
-      if (d.scheduledFor != null) _InfoRow(icon: Icons.schedule_rounded, label: 'Agendado para', value: dateLong(d.scheduledFor!)),
-      if (d.startedAt != null) _InfoRow(icon: Icons.play_circle_outline_rounded, label: 'Início do serviço', value: dateLong(d.startedAt!)),
+      if (d.scheduledFor != null)
+        ExecutiveMetaTile(
+          icon: Icons.schedule_rounded,
+          secondaryIcon: Icons.event_rounded,
+          accentColor: tk.info,
+          label: 'Agendado para',
+          value: dateLong(d.scheduledFor!),
+        ),
+      if (d.startedAt != null)
+        ExecutiveMetaTile(
+          icon: Icons.play_circle_outline_rounded,
+          secondaryIcon: Icons.bolt_rounded,
+          accentColor: tk.clientAccent,
+          label: 'Início do serviço',
+          value: dateLong(d.startedAt!),
+        ),
       if (d.isCompleted && d.finishedAt != null)
-        _InfoRow(icon: Icons.event_available_outlined, label: 'Término do serviço', value: dateLong(d.finishedAt!)),
+        ExecutiveMetaTile(
+          icon: Icons.event_available_outlined,
+          secondaryIcon: Icons.verified_rounded,
+          accentColor: tk.success,
+          label: 'Término do serviço',
+          value: dateLong(d.finishedAt!),
+        ),
     ];
     if (rows.isEmpty) return const [];
     return [const SectionTitle('Horário'), AppCard(child: Column(children: rows))];
@@ -322,14 +437,14 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
       showSnack(context, 'Este pedido não tem endereço para mostrar no mapa.', error: true);
       return;
     }
-    await LiveLocationMapSheet.show(
+    await OrderLiveMapModalScreen.show(
       context,
       addressLine: line,
       summary: d.addressSummary,
       latitude: d.latitude,
       longitude: d.longitude,
       precision: d.geoPrecision,
-      pinConfirmed: d.geoSource == 'client_pin',
+      pinConfirmed: d.geoSource == 'client_pin' || d.geoPrecision == DestinationPrecision.house,
       onAdjustPin: _pinEditable(d)
           ? (lat, lng) async {
               await (widget.onSavePin ?? _defaultSavePin)(d.jobId, lat, lng);
@@ -340,66 +455,73 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
   }
 
   List<Widget> _location(BuildContext context, ClientDossier d) {
-    final tk = context.tk;
     final line = d.addressLine ?? d.addressSummary ?? '';
     if (line.isEmpty) return const [];
-    final allowTestPin = widget.onSavePin != null;
     return [
       const SectionTitle('Localização'),
-      AppCard(
-        key: const ValueKey('detail-location'),
-        onTap: allowTestPin ? () => _openMap(d) : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (d.hasCoordinates) ...[
-              _MapPreview(lat: d.latitude!, lng: d.longitude!),
-              const SizedBox(height: 12),
-            ],
-            Row(
-              children: [
-                Icon(Icons.place_rounded, color: tk.clientAccent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(line, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35)),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Endereço registrado para o atendimento',
-                        style: TextStyle(fontSize: 12, color: tk.textMuted),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+      InteractiveLocationPreviewCard(
+        cardKey: const ValueKey('detail-location'),
+        addressLine: line,
+        summary: d.addressSummary,
+        latitude: d.latitude,
+        longitude: d.longitude,
+        precision: d.geoPrecision,
+        pinConfirmed: d.geoSource == 'client_pin',
+        onTap: () => _openMap(d),
       ),
     ];
   }
 
-  List<Widget> _description(ClientDossier d) => [
-        if (d.description.isNotEmpty) ...[
-          const SectionTitle('O que você pediu'),
-          AppCard(child: Text(d.description, style: const TextStyle(height: 1.4))),
-        ],
-      ];
+  List<Widget> _description(BuildContext context, ClientDossier d) {
+    final tk = context.tk;
+    return [
+      if (d.description.isNotEmpty) ...[
+        const SectionTitle('O que você pediu'),
+        AppCard(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DarkGlassDuotoneBadge(
+                icon: Icons.description_outlined,
+                secondaryIcon: Icons.auto_awesome_rounded,
+                accentColor: tk.clientAccent,
+                size: 38,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  d.description,
+                  style: const TextStyle(height: 1.45, fontSize: 14.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ];
+  }
 
   List<Widget> _requestPhotos(ClientDossier d) => [
         if (d.photoPaths.isNotEmpty) ...[
           const SectionTitle('Fotos do seu pedido'),
           SizedBox(
-            height: 92,
+            height: 96,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: d.photoPaths.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
               itemBuilder: (context, i) => _Thumb(
-                size: 92,
-                onTap: () => _zoom(d.photoPaths[i], 'Foto do pedido'),
+                size: 96,
+                counterBadge: '${i + 1}/${d.photoPaths.length}',
+                onTap: () => _zoom(
+                  d.photoPaths[i],
+                  'Foto do pedido ${i + 1}/${d.photoPaths.length}',
+                  allPaths: d.photoPaths,
+                  allLabels: [
+                    for (var idx = 0; idx < d.photoPaths.length; idx++) 'Foto do pedido ${idx + 1}/${d.photoPaths.length}',
+                  ],
+                  initialIndex: i,
+                ),
                 child: _image(context, d.photoPaths[i], BoxFit.cover),
               ),
             ),
@@ -411,6 +533,8 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
     final photos = d.requiredPhotos;
     final video = d.videoPath;
     if (photos.isEmpty && video == null) return const [];
+    final allPaths = photos.map((e) => e.path).toList();
+    final allLabels = photos.map<String?>((e) => e.label).toList();
     return [
       const SectionTitle('Registro do serviço'),
       if (photos.isNotEmpty)
@@ -422,8 +546,19 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
           crossAxisSpacing: 10,
           childAspectRatio: 1.15,
           children: [
-            for (final e in photos)
-              _Thumb(label: e.label, onTap: () => _zoom(e.path, e.label), child: _image(context, e.path, BoxFit.cover)),
+            for (var i = 0; i < photos.length; i++)
+              _Thumb(
+                label: photos[i].label,
+                counterBadge: '${i + 1}/${photos.length}',
+                onTap: () => _zoom(
+                  photos[i].path,
+                  photos[i].label,
+                  allPaths: allPaths,
+                  allLabels: allLabels,
+                  initialIndex: i,
+                ),
+                child: _image(context, photos[i].path, BoxFit.cover),
+              ),
           ],
         ),
       if (video != null) ...[
@@ -433,17 +568,33 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
     ];
   }
 
-  List<Widget> _payment(ClientDossier d, {String title = 'Pagamento', String amountLabel = 'Valor pago'}) => [
-        SectionTitle(title),
-        AppCard(
-          child: Column(
-            children: [
-              _InfoRow(icon: Icons.payments_outlined, label: amountLabel, value: brl(d.amount), strong: true),
-              _InfoRow(icon: Icons.verified_outlined, label: 'Situação', value: _paymentLabel(d.paymentStatus)),
-            ],
-          ),
+  List<Widget> _payment(BuildContext context, ClientDossier d, {String title = 'Pagamento', String amountLabel = 'Valor pago'}) {
+    final tk = context.tk;
+    return [
+      SectionTitle(title),
+      AppCard(
+        child: Column(
+          children: [
+            ExecutiveMetaTile(
+              icon: Icons.payments_outlined,
+              secondaryIcon: Icons.shield_outlined,
+              accentColor: tk.success,
+              label: amountLabel,
+              value: brl(d.amount),
+              strong: true,
+            ),
+            ExecutiveMetaTile(
+              icon: Icons.verified_outlined,
+              secondaryIcon: Icons.lock_outline_rounded,
+              accentColor: tk.security,
+              label: 'Situação',
+              value: _paymentLabel(d.paymentStatus),
+            ),
+          ],
         ),
-      ];
+      ),
+    ];
+  }
 
   Future<void> _openProviderProfile(DossierProvider p) async {
     if (widget.onOpenProvider != null) {
@@ -471,6 +622,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
     final tk = context.tk;
     final provider = d.provider;
     if (provider == null) return const [];
+    final providerName = friendlyName(provider.name, fallback: 'Profissional');
     return [
       SectionTitle(title),
       AppCard(
@@ -478,17 +630,23 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
           children: [
             Row(
               children: [
-                UserAvatar(url: provider.avatarUrl, name: friendlyName(provider.name, fallback: 'Profissional'), radius: 26),
+                UserAvatar(
+                  url: provider.avatarUrl,
+                  name: providerName,
+                  radius: 26,
+                  verified: true,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        friendlyName(provider.name, fallback: 'Profissional'),
+                        providerName,
                         style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
-                      if ((provider.title ?? '').isNotEmpty) Text(provider.title!, style: TextStyle(color: tk.textMuted, fontSize: 13)),
+                      if ((provider.title ?? '').isNotEmpty)
+                        Text(provider.title!, style: TextStyle(color: tk.textMuted, fontSize: 13)),
                       if (provider.ratingAvg != null && provider.ratingCount > 0) ...[
                         const SizedBox(height: 4),
                         Row(
@@ -541,10 +699,10 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
       ],
       ..._times(context, d),
       ..._location(context, d),
-      ..._description(d),
+      ..._description(context, d),
       ..._requestPhotos(d),
       ..._providerSection(context, d, title: 'Profissional contratado', chat: false),
-      if (d.amount > 0) ..._payment(d, amountLabel: 'Valor combinado'),
+      if (d.amount > 0) ..._payment(context, d, amountLabel: 'Valor combinado'),
       const SizedBox(height: 16),
       PrimaryButton(
         key: const ValueKey('follow-order'),
@@ -569,7 +727,12 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
           return AppCard(
             child: Row(
               children: [
-                Icon(Icons.hourglass_top_rounded, color: tk.info),
+                DarkGlassDuotoneBadge(
+                  icon: Icons.hourglass_top_rounded,
+                  secondaryIcon: Icons.auto_awesome_rounded,
+                  accentColor: tk.info,
+                  size: 38,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -590,7 +753,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
                 margin: const EdgeInsets.only(bottom: 10),
                 child: Row(
                   children: [
-                    UserAvatar(url: q.avatarUrl, name: q.providerName, radius: 22),
+                    UserAvatar(url: q.avatarUrl, name: q.providerName, radius: 22, verified: true),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -619,10 +782,10 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
       ..._providerSection(context, d, title: 'Quem fez o serviço'),
       ..._times(context, d),
       ..._location(context, d),
-      ..._description(d),
+      ..._description(context, d),
       ..._requestPhotos(d),
       ..._serviceRecord(context, d),
-      ..._payment(d),
+      ..._payment(context, d),
       if (d.report != null) ...[
         const SectionTitle('Relatório do profissional'),
         AppCard(child: Text(d.report!, style: const TextStyle(height: 1.4))),
@@ -655,19 +818,31 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _InfoRow(icon: Icons.event_busy_outlined, label: 'Cancelado em', value: when == null ? 'Data não registrada' : dateLong(when)),
-            const SizedBox(height: 6),
+            ExecutiveMetaTile(
+              icon: Icons.event_busy_outlined,
+              secondaryIcon: Icons.cancel_outlined,
+              accentColor: tk.danger,
+              label: 'Cancelado em',
+              value: when == null ? 'Data não registrada' : dateLong(when),
+            ),
+            const SizedBox(height: 8),
             Text('Motivo do cancelamento', style: TextStyle(color: tk.textMuted, fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
             Text(d.cancelReason ?? 'Motivo não informado.', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.4)),
             if (d.paymentStatus == 'refunded') ...[
               const SizedBox(height: 8),
-              _InfoRow(icon: Icons.undo_rounded, label: 'Reserva', value: 'Estornada'),
+              ExecutiveMetaTile(
+                icon: Icons.undo_rounded,
+                secondaryIcon: Icons.verified_outlined,
+                accentColor: tk.success,
+                label: 'Reserva',
+                value: 'Estornada',
+              ),
             ],
           ],
         ),
       ),
-      ..._description(d),
+      ..._description(context, d),
       ..._requestPhotos(d),
       ..._times(context, d),
       ..._location(context, d),
@@ -693,9 +868,27 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _InfoRow(icon: Icons.flag_outlined, label: 'Aberta por', value: dispute?.openedByLabel ?? 'Cliente'),
-            _InfoRow(icon: Icons.report_gmailerrorred_rounded, label: 'Motivo', value: dispute?.reason ?? 'Motivo não informado'),
-            _InfoRow(icon: Icons.hourglass_top_rounded, label: 'Situação', value: statusLabel),
+            ExecutiveMetaTile(
+              icon: Icons.flag_outlined,
+              secondaryIcon: Icons.gavel_rounded,
+              accentColor: tk.danger,
+              label: 'Aberta por',
+              value: dispute?.openedByLabel ?? 'Cliente',
+            ),
+            ExecutiveMetaTile(
+              icon: Icons.report_gmailerrorred_rounded,
+              secondaryIcon: Icons.info_outline_rounded,
+              accentColor: tk.danger,
+              label: 'Motivo',
+              value: dispute?.reason ?? 'Motivo não informado',
+            ),
+            ExecutiveMetaTile(
+              icon: Icons.hourglass_top_rounded,
+              secondaryIcon: Icons.shield_outlined,
+              accentColor: tk.warningInk,
+              label: 'Situação',
+              value: statusLabel,
+            ),
             if (dispute?.description != null) ...[
               const SizedBox(height: 6),
               Text(dispute!.description!, style: const TextStyle(height: 1.4)),
@@ -708,7 +901,12 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.lock_rounded, color: tk.security),
+            DarkGlassDuotoneBadge(
+              icon: Icons.lock_rounded,
+              secondaryIcon: Icons.verified_user_rounded,
+              accentColor: tk.security,
+              size: 38,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -733,53 +931,12 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
       ),
       const SectionTitle('Linha do tempo da mediação'),
       _MediationTimeline(steps: d.mediationTimeline),
-      ..._description(d),
+      ..._description(context, d),
       ..._requestPhotos(d),
       ..._times(context, d),
       ..._location(context, d),
       ..._providerSection(context, d),
     ];
-  }
-}
-
-/// Prévia estática (sem gestos) do endereço; o toque no cartão abre o mapa em tempo real.
-class _MapPreview extends StatelessWidget {
-  const _MapPreview({required this.lat, required this.lng});
-
-  final double lat;
-  final double lng;
-
-  @override
-  Widget build(BuildContext context) {
-    final point = LatLng(lat, lng);
-    return SizedBox(
-      height: 140,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: IgnorePointer(
-          child: FlutterMap(
-            options: MapOptions(
-              initialCenter: point,
-              initialZoom: 16,
-              interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
-            ),
-            children: [
-              buildTileLayer(context),
-              MarkerLayer(markers: [
-                Marker(
-                  point: point,
-                  width: 40,
-                  height: 40,
-                  alignment: Alignment.topCenter,
-                  child: Icon(Icons.location_on_rounded, size: 38, color: context.tk.danger),
-                ),
-              ]),
-              const MapAttribution(),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 
@@ -857,48 +1014,19 @@ String _paymentLabel(String s) => switch (s) {
       _ => s,
     };
 
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.icon, required this.label, required this.value, this.strong = false});
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final bool strong;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: context.tk.textMuted),
-          const SizedBox(width: 10),
-          Text('$label: ', style: TextStyle(color: context.tk.textMuted)),
-          Expanded(
-            child: Text(
-              value,
-              textAlign: TextAlign.end,
-              style: TextStyle(fontWeight: strong ? FontWeight.w900 : FontWeight.w700, fontSize: strong ? 16 : 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Miniatura tocável (zoom) com rótulo opcional.
+/// Miniatura tocável (zoom) com rótulo opcional e badge contador (`1/4`).
 class _Thumb extends StatelessWidget {
-  const _Thumb({required this.child, required this.onTap, this.label, this.size});
+  const _Thumb({required this.child, required this.onTap, this.label, this.size, this.counterBadge});
 
   final Widget child;
   final VoidCallback onTap;
   final String? label;
   final double? size;
+  final String? counterBadge;
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
@@ -909,7 +1037,24 @@ class _Thumb extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              ColoredBox(color: context.tk.card, child: child),
+              ColoredBox(color: tk.card, child: child),
+              if (counterBadge != null)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+                    ),
+                    child: Text(
+                      counterBadge!,
+                      style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ),
               if (label != null)
                 Positioned(
                   left: 0,

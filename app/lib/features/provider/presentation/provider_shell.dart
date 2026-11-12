@@ -8,6 +8,7 @@ import '../../../core/models/user_profile.dart';
 import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/app_version_and_update_service.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -115,6 +116,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
   void initState() {
     super.initState();
     PrivacyMode.instance.ensureLoaded();
+    EagerImagePrefetcher.prefetchUrls([widget.profile.avatarUrl]);
     _timer = Timer.periodic(const Duration(seconds: 20), (_) {
       if (mounted) setState(() { _future = _load(); });
     });
@@ -135,10 +137,18 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
       _providers.myProviderRow(),
       _providers.myWithdrawnTotal(),
     ]);
+    final jobs = r[0] as List<Job>;
+    final invites = r[1] as List<({JobInvite invite, Job job})>;
+    final quotes = r[2] as List<({Quote quote, Job? job})>;
+    EagerImagePrefetcher.prefetchJobs([
+      ...jobs,
+      ...invites.map((i) => i.job),
+      ...quotes.map((q) => q.job).whereType<Job>(),
+    ]);
     return _DashData(
-      jobs: r[0] as List<Job>,
-      invites: r[1] as List<({JobInvite invite, Job job})>,
-      quotes: r[2] as List<({Quote quote, Job? job})>,
+      jobs: jobs,
+      invites: invites,
+      quotes: quotes,
       wallet: ProviderService.summarize(r[3] as List<Payment>, withdrawn: r[5] as double),
       row: r[4] as Map<String, dynamic>?,
     );

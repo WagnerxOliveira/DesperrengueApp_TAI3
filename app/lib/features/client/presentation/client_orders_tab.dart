@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/app_version_and_update_service.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
+import '../../../core/state/unread_orders_badge_controller.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/job_labels.dart';
 import '../../../core/ui/media_widgets.dart';
@@ -46,6 +50,12 @@ class _ClientOrdersTabState extends State<ClientOrdersTab> {
       widget.jobsStream ?? JobService().streamMyJobs();
 
   @override
+  void initState() {
+    super.initState();
+    unawaited(UnreadOrdersBadgeController.instance.ensureLoaded());
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       children: [
@@ -69,7 +79,10 @@ class _ClientOrdersTabState extends State<ClientOrdersTab> {
                 );
               }
               if (!snap.hasData) return const LoadingView();
-              final b = OrderBuckets.from(snap.data!);
+              final jobs = snap.data!;
+              unawaited(UnreadOrdersBadgeController.instance.ensureLoaded());
+              EagerImagePrefetcher.prefetchJobs(jobs, context: context);
+              final b = OrderBuckets.from(jobs);
               return OrdersTabs(
                 buckets: b,
                 includeMediationTab: widget.includeMediationTab,
@@ -84,7 +97,7 @@ class _ClientOrdersTabState extends State<ClientOrdersTab> {
   }
 }
 
-/// As abas de status (com contagem) sobre pedidos já separados.
+/// As abas de status (com contagem reativa O(1) de não lidos) sobre pedidos já separados.
 class OrdersTabs extends StatelessWidget {
   const OrdersTabs({
     super.key,
@@ -99,6 +112,7 @@ class OrdersTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    unawaited(UnreadOrdersBadgeController.instance.ensureLoaded());
     final tabs = [
       (
         OrderTab.inProgress,
@@ -128,55 +142,68 @@ class OrdersTabs extends StatelessWidget {
     ];
     return DefaultTabController(
       length: tabs.length,
-      child: Column(
-        children: [
-          TabBar(
-            labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-            labelColor: context.tk.clientAccent,
-            indicatorColor: context.tk.clientAccent,
-            tabs: [
-              for (final (tab, label, _, _) in tabs)
-                Tab(
-                  child: Badge(
-                    isLabelVisible: buckets.of(tab).isNotEmpty,
-                    label: Text(
-                      '${buckets.of(tab).length}',
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w800,
-                      ),
+      child: ListenableBuilder(
+        listenable: UnreadOrdersBadgeController.instance,
+        builder: (context, _) {
+          return Column(
+            children: [
+              TabBar(
+                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
+                labelColor: context.tk.clientAccent,
+                indicatorColor: context.tk.clientAccent,
+                tabs: [
+                  for (final (tab, label, _, _) in tabs)
+                    Builder(
+                      builder: (context) {
+                        final unreadCount = UnreadOrdersBadgeController.instance
+                            .countUnread(tab, buckets.of(tab));
+                        return Tab(
+                          child: Badge(
+                            key: ValueKey('orders-tab-badge-${tab.name}'),
+                            isLabelVisible: unreadCount > 0,
+                            label: Text(
+                              '$unreadCount',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            backgroundColor: context.tk.clientAccent,
+                            textColor: Colors.white,
+                            offset: const Offset(10, -8),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                label,
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                    backgroundColor: context.tk.clientAccent,
-                    textColor: Colors.white,
-                    offset: const Offset(10, -8),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                        ),
+                ],
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    for (final (tab, _, empty, hint) in tabs)
+                      _List(
+                        tab: tab,
+                        jobs: buckets.of(tab),
+                        empty: empty,
+                        hint: hint,
+                        onOpen: onOpen,
                       ),
-                    ),
-                  ),
+                  ],
                 ),
+              ),
             ],
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                for (final (tab, _, empty, hint) in tabs)
-                  _List(
-                    jobs: buckets.of(tab),
-                    empty: empty,
-                    hint: hint,
-                    onOpen: onOpen,
-                  ),
-              ],
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -184,12 +211,14 @@ class OrdersTabs extends StatelessWidget {
 
 class _List extends StatelessWidget {
   const _List({
+    required this.tab,
     required this.jobs,
     required this.empty,
     required this.hint,
     required this.onOpen,
   });
 
+  final OrderTab tab;
   final List<Job> jobs;
   final String empty;
   final String hint;
@@ -204,6 +233,7 @@ class _List extends StatelessWidget {
         subtitle: hint,
       );
     }
+    final tk = context.tk;
     return RefreshIndicator(
       onRefresh: () async => JobService.notifyJobsChanged(),
       child: ListView.separated(
@@ -213,8 +243,26 @@ class _List extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(height: 12),
         itemBuilder: (context, i) {
           final j = jobs[i];
+          final isUnread = UnreadOrdersBadgeController.instance.isUnread(
+            j,
+            tab: tab,
+          );
+          final headline = SmartOrderHeadlineFormatter.formatHeadline(
+            j.title,
+            category: j.category,
+            fallbackDescription: j.description,
+          );
           return AppCard(
-            onTap: () => onOpen(context, j),
+            key: ValueKey('order-card-${j.id}'),
+            borderColor: isUnread
+                ? tk.clientAccent.withValues(alpha: 0.52)
+                : tk.border,
+            onTap: () {
+              unawaited(
+                UnreadOrdersBadgeController.instance.markViewed(j, tab: tab),
+              );
+              onOpen(context, j);
+            },
             child: Row(
               children: [
                 CategoryBrandEmblem(
@@ -228,7 +276,7 @@ class _List extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        j.title,
+                        headline,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -237,24 +285,46 @@ class _List extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        '${j.code} • ${relativeTime(j.createdAt)}',
-                        style: TextStyle(
-                          color: context.tk.textMuted,
-                          fontSize: 12.5,
-                        ),
+                      Row(
+                        children: [
+                          if (isUnread) ...[
+                            Container(
+                              key: ValueKey('order-unread-dot-${j.id}'),
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: tk.clientAccent,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
+                          Flexible(
+                            child: Text(
+                              '${j.code} • ${relativeTime(j.createdAt)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: tk.textMuted,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       JobStatusChip(j),
                     ],
                   ),
                 ),
-                if (j.agreedPrice != null)
+                if (j.agreedPrice != null) ...[
+                  const SizedBox(width: 6),
                   Text(
                     brl(j.agreedPrice),
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
-                Icon(Icons.chevron_right_rounded, color: context.tk.textMuted),
+                ],
+                Icon(Icons.chevron_right_rounded, color: tk.textMuted),
               ],
             ),
           );
@@ -272,6 +342,7 @@ class ClientProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    EagerImagePrefetcher.prefetchUrls([profile.avatarUrl], context: context);
     final emailSubtitle = profile.emailAddressIfPresent;
     return ListView(
       padding: const EdgeInsets.all(20),

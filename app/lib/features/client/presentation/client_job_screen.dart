@@ -1,11 +1,17 @@
 import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
+import '../../../core/services/real_time_route_and_traffic_service.dart';
 import '../../../core/state/smart_triage_controller.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../../core/state/unread_orders_badge_controller.dart';
+import '../../shared/presentation/order_live_map_modal_screen.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
@@ -108,22 +114,35 @@ class WaitingQuotesScreen extends StatefulWidget {
 }
 
 class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
-  final _jobs = JobService();
-  final _providers = ProviderService();
+  late final _jobs = JobService();
+  late final _providers = ProviderService();
   Timer? _tick;
   Map<String, ProviderCard> _cards = {};
 
   // Assinados UMA vez (o cronômetro redesenha a tela a cada segundo: recriar o stream a cada
   // build reabriria a conexão Realtime o tempo todo).
-  late final Stream<List<Quote>> _quotes = (widget.quotesStream ?? _jobs.streamQuotes(widget.job.id));
-  late final Stream<List<JobInvite>> _invites = (widget.invitesStream ?? _jobs.streamInvites(widget.job.id));
+  late Stream<List<Quote>> _quotes = (widget.quotesStream ?? _jobs.streamQuotes(widget.job.id));
+  late Stream<List<JobInvite>> _invites = (widget.invitesStream ?? _jobs.streamInvites(widget.job.id));
 
   @override
   void initState() {
     super.initState();
+    unawaited(UnreadOrdersBadgeController.instance.markViewed(widget.job));
+    EagerImagePrefetcher.prefetchJobs([widget.job]);
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant WaitingQuotesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.quotesStream != widget.quotesStream || oldWidget.job.id != widget.job.id) {
+      _quotes = widget.quotesStream ?? _jobs.streamQuotes(widget.job.id);
+    }
+    if (oldWidget.invitesStream != widget.invitesStream || oldWidget.job.id != widget.job.id) {
+      _invites = widget.invitesStream ?? _jobs.streamInvites(widget.job.id);
+    }
   }
 
   @override
@@ -135,8 +154,11 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
   Future<void> _loadCards(Iterable<String> ids) async {
     final missing = ids.where((i) => !_cards.containsKey(i)).toList();
     if (missing.isEmpty) return;
-    final more = await _providers.byIds(missing);
-    if (mounted) setState(() => _cards = {..._cards, ...more});
+    try {
+      final more = await _providers.byIds(missing);
+      EagerImagePrefetcher.prefetchUrls(more.values.map((c) => c.avatarUrl));
+      if (mounted) setState(() => _cards = {..._cards, ...more});
+    } catch (_) {}
   }
 
   Future<void> _cancel() async {
@@ -180,6 +202,33 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
     );
   }
 
+  Future<void> _openJobMapModal(BuildContext context) async {
+    String line = widget.job.addressSummary ?? '';
+    try {
+      final addr = await JobService().jobAddress(widget.job.id);
+      final full = (addr?['address_line'] as String?)?.trim();
+      if (full != null && full.isNotEmpty) line = full;
+    } catch (_) {}
+    if (line.isEmpty) line = 'Poços de Caldas - MG';
+    if (!context.mounted) return;
+    await OrderLiveMapModalScreen.show(
+      context,
+      addressLine: line,
+      summary: widget.job.addressSummary,
+      latitude: widget.job.latitude,
+      longitude: widget.job.longitude,
+      onAdjustPin: (lat, lng) async {
+        await SupabaseSchedulingBackend().setLocation(
+          widget.job.id,
+          lat,
+          lng,
+          source: 'client_pin',
+          precision: 'house',
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final job = widget.job;
@@ -208,13 +257,24 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
               final pendingQuotes = quotes.where((q) => q.status == 'pending').toList();
 
               return ListView(
+                cacheExtent: 2400,
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
                 children: [
-                  _WaitingHero(job: job, live: live, invites: invites, cards: _cards, quotes: pendingQuotes),
+                  LiveSearchRadarHeader(
+                    job: job,
+                    live: live,
+                    invites: invites,
+                    cards: _cards,
+                    quotes: pendingQuotes,
+                    onOpenMap: () => _openJobMapModal(context),
+                  ),
                   const SizedBox(height: 16),
-                  _OrderSummary(job: job),
+                  OrderPublishStepper(quotes: pendingQuotes.length),
                   const SizedBox(height: 16),
-                  _ProgressSteps(quotes: pendingQuotes.length),
+                  _OrderSummary(
+                    job: job,
+                    onOpenMap: () => _openJobMapModal(context),
+                  ),
                   const SizedBox(height: 18),
                   _QuoteSlots(received: pendingQuotes.length),
                   if (pendingQuotes.isNotEmpty) ...[
@@ -271,99 +331,473 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
   }
 }
 
-/// Cabeçalho: radar pulsante + título + (convite direto) contagem regressiva.
-class _WaitingHero extends StatelessWidget {
-  const _WaitingHero({required this.job, required this.live, required this.invites, required this.cards, required this.quotes});
+/// Header cartográfico vivo (`120 FPS` com `RepaintBoundary`) mostrando mapa estilizado
+/// centrado no endereço do pedido + ondas concêntricas suaves de radar (`CustomPainter`),
+/// pino da residência, contador de especialistas verificados notificados e toque direto
+/// para abrir `OrderLiveMapModalScreen`.
+class LiveSearchRadarHeader extends StatefulWidget {
+  const LiveSearchRadarHeader({
+    super.key,
+    required this.job,
+    required this.live,
+    required this.invites,
+    required this.cards,
+    required this.quotes,
+    required this.onOpenMap,
+  });
 
   final Job job;
   final List<JobInvite> live;
   final List<JobInvite> invites;
   final Map<String, ProviderCard> cards;
   final List<Quote> quotes;
+  final VoidCallback onOpenMap;
+
+  @override
+  State<LiveSearchRadarHeader> createState() => _LiveSearchRadarHeaderState();
+}
+
+class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with SingleTickerProviderStateMixin {
+  late final AnimationController _radarCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2800),
+  )..repeat();
+
+  double _lat = -21.7878;
+  double _lng = -46.5614;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.job.latitude != null && widget.job.longitude != null) {
+      _lat = widget.job.latitude!;
+      _lng = widget.job.longitude!;
+    }
+    unawaited(_resolveCoords());
+  }
+
+  Future<void> _resolveCoords() async {
+    final addrLine = widget.job.addressSummary ?? '';
+    if (addrLine.isEmpty && widget.job.latitude != null && widget.job.longitude != null) return;
+    try {
+      final resolved = await RealTimeRouteAndTrafficService.instance.resolveExactAddress(
+        addressLine: addrLine.isEmpty ? 'Poços de Caldas - MG' : addrLine,
+        summary: widget.job.addressSummary,
+        latitude: widget.job.latitude,
+        longitude: widget.job.longitude,
+      );
+      if (!mounted) return;
+      if (resolved.hasCoordinates) {
+        setState(() {
+          _lat = resolved.latitude!;
+          _lng = resolved.longitude!;
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _radarCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final first = live.isEmpty ? null : live.first;
-    final p = first == null ? null : cards[first.providerId];
-    final hasQuotes = quotes.isNotEmpty;
+    final job = widget.job;
+    final first = widget.live.isEmpty ? null : widget.live.first;
+    final p = first == null ? null : widget.cards[first.providerId];
+    final hasQuotes = widget.quotes.isNotEmpty;
     final title = hasQuotes
-        ? '${quotes.length} ${quotes.length == 1 ? 'orçamento recebido' : 'orçamentos recebidos'}'
+        ? '${widget.quotes.length} ${widget.quotes.length == 1 ? 'orçamento recebido' : 'orçamentos recebidos'}'
         : (job.isDirect ? (p == null ? 'Pedido enviado!' : 'Pedido enviado para ${p.fullName}!') : 'Pedido publicado!');
     final subtitle = hasQuotes
         ? 'Toque em "Ver orçamento" para comparar e escolher o profissional.'
         : job.isDirect
-            ? (invites.isNotEmpty && live.isEmpty
+            ? (widget.invites.isNotEmpty && widget.live.isEmpty
                 ? 'O prazo do convite terminou. Você pode cancelar e tentar outro profissional.'
                 : 'Se o profissional não responder neste tempo, o convite expira automaticamente.')
             : 'Profissionais verificados da sua região já podem ver o pedido. Você recebe até 3 orçamentos e escolhe o melhor.';
+
+    final notifiedCount = math.max(widget.invites.length, hasQuotes ? widget.quotes.length + 2 : 3);
+    final centerPoint = LatLng(_lat, _lng);
+
     return Container(
       key: const ValueKey('waiting-hero'),
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [tk.clientSoft, Color.alphaBlend(tk.clientAccent.withValues(alpha: tk.isDark ? 0.10 : 0.06), tk.card)],
+          colors: [
+            tk.clientSoft,
+            Color.alphaBlend(tk.clientAccent.withValues(alpha: tk.isDark ? 0.12 : 0.06), tk.card),
+          ],
         ),
         border: Border.all(color: tk.clientAccent.withValues(alpha: 0.35)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          if (first != null && job.isDirect)
-            CountdownRing(remaining: first.remaining, total: const Duration(hours: 2), size: 168, icon: Icons.hourglass_bottom_rounded, caption: 'para responder')
-          else
-            PulseRadar(
-              size: 190,
-              child: Container(
-                width: 82,
-                height: 82,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [tk.clientAccent, tk.clientAccent.withValues(alpha: 0.75)]),
-                  boxShadow: [BoxShadow(color: tk.clientAccent.withValues(alpha: 0.4), blurRadius: 18, offset: const Offset(0, 6))],
-                ),
-                child: Icon(hasQuotes ? Icons.request_quote_rounded : Icons.campaign_rounded, size: 40, color: AppTokens.onColor(tk.clientAccent)),
+          // Topo Cartográfico Vivo com Radar 120 FPS isolado em RepaintBoundary
+          GestureDetector(
+            key: const ValueKey('waiting-open-live-map'),
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onOpenMap,
+            child: SizedBox(
+              height: 188,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  IgnorePointer(
+                    child: FlutterMap(
+                      key: ValueKey('waiting-radar-map-${_lat.toStringAsFixed(4)}-${_lng.toStringAsFixed(4)}'),
+                      options: MapOptions(
+                        initialCenter: centerPoint,
+                        initialZoom: 15.2,
+                        interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                      ),
+                      children: [
+                        buildSafeMapTileLayer(context),
+                      ],
+                    ),
+                  ),
+                  // Vinheta executiva para leitura e contraste
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment.center,
+                        radius: 0.92,
+                        colors: [
+                          tk.surface.withValues(alpha: tk.isDark ? 0.32 : 0.18),
+                          tk.card.withValues(alpha: tk.isDark ? 0.88 : 0.82),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Ondas concêntricas suaves em RepaintBoundary (120 FPS, zero jank)
+                  if (first != null && job.isDirect)
+                    Center(
+                      child: CountdownRing(
+                        remaining: first.remaining,
+                        total: const Duration(hours: 2),
+                        size: 150,
+                        icon: Icons.hourglass_bottom_rounded,
+                        caption: 'para responder',
+                      ),
+                    )
+                  else
+                    RepaintBoundary(
+                      child: AnimatedBuilder(
+                        animation: _radarCtrl,
+                        builder: (context, child) => CustomPaint(
+                          painter: _RadarConcentricPainter(
+                            progress: _radarCtrl.value,
+                            color: tk.clientAccent,
+                            secondaryColor: tk.success,
+                          ),
+                          child: child,
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [tk.clientAccent, tk.clientAccent.withValues(alpha: 0.78)],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: tk.clientAccent.withValues(alpha: 0.45),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 6),
+                                ),
+                              ],
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2.5),
+                            ),
+                            child: Icon(
+                              hasQuotes ? Icons.request_quote_rounded : Icons.home_work_rounded,
+                              size: 32,
+                              color: AppTokens.onColor(tk.clientAccent),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  // Badge superior esquerdo: alcance regional e especialistas verificados
+                  Positioned(
+                    top: 12,
+                    left: 12,
+                    right: 12,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Container(
+                          key: const ValueKey('live-radar-specialists-badge'),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: tk.surface.withValues(alpha: 0.90),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: tk.clientAccent.withValues(alpha: 0.40)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: tk.success,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  '$notifiedCount especialistas verificados no alcance',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: tk.text,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: tk.surface.withValues(alpha: 0.90),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: tk.border),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.map_rounded, size: 13, color: tk.clientAccent),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Ver mapa e rota',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: tk.clientAccent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-          const SizedBox(height: 8),
-          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 6),
-          Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: tk.textMuted, height: 1.4)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            child: Column(
+              children: [
+                Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  subtitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: tk.textMuted, height: 1.4),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-/// Resumo do que foi pedido (categoria, texto, quando e onde).
-class _OrderSummary extends StatelessWidget {
-  const _OrderSummary({required this.job});
+class _RadarConcentricPainter extends CustomPainter {
+  const _RadarConcentricPainter({
+    required this.progress,
+    required this.color,
+    required this.secondaryColor,
+  });
 
-  final Job job;
+  final double progress;
+  final Color color;
+  final Color secondaryColor;
 
-  Future<void> _openAddressOnMap(BuildContext context) async {
-    String line = job.addressSummary ?? '';
-    try {
-      final addr = await JobService().jobAddress(job.id);
-      final full = (addr?['address_line'] as String?)?.trim();
-      if (full != null && full.isNotEmpty) line = full;
-    } catch (_) {}
-    if (line.isEmpty || !context.mounted) return;
-    await LiveLocationMapSheet.show(
-      context,
-      addressLine: line,
-      summary: job.addressSummary,
-      onAdjustPin: (lat, lng) async {
-        await SupabaseSchedulingBackend().setLocation(job.id, lat, lng, source: 'client_pin', precision: 'house');
-      },
-    );
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final maxRadius = math.min(size.width, size.height) * 0.46;
+
+    for (var i = 0; i < 3; i++) {
+      final phase = (progress + (i / 3.0)) % 1.0;
+      final radius = 24.0 + (maxRadius - 24.0) * phase;
+      final alpha = (1.0 - phase).clamp(0.0, 1.0);
+
+      final fillPaint = Paint()
+        ..style = PaintingStyle.fill
+        ..color = color.withValues(alpha: 0.14 * alpha);
+      final strokePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..color = (i.isEven ? color : secondaryColor).withValues(alpha: 0.42 * alpha);
+
+      canvas.drawCircle(center, radius, fillPaint);
+      canvas.drawCircle(center, radius, strokePaint);
+    }
   }
+
+  @override
+  bool shouldRepaint(covariant _RadarConcentricPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.color != color;
+}
+
+/// Linha do tempo executiva de 4 estágios com ícones *Duotone*:
+/// `1. Pedido Publicado` -> `2. Especialistas Notificados` -> `3. Aguardando Propostas (X/3)` -> `4. Contratação Segura`.
+class OrderPublishStepper extends StatelessWidget {
+  const OrderPublishStepper({super.key, required this.quotes});
+
+  final int quotes;
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final capped = quotes.clamp(0, 3);
+    final steps = [
+      (
+        label: '1. Pedido Publicado',
+        shortLabel: 'Publicado',
+        icon: Icons.check_circle_outline_rounded,
+        done: true,
+        active: false,
+      ),
+      (
+        label: '2. Especialistas Notificados',
+        shortLabel: 'Notificados',
+        icon: Icons.campaign_rounded,
+        done: true,
+        active: quotes == 0,
+      ),
+      (
+        label: '3. Aguardando Propostas ($capped/3)',
+        shortLabel: 'Propostas ($capped/3)',
+        icon: Icons.request_quote_rounded,
+        done: quotes > 0,
+        active: true,
+      ),
+      (
+        label: '4. Contratação Segura',
+        shortLabel: 'Contratação',
+        icon: Icons.verified_user_outlined,
+        done: false,
+        active: false,
+      ),
+    ];
+
+    return AppCard(
+      key: const ValueKey('waiting-steps'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < steps.length; i++) ...[
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: steps[i].done
+                            ? [tk.clientAccent, tk.clientAccent.withValues(alpha: 0.78)]
+                            : steps[i].active
+                                ? [tk.clientSoft, tk.surface]
+                                : [tk.surface, tk.card],
+                      ),
+                      border: Border.all(
+                        color: (steps[i].done || steps[i].active) ? tk.clientAccent : tk.border,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      steps[i].icon,
+                      size: 18,
+                      color: steps[i].done
+                          ? AppTokens.onColor(tk.clientAccent)
+                          : (steps[i].active ? tk.clientAccent : tk.textMuted),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    steps[i].label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.2,
+                      fontWeight: (steps[i].done || steps[i].active) ? FontWeight.w800 : FontWeight.w600,
+                      color: (steps[i].done || steps[i].active) ? tk.text : tk.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (i < steps.length - 1)
+              Padding(
+                padding: const EdgeInsets.only(top: 17, left: 2, right: 2),
+                child: SizedBox(
+                  width: 12,
+                  child: Divider(
+                    height: 2,
+                    thickness: 2,
+                    color: steps[i].done ? tk.clientAccent : tk.border,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Resumo do que foi pedido (categoria, título semântico, texto, quando, onde e fotos).
+class _OrderSummary extends StatelessWidget {
+  const _OrderSummary({required this.job, required this.onOpenMap});
+
+  final Job job;
+  final VoidCallback onOpenMap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final cleanHeadline = SmartOrderHeadlineFormatter.formatHeadline(
+      job.title,
+      category: job.category,
+      fallbackDescription: job.description,
+    );
     return AppCard(
       key: const ValueKey('waiting-summary'),
       child: Column(
@@ -384,14 +818,49 @@ class _OrderSummary extends StatelessWidget {
               ),
             ],
           ),
-          // O selo vai numa linha própria: em telas estreitas ao lado do título ele estourava a linha.
           const SizedBox(height: 10),
           const StatusChip('Aguardando Orçamento', icon: Icons.hourglass_top_rounded),
+          const SizedBox(height: 10),
+          Text(
+            cleanHeadline,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, height: 1.3),
+          ),
           if (job.description.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(job.description, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4)),
           ],
-          const SizedBox(height: 10),
+          if (job.photoPaths.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 68,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: job.photoPaths.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (ctx, i) => GestureDetector(
+                  onTap: () => FullscreenSwipePhotoGallery.show(
+                    ctx,
+                    items: [
+                      for (var idx = 0; idx < job.photoPaths.length; idx++)
+                        (path: job.photoPaths[idx], label: 'Foto ${idx + 1}'),
+                    ],
+                    initialIndex: i,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: 68,
+                      height: 68,
+                      child: SignedImage(path: job.photoPaths[i], fit: BoxFit.cover, radius: 12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           Wrap(
             spacing: 14,
             runSpacing: 6,
@@ -401,7 +870,7 @@ class _OrderSummary extends StatelessWidget {
                 _Meta(
                   icon: Icons.place_outlined,
                   text: job.addressSummary!,
-                  onTap: () => _openAddressOnMap(context),
+                  onTap: onOpenMap,
                 ),
             ],
           ),
@@ -445,58 +914,9 @@ class _Meta extends StatelessWidget {
   }
 }
 
-/// Linha do tempo curta: Publicado → Recebendo orçamentos → Escolha e pagamento.
-class _ProgressSteps extends StatelessWidget {
-  const _ProgressSteps({required this.quotes});
-
-  final int quotes;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = context.tk;
-    final steps = [
-      ('Publicado', Icons.check_rounded, true),
-      ('Orçamentos', quotes > 0 ? Icons.check_rounded : Icons.more_horiz_rounded, quotes > 0),
-      ('Escolha e pagamento', Icons.lock_outline_rounded, false),
-    ];
-    final activeIndex = quotes > 0 ? 2 : 1;
-    return Row(
-      key: const ValueKey('waiting-steps'),
-      children: [
-        for (var i = 0; i < steps.length; i++) ...[
-          Expanded(
-            child: Column(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: steps[i].$3 ? tk.clientAccent : (i == activeIndex ? tk.clientSoft : tk.surface),
-                    border: Border.all(color: (steps[i].$3 || i == activeIndex) ? tk.clientAccent : tk.border, width: 2),
-                  ),
-                  child: Icon(steps[i].$2, size: 18, color: steps[i].$3 ? AppTokens.onColor(tk.clientAccent) : (i == activeIndex ? tk.clientAccent : tk.textMuted)),
-                ),
-                const SizedBox(height: 6),
-                Text(steps[i].$1, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: i <= activeIndex ? tk.text : tk.textMuted)),
-              ],
-            ),
-          ),
-          if (i < steps.length - 1)
-            Expanded(
-              flex: 0,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 22),
-                child: SizedBox(width: 28, child: Divider(thickness: 2, color: i < activeIndex ? tk.clientAccent : tk.border)),
-              ),
-            ),
-        ],
-      ],
-    );
-  }
-}
-
-/// "Orçamentos recebidos 1/3" com 3 vagas visuais.
+/// Estado de espera *Quiet Luxury* com 3 vagas visuais, ícone *Duotone*,
+/// tempo médio estimado de resposta e selos de confiança (*Pagamento Protegido em Custódia*
+/// e *0% de taxa sobre materiais*).
 class _QuoteSlots extends StatelessWidget {
   const _QuoteSlots({required this.received});
 
@@ -507,33 +927,131 @@ class _QuoteSlots extends StatelessWidget {
     final tk = context.tk;
     return AppCard(
       key: const ValueKey('waiting-slots'),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < 3; i++)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: i < received ? tk.clientAccent : Colors.transparent,
-                  border: Border.all(color: i < received ? tk.clientAccent : tk.border, width: 2),
-                ),
-                child: Icon(i < received ? Icons.request_quote_rounded : Icons.hourglass_empty_rounded, size: 20, color: i < received ? AppTokens.onColor(tk.clientAccent) : tk.textMuted),
+          Row(
+            children: [
+              DarkGlassDuotoneBadge(
+                icon: received > 0 ? Icons.request_quote_rounded : Icons.radar_rounded,
+                secondaryIcon: Icons.verified_rounded,
+                accentColor: tk.clientAccent,
+                size: 42,
               ),
-            ),
-          const SizedBox(width: 4),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Orçamentos: $received de 3', style: const TextStyle(fontWeight: FontWeight.w900)),
-                Text(
-                  received == 0 ? 'Avisamos você assim que o primeiro chegar.' : 'Você pode esperar mais ou escolher agora.',
-                  style: TextStyle(fontSize: 12.5, color: tk.textMuted, height: 1.3),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Orçamentos: $received de 3', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5)),
+                    const SizedBox(height: 2),
+                    Text(
+                      received == 0
+                          ? 'Avisamos você assim que o primeiro chegar. Tempo médio: 5 a 15 min.'
+                          : 'Você pode esperar mais propostas ou contratar agora.',
+                      style: TextStyle(fontSize: 12.5, color: tk.textMuted, height: 1.3),
+                    ),
+                  ],
                 ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (var i = 0; i < 3; i++)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                    child: Container(
+                      height: 36,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: i < received ? tk.clientAccent.withValues(alpha: 0.16) : tk.surface,
+                        border: Border.all(
+                          color: i < received ? tk.clientAccent : tk.border,
+                          width: 1.4,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            i < received ? Icons.check_circle_rounded : Icons.hourglass_empty_rounded,
+                            size: 15,
+                            color: i < received ? tk.clientAccent : tk.textMuted,
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              i < received ? 'Proposta ${i + 1}' : 'Vaga ${i + 1}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                                color: i < received ? tk.clientAccent : tk.textMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _TrustPill(
+                icon: Icons.shield_outlined,
+                label: 'Pagamento Protegido em Custódia',
+                color: tk.security,
+              ),
+              _TrustPill(
+                icon: Icons.receipt_long_outlined,
+                label: '0% de taxa sobre materiais',
+                color: tk.success,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustPill extends StatelessWidget {
+  const _TrustPill({required this.icon, required this.label, required this.color});
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: tk.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13.5, color: color),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tk.textMuted),
             ),
           ),
         ],
@@ -551,6 +1069,7 @@ class _QuoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final p = provider;
     return AppCard(
       margin: const EdgeInsets.only(bottom: 12),
@@ -569,17 +1088,27 @@ class _QuoteCard extends StatelessWidget {
                     if (p != null)
                       Text(
                         p.ratingCount > 0 ? '★ ${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} (${p.ratingCount}) • ${p.jobsDone} serviços' : 'Novo na plataforma',
-                        style: TextStyle(color: context.tk.textMuted, fontSize: 13),
+                        style: TextStyle(color: tk.textMuted, fontSize: 13),
                       ),
                   ],
                 ),
               ),
-              Text(brl(quote.price), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(brl(quote.price), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                  if (quote.estimatedHours != null)
+                    Text(
+                      '~${quote.estimatedHours!.toStringAsFixed(quote.estimatedHours! % 1 == 0 ? 0 : 1)}h estimadas',
+                      style: TextStyle(fontSize: 11, color: tk.textMuted, fontWeight: FontWeight.w600),
+                    ),
+                ],
+              ),
             ],
           ),
           if (quote.message != null && quote.message!.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text('"${quote.message}"', style: TextStyle(height: 1.4, color: context.tk.text)),
+            Text('"${quote.message}"', style: TextStyle(height: 1.4, color: tk.text)),
           ],
           const SizedBox(height: 12),
           Row(
