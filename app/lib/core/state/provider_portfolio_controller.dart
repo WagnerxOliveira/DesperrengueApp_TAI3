@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/marketplace_models.dart';
+import '../utils/address_privacy.dart';
 import '../models/provider_portfolio_models.dart';
 
 /// Fixtures exclusivas para testes automatizados (`@visibleForTesting`).
@@ -370,7 +371,7 @@ class ProviderPortfolioStore extends ChangeNotifier {
               complementaryTechnicalNotes:
                   j['complementary_notes'] as String?,
               cityAndState:
-                  (j['address_summary'] as String?) ?? 'Local Verificado',
+                  AddressPrivacy.coarseArea(j['address_summary'] as String?, fallback: 'Local Verificado'),
               completedAt: DateTime.tryParse(
                         '${j['approved_at'] ?? j['finished_at'] ?? j['canceled_at'] ?? j['created_at']}',
                       )?.toLocal() ??
@@ -472,7 +473,7 @@ class ProviderPortfolioStore extends ChangeNotifier {
               : (job.description.trim().isNotEmpty
                   ? 'Execução técnica concluída e validada presencialmente com PIN do cliente: ${job.description.trim()}'
                   : 'Serviço técnico de ${job.category} executado conforme normas de segurança e validado presencialmente com o PIN de 4 dígitos do cliente.'),
-      cityAndState: job.addressSummary ?? 'Local Verificado',
+      cityAndState: AddressPrivacy.coarseArea(job.addressSummary, fallback: 'Local Verificado'),
       completedAt: now,
       validatedClientPin: validatedClientPin,
       serviceValue: job.agreedPrice ?? 250.0,
