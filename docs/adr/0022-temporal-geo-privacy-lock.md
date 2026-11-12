@@ -205,7 +205,7 @@ Desde a promulgação do Decreto Federal nº 9.772/2019, o Brasil não adota hor
 
 1. **Testes Unitários do Motor de Domínio Dart:** [`app/test/geo_privacy_policy_engine_test.dart`](../../app/test/geo_privacy_policy_engine_test.dart) validando todas as fases (`ownerFull`, `openQuoting`, `confirmedFuture`, `serviceDay`, `closed`), fronteiras exatas `23:59:59` vs. `00:00:00` no fuso `America/Sao_Paulo` (`UTC−3`), conversão de timestamps UTC que cruzam a meia-noite em SP (ex.: `02:30Z`), descarte defensivo em `ProviderLocationView.fromRpc` e formatação `DD/MM/AAAA` em `lockMessage`.
 2. **Testes Adversariais de Widgets e Multi-Viewport:** [`app/test/temporal_geo_privacy_lock_widgets_test.dart`](../../app/test/temporal_geo_privacy_lock_widgets_test.dart) e [`app/test/geo_privacy_and_portfolio_test.dart`](../../app/test/geo_privacy_and_portfolio_test.dart) provando em múltiplos tamanhos de viewport (`320×640`, `360×780`, `412×915`) que: (a) o cliente vê sempre endereço completo e mapa exato; (b) o profissional em `openQuoting` e `confirmedFuture` vê apenas Bairro, Cidade/UF e `CircleLayer` ($500\text{–}800\text{ m}$) sem `DestinationMapPin` e sem vazamento textual de rua/número/apto; (c) no `serviceDay` vê endereço completo e rota; e (d) em `closed` (`completed`/`canceled`) o endereço volta a ficar oculto.
-3. **Verificação SQL e Validador de Links:** Suíte SQL de privacidade geoespacial e execução de `node scripts/check-md-links.mjs` com `0` links quebrados.
+3. **Verificação SQL e Validador de Links:** Suíte SQL [`supabase/tests/geo_privacy_lock.sql`](../../supabase/tests/geo_privacy_lock.sql) (45 asserções formais cobrindo owner, admin, provider open, confirmado futuro, fronteira `02:59:59Z` vs `03:00:00Z` SP, `service_day`, `closed`, IDOR, cofres `private.*` e bucket privado `forensic-evidence`), verificador matemático e léxico [`scripts/test-geo-privacy-sql.mjs`](../../scripts/test-geo-privacy-sql.mjs) (`11/11 PASS`, Monte Carlo 10.000 amostras com `dist=[150.97m .. 348.98m]` e `radius=[500m .. 800m]`) e execução de `node scripts/check-md-links.mjs` com `0` links quebrados.
 
 ---
 
@@ -216,7 +216,10 @@ Desde a promulgação do Decreto Federal nº 9.772/2019, o Brasil não adota hor
 * [ADR-0019: Serviço agendado vs. em execução, dupla trava (relógio + Haversine) e dossiês](0019-agendamento-geofence-chat-dossies.md)
 * [ADR-0021: Arquitetura KYC Zero-Trust Híbrida (Argon High + Carbon High), VIO/ICP-Brasil e SHAP LGPD](0021-arquitetura-kyc-zero-trust-argon-carbon.md)
 * [Catálogo de Decisões Arquiteturais (`docs/adr/README.md`)](README.md)
+* [Migração da Trava Geográfica (`supabase/migrations/20261113100000_temporal_geo_privacy_lock.sql`)](../../supabase/migrations/20261113100000_temporal_geo_privacy_lock.sql)
+* [Migração de Hardening Zero-Trust (`supabase/migrations/20261113110000_security_hardening_audit.sql`)](../../supabase/migrations/20261113110000_security_hardening_audit.sql)
 * [Motor de Domínio da Trava Geográfica (`app/lib/core/security/geo_privacy_policy_engine.dart`)](../../app/lib/core/security/geo_privacy_policy_engine.dart)
+* [Componentes Visuais da Trava Geográfica (`app/lib/features/shared/presentation/geo_privacy_widgets.dart`)](../../app/lib/features/shared/presentation/geo_privacy_widgets.dart)
 * [Serviço de Roteamento e Compatibilidade (`app/lib/core/services/accurate_geo_routing_service.dart`)](../../app/lib/core/services/accurate_geo_routing_service.dart)
 * [Serviço de Ordens e Ponte RPC (`app/lib/core/services/job_service.dart`)](../../app/lib/core/services/job_service.dart)
 * [Serviço de Mídia e Sanitização EXIF (`app/lib/core/services/media_service.dart`)](../../app/lib/core/services/media_service.dart)
