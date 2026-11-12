@@ -494,7 +494,6 @@ class RealTimeRouteAndTrafficService {
   /// Gera um arco geodésico quadrático suave contínuo (`C∞`) de [segments] amostras (`t` de `0.0`
   /// a `1.0`) com flecha lateral suave de `0.07 * norm` perpendicular à corda — ZERO quinas,
   /// ZERO dobras de 90° e ZERO formato em "L".
-  @visibleForTesting
   static List<LatLng> buildGeodesicArcPolyline(
     LatLng origin,
     LatLng destination, {

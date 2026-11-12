@@ -683,7 +683,8 @@ void main() {
       expect(find.text('Bruno Instalações'), findsOneWidget);
       expect(find.text('Horário'), findsOneWidget);
       expect(find.text('Localização'), findsOneWidget);
-      expect(find.text('Endereço registrado para o atendimento'), findsOneWidget);
+      expect(find.text('Rua Padre José, 100'), findsOneWidget);
+      expect(find.text('Centro, Rio de Janeiro - RJ'), findsOneWidget);
       expect(find.text('Toque para ver no mapa'), findsNothing);
       expect(find.text('O que você pediu'), findsOneWidget);
       expect(find.text('Fotos do seu pedido'), findsOneWidget);
@@ -718,7 +719,8 @@ void main() {
       expect(find.text('Ver perfil do profissional'), findsOneWidget);
       expect(find.text('Início do serviço: '), findsOneWidget);
       expect(find.text('Término do serviço: '), findsOneWidget);
-      expect(find.text('Rua Padre José, 100 - Centro, Rio de Janeiro - RJ'), findsOneWidget);
+      expect(find.text('Rua Padre José, 100'), findsOneWidget);
+      expect(find.text('Centro, Rio de Janeiro - RJ'), findsOneWidget);
       expect(find.text('R\$ 180,50'), findsOneWidget);
       // Regra estrita: sem avaliação feita, só o botão para avaliar.
       expect(find.text('Sua avaliação'), findsNothing);

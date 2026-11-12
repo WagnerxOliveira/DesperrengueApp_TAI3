@@ -165,8 +165,9 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG'), findsOneWidget);
-      expect(find.text('Endereço registrado para o atendimento'), findsOneWidget);
+      expect(find.text('Rua Padre José Geraldi, 203'), findsOneWidget);
+      expect(find.textContaining('Maria Imaculada, Poços de Caldas - MG'), findsOneWidget);
+      expect(find.textContaining('Rua Padre José Geraldi'), findsOneWidget);
       expect(find.text('Toque para ver no mapa'), findsNothing);
     });
   });

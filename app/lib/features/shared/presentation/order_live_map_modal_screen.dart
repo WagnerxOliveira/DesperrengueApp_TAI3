@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -701,23 +700,20 @@ class _InteractiveLocationPreviewCardState
                 size: 36,
               ),
               const SizedBox(width: 12),
-                  Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    RichText(
+                    Text(
+                      primaryStreetLine,
                       key: const ValueKey('preview-street-number'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      textScaler: MediaQuery.textScalerOf(context),
-                      text: TextSpan(
-                        text: primaryStreetLine,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14.5,
-                          color: context.tk.text,
-                          height: 1.25,
-                        ),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14.5,
+                        color: context.tk.text,
+                        height: 1.25,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -730,15 +726,6 @@ class _InteractiveLocationPreviewCardState
                         fontSize: 12.5,
                         color: context.tk.textMuted,
                         fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox.shrink(
-                      child: Column(
-                        children: [
-                          Text(cleanAddress),
-                          if (secondaryLocationLine != widget.subtitle)
-                            Text(widget.subtitle),
-                        ],
                       ),
                     ),
                   ],
@@ -957,29 +944,8 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
     final origin = widget.providerOrigin ??
         RealTimeRouteAndTrafficService.defaultUrbanOriginForDestination(dest);
     _origin = origin;
-    final dLat = dest.latitude - origin.latitude;
-    final dLng = dest.longitude - origin.longitude;
-    final norm = math.sqrt(dLat * dLat + dLng * dLng);
-    final perpLat = norm > 1e-6 ? (-dLng / norm) * (norm * 0.07) : 0.0;
-    final perpLng = norm > 1e-6 ? (dLat / norm) * (norm * 0.07) : 0.0;
-    final ctrlLat = (origin.latitude + dest.latitude) * 0.5 + perpLat;
-    final ctrlLng = (origin.longitude + dest.longitude) * 0.5 + perpLng;
-    const segments = 28;
-    final arcPoints = <LatLng>[
-      for (var i = 0; i <= segments; i++)
-        () {
-          final t = i / segments;
-          final u = 1.0 - t;
-          return LatLng(
-            u * u * origin.latitude +
-                2 * u * t * ctrlLat +
-                t * t * dest.latitude,
-            u * u * origin.longitude +
-                2 * u * t * ctrlLng +
-                t * t * dest.longitude,
-          );
-        }(),
-    ];
+    final arcPoints =
+        RealTimeRouteAndTrafficService.buildGeodesicArcPolyline(origin, dest);
     final now = DateTime.now();
     const distanceKm = 2.4;
     const baseMins = 6;

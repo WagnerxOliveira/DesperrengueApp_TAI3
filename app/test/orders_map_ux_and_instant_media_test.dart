@@ -513,6 +513,28 @@ void main() {
             tester.getCenter(find.byKey(const ValueKey('adjust-pin'))).dy;
         expect((dy1 - dy2).abs(), lessThan(1.0));
         expect((dy1 - dy3).abs(), lessThan(1.0));
+
+        // Modo imersivo Auto-Dim on Pan: arrastar o mapa reduz opacidade dos overlays para 0.20 e restaura para 1.0 após soltar:
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.byKey(const ValueKey('live-map'))),
+        );
+        await gesture.moveBy(const Offset(0, -64));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        final dimmedOpacities = tester
+            .widgetList<AnimatedOpacity>(find.byType(AnimatedOpacity))
+            .map((w) => w.opacity)
+            .toList();
+        expect(dimmedOpacities, contains(0.20));
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 260));
+
+        final restoredOpacities = tester
+            .widgetList<AnimatedOpacity>(find.byType(AnimatedOpacity))
+            .map((w) => w.opacity)
+            .toList();
+        expect(restoredOpacities, isNot(contains(0.20)));
         expect(tester.takeException(), isNull);
       },
     );
