@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -32,9 +33,43 @@ class ProviderPublicProfileScreen extends StatefulWidget {
 
 class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScreen> {
   final _service = ProviderService();
-  late final Future<List<PortfolioItem>> _portfolio = _service.portfolio(widget.provider.id);
-  late final Future<List<PublicReview>> _reviews = _service.reviews(widget.provider.id, limit: 60);
+  late final Future<List<PortfolioItem>> _portfolio;
+  late final Future<List<PublicReview>> _reviews;
   int _tab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    EagerImagePrefetcher.prefetchUrls([widget.provider.avatarUrl]);
+    _portfolio = _service.portfolio(widget.provider.id)
+      ..then(
+        (items) {
+          EagerImagePrefetcher.prefetchPublicPaths(
+            items.map((e) => e.imagePath),
+            context: mounted ? context : null,
+          );
+        },
+        onError: (_) {},
+      );
+    _reviews = _service.reviews(widget.provider.id, limit: 60)
+      ..then(
+        (items) {
+          EagerImagePrefetcher.prefetchPublicPaths(
+            items.expand((r) => r.photoPaths),
+            context: mounted ? context : null,
+          );
+        },
+        onError: (_) {},
+      );
+  }
+
+  @override
+  void didUpdateWidget(covariant ProviderPublicProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.provider.avatarUrl != widget.provider.avatarUrl) {
+      EagerImagePrefetcher.prefetchUrls([widget.provider.avatarUrl]);
+    }
+  }
 
   /// O usuário está vendo o PRÓPRIO perfil profissional (visão do cliente).
   bool get _isSelf => widget.provider.id == widget.profile.id;

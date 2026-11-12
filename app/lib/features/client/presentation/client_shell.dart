@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_version_and_update_service.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -33,6 +34,20 @@ class ClientShell extends StatefulWidget {
 
 class _ClientShellState extends State<ClientShell> {
   int _index = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    EagerImagePrefetcher.prefetchUrls([widget.profile.avatarUrl]);
+  }
+
+  @override
+  void didUpdateWidget(covariant ClientShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.avatarUrl != widget.profile.avatarUrl) {
+      EagerImagePrefetcher.prefetchUrls([widget.profile.avatarUrl]);
+    }
+  }
 
   void _selectTab(int i) {
     if (i == 1) {
@@ -209,6 +224,9 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         StreamBuilder<List<Job>>(
           stream: _myJobsStream,
           builder: (context, snap) {
+            if (snap.hasData) {
+              EagerImagePrefetcher.prefetchJobs(snap.data!, context: context);
+            }
             final active = (snap.data ?? const []).where((j) => j.status.isActive).toList();
             if (active.isEmpty) return const SizedBox.shrink();
             return Column(

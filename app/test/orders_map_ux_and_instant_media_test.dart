@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:desperrengue_app/core/models/client_dossier_models.dart';
@@ -65,6 +67,7 @@ Map<String, dynamic> _dossierMap({
   String geoPrecision = 'house',
   String geoSource = 'client_geocode',
   double amount = 180.0,
+  String? providerAvatarUrl,
 }) =>
     <String, dynamic>{
       'job_id': id,
@@ -96,6 +99,7 @@ Map<String, dynamic> _dossierMap({
               'title': 'Especialista Verificado',
               'rating_avg': 5.0,
               'rating_count': 18,
+              'avatar_url': ?providerAvatarUrl,
             }
           : null,
       'evidence': <dynamic>[],
@@ -494,6 +498,165 @@ void main() {
           isNotNull,
         );
         expect(find.byType(Image), findsWidgets);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    test(
+      'Hidratação paralela de Boot (L2 avatares + badges lidos) restaura RAM antes do frame 1',
+      () async {
+        const persistedAvatarUrl = 'https://cdn.desperrengue.test/avatars/persisted-l2.png';
+        final doneJob = _makeJob(
+          id: '278fd-persisted',
+          status: JobStatus.completed,
+          title: 'Reparo hidráulico',
+          providerId: 'prov-wagner',
+          agreedPrice: 220.0,
+        );
+
+        final mockClient = MockClient(
+          (_) async => http.Response.bytes(kValid1x1Png, 200),
+        );
+
+        // Sessão 1: salva avatar compacto em L2 e marca pedido como visualizado
+        final fetched = await InstantImageCacheEngine.instance.getOrFetchUrlBytes(
+          persistedAvatarUrl,
+          client: mockClient,
+        );
+        expect(fetched, isNotNull);
+        await UnreadOrdersBadgeController.instance.markViewed(doneJob);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        // Simula reinício frio do app (limpa apenas a memória volátil L1 e estado em RAM)
+        InstantImageCacheEngine.instance.clearForTesting();
+        UnreadOrdersBadgeController.instance.resetForTesting();
+        expect(InstantImageCacheEngine.instance.peekMemoryBytes(persistedAvatarUrl), isNull);
+
+        // Equivalente exato ao BootGate._warmUp() durante a splash animada
+        InstantImageCacheEngine.instance.configureGlobalImageCache();
+        await Future.wait<void>([
+          InstantImageCacheEngine.instance.ensurePersistentCacheLoaded(),
+          UnreadOrdersBadgeController.instance.ensureLoaded(),
+        ]);
+
+        // Antes do 1º frame do app: L1 já hidratada (0 ms) e badge já lembra leitura
+        expect(InstantImageCacheEngine.instance.peekMemoryBytes(persistedAvatarUrl), isNotNull);
+        expect(UnreadOrdersBadgeController.instance.isUnread(doneJob), isFalse);
+      },
+    );
+
+    test(
+      'EagerImagePrefetcher.prefetchJobs pré-aquece avatares por providerId e deduplica _warmedProviderIds na sessão',
+      () async {
+        const providerAvatarUrl = 'https://cdn.desperrengue.test/avatars/prov-wagner-278fd.png';
+        final job1 = _makeJob(
+          id: '278fd-done-1',
+          status: JobStatus.completed,
+          title: 'Serviço concluído 1',
+          providerId: 'prov-wagner',
+        );
+        final job2SameProvider = _makeJob(
+          id: '991aa-done-2',
+          status: JobStatus.completed,
+          title: 'Serviço concluído 2',
+          providerId: 'prov-wagner',
+        );
+
+        var resolverCalls = 0;
+        var avatarHttpCalls = 0;
+        final mockClient = MockClient((req) async {
+          if (req.url.toString() == providerAvatarUrl) {
+            avatarHttpCalls++;
+            return http.Response.bytes(kValid1x1Png, 200);
+          }
+          return http.Response('', 404);
+        });
+
+        Future<Map<String, ProviderCard>> fakeResolver(Iterable<String> ids) async {
+          resolverCalls++;
+          return <String, ProviderCard>{
+            for (final id in ids)
+              id: const ProviderCard(
+                id: 'prov-wagner',
+                fullName: 'Wagner Oliveira',
+                avatarUrl: providerAvatarUrl,
+              ),
+          };
+        }
+
+        // 1ª chamada (ex.: Home ou Meus Pedidos em 00:14): aquece e deduplica os 2 jobs do mesmo prestador
+        EagerImagePrefetcher.prefetchJobs(
+          [job1, job2SameProvider],
+          providerResolver: fakeResolver,
+          client: mockClient,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+
+        expect(resolverCalls, 1);
+        expect(avatarHttpCalls, 1);
+        expect(EagerImagePrefetcher.debugWarmedProviderIds, contains('prov-wagner'));
+        expect(InstantImageCacheEngine.instance.peekMemoryBytes(providerAvatarUrl), isNotNull);
+
+        // 2ª chamada na mesma sessão (ex.: rebuild do stream): zero reconsulta!
+        EagerImagePrefetcher.prefetchJobs(
+          [job1],
+          providerResolver: fakeResolver,
+          client: mockClient,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        expect(resolverCalls, 1);
+        expect(avatarHttpCalls, 1);
+
+        // clearForTesting reseta _warmedProviderIds para isolamento entre suítes
+        InstantImageCacheEngine.instance.clearForTesting();
+        expect(EagerImagePrefetcher.debugWarmedProviderIds, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'Cold-miss guard em DetalheServicoClienteScreen._load aguarda avatar antes de exibir _content (zero círculo escuro no frame 1)',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(390, 844));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        const coldAvatarUrl = 'https://cdn.desperrengue.test/avatars/cold-miss-278fd.png';
+        expect(InstantImageCacheEngine.instance.peekMemoryBytes(coldAvatarUrl), isNull);
+
+        final mockClient = MockClient((req) async {
+          if (req.url.toString() == coldAvatarUrl) {
+            return http.Response.bytes(kValid1x1Png, 200);
+          }
+          return http.Response('', 404);
+        });
+
+        final dossier = ClientDossier.fromMap(
+          _dossierMap(
+            id: '278fd-cold-miss',
+            status: 'completed',
+            title: 'Instalação hidráulica residencial',
+            providerAvatarUrl: coldAvatarUrl,
+          ),
+        );
+
+        await tester.pumpWidget(
+          _host(
+            DetalheServicoClienteScreen(
+              jobId: dossier.jobId,
+              dossierLoader: (_) async => dossier,
+              imageBuilder: (_, _, _) => const SizedBox(width: 80, height: 80),
+              avatarHttpClient: mockClient,
+            ),
+          ),
+        );
+
+        // Avança microtasks de _load() até o 1º frame em que _content monta na árvore
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 20));
+
+        // No exato frame em que o detalhe #DESP-278FD aparece, os bytes do avatar já estão em L1 RAM!
+        expect(find.byKey(const ValueKey('provider-profile')), findsOneWidget);
+        expect(find.text('Wagner Oliveira'), findsOneWidget);
+        expect(InstantImageCacheEngine.instance.peekMemoryBytes(coldAvatarUrl), isNotNull);
         expect(tester.takeException(), isNull);
       },
     );

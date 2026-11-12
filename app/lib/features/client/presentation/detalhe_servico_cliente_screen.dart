@@ -2,6 +2,7 @@ import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 
 import '../../../core/models/client_dossier_models.dart';
@@ -70,6 +71,7 @@ class DetalheServicoClienteScreen extends StatefulWidget {
     @visibleForTesting this.quotesLoader,
     @visibleForTesting this.onOpenProvider,
     @visibleForTesting this.onSavePin,
+    @visibleForTesting this.avatarHttpClient,
   });
 
   final String jobId;
@@ -81,6 +83,9 @@ class DetalheServicoClienteScreen extends StatefulWidget {
 
   /// Grava o pino confirmado pelo cliente (padrão: RPC set_job_location como client_pin).
   final Future<void> Function(String jobId, double lat, double lng)? onSavePin;
+
+  /// Cliente HTTP opcional para testes determinísticos de hidratação a frio do avatar.
+  final http.Client? avatarHttpClient;
 
   @override
   State<DetalheServicoClienteScreen> createState() => _DetalheServicoClienteScreenState();
@@ -104,12 +109,24 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
           price: d.amount > 0 ? d.amount : null,
         ),
       );
-      EagerImagePrefetcher.prefetchUrls([d.provider?.avatarUrl]);
       if (widget.imageBuilder == null) {
         EagerImagePrefetcher.prefetchStoragePaths([
           ...d.photoPaths,
           ...d.requiredPhotos.map((e) => e.path),
         ]);
+      }
+      final avatarUrl = d.provider?.avatarUrl?.trim() ?? '';
+      if (avatarUrl.isNotEmpty) {
+        if (InstantImageCacheEngine.instance.peekMemoryBytes(avatarUrl) == null &&
+            (widget.avatarHttpClient != null ||
+                !WidgetsBinding.instance.runtimeType.toString().contains('Test'))) {
+          try {
+            await InstantImageCacheEngine.instance
+                .getOrFetchUrlBytes(avatarUrl, client: widget.avatarHttpClient)
+                .timeout(const Duration(milliseconds: 350), onTimeout: () => null);
+          } catch (_) {}
+        }
+        EagerImagePrefetcher.prefetchUrls([avatarUrl], client: widget.avatarHttpClient);
       }
       if (widget.dossierLoader == null) {
         unawaited(_maybeRefine(d));

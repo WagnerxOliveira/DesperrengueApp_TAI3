@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/marketplace_models.dart';
 import 'media_service.dart';
+import 'provider_service.dart';
 
 class _SignedUrlMemo {
   const _SignedUrlMemo({
@@ -412,6 +413,7 @@ class InstantImageCacheEngine {
     _l2Base64.clear();
     _l2Hydrated = false;
     _l2HydratingFuture = null;
+    EagerImagePrefetcher._warmedProviderIds.clear();
     if (clearGlobalImageCache) {
       try {
         PaintingBinding.instance.imageCache.clear();
@@ -426,6 +428,12 @@ class InstantImageCacheEngine {
 class EagerImagePrefetcher {
   const EagerImagePrefetcher._();
 
+  static final Set<String> _warmedProviderIds = <String>{};
+
+  @visibleForTesting
+  static Set<String> get debugWarmedProviderIds =>
+      Set<String>.unmodifiable(_warmedProviderIds);
+
   /// Pré-carrega URLs públicas (avatares, portfólios) em background sem bloquear a UI.
   static void prefetchUrls(
     Iterable<String?> urls, {
@@ -438,6 +446,36 @@ class EagerImagePrefetcher {
       final url = raw?.trim() ?? '';
       if (url.isEmpty || !seen.add(url)) continue;
       unawaited(_warmUrl(engine, url, context: context, client: client));
+    }
+  }
+
+  /// Pré-carrega caminhos do bucket público (`public-media`, como portfólio e fotos de avaliações)
+  /// convertendo-os em URL pública sem bloquear a UI.
+  static void prefetchPublicPaths(
+    Iterable<String?> paths, {
+    BuildContext? context,
+    String Function(String)? publicUrlResolver,
+    http.Client? client,
+  }) {
+    final resolvedUrls = <String>[];
+    for (final raw in paths) {
+      final clean = raw?.trim() ?? '';
+      if (clean.isEmpty) continue;
+      final lower = clean.toLowerCase();
+      if (lower.endsWith('.mp4') || lower.endsWith('.mov')) continue;
+      if (clean.startsWith('http://') || clean.startsWith('https://')) {
+        resolvedUrls.add(clean);
+      } else {
+        try {
+          final url = publicUrlResolver != null
+              ? publicUrlResolver(clean)
+              : MediaService().publicUrl(clean);
+          if (url.trim().isNotEmpty) resolvedUrls.add(url.trim());
+        } catch (_) {}
+      }
+    }
+    if (resolvedUrls.isNotEmpty) {
+      prefetchUrls(resolvedUrls, context: context, client: client);
     }
   }
 
@@ -465,18 +503,26 @@ class EagerImagePrefetcher {
     }
   }
 
-  /// Pré-carrega fotos de uma coleção de [Job]s (`job.photoPaths`) silenciosamente,
-  /// ignorando falhas quando offline ou em testes sem Supabase inicializado.
+  /// Pré-carrega fotos (`job.photoPaths`) e avatares dos profissionais (`job.providerId`)
+  /// de uma coleção de [Job]s silenciosamente em background, deduplicando `providerId`s
+  /// na sessão para nunca reconsultar e ignorando falhas quando offline ou em testes.
   static void prefetchJobs(
     Iterable<Job> jobs, {
     BuildContext? context,
     Future<String?> Function(String)? urlResolver,
+    Future<Map<String, ProviderCard>> Function(Iterable<String>)?
+        providerResolver,
     http.Client? client,
   }) {
     final urls = <String>[];
     final storagePaths = <String>[];
+    final newProviderIds = <String>[];
 
     for (final job in jobs) {
+      final pid = job.providerId?.trim() ?? '';
+      if (pid.isNotEmpty && _warmedProviderIds.add(pid)) {
+        newProviderIds.add(pid);
+      }
       for (final p in job.photoPaths) {
         final clean = p.trim();
         if (clean.isEmpty) continue;
@@ -501,6 +547,41 @@ class EagerImagePrefetcher {
         urlResolver: urlResolver,
         client: client,
       );
+    }
+    if (newProviderIds.isNotEmpty) {
+      if (providerResolver != null ||
+          !InstantImageCacheEngine._isFlutterTestBinding()) {
+        unawaited(
+          _warmProviders(
+            newProviderIds,
+            context: context,
+            providerResolver: providerResolver,
+            client: client,
+          ),
+        );
+      }
+    }
+  }
+
+  static Future<void> _warmProviders(
+    List<String> providerIds, {
+    BuildContext? context,
+    Future<Map<String, ProviderCard>> Function(Iterable<String>)?
+        providerResolver,
+    http.Client? client,
+  }) async {
+    try {
+      final cards = await (providerResolver != null
+          ? providerResolver(providerIds)
+          : ProviderService().byIds(providerIds));
+      final urls = cards.values.map((c) => c.avatarUrl);
+      if (context != null && context.mounted) {
+        prefetchUrls(urls, context: context, client: client);
+      } else {
+        prefetchUrls(urls, client: client);
+      }
+    } catch (_) {
+      _warmedProviderIds.removeAll(providerIds);
     }
   }
 

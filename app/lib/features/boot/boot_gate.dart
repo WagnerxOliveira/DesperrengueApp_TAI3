@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import '../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/boot/app_initialization_service.dart';
+import '../../core/services/instant_image_cache_engine.dart';
 import '../../core/state/theme_controller.dart';
+import '../../core/state/unread_orders_badge_controller.dart';
 import '../auth/presentation/auth_gate.dart';
 import 'animated_splash_screen.dart';
 
@@ -23,10 +27,24 @@ class _BootGateState extends ConsumerState<BootGate> {
   int _attempt = 0;
   bool _failed = false;
 
-  /// Warm-up do engine durante a splash: decodifica o símbolo no cache de imagens
-  /// (a fonte de ícones é aquecida pela própria splash, ver `AnimatedSplashScreen`).
+  /// Warm-up do engine durante a splash: decodifica o símbolo no cache de imagens,
+  /// configura o ImageCache global e hidrata em paralelo avatares L2 e badges lidos
+  /// em RAM antes do 1º frame do app.
   Future<void> _warmUp() async {
-    await precacheImage(const AssetImage('assets/splash/logo.png'), context);
+    InstantImageCacheEngine.instance.configureGlobalImageCache();
+    await Future.wait<void>([
+      precacheImage(const AssetImage('assets/splash/logo.png'), context),
+      () async {
+        try {
+          await InstantImageCacheEngine.instance.ensurePersistentCacheLoaded();
+        } catch (_) {}
+      }(),
+      () async {
+        try {
+          await UnreadOrdersBadgeController.instance.ensureLoaded();
+        } catch (_) {}
+      }(),
+    ]);
   }
 
   void _start() {
