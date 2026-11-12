@@ -7,6 +7,7 @@ import '../models/user_profile.dart';
 import '../services/document_ocr_and_liveness_service.dart';
 import '../storage/local_prefs.dart';
 import 'app_session.dart';
+import 'media_service.dart';
 
 /// Acesso ao perfil e às RPCs de KYC. É a única camada que conhece nomes de
 /// tabelas, colunas e funções do banco — as telas só falam com este serviço.
@@ -236,21 +237,13 @@ class ProfileService {
     List<int> bytes,
     String ext,
   ) async {
+    // LGPD: documentos/selfie do KYC também saem do aparelho sem EXIF/GPS.
+    final clean = await MediaService.sanitizeForUpload(Uint8List.fromList(bytes), ext);
     await storage.uploadBinary(
       path,
-      Uint8List.fromList(bytes),
-      fileOptions: FileOptions(contentType: _mime(ext), upsert: false),
+      clean.bytes,
+      fileOptions: FileOptions(contentType: clean.mime, upsert: false),
     );
   }
 
-  static String _mime(String ext) {
-    switch (ext.toLowerCase()) {
-      case 'png':
-        return 'image/png';
-      case 'webp':
-        return 'image/webp';
-      default:
-        return 'image/jpeg';
-    }
-  }
 }
