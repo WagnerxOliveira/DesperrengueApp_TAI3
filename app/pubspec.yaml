@@ -1,7 +1,7 @@
 name: desperrengue_app
 description: "Desperrengue: marketplace de serviços residenciais."
 publish_to: "none"
-version: 2.8.6+202611111
+version: 2.9.0+202611121
 
 environment:
   sdk: ^3.13.4
