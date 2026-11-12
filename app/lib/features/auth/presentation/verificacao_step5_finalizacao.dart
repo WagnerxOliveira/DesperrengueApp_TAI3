@@ -1,20 +1,21 @@
-import 'dart:io';
-import 'dart:isolate';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/security/perceptual_hash_guard.dart';
 import '../../../core/services/draft_store.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
+import '../../../core/utils/image_metadata_stripper.dart';
+import '../../../core/utils/off_thread.dart';
 import '../../../core/ui/light_island.dart';
 import 'auth_gate.dart';
 
 class VerificacaoStep5FinalizacaoScreen extends StatefulWidget {
-  final File frenteDocumento;
-  final File versoDocumento;
-  final File selfie;
+  final XFile frenteDocumento;
+  final XFile versoDocumento;
+  final XFile selfie;
   final String tipoRegistro;
   final String numeroRegistro;
 
@@ -38,9 +39,10 @@ class _VerificacaoStep5FinalizacaoScreenState
   bool _isUploading = false;
 
   /// Extensão segura (jpg/png/webp) a partir do caminho do arquivo capturado.
-  static String _ext(File file) {
-    final dot = file.path.lastIndexOf('.');
-    final raw = dot == -1 ? 'jpg' : file.path.substring(dot + 1).toLowerCase();
+  static String _ext(XFile file) {
+    final name = file.name.isNotEmpty ? file.name : file.path;
+    final dot = name.lastIndexOf('.');
+    final raw = dot == -1 ? 'jpg' : name.substring(dot + 1).toLowerCase();
     if (raw == 'jpeg') return 'jpg';
     return const {'jpg', 'png', 'webp'}.contains(raw) ? raw : 'jpg';
   }
@@ -53,6 +55,7 @@ class _VerificacaoStep5FinalizacaoScreenState
   }
 
   Future<void> _enviarParaAnalise() async {
+    if (_isUploading) return; // duplo toque não dispara dois envios
     setState(() => _isUploading = true);
 
     try {
@@ -62,7 +65,7 @@ class _VerificacaoStep5FinalizacaoScreenState
 
       // Guarda Forense pHash (Frente != Verso) em Worker Isolate
       try {
-        final isDuplicate = await Isolate.run(() {
+        final isDuplicate = await runOffMainThread(() {
           final hFront = PerceptualHashGuard.compute64BitPerceptualHash(frontBytes);
           final hBack = PerceptualHashGuard.compute64BitPerceptualHash(backBytes);
           return PerceptualHashGuard.isDuplicateDocumentFrontAndBack(frontBytes, backBytes) &&
@@ -109,6 +112,8 @@ class _VerificacaoStep5FinalizacaoScreenState
             ? 'Seus documentos já foram enviados e estão em análise.'
             : 'Não foi possível registrar o envio. Tente novamente.',
       );
+    } on ImageMetadataException catch (e) {
+      _mostrarErro(e.message);
     } on StorageException {
       _mostrarErro('Falha no upload dos documentos. Verifique a conexão.');
     } catch (_) {

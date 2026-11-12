@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -7,6 +9,14 @@ import '../../../core/utils/tag_normalizer.dart';
 
 /// Quantas categorias aparecem direto no painel; o resto fica em "Ver todas" (com busca).
 const int kHomeCategoryCount = 11;
+
+double _categoryGridAspectRatio(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  final scale = MediaQuery.textScalerOf(context).scale(12.5) / 12.5;
+  final base = width < 360 ? 0.82 : 0.90;
+  final extraScale = (scale - 1.0).clamp(0.0, 0.6);
+  return (base - extraScale * 0.22).clamp(0.64, 0.92);
+}
 
 /// Categorias cujo nome OU sinônimo contém [query] ("eletricista" → Elétrica).
 /// Passagem única sobre as categorias + `Set` com os slugs encontrados nos sinônimos.
@@ -63,7 +73,7 @@ class CategoryGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 16,
       crossAxisSpacing: 8,
-      childAspectRatio: 0.92,
+      childAspectRatio: _categoryGridAspectRatio(context),
       children: [
         for (final c in shown) CategoryTile(category: c, onTap: () => onPick(c.name)),
         if (hasMore) _MoreTile(total: kCategories.length, onTap: () => showAllCategoriesSheet(context, onPick: onPick)),
@@ -78,55 +88,105 @@ class CategoryTile extends StatelessWidget {
   final ServiceCategory category;
   final VoidCallback onTap;
 
+  static double _measureWordWidth(
+    String word,
+    TextStyle style,
+    TextScaler textScaler,
+    TextDirection textDirection,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: word, style: style),
+      maxLines: 1,
+      textScaler: textScaler,
+      textDirection: textDirection,
+    )..layout();
+    return painter.width;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isSingleWord = !category.name.trim().contains(' ');
-    return InkWell(
-      key: ValueKey('category:${category.name}'),
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CategoryBrandEmblem(
-              categoryName: category.name,
-              size: 64,
-            ),
-            const SizedBox(height: 8),
-            if (isSingleWord)
-              SizedBox(
-                width: double.infinity,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    category.name,
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                      letterSpacing: -0.2,
-                      height: 1.15,
-                    ),
-                  ),
-                ),
-              )
-            else
-              Text(
-                category.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.2,
-                  letterSpacing: -0.2,
-                  height: 1.15,
-                ),
+    final trimmed = category.name.trim();
+    final words = trimmed.split(RegExp(r'\s+'));
+    final isSingleWord = words.length <= 1;
+    const singleStyle = TextStyle(
+      fontWeight: FontWeight.w700,
+      fontSize: 12.5,
+      letterSpacing: -0.2,
+      height: 1.15,
+    );
+    const multiStyle = TextStyle(
+      fontWeight: FontWeight.w700,
+      fontSize: 12.2,
+      letterSpacing: -0.2,
+      height: 1.15,
+    );
+
+    return Semantics(
+      button: true,
+      label: 'Categoria ${category.name}',
+      child: InkWell(
+        key: ValueKey('category:${category.name}'),
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CategoryBrandEmblem(
+                categoryName: category.name,
+                size: 64,
               ),
-          ],
+              const SizedBox(height: 6),
+              Flexible(
+                child: isSingleWord
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            category.name,
+                            maxLines: 1,
+                            softWrap: false,
+                            textAlign: TextAlign.center,
+                            style: singleStyle,
+                          ),
+                        ),
+                      )
+                    : LayoutBuilder(
+                        builder: (context, constraints) {
+                          final scaler = MediaQuery.textScalerOf(context);
+                          final dir = Directionality.of(context);
+                          double longestWord = 0;
+                          for (final w in words) {
+                            final ww = _measureWordWidth(w, multiStyle, scaler, dir);
+                            if (ww > longestWord) longestWord = ww;
+                          }
+                          final availW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
+                              ? constraints.maxWidth
+                              : 96.0;
+                          final boxWidth = math.max(availW, longestWord + 4.0);
+                          return SizedBox(
+                            width: double.infinity,
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: SizedBox(
+                                width: boxWidth,
+                                child: Text(
+                                  category.name,
+                                  maxLines: 2,
+                                  softWrap: true,
+                                  textAlign: TextAlign.center,
+                                  style: multiStyle,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -142,44 +202,61 @@ class _MoreTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return InkWell(
-      key: const ValueKey('categories-see-all'),
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF1A273D), Color(0xFF0E1525)],
-              ),
-              border: Border.all(
-                color: tk.clientAccent.withValues(alpha: 0.48),
-                width: 1.4,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF020617).withValues(alpha: 0.35),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
+    return Semantics(
+      button: true,
+      label: 'Ver todas as $total categorias',
+      child: InkWell(
+        key: const ValueKey('categories-see-all'),
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF1A273D), Color(0xFF0E1525)],
+                  ),
+                  border: Border.all(
+                    color: tk.clientAccent.withValues(alpha: 0.48),
+                    width: 1.4,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF020617).withValues(alpha: 0.35),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Icon(Icons.grid_view_rounded, size: 28, color: tk.clientAccent),
+                child: Icon(Icons.grid_view_rounded, size: 28, color: tk.clientAccent),
+              ),
+              const SizedBox(height: 6),
+              Flexible(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'Ver todas ($total)',
+                      maxLines: 1,
+                      softWrap: false,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tk.clientAccent),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Ver todas ($total)',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tk.clientAccent),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -232,6 +309,7 @@ class _AllCategoriesState extends State<_AllCategories> {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final list = searchCategories(_q.text, family: _selectedFamily);
+    final filterBarHeight = MediaQuery.textScalerOf(context).scale(40).clamp(40.0, 56.0);
     return Column(
       children: [
         Padding(
@@ -246,6 +324,7 @@ class _AllCategoriesState extends State<_AllCategories> {
               suffixIcon: _q.text.isEmpty
                   ? null
                   : IconButton(
+                      tooltip: 'Limpar busca',
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () => setState(_q.clear),
                     ),
@@ -254,7 +333,7 @@ class _AllCategoriesState extends State<_AllCategories> {
         ),
         // Faixa horizontal de Filtro Rápido por Família Cromática (Lei de Hick)
         SizedBox(
-          height: 40,
+          height: filterBarHeight,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
@@ -263,45 +342,51 @@ class _AllCategoriesState extends State<_AllCategories> {
             itemBuilder: (context, idx) {
               final fam = CategoryColorFamily.values[idx];
               final selected = _selectedFamily == fam;
-              return GestureDetector(
-                key: ValueKey('category-family:${fam.id}'),
-                onTap: () => setState(() => _selectedFamily = fam),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: selected
-                        ? fam.primary.withValues(alpha: 0.20)
-                        : tk.surface,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
+              return Semantics(
+                button: true,
+                selected: selected,
+                label: 'Filtro ${fam.label}',
+                child: GestureDetector(
+                  key: ValueKey('category-family:${fam.id}'),
+                  onTap: () => setState(() => _selectedFamily = fam),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
                       color: selected
-                          ? fam.primary
-                          : tk.border,
-                      width: selected ? 1.5 : 1.0,
+                          ? fam.primary.withValues(alpha: 0.20)
+                          : tk.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: selected
+                            ? fam.primary
+                            : tk.border,
+                        width: selected ? 1.5 : 1.0,
+                      ),
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: fam.primary,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: fam.primary,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        fam.label,
-                        style: TextStyle(
-                          fontSize: 12.2,
-                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                          color: selected ? tk.text : tk.textMuted,
+                        const SizedBox(width: 6),
+                        Text(
+                          fam.label,
+                          style: TextStyle(
+                            fontSize: 12.2,
+                            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                            color: selected ? tk.text : tk.textMuted,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -318,7 +403,7 @@ class _AllCategoriesState extends State<_AllCategories> {
                   padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + MediaQuery.paddingOf(context).bottom),
                   mainAxisSpacing: 16,
                   crossAxisSpacing: 8,
-                  childAspectRatio: 0.92,
+                  childAspectRatio: _categoryGridAspectRatio(context),
                   children: [for (final c in list) CategoryTile(category: c, onTap: () => widget.onPick(c.name))],
                 ),
         ),

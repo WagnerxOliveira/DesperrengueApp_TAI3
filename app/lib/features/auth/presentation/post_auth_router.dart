@@ -34,6 +34,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
   UserProfile? _profile;
   UserMode? _preferred;
   bool _loading = true;
+  int _loadSeq = 0;
 
   @override
   void initState() {
@@ -51,15 +52,19 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
   /// Recarrega o perfil sem apagar a tela atual (evita "piscar" a navegação).
   /// Offline-first: sem rede, abre com a última versão salva (se houver).
   Future<void> _load() async {
+    // Cada chamada ganha um número; só a MAIS RECENTE aplica o resultado. Sem isso,
+    // dois refresh seguidos (profileTick + deep link) podiam terminar fora de ordem
+    // e a resposta velha sobrescrever o perfil novo.
+    final ticket = ++_loadSeq;
     final uid = Supabase.instance.client.auth.currentUser?.id;
     final preferred = uid == null ? null : await LocalPrefs.lastProfile(uid);
     UserProfile? p;
     try {
       p = await ProfileService().fetchCurrent();
-    } catch (e) {
+    } catch (_) {
       p = await ProfileService().cachedProfile();
     }
-    if (!mounted) return;
+    if (!mounted || ticket != _loadSeq) return;
     setState(() {
       _profile = p;
       _preferred = preferred;
@@ -185,13 +190,19 @@ class _EnrollRunnerState extends State<_EnrollRunner> {
     _run();
   }
 
+  bool _running = false; // duplo-toque em Tentar novamente não dispara 2 cadastros
+
   Future<void> _run() async {
-    setState(() => _error = null);
+    if (_running) return;
+    _running = true;
+    if (mounted && _error != null) setState(() => _error = null);
     try {
       await ProfileService().enrollMode(widget.mode);
       AppSession.instance.refreshProfile();
     } catch (e) {
       if (mounted) setState(() => _error = friendlyError(e));
+    } finally {
+      _running = false;
     }
   }
 

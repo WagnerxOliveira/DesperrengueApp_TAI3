@@ -5,7 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/client_dossier_models.dart';
 import '../models/marketplace_models.dart';
+import '../security/geo_privacy_policy_engine.dart';
 import '../utils/order_utils.dart';
+import '../utils/resilient_stream.dart';
 import '../utils/tag_normalizer.dart';
 import 'media_service.dart';
 
@@ -60,7 +62,7 @@ class JobService {
 
     controller = StreamController<List<Job>>.broadcast(
       onListen: () {
-        realtimeSub = realtimeFactory().listen(
+        realtimeSub = resilientStream<List<Job>>(realtimeFactory).listen(
           (rows) {
             if (!controller.isClosed) controller.add(rows);
           },
@@ -165,6 +167,31 @@ class JobService {
     return null;
   }
 
+  /// Localização do serviço já filtrada pelo servidor para quem está olhando
+  /// (RPC `get_job_location_for_viewer`). Retorna null quando o acesso é negado
+  /// (`denied`/`viewer_role == none`), quando o payload é inválido ou em qualquer erro.
+  /// Nunca propaga mensagens de erro (podem conter PII/ids): falha vira null.
+  Future<ProviderLocationView?> fetchLocationForViewer(String jobId) async {
+    try {
+      final r = await _client.rpc('get_job_location_for_viewer', params: {'p_job': jobId});
+      return ProviderLocationView.tryFromRpc(r);
+    } on PostgrestException catch (_) {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Ponto/endereço EXATO para o cliente dono (após a trava, `jobs.latitude/longitude` são nulos).
+  /// Retorna null se a RPC negar, falhar, ou se o chamador não for dono/admin com exato liberado
+  /// (nunca devolve a visão fuzzy como se fosse exata).
+  Future<ProviderLocationView?> fetchOwnerExactLocation(String jobId) async {
+    final v = await fetchLocationForViewer(jobId);
+    if (v == null || !v.exactUnlocked || !v.canShowExactMap) return null;
+    if (v.phase != GeoPrivacyPhase.ownerFull) return null;
+    return v;
+  }
+
   /// Serviços concluídos, sob proteção pós-serviço, em mediação ou cancelados do cliente logado,
   /// mais recentes primeiro (conclusão/aprovação > criação). Alimenta o "Histórico de serviços".
   Future<List<Job>> fetchMyFinishedJobs() async {
@@ -180,11 +207,13 @@ class JobService {
     return jobs;
   }
 
-  Stream<Job?> streamJob(String id) => _client
-      .from('jobs')
-      .stream(primaryKey: ['id'])
-      .eq('id', id)
-      .map((rows) => rows.isEmpty ? null : Job.fromMap(rows.first));
+  Stream<Job?> streamJob(String id) => resilientStream<Job?>(
+        () => _client
+            .from('jobs')
+            .stream(primaryKey: ['id'])
+            .eq('id', id)
+            .map((rows) => rows.isEmpty ? null : Job.fromMap(rows.first)),
+      );
 
   Future<List<Job>> fetchMyJobs() async {
     final rows = await _client
@@ -244,23 +273,27 @@ class JobService {
     return rows.map(Quote.fromMap).toList();
   }
 
-  Stream<List<Quote>> streamQuotes(String jobId) => _client
-      .from('quotes')
-      .stream(primaryKey: ['id'])
-      .eq('job_id', jobId)
-      .map((rows) => rows.map(Quote.fromMap).where((q) => q.status != 'withdrawn').toList()
-        ..sort((a, b) => a.createdAt.compareTo(b.createdAt)));
+  Stream<List<Quote>> streamQuotes(String jobId) => resilientStream<List<Quote>>(
+        () => _client
+            .from('quotes')
+            .stream(primaryKey: ['id'])
+            .eq('job_id', jobId)
+            .map((rows) => rows.map(Quote.fromMap).where((q) => q.status != 'withdrawn').toList()
+              ..sort((a, b) => a.createdAt.compareTo(b.createdAt))),
+      );
 
   Future<List<JobInvite>> invitesForJob(String jobId) async {
     final rows = await _client.from('job_invites').select().eq('job_id', jobId).order('created_at');
     return rows.map(JobInvite.fromMap).toList();
   }
 
-  Stream<List<JobInvite>> streamInvites(String jobId) => _client
-      .from('job_invites')
-      .stream(primaryKey: ['job_id', 'provider_id'])
-      .eq('job_id', jobId)
-      .map((rows) => rows.map(JobInvite.fromMap).toList());
+  Stream<List<JobInvite>> streamInvites(String jobId) => resilientStream<List<JobInvite>>(
+        () => _client
+            .from('job_invites')
+            .stream(primaryKey: ['job_id', 'provider_id'])
+            .eq('job_id', jobId)
+            .map((rows) => rows.map(JobInvite.fromMap).toList()),
+      );
 
   Future<void> acceptQuote(String quoteId) async {
     await _client.rpc('accept_quote', params: {'p_quote_id': quoteId});

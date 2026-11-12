@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/marketplace_models.dart';
+import '../utils/address_privacy.dart';
 import '../models/provider_portfolio_models.dart';
 
 /// Fixtures exclusivas para testes automatizados (`@visibleForTesting`).
@@ -250,7 +251,34 @@ class ProviderPortfolioStore extends ChangeNotifier {
 
   /// Sincroniza o Histórico de Serviços Prestados e os Destaques do Portfólio
   /// diretamente com o Supabase para o profissional autenticado.
-  Future<void> syncFromSupabase([SupabaseClient? customClient]) async {
+  Future<void> syncFromSupabase([SupabaseClient? customClient]) {
+    // Chamadas concorrentes (aba abre + pull-to-refresh + push) viram UMA execução em
+    // voo; se chegar pedido novo durante a execução, roda mais uma vez ao final.
+    // Evita respostas fora de ordem sobrescrevendo dados mais novos e _isSyncing
+    // virando false com outra sincronização ainda ativa.
+    final running = _syncInFlight;
+    if (running != null) {
+      _syncAgain = true;
+      return running;
+    }
+    final f = _syncLoop(customClient).whenComplete(() {
+      _syncInFlight = null;
+    });
+    _syncInFlight = f;
+    return f;
+  }
+
+  Future<void>? _syncInFlight;
+  bool _syncAgain = false;
+
+  Future<void> _syncLoop(SupabaseClient? customClient) async {
+    do {
+      _syncAgain = false;
+      await _syncOnce(customClient);
+    } while (_syncAgain);
+  }
+
+  Future<void> _syncOnce([SupabaseClient? customClient]) async {
     SupabaseClient client;
     try {
       client = customClient ?? Supabase.instance.client;
@@ -370,7 +398,7 @@ class ProviderPortfolioStore extends ChangeNotifier {
               complementaryTechnicalNotes:
                   j['complementary_notes'] as String?,
               cityAndState:
-                  (j['address_summary'] as String?) ?? 'Local Verificado',
+                  AddressPrivacy.coarseArea(j['address_summary'] as String?, fallback: 'Local Verificado'),
               completedAt: DateTime.tryParse(
                         '${j['approved_at'] ?? j['finished_at'] ?? j['canceled_at'] ?? j['created_at']}',
                       )?.toLocal() ??
@@ -472,7 +500,7 @@ class ProviderPortfolioStore extends ChangeNotifier {
               : (job.description.trim().isNotEmpty
                   ? 'Execução técnica concluída e validada presencialmente com PIN do cliente: ${job.description.trim()}'
                   : 'Serviço técnico de ${job.category} executado conforme normas de segurança e validado presencialmente com o PIN de 4 dígitos do cliente.'),
-      cityAndState: job.addressSummary ?? 'Local Verificado',
+      cityAndState: AddressPrivacy.coarseArea(job.addressSummary, fallback: 'Local Verificado'),
       completedAt: now,
       validatedClientPin: validatedClientPin,
       serviceValue: job.agreedPrice ?? 250.0,

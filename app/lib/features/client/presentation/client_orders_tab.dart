@@ -56,6 +56,12 @@ class _ClientOrdersTabState extends State<ClientOrdersTab> {
   }
 
   @override
+  void dispose() {
+    EagerImagePrefetcher.cancelPending();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       children: [

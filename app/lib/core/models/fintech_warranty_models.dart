@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
+import '../utils/money.dart';
+
 /// Camada de Segurança da Informação (AppSec), Sanitização e Conformidade LGPD.
 class SecurityAndLgpdGuard {
   const SecurityAndLgpdGuard._();
@@ -11,7 +13,7 @@ class SecurityAndLgpdGuard {
     if (value.isNaN || value.isInfinite) {
       throw ArgumentError('Valor financeiro inválido (NaN ou Infinito).');
     }
-    return (value * 100).roundToDouble() / 100.0;
+    return Money.fromCents(Money.toCents(value));
   }
 
   /// Valida um valor monetário impedindo negativos, NaN ou Infinity.
@@ -496,42 +498,61 @@ class SmartSplitBreakdown {
   /// Fundo de Reserva de Garantia (padrão: 1,5% = 0.015).
   final double warrantyReserveTakeRate;
 
+  // ---------------------------------------------------------------------------
+  // Aritmética em CENTAVOS INTEIROS (core/utils/money.dart): nenhum `double` entra
+  // em soma/percentual. Invariantes garantidos para QUALQUER valor/centavo ímpar:
+  //   totalPlatformFee + providerNetLaborPayout == serviceLaborAmount
+  //   providerTotalNetPayout + totalPlatformFee == grossTransactionAmount
+  //   platformOperationalRevenue + warrantyReserveContribution == totalPlatformFee
+  // Os getters em `double` existem só por compatibilidade de API/serialização.
+  // ---------------------------------------------------------------------------
+
+  int get _laborCents => Money.toCents(serviceLaborAmount);
+  int get _materialCents => Money.toCents(materialReimbursementAmount);
+  int get _opRevenueCents => Money.rateOfCents(_laborCents, operationalTakeRate);
+  int get _reserveCents => Money.rateOfCents(_laborCents, warrantyReserveTakeRate);
+  int get _totalFeeCents => _opRevenueCents + _reserveCents;
+
+  /// Centavos inteiros da taxa total (fonte da verdade para quem precisa gravar/ratear).
+  int get totalPlatformFeeCents => _totalFeeCents;
+
+  /// Centavos inteiros do repasse líquido da mão de obra.
+  int get providerNetLaborPayoutCents => _laborCents - _totalFeeCents;
+
   /// Valor bruto total da transação (M + P).
-  double get grossTransactionAmount =>
-      SecurityAndLgpdGuard.roundCurrency(serviceLaborAmount + materialReimbursementAmount);
+  double get grossTransactionAmount => Money.fromCents(_laborCents + _materialCents);
 
   /// Receita operacional da plataforma (M * 0.135).
-  double get platformOperationalRevenue =>
-      SecurityAndLgpdGuard.roundCurrency(serviceLaborAmount * operationalTakeRate);
+  double get platformOperationalRevenue => Money.fromCents(_opRevenueCents);
 
   /// Aporte no Fundo de Reserva de Garantia (M * 0.015).
-  double get warrantyReserveContribution =>
-      SecurityAndLgpdGuard.roundCurrency(serviceLaborAmount * warrantyReserveTakeRate);
+  double get warrantyReserveContribution => Money.fromCents(_reserveCents);
 
   /// Taxa total da plataforma (soma exata da receita operacional + aporte de garantia).
-  double get totalPlatformFee =>
-      SecurityAndLgpdGuard.roundCurrency(platformOperationalRevenue + warrantyReserveContribution);
+  double get totalPlatformFee => Money.fromCents(_totalFeeCents);
 
   /// Repasse líquido da mão de obra para o prestador (M - totalPlatformFee).
-  double get providerNetLaborPayout =>
-      SecurityAndLgpdGuard.roundCurrency(serviceLaborAmount - totalPlatformFee);
+  double get providerNetLaborPayout => Money.fromCents(providerNetLaborPayoutCents);
 
   /// Repasse líquido total do prestador (providerNetLaborPayout + P).
   double get providerTotalNetPayout =>
-      SecurityAndLgpdGuard.roundCurrency(providerNetLaborPayout + materialReimbursementAmount);
+      Money.fromCents(providerNetLaborPayoutCents + _materialCents);
 
-  /// Alíquota efetiva percentual sobre o valor bruto total (0 a 100%).
-  double get effectiveFeePercentageOnGross => grossTransactionAmount <= 0
-      ? 0.0
-      : SecurityAndLgpdGuard.roundCurrency((totalPlatformFee / grossTransactionAmount) * 100);
+  /// Alíquota efetiva percentual sobre o valor bruto total (0 a 100%), 2 casas.
+  double get effectiveFeePercentageOnGross {
+    final grossCents = _laborCents + _materialCents;
+    if (grossCents <= 0) return 0.0;
+    // (fee / gross) * 100 com 2 casas, meio para cima, em inteiros.
+    final centi = (_totalFeeCents * 10000 + grossCents ~/ 2) ~/ grossCents;
+    return centi / 100.0;
+  }
 
   /// Economia real do prestador por não pagar taxa sobre peças (P * totalPlatformTakeRate).
   double get providerSavedFeeBySmartSplit =>
-      SecurityAndLgpdGuard.roundCurrency(materialReimbursementAmount * totalPlatformTakeRate);
+      Money.fromCents(Money.rateOfCents(_materialCents, totalPlatformTakeRate));
 
   /// Teto máximo de cobertura do Fundo de Garantia = 100% da mão de obra original (M).
-  double get maxWarrantyCoverageCap => SecurityAndLgpdGuard.roundCurrency(serviceLaborAmount);
-
+  double get maxWarrantyCoverageCap => Money.fromCents(_laborCents);
   SmartSplitBreakdown copyWith({
     double? serviceLaborAmount,
     double? materialReimbursementAmount,
@@ -1121,7 +1142,7 @@ class PropertyMaintenanceEntry {
   final String forensicHash;
 
   double get totalInvested =>
-      SecurityAndLgpdGuard.roundCurrency(laborAmount + materialAmount);
+      Money.fromCents(Money.toCents(laborAmount) + Money.toCents(materialAmount));
 
   bool get isWarrantyActive => DateTime.now().isBefore(warrantyExpiresAt);
 
@@ -1257,17 +1278,15 @@ class PropertyMaintenancePassport {
 
   String get maskedOwnerName => SecurityAndLgpdGuard.maskClientName(ownerName);
 
-  double get totalLaborInvested => SecurityAndLgpdGuard.roundCurrency(
-        entries.fold(0.0, (sum, e) => sum + e.laborAmount),
-      );
+  int get _laborInvestedCents => entries.fold<int>(0, (s, e) => s + Money.toCents(e.laborAmount));
+  int get _materialsInvestedCents => entries.fold<int>(0, (s, e) => s + Money.toCents(e.materialAmount));
 
-  double get totalMaterialsInvested => SecurityAndLgpdGuard.roundCurrency(
-        entries.fold(0.0, (sum, e) => sum + e.materialAmount),
-      );
+  double get totalLaborInvested => Money.fromCents(_laborInvestedCents);
 
-  double get totalInvestedAmount => SecurityAndLgpdGuard.roundCurrency(
-        totalLaborInvested + totalMaterialsInvested,
-      );
+  double get totalMaterialsInvested => Money.fromCents(_materialsInvestedCents);
+
+  double get totalInvestedAmount =>
+      Money.fromCents(_laborInvestedCents + _materialsInvestedCents);
 
   int get activeWarrantiesCount => entries.where((e) => e.isWarrantyActive).length;
 

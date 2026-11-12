@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models/fintech_warranty_models.dart';
 import '../ui/app_tokens.dart';
 import '../utils/format.dart';
+import '../utils/off_thread.dart';
 
 /// Serviço oficial de geração e visualização de PDFs de Auditoria Forense,
 /// Certificado Digital de Garantia e Passaporte de Manutenção do Imóvel ("Prontuário da Casa").
@@ -24,7 +24,7 @@ class DesperrengueOfficialPdfService {
     String? clientPhone,
     String? faceLivenessHash,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => generateWarrantyCertificatePdf(
         cert,
         clientCpf: clientCpf,
@@ -41,7 +41,7 @@ class DesperrengueOfficialPdfService {
     String? ownerPhone,
     String? faceLivenessHash,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => generatePropertyPassportPdf(
         passport,
         ownerCpf: ownerCpf,

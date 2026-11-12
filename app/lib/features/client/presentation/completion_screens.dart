@@ -73,7 +73,11 @@ class _CompletionScreenState extends State<CompletionScreen> {
     final job = widget.job;
     return AppScaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          tooltip: 'Voltar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
         title: const BrandLogo(),
       ),
       body: !_loaded
@@ -341,7 +345,14 @@ class _RatingScreenState extends State<RatingScreen> {
     final negative = ReviewTags.isNegative(_rating);
     final options = ReviewTags.options(_rating, byClient: true);
     return AppScaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)), title: const BrandLogo()),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          tooltip: 'Voltar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: const BrandLogo(),
+      ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [

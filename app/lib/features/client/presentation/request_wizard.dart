@@ -67,6 +67,127 @@ class RequestWizardScreen extends StatefulWidget {
   final Future<int> Function()? openRequestsCounter;
   final Future<void> Function(BuildContext context, String addressLine, String summary, double? lat, double? lng)? mapOpener;
 
+  /// Sanitiza o resumo público do endereço (`jobs.address_summary`) para que
+  /// contenha EXCLUSIVAMENTE `Bairro, Cidade - UF` (ou `Cidade - UF`), jamais
+  /// vazando logradouro, número, complemento (`Apto`, `Bloco`, `Casa`, etc.),
+  /// CEP ou ponto de referência para o feed público antes do desbloqueio.
+  static String sanitizePublicAddressSummary(
+    String rawAddress, {
+    String? fallbackCity,
+  }) {
+    bool isPrivateSegment(String seg) {
+      final s = seg.trim();
+      if (s.isEmpty) return true;
+      final lower = s.toLowerCase();
+      // Número isolado ou S/N
+      if (RegExp(r'^(?:n[º°.]?\s*)?\d+[a-zA-Z\-]*$').hasMatch(s) ||
+          lower == 's/n' ||
+          lower == 'sn') {
+        return true;
+      }
+      // CEP
+      if (RegExp(r'\b\d{5}-?\d{3}\b').hasMatch(s) || lower.startsWith('cep ')) {
+        return true;
+      }
+      // Complemento residencial ou referência
+      if (RegExp(
+        r'\b(?:apto\.?|apartamento|ap\.?\s*\d+|bloco|bl\.?\s*[a-z0-9]+|casa\s*\d*|lote|lt\.?\s*\d+|quadra|qd\.?\s*[a-z0-9]+|sala\s*\d*|conj(?:unto)?|andar|fundos|sobrado|cobertura|port[aã]o|ref(?:er[eê]ncia)?|condom[ií]nio|edif[ií]cio|torre)\b',
+        caseSensitive: false,
+      ).hasMatch(s)) {
+        return true;
+      }
+      // Logradouro ou segmento com vírgula + número ("Rua X, 203")
+      if (RegExp(
+            r'^(?:rua|r\.|av\.?|avenida|travessa|tv\.|alameda|al\.|estrada|rodovia|rod\.|pra[cç]a|p[cç]a\.|largo|beco|viela|servid[aã]o)\b',
+            caseSensitive: false,
+          ).hasMatch(s) ||
+          RegExp(r',\s*(?:n[º°.]?\s*)?\d+\b').hasMatch(s)) {
+        return true;
+      }
+      return false;
+    }
+
+    final cleanRaw = rawAddress.split(RegExp(r'\s*\|\s*Ref:', caseSensitive: false)).first.trim();
+    final cleanFallback = (fallbackCity ?? '').trim();
+
+    // Tenta extrair via parser estruturado e filtra qualquer resíduo privado.
+    final parsed = StructuredServiceAddress.parse(
+      cleanRaw,
+      summary: cleanFallback.isNotEmpty && !isPrivateSegment(cleanFallback)
+          ? cleanFallback
+          : null,
+    );
+
+    String neighborhood = parsed.neighborhood.trim();
+    if (isPrivateSegment(neighborhood)) {
+      neighborhood = '';
+    }
+
+    // Se o endereço tiver múltiplos " - " (ex.: "Rua X, 203 - Apto 402 - Centro - Machado - MG"),
+    // removemos CEPs isolados antes de varrer os blocos para recuperar cidade/UF e bairro legítimos.
+    final dashParts = cleanRaw
+        .replaceAll(RegExp(r'\b(?:cep[:\s]*)?\d{5}-?\d{3}\b', caseSensitive: false), '')
+        .split(RegExp(r'\s+-\s+'))
+        .map((p) => p.replaceAll(RegExp(r'^[,;\-\s]+|[,;\-\s]+$'), '').trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+
+    String city = parsed.city.trim();
+    String uf = parsed.uf.trim().toUpperCase();
+
+    if (dashParts.length >= 2) {
+      // Verifica se o último bloco é UF de 2 letras
+      var endIndex = dashParts.length;
+      if (RegExp(r'^[A-Za-z]{2}$').hasMatch(dashParts.last)) {
+        uf = dashParts.last.toUpperCase();
+        endIndex = dashParts.length - 1;
+      }
+      if (endIndex >= 2) {
+        final maybeCity = dashParts[endIndex - 1];
+        final ufSlashMatch = RegExp(r'^(.+?)\s*[/\-]\s*([A-Za-z]{2})$').firstMatch(maybeCity);
+        if (ufSlashMatch != null) {
+          final cCandidate = ufSlashMatch.group(1)!.trim();
+          if (!isPrivateSegment(cCandidate)) {
+            city = cCandidate;
+            uf = ufSlashMatch.group(2)!.toUpperCase();
+          }
+        } else if (!isPrivateSegment(maybeCity)) {
+          city = maybeCity;
+        }
+      }
+      // Procura o primeiro bloco intermediário (após o logradouro) que NÃO seja privado nem igual à cidade
+      for (var idx = 1; idx < endIndex; idx++) {
+        final candidate = dashParts[idx];
+        if (candidate.toLowerCase() == city.toLowerCase()) continue;
+        if (!isPrivateSegment(candidate)) {
+          neighborhood = candidate;
+          break;
+        }
+      }
+    }
+
+    if (isPrivateSegment(city)) {
+      city = '';
+    }
+    if (city.isEmpty && cleanFallback.isNotEmpty && !isPrivateSegment(cleanFallback)) {
+      city = cleanFallback;
+    }
+
+    final cityUf = city.isEmpty
+        ? ''
+        : (uf.isNotEmpty && !city.toUpperCase().endsWith(' - $uf') && !city.toUpperCase().endsWith('/$uf')
+            ? '$city - $uf'
+            : city);
+
+    if (neighborhood.isNotEmpty && cityUf.isNotEmpty) {
+      if (neighborhood.toLowerCase() == city.toLowerCase()) return cityUf;
+      return '$neighborhood, $cityUf';
+    }
+    if (cityUf.isNotEmpty) return cityUf;
+    if (neighborhood.isNotEmpty) return neighborhood;
+    return 'Localização protegida';
+  }
+
   @override
   State<RequestWizardScreen> createState() => _RequestWizardScreenState();
 }
@@ -147,10 +268,16 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   }
 
   String get _summary {
-    if (_override != null) return _override!.summary;
-    final a = _currentAddress;
-    final i = a.indexOf(' - ');
-    return i < 0 ? (widget.profile.addressCity ?? a) : a.substring(i + 3);
+    if (_override != null && _override!.summary.trim().isNotEmpty) {
+      return RequestWizardScreen.sanitizePublicAddressSummary(
+        _override!.summary,
+        fallbackCity: _override!.cityUf,
+      );
+    }
+    return RequestWizardScreen.sanitizePublicAddressSummary(
+      _currentAddress,
+      fallbackCity: _override?.cityUf ?? widget.profile.addressCity,
+    );
   }
 
   bool _slotBusy(int hour) {
@@ -310,6 +437,9 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           ? text
           : '$text\n\n${annotatedLines.join('\n')}';
 
+      final effectiveLat = _pinLat ?? (_override != null ? _override!.latitude : widget.profile.latitude);
+      final effectiveLng = _pinLng ?? (_override != null ? _override!.longitude : widget.profile.longitude);
+
       jobId = await _jobs.createJob(
         title: title,
         description: fullDescription,
@@ -318,12 +448,13 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         direct: _provider != null,
         addressSummary: _summary,
         addressLine: _currentAddress,
+        complement: _override?.complement.trim().isNotEmpty == true ? _override!.complement.trim() : null,
         reference: _reference.isEmpty ? null : _reference,
         scheduledFor: _emergency ? null : _scheduled,
         // Se o cliente escolheu OUTRO endereço, nunca herda as coordenadas do perfil (seriam de outra casa):
         // sem coordenadas, o servidor geocodifica (Nominatim) e o cliente confirma o pino no mapa.
-        latitude: _pinLat ?? (_override != null ? _override!.latitude : widget.profile.latitude),
-        longitude: _pinLng ?? (_override != null ? _override!.longitude : widget.profile.longitude),
+        latitude: effectiveLat,
+        longitude: effectiveLng,
         photoPaths: paths,
         photoAnnotations: photoAnnotations,
       );
@@ -333,7 +464,9 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       if (_pinLat != null && _pinLng != null) {
         // O cliente arrastou o mapa até a porta: grava como PINO CONFIRMADO (prevalece sobre geocodificação).
         unawaited(SupabaseSchedulingBackend().setLocation(jobId, _pinLat!, _pinLng!, source: 'client_pin', precision: 'house').then<void>((_) {}).catchError((Object _) {}));
-      } else if ((_override != null ? _override!.latitude : widget.profile.latitude) == null && _currentAddress.isNotEmpty) {
+      } else if (effectiveLat != null && effectiveLng != null) {
+        unawaited(SupabaseSchedulingBackend().setLocation(jobId, effectiveLat, effectiveLng, source: 'client', precision: 'house').then<void>((_) {}).catchError((Object _) {}));
+      } else if (_currentAddress.isNotEmpty) {
         unawaited(registerGeocodedLocation(jobId: jobId, addressLine: _currentAddress, summary: _summary, cep: _override?.cep));
       }
       if (_provider != null) {
@@ -491,6 +624,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       child: AppScaffold(
         appBar: AppBar(
           leading: IconButton(
+            tooltip: 'Voltar',
             icon: const Icon(Icons.arrow_back_ios_new_rounded),
             onPressed: () => _step == 0 ? Navigator.pop(context) : setState(() => _step--),
           ),

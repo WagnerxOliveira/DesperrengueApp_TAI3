@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../utils/app_failure.dart';
 import '../utils/format.dart';
 import './app_tokens.dart';
 import 'media_widgets.dart';
@@ -447,7 +448,19 @@ class PulseRadar extends StatefulWidget {
 }
 
 class _PulseRadarState extends State<PulseRadar> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    if (disableAnimations) {
+      if (_c.isAnimating) _c.stop();
+      _c.value = 0.35;
+    } else if (!_c.isAnimating) {
+      _c.repeat();
+    }
+  }
 
   @override
   void dispose() {
@@ -458,13 +471,16 @@ class _PulseRadarState extends State<PulseRadar> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) => CustomPaint(
-          painter: _RadarPainter(_c.value, color),
+    return RepaintBoundary(
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, child) => CustomPaint(
+            painter: _RadarPainter(_c.value, color),
+            child: child,
+          ),
           child: Center(child: widget.child),
         ),
       ),
@@ -638,26 +654,34 @@ class BellButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onPressed,
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Icon(Icons.notifications_none_rounded, size: 28),
-          if (count > 0)
-            Positioned(
-              right: -2,
-              top: -2,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                child: Text(
-                  count > 9 ? '9+' : '$count',
-                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+    final label = count > 0
+        ? 'Notificações ($count não lidas)'
+        : 'Notificações';
+    return Semantics(
+      button: true,
+      label: label,
+      child: IconButton(
+        tooltip: label,
+        onPressed: onPressed,
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(Icons.notifications_none_rounded, size: 28),
+            if (count > 0)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  child: Text(
+                    count > 9 ? '9+' : '$count',
+                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -704,20 +728,5 @@ void showSnack(BuildContext context, String message, {bool error = false}) {
   );
 }
 
-/// Traduz erros do Supabase/Postgres em mensagens para o usuário.
-String friendlyError(Object e) {
-  final raw = e.toString();
-  final match = RegExp(r'message[:=]\s*([^,}\n]+)').firstMatch(raw);
-  var msg = match?.group(1)?.trim() ?? raw;
-  if (msg.contains('QUOTE_LIMIT_REACHED')) return 'Esta demanda já recebeu 3 orçamentos.';
-  if (msg.startsWith('PIN_INVALID')) {
-    final left = msg.split(':').length > 1 ? msg.split(':').last.trim() : '';
-    return left.isEmpty ? 'PIN incorreto.' : 'PIN incorreto. Restam $left tentativa(s).';
-  }
-  if (msg.contains('PIN_LOCKED')) return 'Muitas tentativas. Use "Tive um problema".';
-  if (raw.contains('SocketException') || raw.contains('ClientException') || raw.contains('Failed host lookup')) {
-    return 'Sem conexão. Verifique sua internet e tente novamente.';
-  }
-  if (msg.length > 140) msg = '${msg.substring(0, 140)}…';
-  return msg;
-}
+/// Traduz erros do Supabase/Postgres em mensagens humanas e sanitizadas para o usuário.
+String friendlyError(Object e) => humanizeError(e);

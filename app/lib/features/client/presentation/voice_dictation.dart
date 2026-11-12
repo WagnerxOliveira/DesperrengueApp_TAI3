@@ -350,13 +350,16 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
                 key: const ValueKey('voice-mic'),
                 onTap: _voice.toggle,
                 behavior: HitTestBehavior.opaque,
-                child: SizedBox(
-                  width: 120,
-                  height: 120,
-                  child: AnimatedBuilder(
-                    animation: _anim,
-                    builder: (context, _) => CustomPaint(
-                      painter: _RipplePainter(color: accent, t: _anim.value, active: listening, level: _voice.level),
+                child: RepaintBoundary(
+                  child: SizedBox(
+                    width: 120,
+                    height: 120,
+                    child: AnimatedBuilder(
+                      animation: _anim,
+                      builder: (context, child) => CustomPaint(
+                        painter: _RipplePainter(color: accent, t: _anim.value, active: listening, level: _voice.level),
+                        child: child,
+                      ),
                       child: Center(
                         child: Container(
                           width: 68,
@@ -444,25 +447,27 @@ class SoundWaveBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, _) {
-        final phase = animation.value * 2 * math.pi;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            for (var i = 0; i < bars; i++)
-              Container(
-                key: i == 0 ? const ValueKey('voice-wave') : null,
-                width: 4,
-                height: 6 + 26 * (0.25 + 0.75 * level) * (math.sin(phase * 1.0 + i * 0.55).abs()),
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(2)),
-              ),
-          ],
-        );
-      },
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: animation,
+        builder: (context, _) {
+          final phase = animation.value * 2 * math.pi;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              for (var i = 0; i < bars; i++)
+                Container(
+                  key: i == 0 ? const ValueKey('voice-wave') : null,
+                  width: 4,
+                  height: 6 + 26 * (0.25 + 0.75 * level) * (math.sin(phase * 1.0 + i * 0.55).abs()),
+                  margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(2)),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }
