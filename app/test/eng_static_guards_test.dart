@@ -36,6 +36,22 @@ void main() {
     expect(offenders, isEmpty, reason: 'upload sem higienizar EXIF: $offenders');
   });
 
+  test('Isolate.run só dentro de runOffMainThread (fallback Web)', () {
+    final offenders = <String>[];
+    for (final f in libFiles) {
+      if (_rel(f).endsWith('core/utils/off_thread.dart')) continue;
+      final lines = f.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final l = lines[i].trimLeft();
+        if (l.startsWith('//')) continue;
+        if (l.contains('Isolate.run(') || l.contains('Isolate.spawn(') || l.startsWith("import 'dart:isolate'")) {
+          offenders.add('${_rel(f)}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty, reason: 'use runOffMainThread (Web-safe): $offenders');
+  });
+
   test('nenhum print/debugPrint de PII, token ou coordenada', () {
     final logCall = RegExp(r'\b(debugPrint|print|log)\s*\(');
     final sensitive = RegExp(

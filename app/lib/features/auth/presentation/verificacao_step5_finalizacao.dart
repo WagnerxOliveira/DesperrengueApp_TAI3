@@ -1,4 +1,3 @@
-import 'dart:isolate';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
@@ -8,6 +7,8 @@ import '../../../core/security/perceptual_hash_guard.dart';
 import '../../../core/services/draft_store.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
+import '../../../core/utils/image_metadata_stripper.dart';
+import '../../../core/utils/off_thread.dart';
 import '../../../core/ui/light_island.dart';
 import 'auth_gate.dart';
 
@@ -54,6 +55,7 @@ class _VerificacaoStep5FinalizacaoScreenState
   }
 
   Future<void> _enviarParaAnalise() async {
+    if (_isUploading) return; // duplo toque não dispara dois envios
     setState(() => _isUploading = true);
 
     try {
@@ -63,7 +65,7 @@ class _VerificacaoStep5FinalizacaoScreenState
 
       // Guarda Forense pHash (Frente != Verso) em Worker Isolate
       try {
-        final isDuplicate = await Isolate.run(() {
+        final isDuplicate = await runOffMainThread(() {
           final hFront = PerceptualHashGuard.compute64BitPerceptualHash(frontBytes);
           final hBack = PerceptualHashGuard.compute64BitPerceptualHash(backBytes);
           return PerceptualHashGuard.isDuplicateDocumentFrontAndBack(frontBytes, backBytes) &&
@@ -110,6 +112,8 @@ class _VerificacaoStep5FinalizacaoScreenState
             ? 'Seus documentos já foram enviados e estão em análise.'
             : 'Não foi possível registrar o envio. Tente novamente.',
       );
+    } on ImageMetadataException catch (e) {
+      _mostrarErro(e.message);
     } on StorageException {
       _mostrarErro('Falha no upload dos documentos. Verifique a conexão.');
     } catch (_) {
