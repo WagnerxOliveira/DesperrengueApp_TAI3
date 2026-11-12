@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/wallet_models.dart';
+import '../utils/resilient_stream.dart';
 
 /// Carteira do cliente: saldo, extrato e recarga Pix. Única camada que conhece as
 /// tabelas/RPCs financeiras. O servidor é a autoridade (o app nunca escreve saldo).
@@ -24,23 +25,30 @@ class WalletService {
   }
 
   /// Saldo em TEMPO REAL: primeiro valor imediato (RPC) e depois cada mudança via Realtime.
+  ///
+  /// O Realtime é envolvido por [resilientStream]: se o canal cair, reconecta
+  /// sozinho com backoff exponencial (sem ficar com saldo "congelado").
   Stream<ClientWallet> walletStream() async* {
     yield await wallet();
-    yield* _client
-        .from('client_wallets')
-        .stream(primaryKey: ['client_id'])
-        .eq('client_id', _uid)
-        .map((rows) => rows.isEmpty ? ClientWallet.empty : ClientWallet.fromMap(rows.first));
+    yield* resilientStream<ClientWallet>(
+      () => _client
+          .from('client_wallets')
+          .stream(primaryKey: ['client_id'])
+          .eq('client_id', _uid)
+          .map((rows) => rows.isEmpty ? ClientWallet.empty : ClientWallet.fromMap(rows.first)),
+    );
   }
 
   /// Extrato em tempo real (mais novo primeiro).
-  Stream<List<WalletEntry>> statementStream({int limit = 60}) => _client
-      .from('wallet_statement')
-      .stream(primaryKey: ['id'])
-      .eq('client_id', _uid)
-      .order('created_at', ascending: false)
-      .limit(limit)
-      .map((rows) => rows.map(WalletEntry.fromMap).toList());
+  Stream<List<WalletEntry>> statementStream({int limit = 60}) => resilientStream<List<WalletEntry>>(
+        () => _client
+            .from('wallet_statement')
+            .stream(primaryKey: ['id'])
+            .eq('client_id', _uid)
+            .order('created_at', ascending: false)
+            .limit(limit)
+            .map((rows) => rows.map(WalletEntry.fromMap).toList()),
+      );
 
   /// Gera a cobrança Pix. A [idempotencyKey] faz o duplo clique devolver o MESMO Pix.
   Future<PixTopup> createTopup(int amountCents, String idempotencyKey) async {
@@ -49,12 +57,14 @@ class WalletService {
   }
 
   /// Status do Pix em tempo real (a confirmação do banco/webhook chega por aqui).
-  Stream<PixTopup> topupStream(String id) => _client
-      .from('pix_topups')
-      .stream(primaryKey: ['id'])
-      .eq('id', id)
-      .where((rows) => rows.isNotEmpty)
-      .map((rows) => PixTopup.fromMap(rows.first));
+  Stream<PixTopup> topupStream(String id) => resilientStream<PixTopup>(
+        () => _client
+            .from('pix_topups')
+            .stream(primaryKey: ['id'])
+            .eq('id', id)
+            .where((rows) => rows.isNotEmpty)
+            .map((rows) => PixTopup.fromMap(rows.first)),
+      );
 
   /// "1-Click Bank Approval" (modo de teste): o próprio usuário aprova o Pix.
   Future<void> simulatePayment(String topupId) => _client.rpc('simulate_pix_payment', params: {'p_topup': topupId});

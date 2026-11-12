@@ -1,11 +1,11 @@
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/money.dart';
+import '../utils/off_thread.dart';
 
 // =============================================================================
 // DESPERRENGUE — MOTOR ZERO-TRUST DE SEGURANÇA BILATERAL (v2.8.5)
@@ -174,7 +174,7 @@ class ActiveScreenFlashPhotometricGuard {
     required double physiologicalTremorHz,
     required HardwareAttestationVerdict attestationVerdict,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => verifySync(
         userId: userId,
         nonceId: nonceId,
