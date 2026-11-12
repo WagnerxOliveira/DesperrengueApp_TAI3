@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:desperrengue_app/core/models/geocode_models.dart';
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/scheduling_models.dart';
+import 'package:desperrengue_app/core/security/geo_privacy_policy_engine.dart';
 import 'package:desperrengue_app/core/services/scheduling_service.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/utils/geo.dart';
@@ -74,7 +75,36 @@ class FakeBackend implements SchedulingBackend {
   }
 }
 
-SchedulingDeps deps(FakeBackend b, {StreamController<GeoFix>? gps, LocationAccess access = LocationAccess.granted, GeocodeHit? hit}) => SchedulingDeps(
+/// Visão liberada (dia do serviço) usada pela maioria dos testes do profissional.
+const unlockedView = ProviderLocationView(
+  phase: GeoPrivacyPhase.serviceDay,
+  exactUnlocked: true,
+  city: 'Poços de Caldas',
+  uf: 'MG',
+  neighborhood: 'Maria Imaculada',
+  street: 'Rua Padre José Geraldi',
+  number: '203',
+  reference: 'Portão azul',
+  lat: -21.78,
+  lng: -46.56,
+  radiusM: 100,
+);
+
+/// Visão travada (antes do dia): só região + centro aproximado.
+final lockedView = ProviderLocationView(
+  phase: GeoPrivacyPhase.confirmedFuture,
+  exactUnlocked: false,
+  city: 'Poços de Caldas',
+  uf: 'MG',
+  neighborhood: 'Maria Imaculada',
+  lat: -21.7812,
+  lng: -46.5611,
+  radiusM: 650,
+  scheduledDate: DateTime.utc(2030, 1, 15),
+  unlockAt: DateTime.utc(2030, 1, 15, 3),
+);
+
+SchedulingDeps deps(FakeBackend b, {StreamController<GeoFix>? gps, LocationAccess access = LocationAccess.granted, GeocodeHit? hit, ProviderLocationView? view = unlockedView}) => SchedulingDeps(
       backend: b,
       requestLocation: () async => access,
       positions: () => (gps ?? StreamController<GeoFix>()).stream,
@@ -82,6 +112,7 @@ SchedulingDeps deps(FakeBackend b, {StreamController<GeoFix>? gps, LocationAcces
       clientCard: (_) async => {'full_name': 'Carla Souza'},
       peer: (_) async => (name: 'Paulo Eletricista', avatar: null),
       geocode: (_, _) async => hit,
+      location: (_) async => view,
     );
 
 Widget wrap(Widget child, {Size? size}) => MaterialApp(theme: AppTheme.resolve(null, Brightness.light), home: child);
@@ -304,7 +335,7 @@ void main() {
       final backend = FakeBackend(dest: dest);
       final gps = StreamController<GeoFix>();
       addTearDown(gps.close);
-      await t.pumpWidget(wrap(ScheduledServiceScreen(job: jobAt(DateTime.now().add(const Duration(days: 2))), asProvider: true, deps: deps(backend, gps: gps))));
+      await t.pumpWidget(wrap(ScheduledServiceScreen(job: jobAt(DateTime.now().add(const Duration(days: 2))), asProvider: true, deps: deps(backend, gps: gps, view: lockedView))));
       await pumpLoaded(t);
       gps.add(at(5));
       await pumpLoaded(t);
@@ -314,7 +345,12 @@ void main() {
       expect(find.textContaining('Finalizar serviço'), findsNothing);
       expect(find.textContaining('Serviço em execução'), findsNothing);
       expect(find.textContaining('libera em'), findsOneWidget); // contagem regressiva do horário
-      expect(find.textContaining('No local do cliente'), findsOneWidget); // geo OK
+      // Trava de privacidade: antes do dia não há distância, rua, número nem local exato.
+      expect(find.textContaining('No local do cliente'), findsNothing);
+      expect(find.textContaining('são liberados às 00h00'), findsWidgets);
+      expect(find.textContaining('Padre José'), findsNothing);
+      expect(find.textContaining('Portão azul'), findsNothing);
+      expect(find.byKey(const ValueKey('provider-location-panel-locked')), findsOneWidget);
       final btn = t.widget<FilledButton>(find.widgetWithText(FilledButton, 'Iniciar serviço (ativar cronômetro)'));
       expect(btn.onPressed, isNull);
       expect(backend.starts, isEmpty);

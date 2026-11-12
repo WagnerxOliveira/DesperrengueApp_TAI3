@@ -8,7 +8,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/scheduling_models.dart';
-import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/provider_service.dart';
@@ -19,8 +18,9 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../../core/utils/names.dart';
+import '../../../core/security/geo_privacy_policy_engine.dart';
 import 'chat_screen.dart';
-import 'live_location_map.dart';
+import 'geo_privacy_widgets.dart';
 import 'service_map_widgets.dart';
 import 'smart_triage_widgets.dart';
 import '../../../core/state/smart_triage_controller.dart';
@@ -42,6 +42,7 @@ class SchedulingDeps {
     required this.clientCard,
     required this.peer,
     required this.geocode,
+    this.location,
   });
 
   final SchedulingBackend backend;
@@ -55,6 +56,9 @@ class SchedulingDeps {
 
   /// Geocodificação feita no celular do CLIENTE; o servidor não consegue (403 em datacenter).
   final Future<GeocodeHit?> Function(String addressLine, String? summary) geocode;
+
+  /// Localização protegida do PROFISSIONAL (servidor decide o que ele pode ver). Padrão: [ProviderLocationSource].
+  final Future<ProviderLocationView?> Function(String jobId)? location;
 
   factory SchedulingDeps.live() {
     final jobs = JobService();
@@ -77,6 +81,7 @@ class SchedulingDeps {
         return p == null ? null : (name: friendlyName(p.fullName, fallback: 'Profissional'), avatar: p.avatarUrl);
       },
       geocode: (line, summary) => PreciseGeocoder().geocode(line, summary: summary),
+      location: (id) => ProviderLocationSource.load(id),
     );
   }
 }
@@ -108,6 +113,11 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   bool _permDenied = false;
   bool _starting = false;
   Map<String, dynamic>? _address;
+  /// Visão de localização do PROFISSIONAL (null = ainda não confirmada: nada de endereço).
+  ProviderLocationView? _locView;
+  bool _locLoaded = false;
+  bool _locRefreshing = false;
+  DateTime _nextLocRefreshAt = DateTime.fromMillisecondsSinceEpoch(0);
   String _peerName = '';
   String? _peerAvatar;
 
@@ -118,7 +128,9 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     super.initState();
     // Reavalia a contagem regressiva a cada segundo (barato: só o texto do checklist muda).
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      _maybeRefreshLocation();
+      setState(() {});
     });
     _bootstrap();
   }
@@ -135,14 +147,59 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     // Relógio do servidor primeiro: sem ele a UI cairia no relógio do celular (adulterável).
     unawaited(_clock.sync().then((_) => mounted ? setState(() {}) : null).catchError((_) {}));
     // O endereço vem primeiro: o cliente precisa dele para geocodificar o destino.
+    if (widget.asProvider) await _loadProviderLocation();
     await _loadPeerAndAddress();
     await _loadDestination();
     if (widget.asProvider) await _startLocation();
   }
 
+  /// Profissional: pergunta ao servidor o que ele pode ver (falha ⇒ continua protegido).
+  Future<void> _loadProviderLocation() async {
+    ProviderLocationView? v;
+    try {
+      final custom = _deps.location;
+      v = await (custom != null ? custom(job.id) : ProviderLocationSource.load(job.id));
+    } catch (_) {
+      v = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _locView = v;
+      _locLoaded = true;
+      if (v != null && v.exactUnlocked) {
+        // Só depois do desbloqueio o endereço exato passa a existir neste aparelho.
+        _address = {
+          'address_line': exactAddressLineOf(v),
+          if ((v.reference ?? '').trim().isNotEmpty) 'reference': v.reference,
+        };
+      } else {
+        _address = null;
+        _dest = null;
+      }
+    });
+  }
+
+  /// No instante do desbloqueio (00h00 SP, relógio do servidor) rebusca e carrega o destino exato.
+  void _maybeRefreshLocation() {
+    if (!widget.asProvider || _locRefreshing || DateTime.now().isBefore(_nextLocRefreshAt)) return;
+    final v = _locView;
+    if (v == null || v.exactUnlocked) return;
+    final at = v.unlockAt;
+    if (at == null || _clock.now().isBefore(at)) return;
+    _locRefreshing = true;
+    _loadProviderLocation().then((_) async {
+      if (mounted && (_locView?.exactUnlocked ?? false)) await _loadDestination();
+    }).whenComplete(() {
+      // Evita martelar o servidor se ele ainda não liberou (relógio do aparelho adiantado).
+      _nextLocRefreshAt = DateTime.now().add(const Duration(seconds: 20));
+      _locRefreshing = false;
+    });
+  }
+
   Future<void> _loadPeerAndAddress() async {
     try {
-      final a = await _deps.address(job.id);
+      // O profissional NUNCA lê `job_addresses` diretamente: o endereço vem da visão protegida.
+      final a = widget.asProvider ? null : await _deps.address(job.id);
       String name;
       String? avatar;
       if (widget.asProvider) {
@@ -156,7 +213,8 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
       }
       if (!mounted) return;
       setState(() {
-        _address = a;
+        // Profissional: não sobrescreve o endereço liberado pela visão protegida.
+        if (!widget.asProvider) _address = a;
         _peerName = name;
         _peerAvatar = avatar;
       });
@@ -164,6 +222,11 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   }
 
   Future<void> _loadDestination() async {
+    // Profissional: coordenada exata só existe depois do desbloqueio.
+    if (widget.asProvider && !(_locView?.exactUnlocked ?? false)) {
+      if (mounted) setState(() => _destLoading = false);
+      return;
+    }
     try {
       var d = await _deps.backend.destination(job.id);
       final line = _address?['address_line'] as String?;
@@ -251,27 +314,23 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
 
   Future<void> _onAddressTap() async {
     final d = _dest;
-    final addressLabel = (_address?['address_line'] as String?) ?? (job.addressSummary ?? 'Endereço do cliente');
     if (widget.asProvider) {
-      final unlocked = isServiceDayUnlocked(
-        job.scheduledFor,
-        status: job.status,
-        isEmergency: job.isEmergency,
-        now: _clock.now(),
-      );
-      if (!unlocked) return;
+      final view = _locView;
+      // Trava: sem confirmação do servidor ou antes do dia ⇒ só a região aproximada.
+      if (view == null) return;
+      if (!view.exactUnlocked) {
+        await openProviderLocation(context, view);
+        return;
+      }
+      final addressLabel = exactAddressLineOf(view);
       if (d == null) {
-        await LiveLocationMapSheet.show(
-          context,
-          addressLine: addressLabel,
-          summary: job.addressSummary,
-        );
+        await openProviderLocation(context, view);
         return;
       }
       await MapaRotaServicoModal.show(
         context,
         destination: d,
-        addressLabel: addressLabel,
+        addressLabel: addressLabel.isEmpty ? view.areaTitle : addressLabel,
         position: _pos,
       );
     } else if (widget.deps != null) {
@@ -417,22 +476,9 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
           const SizedBox(height: 12),
           // ---- endereço (com trava temporal de privacidade para o profissional e somente leitura para o cliente)
           if (widget.asProvider)
-            ProviderPrivacyAddressCard(
-              view: AccurateGeoRoutingService.resolveProviderAddressView(
-                fullAddressLine: (_address?['address_line'] as String?) ?? job.addressSummary,
-                addressSummary: job.addressSummary,
-                scheduledDate: job.scheduledFor,
-                status: job.status,
-                isEmergency: job.isEmergency,
-                now: _clock.now(),
-                destLat: _dest?.lat,
-                destLng: _dest?.lng,
-                providerLat: _pos.value?.lat,
-                providerLng: _pos.value?.lng,
-              ),
-              reference: _address?['reference'] as String?,
-              onOpenMapRoute: _onAddressTap,
-            )
+            (_locView == null)
+                ? ProviderLocationPending(loading: !_locLoaded)
+                : ProviderLocationPanel(view: _locView!, onOpenExactMap: _onAddressTap)
           else
             _AddressCard(
               line: (_address?['address_line'] as String?) ?? job.addressSummary ?? 'Carregando endereço…',
@@ -445,7 +491,12 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
             ),
           const SizedBox(height: 12),
           if (widget.asProvider)
-            _Checklist(gate: gate, scheduledFor: job.scheduledFor, onEnableLocation: _startLocation)
+            _Checklist(
+              gate: gate,
+              scheduledFor: job.scheduledFor,
+              onEnableLocation: _startLocation,
+              addressLocked: !(_locView?.exactUnlocked ?? false),
+            )
           else
             _ClientRules(gate: gate, scheduledFor: job.scheduledFor),
           const SizedBox(height: 12),
@@ -588,8 +639,10 @@ class _AddressCard extends StatelessWidget {
 
 /// Checklist de liberação do botão "Iniciar serviço" (as DUAS travas).
 class _Checklist extends StatelessWidget {
-  const _Checklist({required this.gate, required this.scheduledFor, required this.onEnableLocation});
+  const _Checklist({required this.gate, required this.scheduledFor, required this.onEnableLocation, this.addressLocked = false});
 
+  /// Endereço ainda protegido: não há distância nem local exato para mostrar.
+  final bool addressLocked;
   final StartGate gate;
   final DateTime? scheduledFor;
   final VoidCallback onEnableLocation;
@@ -616,7 +669,9 @@ class _Checklist extends StatelessWidget {
 
     final radius = gate.radiusM?.round();
     final dist = gate.distanceM;
-    final (geoIcon, geoColor, geoText) = switch (gate.geo) {
+    final (geoIcon, geoColor, geoText) = addressLocked
+        ? (Icons.lock_clock_rounded, tk.info, 'O local exato e a distância até o cliente são liberados às 00h00 do dia do serviço.')
+        : switch (gate.geo) {
       GeoGateState.ok => (Icons.check_circle_rounded, tk.success, 'No local do cliente (distância atual: ${formatMeters(dist ?? 0)})'),
       GeoGateState.tooFar => (
           Icons.place_outlined,
