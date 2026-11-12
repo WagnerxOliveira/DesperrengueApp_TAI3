@@ -93,8 +93,8 @@ begin
     perform pg_temp.t(false, '08 cliente definiu provider_id na criação PERMITIDO');
   exception when others then perform pg_temp.t(true, '08 cliente não define provider_id na criação'); end;
   begin
-    insert into public.jobs (client_id, title, description, category, urgency, visibility, address_summary)
-    values (c, 'Trocar disjuntor', 'Disjuntor do chuveiro desarma', 'Elétrica', 'scheduled', 'direct', 'Consolação, São Paulo - SP')
+    insert into public.jobs (client_id, title, description, category, urgency, visibility, scheduled_for, address_summary)
+    values (c, 'Trocar disjuntor', 'Disjuntor do chuveiro desarma', 'Elétrica', 'scheduled', 'direct', now() + interval '2 days', 'Consolação, São Paulo - SP')
     returning id into j;
     insert into public.job_addresses (job_id, address_line) values (j, 'Rua Augusta, 1400');
     perform pg_temp.t(true, '09 cliente cria pedido direto + endereço');
@@ -180,7 +180,12 @@ begin
   select count(*) into n from public.job_secrets where job_id = j;
   perform pg_temp.t(n = 0, '29 profissional NÃO consegue ler o PIN');
   select count(*) into n from public.job_addresses where job_id = j;
-  perform pg_temp.t(n = 1, '30 profissional contratado enxerga o endereço completo');
+  perform pg_temp.t(n = 0, '30a profissional contratado NÃO enxerga endereço exato antes do dia agendado (Geo-Privacy Lock)');
+  reset role;
+  update public.jobs set scheduled_for = now() where id = j;
+  perform pg_temp.login(p1);
+  select count(*) into n from public.job_addresses where job_id = j;
+  perform pg_temp.t(n = 1, '30b profissional contratado enxerga o endereço completo no dia do serviço (00:00 SP)');
   -- O serviço agendado só vira in_progress via start_job (aqui: modo homologação, sem janela/geofence).
   perform public.start_job(j, null, null, null, true);
   select status into st from public.jobs where id = j;
@@ -203,6 +208,8 @@ begin
   perform pg_temp.t(n = 1, '35 tentativa errada é PERSISTIDA (pin_attempts=' || n || ')');
   s := public.complete_job_with_pin(j, v_pin);
   perform pg_temp.t(s = 'ok', '36 PIN correto conclui (' || s || ')');
+  select count(*) into n from public.job_addresses where job_id = j;
+  perform pg_temp.t(n = 0, '36b re-bloqueio pós-serviço LGPD oculta endereço em completed');
   reset role;
   select status, payment_status into r from public.jobs where id = j;
   perform pg_temp.t(r.status = 'completed' and r.payment_status = 'released', '37 serviço concluído e escrow liberado');
