@@ -116,6 +116,11 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 | **36** | [`eng_resilience_and_policy_test.dart`](../app/test/eng_resilience_and_policy_test.dart) | Reconexão automática de streams Realtime com backoff exponencial (`resilientStream`) e política de deep links (`deep_link_policy.dart`). | `PASS` |
 | **37** | [`eng_unread_badge_test.dart`](../app/test/eng_unread_badge_test.dart) | Testes de concorrência, isolamento por conta e decremento otimista $O(1)$ do `UnreadOrdersBadgeController`. | `PASS` |
 | **38** | [`provider_ux_polish_test.dart`](../app/test/provider_ux_polish_test.dart) | Ergonomia 120 Hz do modo profissional: cronômetro isolado em `RepaintBoundary`, simulador e meta semanal sem overflow em `320px`, parsing monetário pt-BR (`"1.250,50"`) e feedback claro de validação. | `PASS` |
+| **39** | [`eng_image_cache_privacy_test.dart`](../app/test/eng_image_cache_privacy_test.dart) | Isolamento de imagens privadas (`storage:`) apenas em RAM (nunca persistidas em L2 `SharedPreferences`), `purgeAllUserImages` no logout e `EagerImagePrefetcher.cancelPending()`. | `PASS` |
+| **40** | [`eng_media_upload_sanitize_test.dart`](../app/test/eng_media_upload_sanitize_test.dart) | Interceptação do corpo binário HTTP nos uploads de `MediaService`, `ProfileService` e `WarrantyEscrowService` provando ausência total de EXIF/GPS e uso de URLs assinadas (`createSignedUrl`) no bucket privado `forensic-evidence`. | `PASS` |
+| **41** | [`eng_portfolio_sync_test.dart`](../app/test/eng_portfolio_sync_test.dart) | Sincronização *single-flight* sem condições de corrida em `ProviderPortfolioStore.syncFromSupabase`. | `PASS` |
+| **42** | [`eng_static_guards_test.dart`](../app/test/eng_static_guards_test.dart) | Guardas estáticas automatizadas sobre `app/lib/**`: zero `dart:io`, zero `Isolate.run` fora de `runOffMainThread`, zero `uploadBinary` sem `sanitizeForUpload` e zero vazamento de PII em `debugPrint`. | `PASS` |
+| **43** | [`eng_update_security_test.dart`](../app/test/eng_update_security_test.dart) | Validação estrita de domínio HTTPS (`github.com` / `*.githubusercontent.com`) para download de APK e proteção contra checagens concorrentes no `UpdateGate`. | `PASS` |
 
 ---
 
