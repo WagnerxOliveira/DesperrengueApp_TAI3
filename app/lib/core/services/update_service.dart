@@ -78,6 +78,16 @@ class UpdateService {
     }
   }
 
+  /// Só aceita APK servido por HTTPS pelo GitHub (github.com ou *.githubusercontent.com).
+  /// Impede que um JSON adulterado (proxy/MITM em rede hostil, release comprometido)
+  /// leve o usuário a baixar APK de domínio arbitrário.
+  static bool isTrustedDownloadUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' || uri.hasPort || uri.userInfo.isNotEmpty) return false;
+    final host = uri.host.toLowerCase();
+    return host == 'github.com' || host.endsWith('.githubusercontent.com');
+  }
+
   /// Lê o JSON do release. Formato do texto (gerado pela CI):
   /// ```
   /// build: 29712345
@@ -98,7 +108,7 @@ class UpdateService {
       final assets = (json['assets'] as List?)?.whereType<Map>() ?? const <Map>[];
       final apk = assets.cast<Map>().firstWhere((a) => '${a['name']}'.endsWith('.apk'), orElse: () => const {});
       final url = apk['browser_download_url'] as String?;
-      if (url == null) return null;
+      if (url == null || !isTrustedDownloadUrl(url)) return null;
       final notes = RegExp(r'## Novidades\s*\n([\s\S]*?)(?:\n---|$)').firstMatch(text)?.group(1)?.trim() ?? '';
       return UpdateInfo(build: build, version: version, apkUrl: url, sizeBytes: (apk['size'] as num?)?.toInt(), notes: notes);
     } catch (_) {

@@ -92,7 +92,10 @@ class InstantImageCacheEngine {
     try {
       final cache = PaintingBinding.instance.imageCache;
       cache.maximumSize = 500;
-      cache.maximumSizeBytes = 250 << 20; // 250 MB
+      // 128 MB de pixels decodificados: dá folga p/ listas com avatares/fotos sem
+      // estourar RAM de aparelhos de entrada (Android Go/3 GB), onde 250 MB causava
+      // kills em segundo plano. L1 (bytes comprimidos) tem teto próprio de 96 MB.
+      cache.maximumSizeBytes = 128 << 20;
     } catch (_) {
       // No-op seguro se o binding ainda não estiver pronto.
     }
@@ -187,6 +190,10 @@ class InstantImageCacheEngine {
 
   Future<void> _persistToL2IfCompact(String key, Uint8List bytes) async {
     if (bytes.isEmpty || bytes.lengthInBytes > maxPersistedItemBytes) return;
+    // LGPD: mídia PRIVADA (`storage:<path>` = fotos do pedido/evidências) fica só em
+    // RAM (L1). A L2 é texto puro no SharedPreferences e sobrevive ao logout; ela
+    // guarda apenas imagens públicas (avatares/portfólio).
+    if (key.startsWith('storage:')) return;
     try {
       await ensurePersistentCacheLoaded();
       _l2Base64.remove(key);
@@ -404,6 +411,18 @@ class InstantImageCacheEngine {
     return false;
   }
 
+  /// Logout / exclusão de conta: apaga L1, URLs assinadas memorizadas, L2 persistida
+  /// e o `ImageCache` global (imagens decodificadas), para que nada do usuário
+  /// anterior apareça — nem fique em disco — para o próximo.
+  Future<void> purgeAllUserImages() async {
+    clearForTesting(clearGlobalImageCache: true);
+    _l2Hydrated = true; // nada a hidratar: acabamos de limpar
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kPersistentL2Key);
+    } catch (_) {}
+  }
+
   @visibleForTesting
   void clearForTesting({bool clearGlobalImageCache = false}) {
     _l1Memory.clear();
@@ -430,6 +449,44 @@ class EagerImagePrefetcher {
 
   static final Set<String> _warmedProviderIds = <String>{};
 
+  /// Máximo de downloads de pré-carga simultâneos. Sem limite, abrir Meus Pedidos com
+  /// 50 pedidos disparava 50+ requisições de uma vez (rede/CPU/jank).
+  static const int maxConcurrentPrefetch = 4;
+
+  static int _generation = 0;
+  static int _active = 0;
+  static final Queue<Future<void> Function()> _queue = Queue<Future<void> Function()>();
+
+  /// Cancela o que ainda NÃO começou (chamar ao sair da tela). Downloads já
+  /// em andamento terminam e ficam no cache; nada novo é iniciado para a tela morta.
+  static void cancelPending() {
+    _generation++;
+    _queue.clear();
+  }
+
+  @visibleForTesting
+  static int get debugQueuedPrefetches => _queue.length;
+
+  static void _enqueue(Future<void> Function() job) {
+    final gen = _generation;
+    _queue.add(() async {
+      if (gen != _generation) return;
+      await job();
+    });
+    _pump();
+  }
+
+  static void _pump() {
+    while (_active < maxConcurrentPrefetch && _queue.isNotEmpty) {
+      final next = _queue.removeFirst();
+      _active++;
+      unawaited(next().catchError((_) {}).whenComplete(() {
+        _active--;
+        _pump();
+      }));
+    }
+  }
+
   @visibleForTesting
   static Set<String> get debugWarmedProviderIds =>
       Set<String>.unmodifiable(_warmedProviderIds);
@@ -445,7 +502,7 @@ class EagerImagePrefetcher {
     for (final raw in urls) {
       final url = raw?.trim() ?? '';
       if (url.isEmpty || !seen.add(url)) continue;
-      unawaited(_warmUrl(engine, url, context: context, client: client));
+      _enqueue(() => _warmUrl(engine, url, context: context, client: client));
     }
   }
 
@@ -491,8 +548,8 @@ class EagerImagePrefetcher {
     for (final raw in paths) {
       final path = raw?.trim() ?? '';
       if (path.isEmpty || !seen.add(path)) continue;
-      unawaited(
-        _warmStoragePath(
+      _enqueue(
+        () => _warmStoragePath(
           engine,
           path,
           context: context,

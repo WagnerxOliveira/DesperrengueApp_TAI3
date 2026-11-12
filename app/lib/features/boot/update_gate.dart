@@ -89,17 +89,30 @@ class _UpdateGateState extends State<UpdateGate> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && DateTime.now().difference(_last) > const Duration(seconds: 30)) _run();
   }
 
+  bool _checking = false;
+
   Future<void> _run() async {
+    // Timer inicial + periódico + retorno ao app (resumed) podem coincidir: uma checagem por vez.
+    if (_checking || !mounted) return;
+    _checking = true;
     _last = DateTime.now();
-    if (widget.check == null) {
-      await _loadPersistedDismissedBuild();
+    try {
+      if (widget.check == null) {
+        await _loadPersistedDismissedBuild();
+      }
+      final info = await _check();
+      if (!mounted) return;
+      if (info?.build != _info?.build) setState(() => _info = info);
+    } catch (_) {
+      // Falha de rede/parse nunca vira erro não tratado no Timer.
+    } finally {
+      _checking = false;
     }
-    final info = await _check();
-    if (!mounted) return;
-    if (info?.build != _info?.build) setState(() => _info = info);
   }
 
   Future<void> _update(UpdateInfo info) async {
+    // Defesa em profundidade: só abre downloads HTTPS do GitHub (testes injetam openUrl).
+    if (widget.openUrl == null && !UpdateService.isTrustedDownloadUrl(info.apkUrl)) return;
     setState(() => _downloading = true);
     final open = widget.openUrl ?? (String u) => launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
     try {

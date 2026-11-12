@@ -15,9 +15,12 @@ import '../utils/image_metadata_stripper.dart';
 /// na casa do cliente entregaria a coordenada exata ao profissional antes do
 /// desbloqueio do endereço.
 class MediaService {
-  MediaService([SupabaseClient? client]) : _client = client ?? Supabase.instance.client;
+  MediaService([SupabaseClient? client, @visibleForTesting String Function()? uidResolver])
+      : _client = client ?? Supabase.instance.client,
+        _uidResolver = uidResolver;
 
   final SupabaseClient _client;
+  final String Function()? _uidResolver;
 
   static const publicBucket = 'public-media';
   static const privateBucket = 'job-media';
@@ -40,6 +43,8 @@ class MediaService {
   static const int isolateThresholdBytes = 1536 * 1024;
 
   String get _uid {
+    final resolver = _uidResolver;
+    if (resolver != null) return resolver();
     final u = _client.auth.currentUser;
     if (u == null) throw const AuthException('Sessão expirada.');
     return u.id;

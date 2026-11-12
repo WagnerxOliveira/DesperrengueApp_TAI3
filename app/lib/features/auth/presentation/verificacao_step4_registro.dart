@@ -1,18 +1,18 @@
 import '../../../core/ui/app_scaffold.dart';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../../core/services/draft_store.dart';
 
 // Importação ATIVADA para que a navegação funcione
-import 'verificacao_step5_finalizacao.dart';
+import 'verificacao_step5_finalizacao.dart';
 import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep4RegistroScreen extends StatefulWidget {
-  final File frenteDocumento;
-  final File versoDocumento;
-  final File selfie;
+  final XFile frenteDocumento;
+  final XFile versoDocumento;
+  final XFile selfie;
 
   const VerificacaoStep4RegistroScreen({
     super.key,
