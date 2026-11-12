@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/chat_models.dart';
 import '../models/marketplace_models.dart';
 import '../utils/ids.dart';
+import '../utils/resilient_stream.dart';
 
 /// O banco recusou a mensagem porque o serviço foi concluído/cancelado
 /// (trigger `CHAT_ARCHIVED`): a conversa virou somente leitura.
@@ -90,19 +91,22 @@ class SocialService {
   /// O default do `supabase_flutter` é `ascending: false`; por isso a ordem é
   /// explícita aqui E reforçada no Dart (created_at, desempate por id): o stream
   /// só aceita uma coluna de ordenação. Nunca misturar DESC com lista não reversa.
-  Stream<List<ChatMessage>> streamMessages(String jobId, String providerId) => _client
-      .from('messages')
-      .stream(primaryKey: ['id'])
-      .eq('job_id', jobId)
-      .order('created_at', ascending: true)
-      .map((rows) {
-        final list = rows.map(ChatMessage.fromMap).where((m) => m.providerId == providerId).toList();
-        list.sort((a, b) {
-          final c = a.createdAt.compareTo(b.createdAt);
-          return c != 0 ? c : a.id.compareTo(b.id);
-        });
-        return list;
-      });
+  Stream<List<ChatMessage>> streamMessages(String jobId, String providerId) =>
+      resilientStream<List<ChatMessage>>(
+        () => _client
+            .from('messages')
+            .stream(primaryKey: ['id'])
+            .eq('job_id', jobId)
+            .order('created_at', ascending: true)
+            .map((rows) {
+          final list = rows.map(ChatMessage.fromMap).where((m) => m.providerId == providerId).toList();
+          list.sort((a, b) {
+            final c = a.createdAt.compareTo(b.createdAt);
+            return c != 0 ? c : a.id.compareTo(b.id);
+          });
+          return list;
+        }),
+      );
 
   /// Envia uma mensagem de forma idempotente.
   ///
@@ -166,13 +170,15 @@ class SocialService {
 
     controller = StreamController<List<AppNotification>>.broadcast(
       onListen: () {
-        realtimeSub = _client
-            .from('notifications')
-            .stream(primaryKey: ['id'])
-            .eq('user_id', uid)
-            .order('created_at', ascending: false)
-            .map((rows) => rows.map(AppNotification.fromMap).toList())
-            .listen(
+        // Reconexão automática com backoff exponencial se o Realtime cair.
+        realtimeSub = resilientStream<List<AppNotification>>(
+          () => _client
+              .from('notifications')
+              .stream(primaryKey: ['id'])
+              .eq('user_id', uid)
+              .order('created_at', ascending: false)
+              .map((rows) => rows.map(AppNotification.fromMap).toList()),
+        ).listen(
               (items) {
                 latestRaw = items;
                 emitCurrent();
