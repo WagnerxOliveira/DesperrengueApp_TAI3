@@ -1,0 +1,25 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Pytest / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Packaging / build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local secrets & temporary certs
+.env
+.env.*
+!.env.example
