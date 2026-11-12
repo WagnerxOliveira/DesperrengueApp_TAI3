@@ -33,4 +33,5 @@ Registro histórico e normativo das decisões arquiteturalmente significativas d
 | [0017](0017-distribuicao-beta-e-atualizacao-no-app.md) | Distribuição contínua (APK Beta / PWA) e verificação de atualização in-app | Aceito | 2026-10-29 |
 | [0018](0018-carteira-ledger-e-pix-sandbox.md) | Carteira do cliente, livro-razão de partida dobrada e Pix sandbox | Aceito | 2026-10-29 |
 | [0019](0019-agendamento-geofence-chat-dossies.md) | Serviço agendado vs. em execução, dupla trava (relógio + Haversine) e dossiês | Aceito | 2026-11-05 |
-| [0020](0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) | Fundo de Garantia em 3 Camadas, Motor Antifraude $O(1)/O(\log N)$ e KYC Biométrico/OCR | Aceito | 2026-11-08 |
+| [0020](0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) | Fundo de Garantia em 3 Camadas, Motor Antifraude $O(1)/O(\log N)$ e KYC Biométrico/OCR | Aceito (ampliado por 0021) | 2026-11-08 |
+| [0021](0021-arquitetura-kyc-zero-trust-argon-carbon.md) | Arquitetura KYC Zero-Trust Híbrida (Argon High + Carbon High), Criptografia VIO/ICP-Brasil, Anti-Swap 180s e SHAP LGPD | Aceito | 2026-11-12 |
