@@ -107,6 +107,8 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   final ValueNotifier<GeoFix?> _pos = ValueNotifier<GeoFix?>(null);
   StreamSubscription<GeoFix>? _posSub;
   Timer? _tick;
+  /// Pulso de 1 s: só a contagem regressiva e o botão de iniciar escutam (não a tela toda).
+  final ValueNotifier<int> _clockTick = ValueNotifier<int>(0);
 
   JobDestination? _dest;
   bool _destLoading = true;
@@ -126,11 +128,11 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   @override
   void initState() {
     super.initState();
-    // Reavalia a contagem regressiva a cada segundo (barato: só o texto do checklist muda).
+    // Reavalia a contagem regressiva a cada segundo (barato: só o checklist e o botão reconstroem).
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       _maybeRefreshLocation();
-      setState(() {});
+      _clockTick.value++;
     });
     _bootstrap();
   }
@@ -140,6 +142,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     _tick?.cancel();
     _posSub?.cancel();
     _pos.dispose();
+    _clockTick.dispose();
     super.dispose();
   }
 
@@ -280,7 +283,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
       final ok = await confirmDialog(
         context,
         title: 'Modo de teste',
-        message: 'Isto ignora a data/hora e o GPS e inicia o serviço agora. Só existe no ambiente de homologação.',
+        message: 'Isto ignora a data/hora e o GPS e inicia o serviço agora. Só existe em versões de teste do aplicativo.',
         confirmLabel: 'Simular e iniciar',
       );
       if (!ok || !mounted) return;
@@ -367,7 +370,6 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     final tk = context.tk;
     final price = job.agreedPrice ?? 0;
     final net = price - price * 0.12;
-    final gate = _gate;
     return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
@@ -490,15 +492,20 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
               onTap: _onAddressTap,
             ),
           const SizedBox(height: 12),
-          if (widget.asProvider)
-            _Checklist(
-              gate: gate,
-              scheduledFor: job.scheduledFor,
-              onEnableLocation: _startLocation,
-              addressLocked: !(_locView?.exactUnlocked ?? false),
-            )
-          else
-            _ClientRules(gate: gate, scheduledFor: job.scheduledFor),
+          // A contagem regressiva muda a cada segundo: só estes blocos reconstroem (não a tela inteira).
+          ValueListenableBuilder<int>(
+            valueListenable: _clockTick,
+            builder: (context, _, _) => RepaintBoundary(
+              child: widget.asProvider
+                  ? _Checklist(
+                      gate: _gate,
+                      scheduledFor: job.scheduledFor,
+                      onEnableLocation: _startLocation,
+                      addressLocked: !(_locView?.exactUnlocked ?? false),
+                    )
+                  : _ClientRules(gate: _gate, scheduledFor: job.scheduledFor),
+            ),
+          ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: _openChat,
@@ -546,11 +553,14 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  PrimaryButton(
-                    label: 'Iniciar serviço (ativar cronômetro)',
-                    icon: Icons.play_arrow_rounded,
-                    loading: _starting,
-                    onPressed: gate.canStart ? () => _start() : null,
+                  ValueListenableBuilder<int>(
+                    valueListenable: _clockTick,
+                    builder: (context, _, _) => PrimaryButton(
+                      label: 'Iniciar serviço (ativar cronômetro)',
+                      icon: Icons.play_arrow_rounded,
+                      loading: _starting,
+                      onPressed: _gate.canStart ? () => _start() : null,
+                    ),
                   ),
                   if (kCheckinSandboxUi)
                     TextButton.icon(

@@ -242,7 +242,7 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
             icon: Icons.play_circle_outline_rounded,
             label: 'Início real',
             value: d.startedAt == null ? 'Não iniciado' : dateLong(d.startedAt!),
-            note: d.startedAt != null && d.startedSimulated ? '(início simulado — homologação)' : null,
+            note: d.startedAt != null && d.startedSimulated ? '(início de teste, sem efeito real)' : null,
           ),
           _TimelineRow(icon: Icons.flag_rounded, label: 'Conclusão', value: d.finishedAt == null ? '—' : dateLong(d.finishedAt!), last: true),
         ],
