@@ -121,6 +121,7 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 | **41** | [`eng_portfolio_sync_test.dart`](../app/test/eng_portfolio_sync_test.dart) | Sincronização *single-flight* sem condições de corrida em `ProviderPortfolioStore.syncFromSupabase`. | `PASS` |
 | **42** | [`eng_static_guards_test.dart`](../app/test/eng_static_guards_test.dart) | Guardas estáticas automatizadas sobre `app/lib/**`: zero `dart:io`, zero `Isolate.run` fora de `runOffMainThread`, zero `uploadBinary` sem `sanitizeForUpload` e zero vazamento de PII em `debugPrint`. | `PASS` |
 | **43** | [`eng_update_security_test.dart`](../app/test/eng_update_security_test.dart) | Validação estrita de domínio HTTPS (`github.com` / `*.githubusercontent.com`) para download de APK e proteção contra checagens concorrentes no `UpdateGate`. | `PASS` |
+| **44** | [`eng_smart_split_cents_test.dart`](../app/test/eng_smart_split_cents_test.dart) | Teste de propriedade algébrica (~4.400 combinações de valores e centavos ímpares) para `SmartSplitBreakdown` em centavos inteiros (`Money.rateOfCents`), provando conservação exata ($\text{taxa} + \text{repasse} == \text{mão de obra}$). | `PASS` |
 
 ---
 
