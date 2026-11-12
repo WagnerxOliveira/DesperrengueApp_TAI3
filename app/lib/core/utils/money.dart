@@ -36,6 +36,20 @@ class Money {
     return neg ? -r : r;
   }
 
+  /// Alíquota fracionária [rate] (ex.: 0,135) de [cents], meio centavo para cima.
+  ///
+  /// A alíquota vira partes-por-milhão inteiras (`round(rate * 1e6)`), então
+  /// 0,135 → 135000 ppm é exata e todo o cálculo seguinte é em inteiros.
+  static int rateOfCents(int cents, double rate) {
+    if (rate.isNaN || rate.isInfinite || rate <= 0) return 0;
+    final ppm = (rate * 1000000).round();
+    final product = cents * ppm;
+    final neg = product < 0;
+    final abs = neg ? -product : product;
+    final r = (abs + 500000) ~/ 1000000;
+    return neg ? -r : r;
+  }
+
   /// Divide [totalCents] proporcionalmente a [weights] sem perder centavo
   /// (método do maior resto). A soma do resultado é SEMPRE [totalCents].
   static List<int> allocate(int totalCents, List<int> weights) {
