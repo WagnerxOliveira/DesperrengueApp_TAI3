@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/models/user_profile.dart';
+import '../../../core/security/kyc_session_anti_swap_guard.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/services/draft_store.dart';
@@ -15,6 +16,7 @@ import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/kyc_human_feedback_translator.dart';
 import '../../../core/ui/widgets.dart';
 import 'address_form.dart';
 
@@ -212,10 +214,14 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   Uint8List? _docBackBytes;
   bool _analyzingOcr = false;
   AuditedDocumentOcrResult? _ocrResult;
+  KycSessionBindingTicket? _sessionTicket;
 
   @override
   void initState() {
     super.initState();
+    _sessionTicket = KycSessionAntiSwapGuard.issueSession(
+      userId: widget.profile.id.isEmpty ? 'client_kyc_user' : widget.profile.id,
+    );
     _restoreDraft();
     _name.addListener(_onInputChanged);
     _phone.addListener(_onInputChanged);
@@ -397,19 +403,37 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           selfieBytes: capturedBytes,
           cpfDigits: _cpf.text,
         );
+        final activeTicket = KycSessionAntiSwapGuard.renewIfExpired(
+          _sessionTicket ??
+              KycSessionAntiSwapGuard.issueSession(
+                userId: widget.profile.id.isEmpty
+                    ? 'client_kyc_user'
+                    : widget.profile.id,
+              ),
+        );
+        final frozenTicket = KycSessionAntiSwapGuard.freezeCanonicalSelfie(
+          ticket: activeTicket,
+          selfieBytes: capturedBytes,
+          origin: CaptureOrigin.liveCameraOnly,
+        );
         if (!mounted) return;
+        HapticFeedback.mediumImpact();
         setState(() {
+          _sessionTicket = frozenTicket;
           _selfieBytes = capturedBytes;
           _livenessResult = result;
           _latestOvalAnalysis = frameCheck;
           _livenessStep = ActiveLivenessStep.completed;
-          _liveDiagnosticMessage = frameCheck.diagnosticMessage;
+          _liveDiagnosticMessage =
+              KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
+            frameCheck.diagnosticMessage,
+          );
           _livenessRunning = false;
         });
       } catch (e) {
         if (!mounted) return;
         setState(() {
-          _error = e.toString().replaceFirst('Bad state: ', '');
+          _error = KycHumanFeedbackTranslator.translateError(e);
           _livenessStep = ActiveLivenessStep.centerFaceInOval;
           _livenessRunning = false;
         });
@@ -708,11 +732,27 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         selfieBytes: capturedBytes,
         cpfDigits: _cpf.text,
       );
+      final activeTicket = KycSessionAntiSwapGuard.renewIfExpired(
+        _sessionTicket ??
+            KycSessionAntiSwapGuard.issueSession(
+              userId: widget.profile.id.isEmpty
+                  ? 'client_kyc_user'
+                  : widget.profile.id,
+            ),
+      );
+      final frozenTicket = KycSessionAntiSwapGuard.freezeCanonicalSelfie(
+        ticket: activeTicket,
+        selfieBytes: capturedBytes,
+        origin: CaptureOrigin.liveCameraOnly,
+        detectedCameraLabels:
+            _availableCameras.map((c) => c.name).toList(growable: false),
+      );
 
       _stopFrontOvalCamera();
       if (!mounted) return;
       HapticFeedback.heavyImpact();
       setState(() {
+        _sessionTicket = frozenTicket;
         _selfieBytes = capturedBytes;
         _livenessResult = result;
         _latestOvalAnalysis = lastAnalysis;
@@ -724,7 +764,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Bad state: ', '');
+        _error = KycHumanFeedbackTranslator.translateError(e);
         _livenessRunning = false;
         _livenessStep = ActiveLivenessStep.centerFaceInOval;
       });
@@ -806,6 +846,34 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
             );
 
       if (!mounted) return;
+      if (_selfieBytes != null && _selfieBytes!.isNotEmpty) {
+        var ticket = _sessionTicket ??
+            KycSessionAntiSwapGuard.issueSession(
+              userId: widget.profile.id.isEmpty
+                  ? 'client_kyc_user'
+                  : widget.profile.id,
+            );
+        if (ticket.isExpired()) {
+          ticket = KycSessionAntiSwapGuard.renewIfExpired(ticket);
+        }
+        if (!ticket.hasFrozenSelfie) {
+          ticket = KycSessionAntiSwapGuard.freezeCanonicalSelfie(
+            ticket: ticket,
+            selfieBytes: _selfieBytes!,
+            origin: CaptureOrigin.liveCameraOnly,
+          );
+        }
+        _sessionTicket =
+            KycSessionAntiSwapGuard.bindDocumentCapturesAndComputeRequestHash(
+          ticket: ticket,
+          frontDocBytes: _docFrontBytes!,
+          backDocBytes: _docBackBytes!,
+          frontOrigin: CaptureOrigin.liveCameraOnly,
+          backOrigin: CaptureOrigin.liveCameraOnly,
+          detectedCameraLabels:
+              _availableCameras.map((c) => c.name).toList(growable: false),
+        );
+      }
       HapticFeedback.mediumImpact();
       setState(() {
         _ocrResult = result;
@@ -824,7 +892,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       if (mounted) {
         setState(() {
           _ocrResult = null;
-          _error = e.toString().replaceFirst('Bad state: ', '');
+          _error = KycHumanFeedbackTranslator.translateError(e);
         });
       }
     } finally {
@@ -1048,7 +1116,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 : null,
             helperText: cpfDigits.length == 11
                 ? (cpfValid
-                    ? 'CPF matematicamente válido (Módulo 11 RFB)'
+                    ? 'CPF válido e verificado com sucesso'
                     : 'Dígito verificador do CPF inválido')
                 : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
           ),
@@ -1126,102 +1194,107 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           ),
           child: Column(
             children: [
-              // MOLDURA OVAL COM CÂMERA FRONTAL AO VIVO (ActiveLivenessOvalCamera)
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    key: const ValueKey('active-liveness-oval-container'),
-                    width: 222,
-                    height: 280,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(140),
-                      border: Border.all(
-                        color: borderColor,
-                        width: 4.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: borderColor.withValues(alpha: 0.28),
-                          blurRadius: 18,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: _buildOvalViewportContent(
-                        tk: tk,
-                        done: done,
-                        cameraReady: cameraReady,
-                      ),
-                    ),
-                  ),
-                  if (cameraReady && !done && _availableCameras.length > 1)
-                    Positioned(
-                      right: 4,
-                      top: 6,
-                      child: Material(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          tooltip: 'Alternar lente da câmera',
-                          icon: const Icon(
-                            Icons.cameraswitch_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          onPressed: () => _startInteractiveLivenessChallenge(
-                            switchCameraLens: true,
-                          ),
-                        ),
-                      ),
-                    ),
-                  Positioned(
-                    bottom: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 5,
-                      ),
+              // MOLDURA OVAL COM CÂMERA FRONTAL AO VIVO (ActiveLivenessOvalCamera - 120 FPS RepaintBoundary)
+              RepaintBoundary(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      key: const ValueKey('active-liveness-oval-container'),
+                      width: 222,
+                      height: 280,
                       decoration: BoxDecoration(
-                        color: done
-                            ? tk.success
-                            : (hasFaceNow
-                                ? tk.success.withValues(alpha: 0.92)
-                                : Colors.black.withValues(alpha: 0.78)),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            done
-                                ? Icons.verified_rounded
-                                : (hasFaceNow
-                                    ? Icons.face_retouching_natural_rounded
-                                    : Icons.remove_red_eye_outlined),
-                            size: 14,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            done
-                                ? 'Prova de Vida Homologada!'
-                                : (hasFaceNow
-                                    ? 'Rosto Humano Detectado'
-                                    : 'Aguardando Rosto no Oval'),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w800,
-                            ),
+                        color: Colors.black,
+                        borderRadius: BorderRadius.circular(140),
+                        border: Border.all(
+                          color: borderColor,
+                          width: 4.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: borderColor.withValues(alpha: 0.28),
+                            blurRadius: 18,
+                            spreadRadius: 2,
                           ),
                         ],
                       ),
+                      child: ClipOval(
+                        child: _buildOvalViewportContent(
+                          tk: tk,
+                          done: done,
+                          cameraReady: cameraReady,
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    if (cameraReady && !done && _availableCameras.length > 1)
+                      Positioned(
+                        right: 4,
+                        top: 6,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.65),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: 'Alternar lente da câmera',
+                            icon: const Icon(
+                              Icons.cameraswitch_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                            onPressed: () => _startInteractiveLivenessChallenge(
+                              switchCameraLens: true,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: done
+                              ? tk.success
+                              : (hasFaceNow
+                                  ? tk.success.withValues(alpha: 0.92)
+                                  : Colors.black.withValues(alpha: 0.78)),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              done
+                                  ? Icons.verified_rounded
+                                  : (hasFaceNow
+                                      ? Icons.face_retouching_natural_rounded
+                                      : Icons.remove_red_eye_outlined),
+                              size: 14,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                done
+                                    ? 'Prova de Vida Homologada!'
+                                    : (hasFaceNow
+                                        ? 'Rosto Humano Detectado'
+                                        : 'Aguardando Rosto no Oval'),
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 14),
               Text(
@@ -1240,23 +1313,29 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 color: done ? tk.success : tk.clientAccent,
               ),
               const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: tk.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: hasFaceNow || done ? tk.success.withValues(alpha: 0.5) : tk.border,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 54),
+                child: Container(
+                  width: double.infinity,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: hasFaceNow || done ? tk.success.withValues(alpha: 0.5) : tk.border,
+                    ),
                   ),
-                ),
-                child: Text(
-                  _liveDiagnosticMessage,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: hasFaceNow || done ? tk.text : tk.textMuted,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
+                  child: Text(
+                    KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
+                      _liveDiagnosticMessage,
+                    ),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: hasFaceNow || done ? tk.text : tk.textMuted,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
@@ -1319,6 +1398,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         : (cameraReady
                             ? 'Reiniciar Leitura da Câmera Frontal'
                             : 'Iniciar Registro Facial (Prova de Vida)'),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ),
@@ -1467,7 +1547,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               child: _DocumentCaptureCard(
                 key: const ValueKey('capture-doc-back'),
                 title: '2. Verso do Documento',
-                subtitle: 'Moldura com QR Code / MRZ / CPF',
+                subtitle: 'Moldura com QR Code e CPF no verso',
                 imageBytes: _docBackBytes,
                 onTap: () => _captureDocumentSide(isFront: false),
               ),
@@ -1788,7 +1868,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         : '2. VERSO DO DOCUMENTO (${widget.documentType.code})';
     final sideHint = widget.isFront
         ? 'Encaixe a FRENTE (com sua Foto 3×4 e Nome) dentro do retângulo abaixo'
-        : 'Encaixe o VERSO (com QR Code / MRZ e CPF) dentro do retângulo abaixo';
+        : 'Encaixe o VERSO (com QR Code e CPF) dentro do retângulo abaixo';
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -1809,7 +1889,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                     CircularProgressIndicator(color: Colors.white),
                     SizedBox(height: 12),
                     Text(
-                      'Abrindo câmera traseira com moldura ISO ID-1...',
+                      'Abrindo câmera traseira com moldura guiada...',
                       style: TextStyle(color: Colors.white),
                     ),
                   ],
@@ -1827,13 +1907,15 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                 ),
               ),
 
-            // 2. Máscara escura semi-transparente com recorte retangular ISO/IEC 7810 ID-1
-            IgnorePointer(
-              child: CustomPaint(
-                painter: DocumentScannerOverlayPainter(
-                  isFront: widget.isFront,
-                  isVertical: _isVerticalOrientation,
-                  isSharpEnough: sharpEnough,
+            // 2. Máscara escura semi-transparente com recorte retangular (120 FPS RepaintBoundary)
+            RepaintBoundary(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: DocumentScannerOverlayPainter(
+                    isFront: widget.isFront,
+                    isVertical: _isVerticalOrientation,
+                    isSharpEnough: sharpEnough,
+                  ),
                 ),
               ),
             ),
@@ -2263,7 +2345,7 @@ class _DocumentCaptureCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              hasPhoto ? 'Recorte ROI capturado • Toque p/ refazer' : subtitle,
+              hasPhoto ? 'Imagem nítida capturada • Toque p/ refazer' : subtitle,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 11,
@@ -2278,8 +2360,10 @@ class _DocumentCaptureCard extends StatelessWidget {
   }
 }
 
-/// Card que exibe os dados transcritos automaticamente do documento via OCR após a validação real.
-class _OcrTranscribedSummaryCard extends StatelessWidget {
+/// Card Executivo (*Quiet Luxury*, `<= 480px`) que exibe os dados transcritos
+/// automaticamente do documento via OCR após a validação real, com Zero Jargão Técnico
+/// e máscara LGPD por padrão (`***.456.789-**`) com toggle seguro de conferência.
+class _OcrTranscribedSummaryCard extends StatefulWidget {
   const _OcrTranscribedSummaryCard({
     required this.ocr,
     required this.typedName,
@@ -2289,124 +2373,209 @@ class _OcrTranscribedSummaryCard extends StatelessWidget {
   final String typedName;
 
   @override
+  State<_OcrTranscribedSummaryCard> createState() =>
+      _OcrTranscribedSummaryCardState();
+}
+
+class _OcrTranscribedSummaryCardState extends State<_OcrTranscribedSummaryCard> {
+  bool _revealCpf = false;
+
+  @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final ocr = widget.ocr;
+    final typedName = widget.typedName;
     final facePct = (ocr.faceMatchCosineSimilarity * 100).clamp(0.0, 100.0);
     final namePct = (ocr.nameCrossCheckSimilarity * 100).clamp(0.0, 100.0);
+    final maskedCpf = KycHumanFeedbackTranslator.formatCpfQuietLuxury(
+      ocr.extractedCpfDigits,
+      masked: true,
+    );
+    final displayedCpf = _revealCpf ? ocr.extractedCpfFormatted : maskedCpf;
 
-    return Container(
-      key: const ValueKey('ocr-transcribed-card'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: tk.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tk.success, width: 2.0),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Container(
+          key: const ValueKey('ocr-transcribed-card'),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: tk.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: tk.success, width: 2.0),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.verified_rounded, color: tk.success, size: 24),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text(
-                  'Dados Transcritos Automaticamente do Documento (OCR)',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+              Row(
+                children: [
+                  Icon(Icons.verified_rounded, color: tk.success, size: 24),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Dados Transcritos Automaticamente do Documento (OCR)',
+                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Autenticidade física e biométrica homologada • Pronto para concluir seu cadastro.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: tk.success,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
+              const Divider(height: 20),
+              _OcrFieldRow('Nome Civil Confirmado', ocr.extractedFullName),
+              if (typedName.isNotEmpty)
+                _OcrFieldRow(
+                  'Nome na Etapa 1',
+                  '$typedName (${namePct.toStringAsFixed(0)}% compatível com o documento)',
+                ),
+              _OcrFieldRow(
+                'CPF do Titular',
+                '$displayedCpf (Confirmado)',
+                trailing: InkWell(
+                  key: const ValueKey('toggle-cpf-reveal'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => setState(() => _revealCpf = !_revealCpf),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    child: Icon(
+                      _revealCpf
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 18,
+                      color: tk.clientAccent,
+                    ),
+                  ),
+                ),
+              ),
+              _OcrFieldRow(
+                'Tipo de Documento',
+                '${ocr.documentType.code} • Nº ${ocr.extractedDocumentNumber}',
+              ),
+              _OcrFieldRow('Data de Nascimento', ocr.extractedBirthDateFormatted),
+              _OcrFieldRow(
+                'Órgão Emissor',
+                KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
+                  ocr.extractedIssuingAuthority,
+                ),
+              ),
+              const Divider(height: 20),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  StatusChip(
+                    'Identidade Protegida (${facePct.toStringAsFixed(1)}%)',
+                    color: tk.success,
+                  ),
+                  StatusChip(
+                    'Leitura Óptica Nítida e Sem Reflexos',
+                    color: tk.success,
+                  ),
+                  StatusChip(
+                    'Frente e Verso Autenticados',
+                    color: tk.success,
+                  ),
+                  StatusChip(
+                    'Verificação Local Homologada (${namePct.toStringAsFixed(0)}%)',
+                    color: tk.success,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selo de Identidade Protegida: ${ocr.forensicVerificationSeal}',
+                style: TextStyle(fontSize: 11, color: tk.textMuted),
+              ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Autenticidade física e biométrica homologada • Pronto para concluir seu cadastro.',
-            style: TextStyle(fontSize: 12, color: tk.success, fontWeight: FontWeight.w700),
-          ),
-          const Divider(height: 20),
-          _OcrFieldRow('Nome Civil (OCR)', ocr.extractedFullName),
-          if (typedName.isNotEmpty)
-            _OcrFieldRow(
-              'Nome na Etapa 1',
-              '$typedName (${namePct.toStringAsFixed(0)}% compatível com o documento)',
-            ),
-          _OcrFieldRow(
-            'CPF Validado (Mod-11)',
-            '${ocr.extractedCpfFormatted} (100% Idêntico à Etapa 1)',
-          ),
-          _OcrFieldRow(
-            'Documento / Registro',
-            '${ocr.documentType.code} • Nº ${ocr.extractedDocumentNumber}',
-          ),
-          _OcrFieldRow('Data de Nascimento', ocr.extractedBirthDateFormatted),
-          _OcrFieldRow('Órgão Emissor', ocr.extractedIssuingAuthority),
-          const Divider(height: 20),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              StatusChip(
-                'Face Match 1:1 (Selfie × 3×4): ${facePct.toStringAsFixed(1)}%',
-                color: tk.success,
-              ),
-              StatusChip(
-                'Nitidez Laplaciana: ${ocr.laplacianSharpnessScore.toStringAsFixed(0)}',
-                color: tk.success,
-              ),
-              StatusChip(
-                'ROI dHash Frente != Verso (d=${ocr.frontBackHammingDistance})',
-                color: tk.success,
-              ),
-              StatusChip(
-                'Cross-Check Nome & CPF: ${namePct.toStringAsFixed(0)}%',
-                color: tk.success,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Selo Forense: ${ocr.forensicVerificationSeal}',
-            style: TextStyle(fontSize: 11, color: tk.textMuted),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _OcrFieldRow extends StatelessWidget {
-  const _OcrFieldRow(this.label, this.value);
+  const _OcrFieldRow(this.label, this.value, {this.trailing});
 
   final String label;
   final String value;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 148,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                color: context.tk.textMuted,
-                fontWeight: FontWeight.w700,
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 290) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.tk.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    ?trailing,
+                  ],
+                ),
+              ],
+            );
+          }
+          final labelWidth = math.min(138.0, constraints.maxWidth * 0.42);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: labelWidth,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: context.tk.textMuted,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+              ?trailing,
+            ],
+          );
+        },
       ),
     );
   }

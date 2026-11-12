@@ -1230,10 +1230,6 @@ class DocumentOcrAndLivenessService {
       return 1.0;
     }
 
-    if (ocrTokens.length >= 2 && ocrTokens.every((o) => typedTokens.contains(o))) {
-      return 1.0;
-    }
-
     final int dist = _levenshteinDistance(normTyped, normOcr);
     final int maxLen = math.max(normTyped.length, normOcr.length);
     final double levSim = 1.0 - (dist / maxLen);
@@ -1667,8 +1663,629 @@ class DocumentOcrAndLivenessService {
     final img.Image finalImg = rotateDegrees == 0
         ? canvas
         : img.copyRotate(canvas, angle: rotateDegrees);
-    return Uint8List.fromList(img.encodePng(finalImg));
+     return Uint8List.fromList(img.encodePng(finalImg));
   }
+
+  // ===========================================================================
+  // GROUNDING ESPACIAL 2D ([0..1000]), ROTAÇÃO CANÔNICA E VALIDADORES (VOL. I)
+  // ===========================================================================
+
+  /// Rotaciona uma imagem para sua orientação canônica (`0°`, `90°`, `180°`, `270°`).
+  static Uint8List rotateCanonicalOrientation(
+    Uint8List imageBytes,
+    int rotationDegrees, {
+    bool asLosslessPng = true,
+  }) {
+    final int normalized = ((rotationDegrees % 360) + 360) % 360;
+    if (normalized == 0) {
+      return imageBytes;
+    }
+    if (normalized != 90 && normalized != 180 && normalized != 270) {
+      throw ArgumentError.value(
+        rotationDegrees,
+        'rotationDegrees',
+        'A rotação canônica deve ser 0, 90, 180 ou 270 graus.',
+      );
+    }
+    final img.Image? decoded = img.decodeImage(imageBytes);
+    if (decoded == null) {
+      throw StateError(
+        'ERR_UNREADABLE_DOCUMENT_IMAGE: Não foi possível decodificar imagem para rotação canônica.',
+      );
+    }
+    final img.Image rotated = img.copyRotate(decoded, angle: normalized);
+    return Uint8List.fromList(
+      asLosslessPng ? img.encodePng(rotated) : img.encodeJpg(rotated, quality: 92),
+    );
+  }
+
+  /// Calcula o dígito verificador ICAO Doc 9303 (Módulo 10 com pesos `7-3-1`).
+  /// Retorna um inteiro `0..9`, ou `-1` caso o campo contenha caracteres inválidos.
+  static int computeIcaoMrzCheckDigit(String field) {
+    if (field.isEmpty) return -1;
+    const List<int> weights = <int>[7, 3, 1];
+    int sum = 0;
+    final String upper = field.toUpperCase();
+    for (int i = 0; i < upper.length; i++) {
+      final int code = upper.codeUnitAt(i);
+      int val;
+      if (code >= 48 && code <= 57) {
+        val = code - 48; // '0'..'9' -> 0..9
+      } else if (code >= 65 && code <= 90) {
+        val = code - 55; // 'A'..'Z' -> 10..35
+      } else if (code == 60) {
+        val = 0; // '<' -> 0
+      } else {
+        return -1;
+      }
+      sum += val * weights[i % 3];
+    }
+    return sum % 10;
+  }
+
+  /// Valida linhas completas de MRZ segundo o padrão ICAO Doc 9303:
+  /// - TD1 (3 linhas de 30 caracteres: RG / CIN Mercosul)
+  /// - TD3 (2 linhas de 44 caracteres: Passaporte)
+  static bool validateIcaoMrzLines(List<String> rawLines) {
+    final List<String> lines = rawLines
+        .map((l) => l.trim().toUpperCase().replaceAll(' ', '<'))
+        .where((l) => l.isNotEmpty)
+        .toList(growable: false);
+
+    // TD1: 3 linhas de 30 caracteres
+    if (lines.length == 3 && lines.every((l) => l.length == 30)) {
+      final String l1 = lines[0];
+      final String l2 = lines[1];
+
+      final String docNum = l1.substring(5, 14);
+      final int? docCheck = int.tryParse(l1[14]);
+      if (docCheck == null || computeIcaoMrzCheckDigit(docNum) != docCheck) {
+        return false;
+      }
+
+      final String birth = l2.substring(0, 6);
+      final int? birthCheck = int.tryParse(l2[6]);
+      if (birthCheck == null || computeIcaoMrzCheckDigit(birth) != birthCheck) {
+        return false;
+      }
+
+      final String expiry = l2.substring(8, 14);
+      final int? expiryCheck = int.tryParse(l2[14]);
+      if (expiryCheck == null ||
+          computeIcaoMrzCheckDigit(expiry) != expiryCheck) {
+        return false;
+      }
+
+      final String composite =
+          l1.substring(5, 30) + l2.substring(0, 7) + l2.substring(8, 15) + l2.substring(18, 29);
+      final int? compCheck = int.tryParse(l2[29]);
+      if (compCheck == null ||
+          computeIcaoMrzCheckDigit(composite) != compCheck) {
+        return false;
+      }
+      return true;
+    }
+
+    // TD3: 2 linhas de 44 caracteres (Passaporte)
+    if (lines.length == 2 && lines.every((l) => l.length == 44)) {
+      final String l2 = lines[1];
+      final String docNum = l2.substring(0, 9);
+      final int? docCheck = int.tryParse(l2[9]);
+      if (docCheck == null || computeIcaoMrzCheckDigit(docNum) != docCheck) {
+        return false;
+      }
+
+      final String birth = l2.substring(13, 19);
+      final int? birthCheck = int.tryParse(l2[19]);
+      if (birthCheck == null || computeIcaoMrzCheckDigit(birth) != birthCheck) {
+        return false;
+      }
+
+      final String expiry = l2.substring(21, 27);
+      final int? expiryCheck = int.tryParse(l2[27]);
+      if (expiryCheck == null ||
+          computeIcaoMrzCheckDigit(expiry) != expiryCheck) {
+        return false;
+      }
+
+      final String optionalData = l2.substring(28, 42);
+      final String optionalCheckChar = l2[42];
+      final bool isAllFiller = RegExp(r'^<+$').hasMatch(optionalData);
+      if (isAllFiller) {
+        if (optionalCheckChar != '<' && optionalCheckChar != '0') {
+          return false;
+        }
+      } else {
+        final int? optionalCheck = int.tryParse(optionalCheckChar);
+        if (optionalCheck == null ||
+            computeIcaoMrzCheckDigit(optionalData) != optionalCheck) {
+          return false;
+        }
+      }
+
+      final String compositeSource =
+          '${l2.substring(0, 10)}${l2.substring(13, 20)}${l2.substring(21, 43)}';
+      final int? compositeCheck = int.tryParse(l2[43]);
+      if (compositeCheck == null ||
+          computeIcaoMrzCheckDigit(compositeSource) != compositeCheck) {
+        return false;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Valida o número RENACH da CNH (`^[A-Z]{2}\d{9}$`, iniciando por UF brasileira válida).
+  static bool isValidCnhRenach(String rawRenach) {
+    final String normalized = rawRenach.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z]{2}\d{9}$').hasMatch(normalized)) {
+      return false;
+    }
+    const Set<String> validUfs = <String>{
+      'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO',
+      'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR',
+      'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO',
+    };
+    final String uf = normalized.substring(0, 2);
+    final String digits = normalized.substring(2);
+    if (!validUfs.contains(uf)) return false;
+    if (RegExp(r'^(\d)\1{8}$').hasMatch(digits)) return false;
+    return true;
+  }
+
+  /// Valida o Código de Segurança de 11 dígitos da CNH (SENATRAN).
+  static bool isValidCnhSecurityCode11(String rawCode) {
+    final String digits = rawCode.trim();
+    if (!RegExp(r'^\d{11}$').hasMatch(digits)) return false;
+    if (RegExp(r'^(\d)\1{10}$').hasMatch(digits)) return false;
+    return true;
+  }
+
+  /// Valida matematicamente um CNPJ (14 dígitos) pelo algoritmo Módulo 11.
+  static bool isValidCnpjMod11(String rawCnpj) {
+    final String digits = rawCnpj.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 14) return false;
+    if (RegExp(r'^(\d)\1{13}$').hasMatch(digits)) return false;
+
+    const List<int> weights1 = <int>[5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const List<int> weights2 = <int>[6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+    int sum1 = 0;
+    for (int i = 0; i < 12; i++) {
+      sum1 += (digits.codeUnitAt(i) - 48) * weights1[i];
+    }
+    final int rem1 = sum1 % 11;
+    final int dv1 = rem1 < 2 ? 0 : 11 - rem1;
+    if (dv1 != (digits.codeUnitAt(12) - 48)) return false;
+
+    int sum2 = 0;
+    for (int i = 0; i < 13; i++) {
+      sum2 += (digits.codeUnitAt(i) - 48) * weights2[i];
+    }
+    final int rem2 = sum2 % 11;
+    final int dv2 = rem2 < 2 ? 0 : 11 - rem2;
+    return dv2 == (digits.codeUnitAt(13) - 48);
+  }
+
+  /// Valida matematicamente a Chave de Acesso de 44 dígitos de NF-e / NFC-e
+  /// usando o algoritmo Módulo 11 (pesos `2..9` da direita para a esquerda).
+  static bool isValidNfeAccessKey44Mod11(String rawKey) {
+    final String digits = rawKey.replaceAll(RegExp(r'\D'), '');
+    if (digits.length != 44) return false;
+    if (RegExp(r'^(\d)\1{43}$').hasMatch(digits)) return false;
+
+    int weight = 2;
+    int sum = 0;
+    for (int i = 42; i >= 0; i--) {
+      final int digit = digits.codeUnitAt(i) - 48;
+      sum += digit * weight;
+      weight = weight == 9 ? 2 : weight + 1;
+    }
+    final int rem = sum % 11;
+    final int expectedDv = (rem == 0 || rem == 1) ? 0 : (11 - rem);
+    final int actualDv = digits.codeUnitAt(43) - 48;
+    return expectedDv == actualDv;
+  }
+
+  /// Realiza a conferência aritmética e tributária de Notas Fiscais de Insumos
+  /// no fluxo *Smart Split* (Módulo 11 de 44 dígitos + CNPJ embutido + soma de
+  /// itens consumíveis vs. valor declarado de materiais, bloqueando ferramentas).
+  static SmartSplitInvoiceVerificationResult verifySmartSplitInvoiceArithmetic({
+    required String accessKey44,
+    String? expectedIssuerCnpj,
+    required List<SmartSplitInvoiceLineItem> items,
+    required int declaredMaterialsCents,
+    int toleranceCents = 5,
+  }) {
+    final String cleanKey = accessKey44.replaceAll(RegExp(r'\D'), '');
+    if (!isValidNfeAccessKey44Mod11(cleanKey)) {
+      return const SmartSplitInvoiceVerificationResult(
+        isValid: false,
+        accessKeyMod11Valid: false,
+        issuerCnpjValid: false,
+        approvedConsumablesCents: 0,
+        rejectedCapitalToolsCents: 0,
+        declaredMaterialsCents: 0,
+        discrepancyCents: 0,
+        rejectionCode: 'ERR_INVALID_NFE_KEY_44_MOD11',
+      );
+    }
+
+    final String embeddedCnpj = cleanKey.substring(6, 20);
+    final bool cnpjMod11Ok = isValidCnpjMod11(embeddedCnpj);
+    final String? cleanExpectedCnpj = expectedIssuerCnpj
+        ?.replaceAll(RegExp(r'\D'), '');
+    final bool issuerMatches = cleanExpectedCnpj == null ||
+        cleanExpectedCnpj.isEmpty ||
+        cleanExpectedCnpj == embeddedCnpj;
+
+    if (!cnpjMod11Ok || !issuerMatches) {
+      return SmartSplitInvoiceVerificationResult(
+        isValid: false,
+        accessKeyMod11Valid: true,
+        issuerCnpjValid: false,
+        approvedConsumablesCents: 0,
+        rejectedCapitalToolsCents: 0,
+        declaredMaterialsCents: declaredMaterialsCents,
+        discrepancyCents: declaredMaterialsCents,
+        rejectionCode: 'ERR_INVALID_OR_MISMATCHED_NFE_CNPJ',
+      );
+    }
+
+    int consumablesSum = 0;
+    int rejectedToolsSum = 0;
+    for (final item in items) {
+      if (item.isConsumable && !_looksLikeCapitalTool(item.description)) {
+        consumablesSum += item.totalCents;
+      } else {
+        rejectedToolsSum += item.totalCents;
+      }
+    }
+
+    final int discrepancy = (consumablesSum - declaredMaterialsCents).abs();
+    final bool mathOk =
+        rejectedToolsSum == 0 &&
+        consumablesSum > 0 &&
+        discrepancy <= toleranceCents;
+
+    return SmartSplitInvoiceVerificationResult(
+      isValid: mathOk,
+      accessKeyMod11Valid: true,
+      issuerCnpjValid: true,
+      approvedConsumablesCents: consumablesSum,
+      rejectedCapitalToolsCents: rejectedToolsSum,
+      declaredMaterialsCents: declaredMaterialsCents,
+      discrepancyCents: discrepancy,
+      rejectionCode: mathOk
+          ? null
+          : (rejectedToolsSum > 0
+              ? 'ERR_CAPITAL_TOOLS_NOT_REIMBURSABLE'
+              : 'ERR_INVOICE_ARITHMETIC_MISMATCH'),
+    );
+  }
+
+  static bool _looksLikeCapitalTool(String description) {
+    final String lower = description.toLowerCase();
+    const List<String> forbiddenTools = <String>[
+      'furadeira',
+      'parafusadeira',
+      'martelete',
+      'esmerilhadeira',
+      'escada',
+      'andaime',
+      'maleta de ferramentas',
+      'serra marmore',
+      'serra circular',
+      'multimetro',
+      'alicate amperimetro',
+    ];
+    for (final tool in forbiddenTools) {
+      if (lower.contains(tool)) return true;
+    }
+    return false;
+  }
+
+  /// Integração com a Edge Function `kyc-argon-vision-gate` (Tier-1) com
+  /// **Degradação Elegante (Graceful Degradation)** automática para a validação
+  /// óptica/matemática local em `Isolate.run` quando em homologação, offline
+  /// ou testes, sem jamais lançar exceção não-tratada ou tela vermelha.
+  static Future<ArgonVisionGateVerificationResult>
+      invokeArgonVisionGateWithGracefulDegradation({
+    required Uint8List frontImageBytes,
+    required Uint8List backImageBytes,
+    required OfficialDocumentType documentType,
+    required String typedFullName,
+    required String typedCpfRaw,
+    List<double>? livenessFaceEmbedding128,
+    String? rawOcrFrontTextOverride,
+    String? rawOcrBackTextOverride,
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> payload)?
+        edgeFunctionInvoker,
+  }) async {
+    if (edgeFunctionInvoker != null) {
+      try {
+        final String cleanCpf = digitsOnly(typedCpfRaw);
+        final Map<String, dynamic> response =
+            await edgeFunctionInvoker(<String, dynamic>{
+          'mode': 'kyc_document',
+          'frontBase64': base64Encode(frontImageBytes),
+          'backBase64': base64Encode(backImageBytes),
+          'typedCpf': cleanCpf,
+          'typedFullName': typedFullName,
+          'document_type': documentType.code,
+          'expected_cpf': cleanCpf,
+          'expected_full_name': typedFullName,
+          'front_bytes_len': frontImageBytes.length,
+          'back_bytes_len': backImageBytes.length,
+        });
+
+        final bool readyFlagFalse =
+            response['ready_for_serpro_and_carbon'] == false;
+        final String decision = (response['decision'] ??
+                (readyFlagFalse ? 'REJECTED' : 'APPROVED'))
+            .toString()
+            .toUpperCase();
+        if (readyFlagFalse || decision == 'REJECTED') {
+          final Object? dossierObj = response['dossier'];
+          final String? dossierGuidance = dossierObj is Map
+              ? dossierObj['user_friendly_retake_guidance']?.toString()
+              : null;
+          final String reasonCode = (response['reason_code'] ??
+                  dossierGuidance ??
+                  'ERR_BLURRY_DOCUMENT_IMAGE')
+              .toString();
+          return ArgonVisionGateVerificationResult(
+            isApproved: false,
+            decision: 'REJECTED',
+            usedTier1EdgeFunction: true,
+            degradedGracefullyToLocal: false,
+            errorCode: reasonCode,
+          );
+        }
+
+        AuditedDocumentOcrResult? enrichedLocal;
+        try {
+          enrichedLocal = await analyzeDocumentForensicsAndOcrInIsolate(
+            frontImageBytes: frontImageBytes,
+            backImageBytes: backImageBytes,
+            documentType: documentType,
+            typedFullName: typedFullName,
+            typedCpfRaw: typedCpfRaw,
+            livenessFaceEmbedding128: livenessFaceEmbedding128,
+            rawOcrFrontTextOverride: rawOcrFrontTextOverride,
+            rawOcrBackTextOverride: rawOcrBackTextOverride,
+          );
+        } catch (_) {}
+
+        return ArgonVisionGateVerificationResult(
+          isApproved: true,
+          decision: 'APPROVED',
+          usedTier1EdgeFunction: true,
+          degradedGracefullyToLocal: false,
+          localResult: enrichedLocal,
+        );
+      } catch (_) {
+        // Degradação elegante automática para o motor óptico/matemático local
+      }
+    }
+
+    try {
+      final AuditedDocumentOcrResult localResult =
+          await analyzeDocumentForensicsAndOcrInIsolate(
+        frontImageBytes: frontImageBytes,
+        backImageBytes: backImageBytes,
+        documentType: documentType,
+        typedFullName: typedFullName,
+        typedCpfRaw: typedCpfRaw,
+        livenessFaceEmbedding128: livenessFaceEmbedding128,
+        rawOcrFrontTextOverride: rawOcrFrontTextOverride,
+        rawOcrBackTextOverride: rawOcrBackTextOverride,
+      );
+      return ArgonVisionGateVerificationResult(
+        isApproved: localResult.isAuthenticAndCrossChecked,
+        decision: localResult.isAuthenticAndCrossChecked ? 'APPROVED' : 'MANUAL_REVIEW',
+        usedTier1EdgeFunction: false,
+        degradedGracefullyToLocal: true,
+        localResult: localResult,
+      );
+    } catch (error) {
+      return ArgonVisionGateVerificationResult(
+        isApproved: false,
+        decision: 'REJECTED',
+        usedTier1EdgeFunction: false,
+        degradedGracefullyToLocal: true,
+        errorCode: error.toString(),
+      );
+    }
+  }
+}
+
+/// Caixa delimitadora normalizada (`[ymin, xmin, ymax, xmax]` na escala `[0..1000]`)
+/// utilizada pelo Grounding Espacial 2D de documentos e ROIs biométricas.
+class NormalizedBox2D {
+  final int ymin;
+  final int xmin;
+  final int ymax;
+  final int xmax;
+  final double confidence;
+
+  const NormalizedBox2D({
+    required this.ymin,
+    required this.xmin,
+    required this.ymax,
+    required this.xmax,
+    this.confidence = 1.0,
+  });
+
+  bool get isValid =>
+      ymin >= 0 &&
+      xmin >= 0 &&
+      ymax <= 1000 &&
+      xmax <= 1000 &&
+      ymax > ymin &&
+      xmax > xmin &&
+      confidence >= 0.0 &&
+      confidence <= 1.0;
+
+  /// Converte coordenadas normalizadas `[0..1000]` para coordenadas em pixels
+  /// aplicando margem de segurança (`padRatio = 0.04` por padrão) e `clamp`.
+  ({int left, int top, int width, int height}) toPixelCrop({
+    required int imageWidth,
+    required int imageHeight,
+    double padRatio = 0.04,
+  }) {
+    if (!isValid || imageWidth <= 0 || imageHeight <= 0) {
+      throw ArgumentError('NormalizedBox2D ou dimensões de imagem inválidas.');
+    }
+    final double rawLeft = (xmin / 1000.0) * imageWidth;
+    final double rawTop = (ymin / 1000.0) * imageHeight;
+    final double rawRight = (xmax / 1000.0) * imageWidth;
+    final double rawBottom = (ymax / 1000.0) * imageHeight;
+
+    final double boxW = rawRight - rawLeft;
+    final double boxH = rawBottom - rawTop;
+    final double padX = boxW * padRatio;
+    final double padY = boxH * padRatio;
+
+    final int left = (rawLeft - padX).floor().clamp(0, imageWidth - 1);
+    final int top = (rawTop - padY).floor().clamp(0, imageHeight - 1);
+    final int right = (rawRight + padX).ceil().clamp(left + 1, imageWidth);
+    final int bottom = (rawBottom + padY).ceil().clamp(top + 1, imageHeight);
+
+    return (
+      left: left,
+      top: top,
+      width: right - left,
+      height: bottom - top,
+    );
+  }
+
+  /// Transforma as coordenadas normalizadas `[0..1000]` quando a imagem inteira
+  /// é rotacionada no sentido horário (`0°, 90°, 180°, 270°` em `img.copyRotate`).
+  NormalizedBox2D transformToCanonicalOrientation(int rotationDegrees) {
+    final int normDeg = ((rotationDegrees % 360) + 360) % 360;
+    return switch (normDeg) {
+      0 => this,
+      90 => NormalizedBox2D(
+          ymin: xmin,
+          xmin: 1000 - ymax,
+          ymax: xmax,
+          xmax: 1000 - ymin,
+          confidence: confidence,
+        ),
+      180 => NormalizedBox2D(
+          ymin: 1000 - ymax,
+          xmin: 1000 - xmax,
+          ymax: 1000 - ymin,
+          xmax: 1000 - xmin,
+          confidence: confidence,
+        ),
+      270 => NormalizedBox2D(
+          ymin: 1000 - xmax,
+          xmin: ymin,
+          ymax: 1000 - xmin,
+          xmax: ymax,
+          confidence: confidence,
+        ),
+      _ => throw ArgumentError.value(
+          rotationDegrees,
+          'rotationDegrees',
+          'A rotação canônica deve ser 0, 90, 180 ou 270 graus.',
+        ),
+    };
+  }
+
+  /// Recorta a região delimitada e aplica rotação canônica (`0°, 90°, 180°, 270°`).
+  Uint8List cropAndRotateCanonical({
+    required Uint8List imageBytes,
+    int canonicalRotationDeg = 0,
+    double padRatio = 0.04,
+    bool asLosslessPng = true,
+  }) {
+    final img.Image? rawDecoded = img.decodeImage(imageBytes);
+    if (rawDecoded == null) {
+      throw StateError(
+        'ERR_UNREADABLE_DOCUMENT_IMAGE: Imagem inválida para recorte NormalizedBox2D.',
+      );
+    }
+    final img.Image decoded = img.bakeOrientation(rawDecoded);
+    final cropRect = toPixelCrop(
+      imageWidth: decoded.width,
+      imageHeight: decoded.height,
+      padRatio: padRatio,
+    );
+    img.Image cropped = img.copyCrop(
+      decoded,
+      x: cropRect.left,
+      y: cropRect.top,
+      width: cropRect.width,
+      height: cropRect.height,
+    );
+    final int normDeg = ((canonicalRotationDeg % 360) + 360) % 360;
+    if (normDeg == 90 || normDeg == 180 || normDeg == 270) {
+      cropped = img.copyRotate(cropped, angle: normDeg);
+    }
+    return Uint8List.fromList(
+      asLosslessPng ? img.encodePng(cropped) : img.encodeJpg(cropped, quality: 92),
+    );
+  }
+}
+
+/// Item de linha para conferência aritmética de Nota Fiscal no *Smart Split*.
+class SmartSplitInvoiceLineItem {
+  final String description;
+  final int totalCents;
+  final bool isConsumable;
+
+  const SmartSplitInvoiceLineItem({
+    required this.description,
+    required this.totalCents,
+    this.isConsumable = true,
+  });
+}
+
+/// Resultado da auditoria matemática de Nota Fiscal de materiais do *Smart Split*.
+class SmartSplitInvoiceVerificationResult {
+  final bool isValid;
+  final bool accessKeyMod11Valid;
+  final bool issuerCnpjValid;
+  final int approvedConsumablesCents;
+  final int rejectedCapitalToolsCents;
+  final int declaredMaterialsCents;
+  final int discrepancyCents;
+  final String? rejectionCode;
+
+  const SmartSplitInvoiceVerificationResult({
+    required this.isValid,
+    required this.accessKeyMod11Valid,
+    required this.issuerCnpjValid,
+    required this.approvedConsumablesCents,
+    required this.rejectedCapitalToolsCents,
+    required this.declaredMaterialsCents,
+    required this.discrepancyCents,
+    this.rejectionCode,
+  });
+}
+
+/// Resultado unificado do portão `kyc-argon-vision-gate` com suporte a
+/// Degradação Elegante para o validador óptico/matemático local.
+class ArgonVisionGateVerificationResult {
+  final bool isApproved;
+  final String decision;
+  final bool usedTier1EdgeFunction;
+  final bool degradedGracefullyToLocal;
+  final AuditedDocumentOcrResult? localResult;
+  final String? errorCode;
+
+  const ArgonVisionGateVerificationResult({
+    required this.isApproved,
+    required this.decision,
+    required this.usedTier1EdgeFunction,
+    required this.degradedGracefullyToLocal,
+    this.localResult,
+    this.errorCode,
+  });
 }
 
 class _ParsedOcrDocument {

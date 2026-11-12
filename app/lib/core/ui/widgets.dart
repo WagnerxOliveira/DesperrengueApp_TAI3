@@ -633,16 +633,19 @@ class BrandLogo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.handyman_rounded, color: accent, size: size + 2),
-        const SizedBox(width: 6),
-        Text(
-          'Desperrengue',
-          style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: size, letterSpacing: -0.3),
-        ),
-      ],
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.handyman_rounded, color: accent, size: size + 2),
+          const SizedBox(width: 6),
+          Text(
+            'Desperrengue',
+            style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: size, letterSpacing: -0.3),
+          ),
+        ],
+      ),
     );
   }
 }
