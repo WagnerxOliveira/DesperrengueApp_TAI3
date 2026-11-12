@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/marketplace_models.dart';
-import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/state/smart_triage_controller.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -117,54 +116,34 @@ class _UnavailableScreen extends StatelessWidget {
 }
 
 /// Cartão do cliente (nome curto antes da contratação, completo depois).
-/// Respeita a Trava Temporal de Privacidade: antes do dia do serviço exibe apenas
-/// o raio aproximado e a cidade, sem revelar rua/número ou abrir o mapa.
-class ClientCardTile extends StatelessWidget {
-  const ClientCardTile({
-    super.key,
-    required this.jobId,
-    this.subtitle,
-    this.scheduledFor,
-    this.status,
-    this.isEmergency = false,
-  });
+/// Respeita a Trava Temporal de Privacidade: a região vem do servidor
+/// (`fetchLocationForViewer`) e, enquanto o endereço não é liberado, não existe
+/// rua/número nem atalho para mapa exato — apenas Bairro • Cidade-UF.
+class ClientCardTile extends StatefulWidget {
+  const ClientCardTile({super.key, required this.jobId});
 
   final String jobId;
-  final String? subtitle;
-  final DateTime? scheduledFor;
-  final JobStatus? status;
-  final bool isEmergency;
 
-  Future<void> _openAddressOnMap(BuildContext context, bool unlocked) async {
-    if (!unlocked) return;
-    final sub = subtitle?.trim() ?? '';
-    if (sub.isEmpty) return;
-    String line = sub;
-    try {
-      final addr = await JobService().jobAddress(jobId);
-      final full = (addr?['address_line'] as String?)?.trim();
-      if (full != null && full.isNotEmpty) line = full;
-    } catch (_) {}
-    if (!context.mounted) return;
-    await LiveLocationMapSheet.show(
-      context,
-      addressLine: line,
-      summary: sub,
-    );
+  @override
+  State<ClientCardTile> createState() => _ClientCardTileState();
+}
+
+class _ClientCardTileState extends State<ClientCardTile> {
+  // Futuro criado UMA vez: antes era recriado a cada rebuild (a cada tecla digitada no orçamento).
+  late Future<Map<String, dynamic>?> _card = JobService().clientCard(widget.jobId);
+
+  @override
+  void didUpdateWidget(covariant ClientCardTile old) {
+    super.didUpdateWidget(old);
+    if (old.jobId != widget.jobId) _card = JobService().clientCard(widget.jobId);
   }
+
+  String get jobId => widget.jobId;
 
   @override
   Widget build(BuildContext context) {
-    final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
-      fullAddressLine: subtitle,
-      addressSummary: subtitle,
-      scheduledDate: scheduledFor,
-      status: status,
-      isEmergency: isEmergency,
-    );
-    final hasAddress = (subtitle ?? '').trim().isNotEmpty;
     return FutureBuilder<Map<String, dynamic>?>(
-      future: JobService().clientCard(jobId),
+      future: _card,
       builder: (context, snap) {
         final name = (snap.data?['full_name'] as String?) ?? 'Cliente';
         return Row(
@@ -176,41 +155,47 @@ class ClientCardTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                  if (hasAddress)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: privacy.isUnlocked ? () => _openAddressOnMap(context, true) : null,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              privacy.isUnlocked ? Icons.place_outlined : Icons.radar_rounded,
-                              size: 15,
-                              color: privacy.isUnlocked ? context.tk.providerAccent : context.tk.warningInk,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                privacy.primaryTitle,
-                                style: TextStyle(
-                                  color: privacy.isUnlocked ? context.tk.providerAccent : context.tk.textMuted,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
+                  ProviderLocationBuilder(
+                    jobId: jobId,
+                    builder: (context, view, loading) {
+                      final unlocked = isExactLocationUnlocked(view);
+                      final tk = context.tk;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(6),
+                        onTap: unlocked ? () => openProviderLocation(context, view!) : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                unlocked ? Icons.place_outlined : Icons.radar_rounded,
+                                size: 15,
+                                color: unlocked ? tk.providerAccent : tk.warningInk,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  unlocked ? (view!.fullStreetLine ?? protectedAreaTitle(view)) : protectedAreaTitle(view),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: unlocked ? tk.providerAccent : tk.textMuted,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                            if (privacy.isUnlocked) ...[
-                              const SizedBox(width: 4),
-                              Icon(Icons.map_outlined, size: 14, color: context.tk.providerAccent),
+                              if (unlocked) ...[
+                                const SizedBox(width: 4),
+                                Icon(Icons.map_outlined, size: 14, color: tk.providerAccent),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    )
-                  else
-                    Text('Cliente', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
+                      );
+                    },
+                  ),
                   if (snap.data?['client_id'] is String) _ClientReputationChip(snap.data!['client_id'] as String),
                 ],
               ),
@@ -345,6 +330,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
     return AppScaffold(
       appBar: AppBar(title: const Text('Detalhes do chamado')),
       body: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         children: [
           if (widget.invite != null && widget.invite!.isLive)
@@ -363,41 +349,23 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClientCardTile(
-                  jobId: job.id,
-                  subtitle: job.addressSummary,
-                  scheduledFor: job.scheduledFor,
-                  status: job.status,
-                  isEmergency: job.isEmergency,
-                ),
+                ClientCardTile(jobId: job.id),
                 const SizedBox(height: 10),
                 Text(job.description, style: const TextStyle(height: 1.45)),
               ],
             ),
           ),
           const SizedBox(height: 10),
-          Builder(
-            builder: (context) {
-              final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
-                fullAddressLine: job.addressSummary,
-                addressSummary: job.addressSummary,
-                scheduledDate: job.scheduledFor,
-                status: job.status,
-                isEmergency: job.isEmergency,
-              );
+          ProviderLocationBuilder(
+            jobId: job.id,
+            builder: (context, view, loading) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ProviderPrivacyAddressCard(
-                    view: privacy,
-                    onOpenMapRoute: privacy.isUnlocked && job.addressSummary != null
-                        ? () => LiveLocationMapSheet.show(
-                              context,
-                              addressLine: job.addressSummary!,
-                              summary: job.addressSummary,
-                            )
-                        : null,
-                  ),
+                  if (view == null)
+                    ProviderLocationPending(loading: loading)
+                  else
+                    ProviderLocationPanel(view: view),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -572,12 +540,12 @@ class _AwaitingResponseScreenState extends State<AwaitingResponseScreen> {
           const SizedBox(height: 22),
           if (inv != null)
             Center(
-              child: CountdownRing(
+              child: RepaintBoundary(child: CountdownRing(
                 remaining: inv.expiresAt.difference(DateTime.now()),
                 total: const Duration(hours: 2),
                 caption: 'prazo do convite',
                 icon: Icons.hourglass_bottom_rounded,
-              ),
+              )),
             )
           else
             const Center(child: CircularProgressIndicator()),
@@ -652,13 +620,13 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         children: [
           Center(
-            child: CountdownRing(
+            child: RepaintBoundary(child: CountdownRing(
               remaining: widget.invite?.remaining ?? Duration.zero,
               total: const Duration(minutes: 5),
               size: 140,
               caption: 'para aceitar',
               icon: Icons.bolt_rounded,
-            ),
+            )),
           ),
           const SizedBox(height: 16),
           const InfoBanner('Se aceitar, vá imediatamente. A reserva de garantia do cliente já está em custódia.', tone: BannerTone.danger, title: 'Atendimento imediato'),
@@ -671,17 +639,17 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClientCardTile(
-                  jobId: job.id,
-                  subtitle: job.addressSummary,
-                  scheduledFor: job.scheduledFor,
-                  status: job.status,
-                  isEmergency: true,
-                ),
+                ClientCardTile(jobId: job.id),
                 const SizedBox(height: 10),
                 Text(job.description, style: const TextStyle(height: 1.45)),
               ],
             ),
+          ),
+          const SizedBox(height: 12),
+          ProviderLocationBuilder(
+            jobId: job.id,
+            builder: (context, view, loading) =>
+                view == null ? ProviderLocationPending(loading: loading) : ProviderLocationPanel(view: view),
           ),
           const SizedBox(height: 12),
           ValueListenableBuilder(

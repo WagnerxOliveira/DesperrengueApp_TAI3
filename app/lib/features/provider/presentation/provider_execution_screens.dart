@@ -8,7 +8,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/achievements.dart';
 import '../../../core/models/marketplace_models.dart';
-import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/social_service.dart';
@@ -19,7 +18,7 @@ import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
@@ -48,46 +47,20 @@ class ServiceExecutionScreen extends StatefulWidget {
 
 class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
   final _jobs = JobService();
-  Timer? _tick;
-  String? _address;
-  String? _reference;
   Map<String, dynamic>? _client;
 
   @override
   void initState() {
     super.initState();
-    // O cronômetro é DERIVADO do `started_at` gravado pelo servidor (não de um Stopwatch local):
-    // sobrevive a fechar o app e só existe para serviços realmente iniciados (`in_progress`).
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
     _load();
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
   }
 
   Future<void> _load() async {
     try {
-      final a = await _jobs.jobAddress(widget.job.id);
       final c = await _jobs.clientCard(widget.job.id);
       if (!mounted) return;
-      setState(() {
-        _address = a?['address_line'] as String?;
-        _reference = a?['reference'] as String?;
-        _client = c;
-      });
+      setState(() => _client = c);
     } catch (_) {}
-  }
-
-  Duration get _elapsed {
-    final since = widget.job.startedAt ?? widget.job.paidAt;
-    if (since == null) return Duration.zero;
-    final d = DateTime.now().difference(since);
-    return d.isNegative ? Duration.zero : d;
   }
 
   @override
@@ -125,12 +98,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Center(
-            child: Text(
-              clockHms(_elapsed),
-              style: TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: context.tk.providerAccent, fontFeatures: [FontFeature.tabularFigures()]),
-            ),
-          ),
+          Center(child: _ElapsedClock(since: job.startedAt ?? job.paidAt)),
           Center(
             child: const StatusChip('● Serviço em execução...', color: AppColors.providerBright),
           ),
@@ -156,24 +124,10 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                ProviderPrivacyAddressCard(
-                  view: AccurateGeoRoutingService.resolveProviderAddressView(
-                    fullAddressLine: _address ?? job.addressSummary,
-                    addressSummary: job.addressSummary,
-                    scheduledDate: job.scheduledFor,
-                    status: job.status,
-                    isEmergency: true,
-                  ),
-                  reference: _reference,
-                  onOpenMapRoute: () {
-                    final line = _address ?? job.addressSummary ?? '';
-                    if (line.isEmpty) return;
-                    LiveLocationMapSheet.show(
-                      context,
-                      addressLine: line,
-                      summary: job.addressSummary,
-                    );
-                  },
+                ProviderLocationBuilder(
+                  jobId: job.id,
+                  builder: (context, view, loading) =>
+                      view == null ? ProviderLocationPending(loading: loading) : ProviderLocationPanel(view: view),
                 ),
                 if (job.scheduledFor != null) ...[
                   const SizedBox(height: 10),
@@ -198,12 +152,18 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          ValueListenableBuilder(
+          ProviderLocationBuilder(
+            jobId: job.id,
+            builder: (context, locView, _) => ValueListenableBuilder(
             valueListenable: FintechLedgerStore.instance,
             builder: (context, _, _) {
+              // Nunca usa `job.addressSummary` (pode conter rua): só o endereço liberado pelo
+              // servidor ou, antes disso, Bairro • Cidade-UF.
               final dossier = FintechLedgerStore.instance.resolveForJob(
                 job,
-                addressOverride: _address ?? job.addressSummary,
+                addressOverride: locView != null && locView.exactUnlocked
+                    ? exactAddressLineOf(locView)
+                    : protectedAreaTitle(locView),
               );
               return Column(
                 children: [
@@ -240,6 +200,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
               );
             },
           ),
+          ),
         ],
       ),
       bottomNavigationBar: BottomBar(
@@ -254,6 +215,60 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
 }
 
 // ===================================================== garantia e portfólio (2)
+
+/// Cronômetro do serviço em execução. É DERIVADO do `started_at` gravado pelo servidor (não de
+/// um Stopwatch local): sobrevive a fechar o app. Tem o próprio temporizador de 1 s e fica numa
+/// camada de pintura separada, para a tela inteira (cards financeiros etc.) não reconstruir todo segundo.
+class _ElapsedClock extends StatefulWidget {
+  const _ElapsedClock({required this.since});
+
+  final DateTime? since;
+
+  @override
+  State<_ElapsedClock> createState() => _ElapsedClockState();
+}
+
+class _ElapsedClockState extends State<_ElapsedClock> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Duration get _elapsed {
+    final since = widget.since;
+    if (since == null) return Duration.zero;
+    final d = DateTime.now().difference(since);
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Semantics(
+        label: 'Tempo de serviço',
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            clockHms(_elapsed),
+            key: const ValueKey('service-elapsed-clock'),
+            style: TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: context.tk.providerAccent, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class WarrantyIntroScreen extends StatelessWidget {
   const WarrantyIntroScreen({super.key, required this.job});

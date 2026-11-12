@@ -13,7 +13,7 @@ import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/chat_screen.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/review_widgets.dart';
 
 /// Carrega o dossiê de um serviço (padrão: RPC `provider_job_dossier`).
@@ -49,6 +49,7 @@ class DossieServicoProfissionalScreen extends StatefulWidget {
     this.loader,
     this.openChat,
     this.imageBuilder,
+    this.locationLoader,
   });
 
   final String jobId;
@@ -57,6 +58,9 @@ class DossieServicoProfissionalScreen extends StatefulWidget {
   final DossierLoader? loader;
   final DossierChatOpener? openChat;
   final DossierImageBuilder? imageBuilder;
+
+  /// Fake da localização protegida nos testes (padrão: servidor).
+  final ProviderLocationLoader? locationLoader;
 
   @override
   State<DossieServicoProfissionalScreen> createState() => _DossieServicoProfissionalScreenState();
@@ -238,7 +242,7 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
             icon: Icons.play_circle_outline_rounded,
             label: 'Início real',
             value: d.startedAt == null ? 'Não iniciado' : dateLong(d.startedAt!),
-            note: d.startedAt != null && d.startedSimulated ? '(início simulado — homologação)' : null,
+            note: d.startedAt != null && d.startedSimulated ? '(início de teste, sem efeito real)' : null,
           ),
           _TimelineRow(icon: Icons.flag_rounded, label: 'Conclusão', value: d.finishedAt == null ? '—' : dateLong(d.finishedAt!), last: true),
         ],
@@ -303,19 +307,34 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
               ),
             ],
           ),
-          if (d.fullAddress.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            _LabeledText(
-              icon: Icons.place_rounded,
-              label: 'Endereço atendido',
-              text: d.fullAddress,
-              onTap: () => LiveLocationMapSheet.show(
-                context,
-                addressLine: d.fullAddress,
-                summary: d.addressSummary,
-              ),
-            ),
-          ],
+          // Endereço: SEMPRE pela trava de privacidade do servidor. Serviço encerrado/cancelado/em
+          // mediação ⇒ só Bairro • Cidade-UF; rua/número/mapa exato só se o servidor liberar.
+          ProviderLocationBuilder(
+            jobId: d.jobId,
+            loader: widget.locationLoader,
+            builder: (context, view, loading) {
+              if (view == null) return const SizedBox.shrink();
+              final unlocked = view.exactUnlocked;
+              return Padding(
+                padding: const EdgeInsets.only(top: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _LabeledText(
+                      icon: Icons.place_rounded,
+                      label: unlocked ? 'Endereço atendido' : 'Região do atendimento',
+                      text: unlocked ? exactAddressLineOf(view) : protectedAreaTitle(view),
+                      onTap: unlocked ? () => openProviderLocation(context, view) : null,
+                    ),
+                    if (!unlocked) ...[
+                      const SizedBox(height: 8),
+                      GeoLockNotice(view: view),
+                    ],
+                  ],
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 14),
           _LabeledText(icon: Icons.description_rounded, label: 'Descrição original do pedido', text: d.description ?? 'Sem descrição.'),
           if (d.photoPaths.isNotEmpty) ...[

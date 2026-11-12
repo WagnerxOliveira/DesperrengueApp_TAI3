@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/provider_dossier_models.dart';
+import 'package:desperrengue_app/core/security/geo_privacy_policy_engine.dart';
 import 'package:desperrengue_app/core/state/privacy_mode.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/ui/app_tokens.dart';
@@ -202,6 +203,8 @@ void main() {
 
   // ------------------------------------------------------------ widgets: dossiê
 
+  const closedLocationView = ProviderLocationView(phase: GeoPrivacyPhase.closed, exactUnlocked: false, city: 'Poços de Caldas', uf: 'MG', neighborhood: 'Centro');
+
   Widget host(Widget child, {Brightness b = Brightness.light}) => MaterialApp(theme: AppTheme.resolve(null, b), home: child);
 
   Future<void> openDossier(
@@ -209,6 +212,7 @@ void main() {
     ProviderJobDossier? Function() make, {
     DossierChatOpener? openChat,
     Brightness b = Brightness.light,
+    ProviderLocationView? location = closedLocationView,
   }) async {
     t.view.physicalSize = const Size(1080, 9000);
     t.view.devicePixelRatio = 2.75;
@@ -218,6 +222,7 @@ void main() {
         jobId: 'j1',
         loader: (_) async => make(),
         openChat: openChat,
+        locationLoader: (_) async => location,
         imageBuilder: (context, path, {width, height, fit = BoxFit.cover, radius = 12}) => SizedBox(key: ValueKey('img:$path'), width: width, height: height),
       ),
       b: b,
@@ -240,7 +245,11 @@ void main() {
       expect(net.style?.color, AppTokens.light.successInk);
       // Escopo: cliente, endereço, descrição e relatório.
       expect(find.text('Maria Souza'), findsOneWidget);
-      expect(find.textContaining('Rua das Flores, 100'), findsOneWidget);
+      // Trava de privacidade (serviço encerrado): só Bairro • Cidade-UF, nunca rua/número/apto.
+      expect(find.textContaining('Rua das Flores'), findsNothing);
+      expect(find.textContaining('Perto da padaria'), findsNothing);
+      expect(find.text('Região do atendimento'), findsOneWidget);
+      expect(find.text('Centro • Poços de Caldas - MG'), findsOneWidget);
       expect(find.text('Chuveiro queimou e precisa de troca.'), findsOneWidget);
       expect(find.text('Troquei o chuveiro e testei o disjuntor.'), findsOneWidget);
       // Linha do tempo.
@@ -258,7 +267,7 @@ void main() {
 
     testWidgets('início simulado aparece discreto', (t) async {
       await openDossier(t, () => _dossier(extra: {'started_simulated': true}));
-      expect(find.text('(início simulado — homologação)'), findsOneWidget);
+      expect(find.text('(início de teste, sem efeito real)'), findsOneWidget);
     });
 
     testWidgets('privacidade ligada: todos os valores viram "R\$ •••••"', (t) async {

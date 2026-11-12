@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
-import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
@@ -20,7 +19,7 @@ import '../../../core/state/privacy_mode.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/delete_account_screen.dart';
-import '../../shared/presentation/live_location_map.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/theme_picker.dart';
 import '../../shared/presentation/notifications_screen.dart';
 import '../../shared/presentation/support_screens.dart';
@@ -171,217 +170,22 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
     }
   }
 
-  Future<void> _showSmartSplitCalculatorSheet(BuildContext context) async {
-    final laborCtrl = TextEditingController(text: '250');
-    final materialsCtrl = TextEditingController(text: '150');
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setModalState) {
-            final tk = ctx.tk;
-            final labor = double.tryParse(laborCtrl.text.replaceAll(',', '.')) ?? 0.0;
-            final materials = double.tryParse(materialsCtrl.text.replaceAll(',', '.')) ?? 0.0;
-            const feeRate = 0.12;
-            final platformFee = labor * feeRate;
-            final netLabor = (labor - platformFee).clamp(0.0, double.infinity);
-            final totalNet = netLabor + materials;
-            final savedOnMaterials = materials * feeRate;
-
-            return SafeArea(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  4,
-                  20,
-                  MediaQuery.of(ctx).viewInsets.bottom + 24,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: tk.providerSoft,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(Icons.calculate_rounded, color: tk.providerAccent),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Simular ganho de orçamento',
-                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: tk.text),
-                              ),
-                              Text(
-                                'Veja quanto sobra livre separando mão de obra e materiais (0% de taxa em peças)',
-                                style: TextStyle(fontSize: 12, color: tk.textMuted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            key: const ValueKey('smart-split-labor-input'),
-                            controller: laborCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            onChanged: (_) => setModalState(() {}),
-                            decoration: const InputDecoration(
-                              labelText: 'Mão de Obra (R\$)',
-                              prefixText: 'R\$ ',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            key: const ValueKey('smart-split-materials-input'),
-                            controller: materialsCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            onChanged: (_) => setModalState(() {}),
-                            decoration: const InputDecoration(
-                              labelText: 'Peças e Materiais (0%)',
-                              prefixText: 'R\$ ',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: tk.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: tk.providerAccent.withValues(alpha: 0.4)),
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Total do orçamento:',
-                                  style: TextStyle(color: tk.textMuted, fontSize: 13),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                brl(labor + materials),
-                                style: TextStyle(fontWeight: FontWeight.w800, color: tk.text),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Peças e materiais (sem taxa):',
-                                  style: TextStyle(color: tk.success, fontWeight: FontWeight.w700, fontSize: 13),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '+ ${brl(materials)} (100% seu)',
-                                style: TextStyle(fontWeight: FontWeight.w900, color: tk.success, fontSize: 13),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Economia na taxa de peças:',
-                                  style: TextStyle(color: tk.providerAccent, fontSize: 12.5, fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '+ ${brl(savedOnMaterials)}',
-                                style: TextStyle(color: tk.providerAccent, fontWeight: FontWeight.w900, fontSize: 12.5),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Você recebe livre no PIX:',
-                                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: tk.text),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                brl(totalNet),
-                                key: const ValueKey('smart-split-net-result'),
-                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: tk.providerAccent),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
+  Future<void> _showSmartSplitCalculatorSheet(BuildContext context) => showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => const EarningsSimulatorSheet(),
+      );
 
   Future<void> _showWeeklyGoalDialog(BuildContext context) async {
-    final ctrl = TextEditingController(text: _weeklyGoal.toStringAsFixed(0));
     final nextGoal = await showDialog<double>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Definir Meta da Semana'),
-        content: TextField(
-          controller: ctrl,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Meta de ganhos na semana (R\$)',
-            prefixText: 'R\$ ',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: Size.zero),
-            onPressed: () {
-              final v = double.tryParse(ctrl.text.replaceAll(',', '.'));
-              Navigator.pop(ctx, (v != null && v >= 100) ? v : 2000.0);
-            },
-            child: const Text('Salvar Meta'),
-          ),
-        ],
-      ),
+      builder: (_) => WeeklyGoalDialog(initial: _weeklyGoal),
     );
     if (nextGoal != null && mounted) {
       setState(() => _weeklyGoal = nextGoal);
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
@@ -676,6 +480,204 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
   }
 }
 
+/// Simulador "quanto sobra no meu bolso": cuida dos próprios campos (sem vazar controladores)
+/// e não estoura com teclado aberto nem em telas de 320 px.
+@visibleForTesting
+class EarningsSimulatorSheet extends StatefulWidget {
+  const EarningsSimulatorSheet({super.key});
+
+  @override
+  State<EarningsSimulatorSheet> createState() => _EarningsSimulatorSheetState();
+}
+
+class _EarningsSimulatorSheetState extends State<EarningsSimulatorSheet> {
+  final _labor = TextEditingController(text: '250');
+  final _materials = TextEditingController(text: '150');
+
+  @override
+  void dispose() {
+    _labor.dispose();
+    _materials.dispose();
+    super.dispose();
+  }
+
+  Widget _field(Key key, TextEditingController c, String label) => TextField(
+        key: key,
+        controller: c,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(labelText: label, prefixText: 'R\$ ', border: const OutlineInputBorder()),
+      );
+
+  Widget _line(String label, String value, TextStyle style) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: Text(label, style: style)),
+          const SizedBox(width: 8),
+          Flexible(child: Text(value, textAlign: TextAlign.right, style: style.copyWith(fontWeight: FontWeight.w900))),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final labor = parseBrl(_labor.text) ?? 0.0;
+    final materials = parseBrl(_materials.text) ?? 0.0;
+    const feeRate = 0.12;
+    final platformFee = labor * feeRate;
+    final netLabor = (labor - platformFee).clamp(0.0, double.infinity);
+    final totalNet = netLabor + materials;
+    final savedOnMaterials = materials * feeRate;
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(20, 4, 20, MediaQuery.viewInsetsOf(context).bottom + 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(color: tk.providerSoft, borderRadius: BorderRadius.circular(14)),
+                  child: Icon(Icons.calculate_rounded, color: tk.providerAccent),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Simular ganho de orçamento', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, color: tk.text)),
+                      Text(
+                        'Veja quanto sobra livre separando mão de obra e materiais (0% de taxa em peças)',
+                        style: TextStyle(fontSize: 12, color: tk.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            LayoutBuilder(
+              builder: (context, c) {
+                final laborField = _field(const ValueKey('smart-split-labor-input'), _labor, 'Mão de obra');
+                final materialsField = _field(const ValueKey('smart-split-materials-input'), _materials, 'Peças e materiais');
+                if (c.maxWidth < 300) {
+                  return Column(children: [laborField, const SizedBox(height: 12), materialsField]);
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [Expanded(child: laborField), const SizedBox(width: 12), Expanded(child: materialsField)],
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: tk.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: tk.providerAccent.withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                children: [
+                  _line('Total do orçamento:', brl(labor + materials), TextStyle(color: tk.textMuted, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  _line('Peças e materiais (sem taxa):', '+ ${brl(materials)} (100% seu)', TextStyle(color: tk.success, fontWeight: FontWeight.w700, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  _line('Economia na taxa de peças:', '+ ${brl(savedOnMaterials)}', TextStyle(color: tk.providerAccent, fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  const Divider(height: 20),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: Text('Você recebe livre no PIX:', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: tk.text))),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            brl(totalNet),
+                            key: const ValueKey('smart-split-net-result'),
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: tk.providerAccent),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Meta semanal: valida de verdade (antes, qualquer valor inválido virava R$ 2.000 em silêncio).
+@visibleForTesting
+class WeeklyGoalDialog extends StatefulWidget {
+  const WeeklyGoalDialog({super.key, required this.initial});
+
+  final double initial;
+
+  @override
+  State<WeeklyGoalDialog> createState() => _WeeklyGoalDialogState();
+}
+
+class _WeeklyGoalDialogState extends State<WeeklyGoalDialog> {
+  late final TextEditingController _ctrl = TextEditingController(text: widget.initial.toStringAsFixed(0));
+  String? _error;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final v = parseBrl(_ctrl.text);
+    if (v == null || v < 100) {
+      setState(() => _error = 'Informe um valor a partir de R\$ 100.');
+      return;
+    }
+    Navigator.pop(context, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Definir meta da semana'),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        onChanged: (_) {
+          if (_error != null) setState(() => _error = null);
+        },
+        onSubmitted: (_) => _save(),
+        decoration: InputDecoration(
+          labelText: 'Meta de ganhos na semana',
+          prefixText: 'R\$ ',
+          errorText: _error,
+          border: const OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(
+          style: FilledButton.styleFrom(minimumSize: Size.zero),
+          onPressed: _save,
+          child: const Text('Salvar meta'),
+        ),
+      ],
+    );
+  }
+}
+
 class _Stat extends StatelessWidget {
   const _Stat({
     required this.icon,
@@ -702,7 +704,11 @@ class _Stat extends StatelessWidget {
         children: [
           Icon(icon, color: context.tk.providerAccent),
           const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: context.tk.providerAccent)),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, maxLines: 1, style: TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: context.tk.providerAccent)),
+          ),
           Text(label, style: TextStyle(color: context.tk.text, fontWeight: FontWeight.w700, fontSize: 12.5)),
           if (subtitle != null) ...[
             const SizedBox(height: 2),
@@ -891,33 +897,7 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
                           runSpacing: 6,
                           children: [
                             StatusChip(j.category, color: context.tk.providerAccent),
-                            if (j.addressSummary != null)
-                              Builder(
-                                builder: (context) {
-                                  final privacy = AccurateGeoRoutingService.resolveProviderAddressView(
-                                    fullAddressLine: j.addressSummary,
-                                    addressSummary: j.addressSummary,
-                                    scheduledDate: j.scheduledFor,
-                                    status: j.status,
-                                    isEmergency: j.isEmergency,
-                                  );
-                                  return InkWell(
-                                    borderRadius: BorderRadius.circular(20),
-                                    onTap: privacy.isUnlocked
-                                        ? () => LiveLocationMapSheet.show(
-                                              context,
-                                              addressLine: j.addressSummary!,
-                                              summary: j.addressSummary,
-                                            )
-                                        : null,
-                                    child: StatusChip(
-                                      privacy.primaryTitle,
-                                      color: privacy.isUnlocked ? context.tk.info : context.tk.warningInk,
-                                      icon: privacy.isUnlocked ? Icons.place_rounded : Icons.radar_rounded,
-                                    ),
-                                  );
-                                },
-                              ),
+                            ProviderAreaLine(jobId: j.id),
                             StatusChip('${j.quoteCount}/3 orçamentos', color: j.quoteCount >= 2 ? context.tk.warningInk : context.tk.info),
                           ],
                         ),
