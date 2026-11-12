@@ -1,14 +1,14 @@
-# Engenharia de Qualidade, Verificação Formal, Testes Red Team e Auditoria Forense — Desperrengue (`v2.8.1`)
+# Engenharia de Qualidade, Verificação Formal, Testes Red Team e Auditoria Forense — Desperrengue (`v2.8.6`)
 
-> **Classificação Epistemológica:** Tratado de Engenharia de Testes Automatizados, Verificação de Invariantes Contábeis, Simulação Adversarial (*Red Team*) e Validação de Visão Computacional  
-> **Escopo Quantitativo Auditado:** `26` Suítes Dart/Flutter (`529` testes aprovados) · `9` Suítes Smoke SQL (`577` asserções relacionais) · `1` Suíte Node.js Dossiê PDF (`17` testes) · `1` Validador de Hiperlinks Markdown (`0` links quebrados)  
-> **Implementação Auditada:** [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) · [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart) · [`test-dossie.mjs`](../scripts/test-dossie.mjs)
+> **Classificação Epistemológica:** Tratado de Engenharia de Testes Automatizados, Verificação de Invariantes Contábeis, Simulação Adversarial (*Red Team*), Criptografia Governamental VIO/ICP-Brasil e Validação de Visão Computacional  
+> **Escopo Quantitativo Auditado:** `27` Suítes Dart/Flutter (`559` testes aprovados) · `3` Suítes Python KYC Zero-Trust (`64` testes aprovados) · `9` Suítes Smoke SQL (`577` asserções relacionais) · `1` Suíte Node.js Dossiê PDF (`17` testes) · `1` Validador de Hiperlinks Markdown (`0` links quebrados)  
+> **Implementação Auditada:** [`argon_carbon_kyc_and_ux_test.dart`](../app/test/argon_carbon_kyc_and_ux_test.dart) · [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) · [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart) · [`test_vision_ocr_argon.py`](../kyc_engine/tests/test_vision_ocr_argon.py) · [`test_carbon_security_and_crypto.py`](../kyc_engine/tests/test_carbon_security_and_crypto.py) · [`test_end_to_end_pipeline_redteam.py`](../kyc_engine/tests/test_end_to_end_pipeline_redteam.py) · [`test-dossie.mjs`](../scripts/test-dossie.mjs)
 
 ---
 
 ## 1. Arquitetura da Pirâmide de Verificação Contínua (CI/CD)
 
-A estratégia de garantia de qualidade do **Desperrengue** fundamenta-se na verificação determinística em múltiplas camadas, assegurando que nenhuma alteração em regras de negócio financeiras, algoritmos geoespaciais ou pipelines de visão computacional seja integrada à *branch* principal sem satisfazer integralmente as suítes de regressão.
+A estratégia de garantia de qualidade do **Desperrengue** fundamenta-se na verificação determinística em múltiplas camadas, assegurando que nenhuma alteração em regras de negócio financeiras, algoritmos geoespaciais, criptografia ICP-Brasil/VIO ou pipelines de visão computacional seja integrada à *branch* principal sem satisfazer integralmente as suítes de regressão.
 
 ```mermaid
 flowchart TB
@@ -23,18 +23,18 @@ flowchart TB
         S3["Gatilhos O(1) (trg_sync_profile_trust_and_rank) e RPCs SECURITY DEFINER"]:::sql
     end
 
-    subgraph L2["CAMADA 2: Suítes Unitárias, Algorítmicas e de Interface Flutter (529 Testes em 26 Arquivos)"]
+    subgraph L2["CAMADA 2: Suítes Unitárias, Algorítmicas e de Interface Flutter (559 Testes em 27 Arquivos)"]
         D1["Testes de Complexidade e Serviços Core (Smart Split, Haversine, Passaporte ABNT)"]:::dart
-        D2["Testes de Componentes de Interface (4ª Aba Em Mediação, Mapa 1º/2º/3º, Carteira Bipartida)"]:::dart
+        D2["Testes de Componentes de Interface (4ª Aba Em Mediação, UX 120 FPS Zero Jargão, Carteira Bipartida)"]:::dart
     end
 
-    subgraph L3["CAMADA 3: Baterias Adversariais Red Team e Visão Computacional Forense"]
-        R1["6 Testes Red Team de Blindagem Financeira (fintech_warranty_security_test.dart)"]:::red
-        R2["6 Testes Forenses de Biometria, ROI dHash+MAD, OCR e Concorrência (red_team_warranty_and_kyc_forensics_test.dart)"]:::red
+    subgraph L3["CAMADA 3: Baterias Adversariais Red Team, Visão Argon High e Criptografia Carbon High (64 Testes Python)"]
+        R1["Testes Red Team de Blindagem Financeira e Forense Mobile (fintech_warranty_security_test.dart & argon_carbon_kyc_and_ux_test.dart)"]:::red
+        R2["38 Testes Argon Vision/OCR + 16 Testes Carbon Crypto/mTLS + 10 Testes E2E Red Team (kyc_engine/tests/)"]:::red
     end
 
     subgraph L4["CAMADA 4: Validação Documental e Pipeline GitHub Actions"]
-        G1["flutter analyze (0 warnings/errors)"]:::gate
+        G1["flutter analyze (0 warnings/errors) & pytest kyc_engine/tests/ (64/64 passed)"]:::gate
         G2["node scripts/test-dossie.mjs (17/17 testes PDF)"]:::gate
         G3["node scripts/check-md-links.mjs (0 links quebrados)"]:::gate
     end
@@ -74,40 +74,51 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 
 ---
 
-## 4. Catálogo Completo das 26 Suítes de Teste Flutter/Dart (`529` Testes)
+## 4. Catálogo Completo das 27 Suítes de Teste Flutter/Dart (`559` Testes)
 
 | # | Arquivo de Suíte em `app/test/` | Domínio Funcional Verificado | Status |
 | :---: | :--- | :--- | :---: |
 | **01** | [`account_screens_test.dart`](../app/test/account_screens_test.dart) | Exclusão segura de conta LGPD (`delete_own_account_scoped`), autenticação e telas de conta. | `PASS` |
 | **02** | [`achievements_test.dart`](../app/test/achievements_test.dart) | Conquistas, troféus e progressão de gamificação do usuário. | `PASS` |
 | **03** | [`address_and_draft_test.dart`](../app/test/address_and_draft_test.dart) | Persistência de histórico de endereços, CEP e rascunhos de chamados. | `PASS` |
-| **04** | [`chat_test.dart`](../app/test/chat_test.dart) | Mensageria assíncrona em tempo real entre cliente e prestador. | `PASS` |
-| **05** | [`client_flow_widgets_test.dart`](../app/test/client_flow_widgets_test.dart) | Componentes visuais da jornada do cliente e abertura de ordens de serviço. | `PASS` |
-| **06** | [`client_history_test.dart`](../app/test/client_history_test.dart) | Histórico de serviços concluídos e Passaporte Oficial de Manutenção (`ABNT NBR 5674`). | `PASS` |
-| **07** | [`completion_redesign_test.dart`](../app/test/completion_redesign_test.dart) | Fluxo de conclusão técnica, comprovação fotográfica `Before/After` e nota fiscal. | `PASS` |
-| **08** | [`dossier_test.dart`](../app/test/dossier_test.dart) | Exportação de dossiê PDF vetorial e verificação de integridade SHA-256. | `PASS` |
-| **09** | [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart) | **Suíte Fintech & Garantia:** 3 Camadas, *Smart Split*, Reserva `D+5`, 4ª Aba *"Em Mediação"* e PIN 4 dígitos. | `PASS` |
-| **10** | [`geocode_test.dart`](../app/test/geocode_test.dart) | Geocodificação reversa e direta com tolerância a falhas. | `PASS` |
-| **11** | [`geo_privacy_and_portfolio_test.dart`](../app/test/geo_privacy_and_portfolio_test.dart) | Privacidade geoespacial, raio de atuação e portfólio do profissional. | `PASS` |
-| **12** | [`location_pin_test.dart`](../app/test/location_pin_test.dart) | Marcadores geoespaciais no mapa e ordenação sequencial (`1º, 2º, 3º`). | `PASS` |
-| **13** | [`offboarding_boot_theme_test.dart`](../app/test/offboarding_boot_theme_test.dart) | Guardas de inicialização (`BootGate`), tema *Quiet Luxury Dark* e *offboarding*. | `PASS` |
-| **14** | [`orders_and_client_achievements_test.dart`](../app/test/orders_and_client_achievements_test.dart) | Máquina de estados de pedidos do cliente e desbloqueio de conquistas. | `PASS` |
-| **15** | [`precise_geocoder_test.dart`](../app/test/precise_geocoder_test.dart) | Podagem axial por *Bounding Box* $O(\log N + K)$ e distância esférica de Haversine. | `PASS` |
-| **16** | [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) | **Bateria Red Team & Forense:** Conluio triplo, *Clawback*, *Circuit Breaker*, Liveness 3D, Scanner ID-1, ROI `dHash+MAD`, Face Match 128-D e carga de 50 submissões. | `PASS` |
-| **17** | [`review_rules_test.dart`](../app/test/review_rules_test.dart) | Regras de avaliação bilateral e impacto no *Relative Trust Score* ($RTS$). | `PASS` |
-| **18** | [`scheduling_test.dart`](../app/test/scheduling_test.dart) | Agendamento de serviços, janelas temporais e SLAs de atendimento. | `PASS` |
-| **19** | [`smart_transcript_formatter_test.dart`](../app/test/smart_transcript_formatter_test.dart) | Formatação inteligente de transcrição de voz (*Speech-to-Text*) e higienização de texto. | `PASS` |
-| **20** | [`smart_triage_test.dart`](../app/test/smart_triage_test.dart) | Motor de triagem assistida e classificação semântica de urgências SOS. | `PASS` |
-| **21** | [`tag_alias_parity_test.dart`](../app/test/tag_alias_parity_test.dart) | Paridade bijetiva de sinônimos e *aliases* das 33 categorias técnicas. | `PASS` |
-| **22** | [`tag_match_test.dart`](../app/test/tag_match_test.dart) | Algoritmo de casamento de especialidades (`GIN` array overlap) entre chamado e prestador. | `PASS` |
-| **23** | [`ui_polish_test.dart`](../app/test/ui_polish_test.dart) | Responsividade no container `480px`, animações a $120\text{ Hz}$ e ergonomia visual. | `PASS` |
-| **24** | [`update_test.dart`](../app/test/update_test.dart) | Guarda de versão mínima obrigatória (`UpdateGate`) e invalidação de cache PWA. | `PASS` |
-| **25** | [`user_profile_test.dart`](../app/test/user_profile_test.dart) | Sincronização de perfil unificado Multi-Modo, avatar e status KYC. | `PASS` |
-| **26** | [`wallet_test.dart`](../app/test/wallet_test.dart) | Carteira digital bipartida (PIX imediato `D+0` vs. Reserva em Maturação `D+5`). | `PASS` |
+| **04** | [`argon_carbon_kyc_and_ux_test.dart`](../app/test/argon_carbon_kyc_and_ux_test.dart) | **Suíte Argon + Carbon KYC & UX 120 FPS (21 testes):** Ticket Anti-Swap (`180s`), `request_hash`, bloqueio de galeria/câmera virtual, `KycHumanFeedbackTranslator` (zero jargão técnico) e zero `RenderFlex overflow` em `320px`/`360px`. | `PASS` |
+| **05** | [`chat_test.dart`](../app/test/chat_test.dart) | Mensageria assíncrona em tempo real entre cliente e prestador. | `PASS` |
+| **06** | [`client_flow_widgets_test.dart`](../app/test/client_flow_widgets_test.dart) | Componentes visuais da jornada do cliente e abertura de ordens de serviço. | `PASS` |
+| **07** | [`client_history_test.dart`](../app/test/client_history_test.dart) | Histórico de serviços concluídos e Passaporte Oficial de Manutenção (`ABNT NBR 5674`). | `PASS` |
+| **08** | [`completion_redesign_test.dart`](../app/test/completion_redesign_test.dart) | Fluxo de conclusão técnica, comprovação fotográfica `Before/After` e nota fiscal. | `PASS` |
+| **09** | [`dossier_test.dart`](../app/test/dossier_test.dart) | Exportação de dossiê PDF vetorial e verificação de integridade SHA-256. | `PASS` |
+| **10** | [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart) | **Suíte Fintech & Garantia:** 3 Camadas, *Smart Split*, Reserva `D+5`, 4ª Aba *"Em Mediação"* e PIN 4 dígitos. | `PASS` |
+| **11** | [`geocode_test.dart`](../app/test/geocode_test.dart) | Geocodificação reversa e direta com tolerância a falhas. | `PASS` |
+| **12** | [`geo_privacy_and_portfolio_test.dart`](../app/test/geo_privacy_and_portfolio_test.dart) | Privacidade geoespacial, raio de atuação e portfólio do profissional. | `PASS` |
+| **13** | [`location_pin_test.dart`](../app/test/location_pin_test.dart) | Marcadores geoespaciais no mapa e ordenação sequencial (`1º, 2º, 3º`). | `PASS` |
+| **14** | [`offboarding_boot_theme_test.dart`](../app/test/offboarding_boot_theme_test.dart) | Guardas de inicialização (`BootGate`), tema *Quiet Luxury Dark* e *offboarding*. | `PASS` |
+| **15** | [`orders_and_client_achievements_test.dart`](../app/test/orders_and_client_achievements_test.dart) | Máquina de estados de pedidos do cliente e desbloqueio de conquistas. | `PASS` |
+| **16** | [`precise_geocoder_test.dart`](../app/test/precise_geocoder_test.dart) | Podagem axial por *Bounding Box* $O(\log N + K)$ e distância esférica de Haversine. | `PASS` |
+| **17** | [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) | **Bateria Red Team & Forense (21 testes):** Conluio triplo, *Clawback*, *Circuit Breaker*, Liveness 3D, Scanner ID-1, ROI `dHash+MAD`, Face Match 128-D, `ZeroTrustBilateralSecurityEngine` e carga de 50 submissões. | `PASS` |
+| **18** | [`review_rules_test.dart`](../app/test/review_rules_test.dart) | Regras de avaliação bilateral e impacto no *Relative Trust Score* ($RTS$). | `PASS` |
+| **19** | [`scheduling_test.dart`](../app/test/scheduling_test.dart) | Agendamento de serviços, janelas temporais e SLAs de atendimento. | `PASS` |
+| **20** | [`smart_transcript_formatter_test.dart`](../app/test/smart_transcript_formatter_test.dart) | Formatação inteligente de transcrição de voz (*Speech-to-Text*) e higienização de texto. | `PASS` |
+| **21** | [`smart_triage_test.dart`](../app/test/smart_triage_test.dart) | Motor de triagem assistida e classificação semântica de urgências SOS. | `PASS` |
+| **22** | [`tag_alias_parity_test.dart`](../app/test/tag_alias_parity_test.dart) | Paridade bijetiva de sinônimos e *aliases* das 33 categorias técnicas. | `PASS` |
+| **23** | [`tag_match_test.dart`](../app/test/tag_match_test.dart) | Algoritmo de casamento de especialidades (`GIN` array overlap) entre chamado e prestador. | `PASS` |
+| **24** | [`ui_polish_test.dart`](../app/test/ui_polish_test.dart) | Responsividade no container `480px`, animações a $120\text{ Hz}$ e ergonomia visual. | `PASS` |
+| **25** | [`update_test.dart`](../app/test/update_test.dart) | Guarda de versão mínima obrigatória (`UpdateGate`) e invalidação de cache PWA. | `PASS` |
+| **26** | [`user_profile_test.dart`](../app/test/user_profile_test.dart) | Sincronização de perfil unificado Multi-Modo, avatar e status KYC. | `PASS` |
+| **27** | [`wallet_test.dart`](../app/test/wallet_test.dart) | Carteira digital bipartida (PIX imediato `D+0` vs. Reserva em Maturação `D+5`). | `PASS` |
 
 ---
 
-## 5. Catálogo das 9 Suítes SQL Smoke Tests (`577` Asserções)
+## 5. Catálogo das 3 Suítes Python do Microsserviço KYC Zero-Trust (`64` Testes em `kyc_engine/tests/`)
+
+| # | Arquivo de Suíte em `kyc_engine/tests/` | Testes | Escopo Algorítmico, Criptográfico e E2E Red Team Verificado | Status |
+| :---: | :--- | :---: | :--- | :---: |
+| **01** | [`test_vision_ocr_argon.py`](../kyc_engine/tests/test_vision_ocr_argon.py) | `38` | Validadores Módulo 11 (CPF/CNPJ e Chave NF-e 44 dígitos), Módulo 10 ICAO 9303 MRZ (`TD1`/`TD3`), RENACH, CNH 11 dígitos, compatibilidade nominal inteligente (`"Wagner Oliveira"` $\subset$ `"WAGNER OLIVEIRA CLAUDIANO"`), Grounding 2D `[0..1000]`, auto-rotação canônica ($0^\circ, 90^\circ, 180^\circ, 270^\circ$), recorte PNG *lossless* do QR VIO, *Visual Prompt Injection* e auditoria fiscal do *Smart Split*. | `PASS` |
+| **02** | [`test_carbon_security_and_crypto.py`](../kyc_engine/tests/test_carbon_security_and_crypto.py) | `16` | Invariantes de produção (`config.py`), WORM `AES-256-GCM` via `HKDF-SHA256`, `PiiRedactingLogFilter`, protocolo Anti-Swap (`180s`), Play Integrity / App Attest, `ECDSA P-256` (`IEEE P1363` $\leftrightarrow$ `DER`), `RSA-2048`, envelopes `CMS PKCS#7` VIO/ICP-Brasil, proteção *anti-zip-bomb*, *Passive Authentication* NFC (`EF.SOD` + `DG1`/`DG2`), `SerproDatavalidMtlsClient` (TLS 1.3 + `asyncio.Lock` + Circuit Breaker) e 5 Hard Vetos do `CarbonFraudOrchestrator`. | `PASS` |
+| **03** | [`test_end_to_end_pipeline_redteam.py`](../kyc_engine/tests/test_end_to_end_pipeline_redteam.py) | `10` | **Bateria E2E Red Team Ponta a Ponta:** Integração real `ArgonDocumentVisionService` $\to$ `GovCryptographicDocumentValidator` $\to$ `ZeroTrustSecurityEngine` $\to$ `CarbonFraudOrchestrator` $\to$ FastAPI (`/v1/kyc/verify-full` & `/v1/smart-split/verify-invoice`) cobrindo dossiê legítimo aprovado, CNH rotacionada $90^\circ$, nome parcial legítimo, ataque de *Visual Prompt Injection*, clonagem de QR VIO (`qr_cpf != ocr_cpf`), *Session Swap* após $180\text{s}$, *zip-bomb* em QR VIO, NFC `EF.SOD` com `DG2` adulterado, nota fiscal adulterada no *Smart Split* e zero vazamento de CPF nos logs. | `PASS` |
+
+---
+
+## 6. Catálogo das 9 Suítes SQL Smoke Tests (`577` Asserções)
 
 | # | Arquivo em `supabase/tests/` | Escopo de Verificação Relacional |
 | :---: | :--- | :--- |
@@ -123,7 +134,7 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 
 ---
 
-## 6. Protocolo de Execução Reprodutível via Terminal
+## 7. Protocolo de Execução Reprodutível via Terminal
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -134,7 +145,10 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 │  No issues found! (ran in 3.8s)                                                       [PASS] │
 │                                                                                              │
 │  $ cd app && flutter test                                                                    │
-│  00:18 +529: All tests passed! (26 test suites, 529 assertions)                       [PASS] │
+│  00:19 +559: All tests passed! (27 test suites, 559 assertions)                       [PASS] │
+│                                                                                              │
+│  $ PYTHONPATH=kyc_engine pytest kyc_engine/tests/ -v                                         │
+│  64 passed in 5.16s (3 test suites: 38 Argon + 16 Carbon + 10 E2E Red Team)           [PASS] │
 │                                                                                              │
 │  $ node scripts/test-dossie.mjs                                                              │
 │  # tests 17 | # pass 17 | # fail 0                                                    [PASS] │

@@ -1,9 +1,10 @@
-# Desperrengue — Ecossistema Distribuído Multi-Modo com Custódia Financeira em 3 Camadas, Motor Antifraude $O(1) / O(\log N)$ e Visão Computacional In-App (`v2.8.1`)
+# Desperrengue — Ecossistema Distribuído Multi-Modo com Custódia Financeira em 3 Camadas, Motor Antifraude $O(1) / O(\log N)$ e Arquitetura KYC Zero-Trust Argon + Carbon (`v2.8.6`)
 
 [![CI](https://github.com/WagnerxOliveira/DesperrengueApp_TAI3/actions/workflows/ci.yml/badge.svg)](https://github.com/WagnerxOliveira/DesperrengueApp_TAI3/actions/workflows/ci.yml)
 [![Flutter](https://img.shields.io/badge/Flutter-3.47-02569B?logo=flutter)](https://flutter.dev)
 [![Supabase](https://img.shields.io/badge/PostgreSQL-17%20%2B%20RLS-3ECF8E?logo=supabase)](https://supabase.com)
-[![Testes Dart](https://img.shields.io/badge/Flutter%20Tests-529%20passing-10B981)](app/test/)
+[![Testes Dart](https://img.shields.io/badge/Flutter%20Tests-559%20passing-10B981)](app/test/)
+[![Testes Python KYC](https://img.shields.io/badge/Python%20KYC%20Tests-64%20passing-F59E0B)](kyc_engine/tests/)
 [![Invariantes SQL](https://img.shields.io/badge/SQL%20Assertions-577%20passing-3B82F6)](supabase/tests/)
 
 Tratado executivo, arquitetural e algorítmico da plataforma **Desperrengue**: uma arquitetura distribuída multi-modo (*Client $\leftrightarrow$ Provider Dual-Role Ecosystem*) voltada à intermediação de serviços residenciais sob demanda e de urgência, estruturada sobre **Particionamento Orçamentário Assimétrico (*Anti-Bypass Smart Split*)**, **Custódia Financeira Condicional Transacional em 3 Camadas (*3-Layer Self-Sustaining Warranty Escrow*)**, **Prova de Vida Biométrica Ativa Desafio-Resposta (*Active Challenge-Response Facial Liveness Detection*)**, **Scanner Documental Guiado ISO/IEC 7810 ID-1 com Reconhecimento Óptico de Caracteres (*OCR*)** e **Passaporte Oficial de Manutenção do Imóvel (ABNT NBR 5674 / Lei Federal nº 8.245/91)**.
@@ -87,7 +88,7 @@ flowchart TB
 
     subgraph L4["Camada 4 — Transactional Data & Immutable Ledger Layer (supabase/migrations/)"]
         Auth["Supabase Auth (GoTrue PKCE + Resend SMTP/DNS)"]
-        PG[("PostgreSQL 17 + RLS Estrito (21 Migrações)\nwarranty_pool_ledger | escrow_maturation_entries\njob_mediations | forensic_certificates | kyc_submissions")]
+        PG[("PostgreSQL 17 + RLS Estrito (22 Migrações)\nwarranty_pool_ledger | escrow_maturation_entries\njob_mediations | forensic_certificates | kyc_submissions | kyc_webhook_events")]
         Locks["Gerenciador de Bloqueios em Ordem Canônica\n1. jobs -> 2. job_mediations -> 3. escrow_maturation_entries -> 4. profiles"]
     end
 
@@ -108,7 +109,7 @@ flowchart TB
 3. **Camada 3 — *Domain & Worker Isolate Forensic Guards* ([`app/lib/core/security/perceptual_hash_guard.dart`](app/lib/core/security/perceptual_hash_guard.dart), [`app/lib/core/services/document_ocr_and_liveness_service.dart`](app/lib/core/services/document_ocr_and_liveness_service.dart))**:
    - Execução concorrente fora da *Main UI Thread* via `Isolate.run` combinada com *downsampling* no *Image Signal Processor* (ISP) para $1280 \times 1280\text{ px}$ ($\le 6,5\text{ MB}$ de *heap*), mantendo $0\text{ ms}$ de *UI Jank*.
 4. **Camada 4 — *Transactional Data & Immutable Ledger Layer* ([`supabase/migrations/`](supabase/migrations/))**:
-   - **21 migrações SQL idempotentes** gobernadas por *Row Level Security* (RLS) e funções PL/pgSQL `SECURITY DEFINER` com `SET search_path = public`.
+   - **22 migrações SQL idempotentes** governadas por *Row Level Security* (RLS) e funções PL/pgSQL `SECURITY DEFINER` com `SET search_path = public`.
 
 ---
 
@@ -293,6 +294,18 @@ Implementado em [`client_setup_screen.dart`](app/lib/features/client/presentatio
    - Executa o **Face Match 1:1 Multi-Orientação ($0^\circ, 90^\circ, 180^\circ, 270^\circ$)** sobre a janela $3\times 4$ do documento com vetores de características estritamente não-negativos de 128 dimensões ($A_k \ge 0, B_k \ge 0 \implies S_{\cos} \in [0\%, 100\%]$), exigindo $S_{\cos} \ge 78,0\%$.
    - Renderiza em tela o card de **Transcrição Automática via OCR** (Nome Civil, CPF, RG/CNH, Órgão Emissor e Data de Nascimento) e homologa via RPC `public.submit_client_kyc`.
 
+### 6.4. Arquitetura KYC Zero-Trust Híbrida (`Gemini 4 Argon High` + `Carbon High`), Criptografia VIO/ICP-Brasil e Sessão Anti-Swap (`180s`)
+
+Documentada formalmente no [`ADR-0021`](docs/adr/0021-arquitetura-kyc-zero-trust-argon-carbon.md) e implementada no microsserviço criptográfico [`kyc_engine/`](kyc_engine/app/main.py), nas Edge Functions [`kyc-argon-vision-gate`](supabase/functions/kyc-argon-vision-gate/index.ts) e [`kyc-carbon-webhook`](supabase/functions/kyc-carbon-webhook/index.ts), na migração [`20261112150000_carbon_kyc_webhook_bridge.sql`](supabase/migrations/20261112150000_carbon_kyc_webhook_bridge.sql) e nos componentes Flutter [`kyc_session_anti_swap_guard.dart`](app/lib/core/security/kyc_session_anti_swap_guard.dart) e [`kyc_human_feedback_translator.dart`](app/lib/core/ui/kyc_human_feedback_translator.dart), a arquitetura combina três níveis de defesa:
+
+1. **Funil Econômico Tier-0 $\to$ Tier-1 (`Gemini 4 Argon High`) $\to$ Tier-2/3 (`Carbon High` + SERPRO mTLS)**:
+   - O **Tier-1 (`ArgonDocumentVisionService` em [`vision_ocr_argon.py`](kyc_engine/app/services/vision_ocr_argon.py))** executa com `thinking_level="HIGH"` e `temperature=0.0`, detectando orientação canônica ($0^\circ, 90^\circ, 180^\circ, 270^\circ$), realizando **Grounding Espacial 2D** na escala $[0..1000]$ (recorte subpixel da Foto $3\times 4$ em JPEG `q=95` e do QR Code VIO em **PNG sem perda**), bloqueando *Visual Prompt Injection* e validando deterministicamente CPF/CNPJ (Módulo 11), Chave NF-e de 44 dígitos (Módulo 11), MRZ ICAO 9303 (Módulo 10 com pesos $7\text{-}3\text{-}1$) e compatibilidade nominal inteligente (subconjunto ordenado legítimo $\ge 0,80$).
+2. **Criptografia Governamental VIO/ICP-Brasil (`CMS PKCS#7` + `ECDSA P-256`) e NFC `EF.SOD` ([`crypto_doc_validator.py`](kyc_engine/app/services/crypto_doc_validator.py))**:
+   - Super-resolução bicúbica $2\times$ + `CLAHE` + decodificação C++ (`zxingcpp`/OpenCV), descompressão `zlib` protegida contra *zip-bombs* ($\le 64\text{ KiB}$), verificação matemática de envelopes `ASN.1/DER PKCS#7 SignedData` contra a cadeia ICP-Brasil/SENATRAN, trava anti-clonagem bit-a-bit (`qr_cpf == ocr_cpf == typed_cpf`) e *Passive Authentication* NFC (`EF.SOD` + `DG1`/`DG2`).
+3. **Sessão Anti-Swap (`180s`), 5 Hard Vetos Pré-LLM, SERPRO mTLS 1.3 e Explicabilidade SHAP (LGPD Art. 20)**:
+   - O motor [`ZeroTrustSecurityEngine`](kyc_engine/app/core/security.py) vincula criptograficamente `session_nonce`, `liveness_timestamp` e hashes `SHA-256` das mídias ao vivo (`TTL <= 180s`), cifra evidências em repouso via **WORM `AES-256-GCM` com `HKDF-SHA256`** e filtra PII nos logs (`PiiRedactingLogFilter`).
+   - O orquestrador [`CarbonFraudOrchestrator`](kyc_engine/app/services/fraud_orchestrator.py) impõe **5 Hard Vetos determinísticos** antes do LLM, consulta o [`SerproDatavalidMtlsClient`](kyc_engine/app/services/serpro_datavalid.py) (TLS 1.3 mútuo + Circuit Breaker), popula os **Top-3 Fatores SHAP (LGPD Art. 20)** e entrega ao usuário mensagens acolhedoras a $120\text{ FPS}$ com **zero jargão técnico**.
+
 ---
 
 ## 7. Complexidade de Algoritmos (Big-O), Indexação e Controle de Concorrência Sem Deadlocks
@@ -373,7 +386,7 @@ sequenceDiagram
 ├── LICENSE.md                                                      # Governança Jurídica, Propriedade Intelectual e LGPD
 ├── .github/
 │   ├── workflows/                             # Pipelines CI/CD (ci.yml e beta-release.yml)
-│   ├── SECURITY.md                            # Política de Defesa em Profundidade e Matriz RN-AF-01..14
+│   ├── SECURITY.md                            # Política de Defesa em Profundidade, Matriz RN-AF-01..14 e Zero-Trust KYC
 │   └── CONTRIBUTING.md                        # Padrões de Engenharia, Regra Zero e Definition of Done
 ├── app/                                       # Aplicação Multiplataforma Flutter 3.47 (Android, iOS, PWA)
 │   ├── README.md                              # Manual de Engenharia Client-Side (120 FPS, Isolates, Safe-Zone)
@@ -381,23 +394,41 @@ sequenceDiagram
 │   │   ├── main.dart                          # BootGate, UpdateGate e Container Responsivo 480px
 │   │   ├── core/
 │   │   │   ├── models/                        # Modelos de Domínio e Fintech (fintech_warranty_models.dart)
-│   │   │   ├── security/                      # PerceptualHashGuard (dHash 64-bit, Core ROI Inset 12%)
+│   │   │   ├── security/                      # PerceptualHashGuard, ZeroTrustBilateralSecurityEngine, KycSessionAntiSwapGuard
 │   │   │   ├── services/                      # DocumentOcrAndLivenessService, WarrantyEscrowService, PDF %PDF-1.4
 │   │   │   ├── state/                         # Controllers Riverpod e AntiBypassFintechController
-│   │   │   └── ui/                            # Design System Quiet Luxury Dark e Tokens Visuais
+│   │   │   └── ui/                            # Design System Quiet Luxury Dark e KycHumanFeedbackTranslator (120 FPS)
 │   │   └── features/
 │   │       ├── auth/presentation/             # AuthGate, PostAuthRouter e Verificação Profissional (Steps 1..7)
 │   │       ├── boot/                          # AnimatedSplashScreen, BootGate e UpdateGate
 │   │       ├── client/presentation/           # ClientSetupScreen (4 Etapas), Carteira, Passaporte e Pedidos
 │   │       ├── provider/presentation/         # ProviderShell, Execução Forense, Carteira Bipartida e Dossiê
 │   │       └── shared/presentation/           # 4ª Aba Em Mediação, ForensicSplitViewComparator e PIN 4 Dígitos
-│   └── test/                                  # 26 Suítes Automatizadas (529 Testes Unitários, Widget e Red Team)
+│   └── test/                                  # 27 Suítes Automatizadas (559 Testes Unitários, Widget e Red Team)
+├── kyc_engine/                                # Microsserviço Python/FastAPI de KYC Zero-Trust (Argon High + Carbon High)
+│   ├── README.md                              # Manual Técnico do Motor KYC Zero-Trust
+│   ├── pyproject.toml                         # Configuração de Empacotamento e Suíte Pytest Asyncio
+│   ├── requirements.txt                       # Dependências Criptográficas, Visão Computacional e Google GenAI SDK
+│   ├── app/
+│   │   ├── main.py                            # Gateway FastAPI (/v1/kyc/verify-full, /v1/smart-split/verify-invoice)
+│   │   ├── core/
+│   │   │   ├── config.py                      # Configurações Zero-Trust e Invariantes Estritas de Produção
+│   │   │   └── security.py                    # ZeroTrustSecurityEngine (Anti-Swap 180s, WORM AES-256-GCM, Redação LGPD)
+│   │   ├── models/
+│   │   │   └── schemas_argon.py               # Contratos Pydantic v2, Grounding 2D [0..1000] e Validadores Mod 11/MRZ
+│   │   └── services/
+│   │       ├── vision_ocr_argon.py            # ArgonDocumentVisionService (Rotação Canônica, Recorte Subpixel e NF-e)
+│   │       ├── crypto_doc_validator.py        # GovCryptographicDocumentValidator (VIO CMS PKCS#7, ECDSA P-256, NFC EF.SOD)
+│   │       ├── serpro_datavalid.py            # SerproDatavalidMtlsClient (Pool TLS 1.3 Mútuo ICP-Brasil + Circuit Breaker)
+│   │       └── fraud_orchestrator.py          # CarbonFraudOrchestrator (5 Hard Vetos Pré-LLM + SHAP LGPD Art. 20)
+│   └── tests/                                 # 3 Suítes Automatizadas Pytest (64 Testes Unitários, Cripto e E2E Red Team)
 ├── supabase/
-│   ├── README.md                              # Catálogo do SGBD, 21 Migrações, 9 Índices e RPCs SECURITY DEFINER
-│   ├── migrations/                            # 21 Migrações SQL (incluindo Garantia 3 Camadas e KYC/OCR)
+│   ├── README.md                              # Catálogo do SGBD, 22 Migrações, 9 Índices e RPCs SECURITY DEFINER
+│   ├── functions/                             # Edge Functions Deno (kyc-argon-vision-gate, kyc-carbon-webhook, etc.)
+│   ├── migrations/                            # 22 Migrações SQL (incluindo 20261112150000_carbon_kyc_webhook_bridge.sql)
 │   └── tests/                                 # 9 Suítes de Contrato SQL (577 Asserções Formais)
 ├── scripts/                                   # Verificadores Automatizados (check-md-links.mjs e test-dossie.mjs)
-└── docs/                                      # Biblioteca Técnico-Científica Completa (20 Documentos + 5 Subpastas)
+└── docs/                                      # Biblioteca Técnico-Científica Completa (20 Documentos + 22 ADRs)
 ```
 
 ### 9.1. Índice Clicável da Biblioteca Científica em [`/docs/`](docs/)
@@ -416,7 +447,7 @@ sequenceDiagram
 | `10` | [`docs/Planos de Negocio e Tributação.md`](docs/Planos%20de%20Negocio%20e%20Tributa%C3%A7%C3%A3o.md) | Engenharia Tributária do *Smart Split* (bitributação zero), Receitas B2C/B2B e *Unit Economics* |
 | `11` | [`docs/Analise de Ambientes e SWOT.md`](docs/Analise%20de%20Ambientes%20e%20SWOT.md) | Análise PESTEL, 5 Forças de Porter e Matriz SWOT Cruzada com Barreiras Tecnológicas |
 | `12` | [`docs/Balanced Scorecard (BSC).md`](docs/Balanced%20Scorecard%20(BSC).md) | Mapa Estratégico de Causa-Efeito nas 4 Perspectivas e KPIs Telemetrizados em SQL |
-| `13` | [`docs/TESTING.md`](docs/TESTING.md) | Verificação Formal (`529` testes Dart, `577` asserções SQL) e Detalhamento dos 12 Testes *Red Team* |
+| `13` | [`docs/TESTING.md`](docs/TESTING.md) | Verificação Formal (`559` testes Dart, `64` testes Python KYC, `577` asserções SQL) e Suítes *Red Team* |
 | `14` | [`docs/TESTE_COM_AMIGOS.md`](docs/TESTE_COM_AMIGOS.md) | Protocolo de Homologação Empírica em Campo para Smartphones Android e iOS |
 | `15` | [`docs/SETUP.md`](docs/SETUP.md) | Guia de Provisionamento de Ambiente, Banco de Dados Supabase e Compilação Multiplataforma |
 | `16` | [`docs/PLAY_STORE.md`](docs/PLAY_STORE.md) | Engenharia de Release Mobile, Permissões Nativas, LGPD Art. 11 (Biometria) e *Safe-Zone* |
@@ -424,7 +455,7 @@ sequenceDiagram
 | `18` | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Cronograma Evolutivo de Engenharia (`gantt`), Marcos Concluídos e Horizontes B2B/IA |
 | `19` | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Registro Cronológico Auditável de Versões e Migrações SQL |
 | `20` | [`docs/Template.md`](docs/Template.md) | Padrão Metadocumental Científico para Criação de Futuros Artefatos em Linguagem de Especialidade |
-| `21` | [`docs/adr/README.md`](docs/adr/README.md) | Catálogo de 21 *Architecture Decision Records* (`ADR-0000` a [`ADR-0020`](docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md)) |
+| `21` | [`docs/adr/README.md`](docs/adr/README.md) | Catálogo de 22 *Architecture Decision Records* (`ADR-0000` a [`ADR-0020`](docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) e [`ADR-0021`](docs/adr/0021-arquitetura-kyc-zero-trust-argon-carbon.md)) |
 | `22` | [`Tratado_Completo_Desperrengue_v2.8.2.pdf`](Tratado_Completo_Desperrengue_v2.8.2.pdf) | Compêndio Mestre Completo de Engenharia, Segurança, Visão Computacional e Negócios (PDF) |
 | `23` | [`Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf`](Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf) | Tratado Completo de Inteligência Artificial Híbrida e 10 Inovações Fintech Inéditas Passo a Passo (PDF) |
 
@@ -438,18 +469,22 @@ cd C:\00_Desperrengue\app
 flutter pub get
 flutter analyze
 
-# 2. Executar as 26 suítes de testes automatizados (529 testes: Domínio, Widgets, Visão Computacional e Red Team)
+# 2. Executar as 27 suítes de testes automatizados Flutter (559 testes: Domínio, Widgets, Visão Computacional e Red Team)
 flutter test
 
-# 3. Executar especificamente a bateria Red Team de Fraude Financeira e Forense Biométrica/OCR
-flutter test test/red_team_warranty_and_kyc_forensics_test.dart test/fintech_warranty_security_test.dart
+# 3. Executar especificamente a bateria Red Team de Fraude Financeira, Forense Biométrica/OCR e UX Zero-Trust
+flutter test test/argon_carbon_kyc_and_ux_test.dart test/red_team_warranty_and_kyc_forensics_test.dart test/fintech_warranty_security_test.dart
 
-# 4. Validar integridade de todos os links Markdown e motor de geração PDF na raiz
+# 4. Executar as 3 suítes Python do Microsserviço KYC Zero-Trust (64 testes: Argon Vision, Carbon Crypto/mTLS e E2E Red Team)
 cd C:\00_Desperrengue
+$env:PYTHONPATH = "kyc_engine"
+pytest kyc_engine/tests/ -v
+
+# 5. Validar integridade de todos os links Markdown e motor de geração PDF na raiz
 node scripts/check-md-links.mjs
 node scripts/test-dossie.mjs
 
-# 5. Compilar APK Release Android ou PWA Web com variáveis de ambiente
+# 6. Compilar APK Release Android ou PWA Web com variáveis de ambiente
 cd C:\00_Desperrengue\app
 flutter build apk --release --dart-define-from-file=.env
 flutter build web --release --dart-define-from-file=.env
