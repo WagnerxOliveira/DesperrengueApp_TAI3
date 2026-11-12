@@ -97,8 +97,9 @@ returns boolean language sql stable security definer set search_path = public as
        and coalesce(pay.status, 'released') = 'released'
        and coalesce(j.escrow_status, 'settled') in ('settled', 'released')
        and not exists (
+         -- fix: coluna real de public.job_mediations (20261108110000) é current_phase
          select 1 from public.job_mediations m
-          where m.job_id = j.id and m.phase not in ('resolved_release_provider', 'resolved_refund_client')
+          where m.job_id = j.id and m.current_phase <> 'PHASE_5_SETTLED_AND_CERTIFIED'
        )
   );
 $$;
@@ -253,7 +254,8 @@ begin
        and j.provider_id = v_uid
        and public.is_job_portfolio_eligible(j.id)
   ) then
-    raise exception 'Só é possível destacar no Portfólio serviços concluídos cujo período de proteção pós-serviço já finalizou e com 100% do pagamento recebido.' using errcode = 'P0001';
+    -- fix: literal % em RAISE EXCEPTION PL/pgSQL exige escape %%
+    raise exception 'Só é possível destacar no Portfólio serviços concluídos cujo período de proteção pós-serviço já finalizou e com 100%% do pagamento recebido.' using errcode = 'P0001';
   end if;
   if exists (select 1 from public.provider_case_pins where provider_id = v_uid and job_id = p_job) then
     return;
@@ -304,8 +306,9 @@ begin
                'lifecycle_stage', case
                  when j.status = 'canceled' then 'canceled'
                  when j.status = 'disputed' or exists (
+                   -- fix: coluna real de public.job_mediations é current_phase
                    select 1 from public.job_mediations m
-                    where m.job_id = j.id and m.phase not in ('resolved_release_provider', 'resolved_refund_client')
+                    where m.job_id = j.id and m.current_phase <> 'PHASE_5_SETTLED_AND_CERTIFIED'
                  ) then 'in_mediation'
                  when j.status = 'completed' and public.is_job_portfolio_eligible(j.id) then 'settled_and_paid'
                  else 'under_protection'

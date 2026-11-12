@@ -199,7 +199,8 @@ BEGIN
 
   -- 2. Geração de Hash Criptográfico Salgado e Máscara LGPD
   v_cpf_hash := encode(digest('DSP-CPF-PEPPER-2026:' || v_digits, 'sha256'), 'hex');
-  v_cpf_masked := '***.'.concat(substring(v_digits, 4, 3), '.', substring(v_digits, 7, 3), '-**');
+  -- fix: PostgreSQL usa operador || (não método JS .concat) para concatenar strings
+  v_cpf_masked := '***.' || substring(v_digits, 4, 3) || '.' || substring(v_digits, 7, 3) || '-**';
 
   -- 3. Guarda Anti-Sybil: Verifica se outro usuário já utiliza este CPF ou Biometria Facial
   IF EXISTS (

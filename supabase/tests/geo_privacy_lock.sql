@@ -327,8 +327,8 @@ begin
   perform public.pay_job_mock(j, 'pix');
   -- Tentativa de enviar localização exata via chat antes do dia do serviço deve ser bloqueada
   v_err := pg_temp.try(format(
-    'insert into public.messages (job_id, provider_id, sender_id, kind, body, meta) values (%L, %L, %L, %L, %L, %L::jsonb)',
-    j, p1, c, 'location', 'Minha casa', json_build_object('lat', lat0, 'lng', lng0)::text
+    'insert into public.messages (job_id, provider_id, kind, body, meta) values (%L, %L, %L, %L, %L::jsonb)',
+    j, p1, 'location', 'Minha casa', json_build_object('lat', lat0, 'lng', lng0)::text
   ));
   perform pg_temp.t(
     position('LOCATION_LOCKED_UNTIL_SERVICE_DAY' in v_err) > 0,
@@ -455,8 +455,8 @@ begin
 
   -- Cliente envia localização no chat durante `in_progress` (permitido) para testar expurgo pós-serviço
   perform pg_temp.login(c);
-  insert into public.messages (job_id, provider_id, sender_id, kind, body, meta)
-  values (j, p1, c, 'location', 'Portão lateral', jsonb_build_object('lat', lat0, 'lng', lng0));
+  insert into public.messages (job_id, provider_id, kind, body, meta)
+  values (j, p1, 'location', 'Portão lateral', jsonb_build_object('lat', lat0, 'lng', lng0));
   select pin into v_pin from public.job_secrets where job_id = j;
   reset role;
 
