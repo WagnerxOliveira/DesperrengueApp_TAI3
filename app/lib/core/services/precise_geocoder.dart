@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/geocode_models.dart';
 import '../models/scheduling_models.dart';
@@ -57,38 +60,227 @@ class ReversedAddress {
     if (uf.trim().isEmpty) return place;
     return place.isEmpty ? uf.trim().toUpperCase() : '$place - ${uf.trim().toUpperCase()}';
   }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'street': street,
+        'number': number,
+        'neighborhood': neighborhood,
+        'city': city,
+        'uf': uf,
+        'cep': cep,
+        'lat': lat,
+        'lng': lng,
+      };
+
+  factory ReversedAddress.fromJson(Map<String, dynamic> json) => ReversedAddress(
+        street: (json['street'] as String?) ?? '',
+        number: (json['number'] as String?) ?? '',
+        neighborhood: (json['neighborhood'] as String?) ?? '',
+        city: (json['city'] as String?) ?? '',
+        uf: (json['uf'] as String?) ?? '',
+        cep: (json['cep'] as String?) ?? '',
+        lat: (json['lat'] as num?)?.toDouble() ?? 0,
+        lng: (json['lng'] as num?)?.toDouble() ?? 0,
+      );
 }
 
 /// Geocodificação de ALTA PRECISÃO para endereços brasileiros, só com serviços gratuitos e sem
-/// chave, em cascata e com validação:
+/// chave, em cascata, validação estrita de município/UF e cache em 2 camadas (LRU RAM + SharedPreferences):
 ///
 ///  1. **CEP** do endereço (informado ou descoberto no ViaCEP por UF + cidade + rua) — também
 ///     confirma o nome oficial da rua/bairro;
 ///  2. **Photon** (OpenStreetMap, busca estruturada rua + número + cidade): devolve a CASA quando
 ///     o OSM tem o número, senão a rua;
-///  3. **AwesomeAPI CEP**: ponto da rua pelo CEP (independe de o OSM ter o número);
+///  3. **AwesomeAPI CEP** + **BrasilAPI CEP v2** (`brasilapi.com.br/api/cep/v2/{cep}`): ponto da
+///     rua pelo CEP (independe de o OSM ter o número);
 ///  4. **Nominatim** (consultas em cascata) como último recurso;
 ///  5. centro do bairro/cidade (`locality`) só se nada melhor existir.
-///
-/// Cada candidato é validado (país, UF e CIDADE precisam bater com o endereço — acabou o ponto
-/// "em outra cidade") e o vencedor é o de maior precisão; fontes que concordam (≤ 400 m) desempatam.
-/// O resultado é só o PONTO INICIAL: o cliente confirma o pino exato no mapa (ver
-/// [LocationPickerSheet]), que é o que garante a precisão da porta.
 class PreciseGeocoder implements AddressGeocoder {
-  PreciseGeocoder({http.Client? client, AddressGeocoder? fallback, this.timeout = const Duration(seconds: 8)})
-      : _client = client ?? http.Client(),
-        _fallback = fallback ?? GeocodingService(client: client);
+  PreciseGeocoder({
+    http.Client? client,
+    AddressGeocoder? fallback,
+    this.timeout = const Duration(seconds: 8),
+    bool? useCache,
+  })  : _client = client ?? http.Client(),
+        _fallback = fallback ?? GeocodingService(client: client),
+        _useCache = useCache ?? (client == null && fallback == null);
 
   final http.Client _client;
   final AddressGeocoder _fallback;
   final Duration timeout;
+  final bool _useCache;
 
-  static const _headers = {'User-Agent': 'Desperrengue/1.0 (suporte@desperrengue.tech)', 'Accept-Language': 'pt-BR'};
+  static const _headers = {
+    'User-Agent': 'Desperrengue/1.0 (suporte@desperrengue.tech)',
+    'Accept-Language': 'pt-BR',
+  };
+
+  static const String _kDirectCachePrefsKey = 'carbon_precise_geo_direct_v1';
+  static const String _kReverseCachePrefsKey = 'carbon_precise_geo_reverse_v1';
+  static const int _kMaxLruEntries = 256;
+
+  static final LinkedHashMap<String, GeocodeHit> _directLru =
+      LinkedHashMap<String, GeocodeHit>();
+  static final LinkedHashMap<String, ReversedAddress> _reverseLru =
+      LinkedHashMap<String, ReversedAddress>();
+  static bool _prefsHydrated = false;
+  static Future<void>? _hydratingFuture;
+
+  static String _directKey(String addressLine, {String? summary, String? cep}) =>
+      normalizeTag('${addressLine.trim()}|${summary?.trim() ?? ''}|${_digits(cep)}');
+
+  static String _reverseKey(double lat, double lng) =>
+      '${lat.toStringAsFixed(5)},${lng.toStringAsFixed(5)}';
+
+  /// Consulta síncrona (0 ms) no cache LRU em RAM para geocodificação direta.
+  static GeocodeHit? peekCachedDirect(
+    String addressLine, {
+    String? summary,
+    String? cep,
+  }) {
+    final key = _directKey(addressLine, summary: summary, cep: cep);
+    if (key.isEmpty) return null;
+    final hit = _directLru.remove(key);
+    if (hit != null) {
+      _directLru[key] = hit;
+    }
+    return hit;
+  }
+
+  /// Consulta síncrona (0 ms) no cache LRU em RAM para geocodificação reversa.
+  static ReversedAddress? peekCachedReverse(double lat, double lng) {
+    final key = _reverseKey(lat, lng);
+    final rev = _reverseLru.remove(key);
+    if (rev != null) {
+      _reverseLru[key] = rev;
+    }
+    return rev;
+  }
+
+  static void _putDirectLru(String key, GeocodeHit hit) {
+    if (key.isEmpty) return;
+    _directLru.remove(key);
+    _directLru[key] = hit;
+    while (_directLru.length > _kMaxLruEntries) {
+      _directLru.remove(_directLru.keys.first);
+    }
+  }
+
+  static void _putReverseLru(String key, ReversedAddress addr) {
+    if (key.isEmpty) return;
+    _reverseLru.remove(key);
+    _reverseLru[key] = addr;
+    while (_reverseLru.length > _kMaxLruEntries) {
+      _reverseLru.remove(_reverseLru.keys.first);
+    }
+  }
+
+  /// Hidrata em memória os caches persistentes de `SharedPreferences` (idempotente e à prova de falhas).
+  static Future<void> ensurePersistentCacheLoaded() {
+    if (_prefsHydrated) return Future<void>.value();
+    return _hydratingFuture ??= _doHydrateFromPrefs();
+  }
+
+  static Future<void> _doHydrateFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawDirect = prefs.getString(_kDirectCachePrefsKey);
+      if (rawDirect != null && rawDirect.isNotEmpty) {
+        final decoded = jsonDecode(rawDirect);
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final k = '${entry.key}';
+            final v = entry.value;
+            if (v is Map && !_directLru.containsKey(k)) {
+              final lat = (v['lat'] as num?)?.toDouble();
+              final lng = (v['lng'] as num?)?.toDouble();
+              if (lat != null && lng != null) {
+                _putDirectLru(
+                  k,
+                  GeocodeHit(
+                    lat: lat,
+                    lng: lng,
+                    precision: DestinationPrecision.parse(v['precision'] as String?),
+                    display: (v['display'] as String?) ?? '',
+                  ),
+                );
+              }
+            }
+          }
+        }
+      }
+
+      final rawReverse = prefs.getString(_kReverseCachePrefsKey);
+      if (rawReverse != null && rawReverse.isNotEmpty) {
+        final decoded = jsonDecode(rawReverse);
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            final k = '${entry.key}';
+            final v = entry.value;
+            if (v is Map && !_reverseLru.containsKey(k)) {
+              _putReverseLru(
+                k,
+                ReversedAddress.fromJson(Map<String, dynamic>.from(v)),
+              );
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Silencioso: falha de I/O local nunca interrompe geocodificação.
+    } finally {
+      _prefsHydrated = true;
+      _hydratingFuture = null;
+    }
+  }
+
+  static Future<void> _persistDirectCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, Map<String, dynamic>>{
+        for (final e in _directLru.entries)
+          e.key: <String, dynamic>{
+            'lat': e.value.lat,
+            'lng': e.value.lng,
+            'precision': e.value.precision.wire,
+            'display': e.value.display,
+          },
+      };
+      await prefs.setString(_kDirectCachePrefsKey, jsonEncode(map));
+    } catch (_) {}
+  }
+
+  static Future<void> _persistReverseCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, Map<String, dynamic>>{
+        for (final e in _reverseLru.entries) e.key: e.value.toJson(),
+      };
+      await prefs.setString(_kReverseCachePrefsKey, jsonEncode(map));
+    } catch (_) {}
+  }
+
+  @visibleForTesting
+  static void clearCache() {
+    _directLru.clear();
+    _reverseLru.clear();
+    _prefsHydrated = false;
+    _hydratingFuture = null;
+  }
 
   @override
   Future<GeocodeHit?> geocode(String addressLine, {String? summary, String? cep}) async {
     final parts = parseAddressLine(addressLine, summary: summary);
     if (parts.street.isEmpty && parts.city.isEmpty) return null;
+
+    final cacheKey = _directKey(addressLine, summary: summary, cep: cep);
+    if (_useCache) {
+      final memHit = peekCachedDirect(addressLine, summary: summary, cep: cep);
+      if (memHit != null) return memHit;
+      await ensurePersistentCacheLoaded();
+      final hydratedHit = peekCachedDirect(addressLine, summary: summary, cep: cep);
+      if (hydratedHit != null) return hydratedHit;
+    }
 
     var zip = _digits(cep);
     if (zip.length != 8) zip = await _cepByAddress(parts) ?? '';
@@ -97,30 +289,72 @@ class PreciseGeocoder implements AddressGeocoder {
       _photon(parts, zip),
       zip.length == 8 ? _awesomeCep(parts, zip) : Future<List<GeocodeCandidate>>.value(const []),
     ]);
-    final candidates = [for (final r in results) ...r];
+    final candidates = <GeocodeCandidate>[for (final r in results) ...r];
     var best = pickBest(candidates);
+
+    // Se AwesomeAPI + Photon não trouxeram rua/casa e temos CEP válido, consulta BrasilAPI CEP v2.
+    if (zip.length == 8 && (best == null || best.precision == DestinationPrecision.locality)) {
+      final brasilCandidates = await _brasilApiCep(parts, zip);
+      if (brasilCandidates.isNotEmpty) {
+        candidates.addAll(brasilCandidates);
+        best = pickBest(candidates);
+      }
+    }
 
     // Sem rua/casa confiável: tenta o Nominatim (que também traz bairro/cidade).
     if (best == null || best.precision == DestinationPrecision.locality) {
       final nominatim = await _fallback.geocode(addressLine, summary: summary, cep: zip.isEmpty ? null : zip);
       if (nominatim != null && cityMatches(parts, nominatim.display)) {
-        best = pickBest([...candidates, GeocodeCandidate(nominatim.lat, nominatim.lng, nominatim.precision, 'nominatim', nominatim.display)]);
+        best = pickBest([
+          ...candidates,
+          GeocodeCandidate(
+            nominatim.lat,
+            nominatim.lng,
+            nominatim.precision,
+            'nominatim',
+            nominatim.display,
+          ),
+        ]);
       } else if (best == null && nominatim != null) {
-        best = GeocodeCandidate(nominatim.lat, nominatim.lng, nominatim.precision, 'nominatim', nominatim.display);
+        best = GeocodeCandidate(
+          nominatim.lat,
+          nominatim.lng,
+          nominatim.precision,
+          'nominatim',
+          nominatim.display,
+        );
       }
     }
     if (best == null) return null;
-    return GeocodeHit(lat: best.lat, lng: best.lng, precision: best.precision, display: best.display);
+    final resolvedHit = GeocodeHit(
+      lat: best.lat,
+      lng: best.lng,
+      precision: best.precision,
+      display: best.display,
+    );
+    if (_useCache) {
+      _putDirectLru(cacheKey, resolvedHit);
+      unawaited(_persistDirectCache());
+    }
+    return resolvedHit;
   }
 
   /// Geocodificação reversa (lat, lng -> endereço estruturado) usando cascata gratuita
-  /// Nominatim Reverse + Photon Reverse, atualizando rua, número, bairro, cidade e UF quando o
-  /// cliente move o pino em "Ajustar o ponto exato".
+  /// Nominatim Reverse + Photon Reverse, com cache LRU em RAM + persistente (`SharedPreferences`).
   Future<ReversedAddress?> reverseGeocode(
     double lat,
     double lng, {
     String? fallbackLine,
   }) async {
+    final revKey = _reverseKey(lat, lng);
+    if (_useCache) {
+      final memRev = peekCachedReverse(lat, lng);
+      if (memRev != null) return memRev;
+      await ensurePersistentCacheLoaded();
+      final hydratedRev = peekCachedReverse(lat, lng);
+      if (hydratedRev != null) return hydratedRev;
+    }
+
     final fallbackParts = fallbackLine == null ? null : parseAddressLine(fallbackLine);
     final nominatimUri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
       'format': 'jsonv2',
@@ -169,7 +403,7 @@ class PreciseGeocoder implements AddressGeocoder {
       }
     }
 
-    return ReversedAddress(
+    final resolved = ReversedAddress(
       street: street.isNotEmpty ? street : (fallbackParts?.street ?? ''),
       number: number,
       neighborhood: neighborhood,
@@ -179,6 +413,12 @@ class PreciseGeocoder implements AddressGeocoder {
       lat: lat,
       lng: lng,
     );
+
+    if (_useCache) {
+      _putReverseLru(revKey, resolved);
+      unawaited(_persistReverseCache());
+    }
+    return resolved;
   }
 
   /// Interpreta resposta do Nominatim `/reverse?format=jsonv2&addressdetails=1`.
@@ -301,7 +541,9 @@ class PreciseGeocoder implements AddressGeocoder {
     final uf = p.uf.trim();
     if (uf.length == 2) {
       final name = normalizeTag(ufFullName(uf));
-      if (name.isNotEmpty && !hay.contains(name) && !RegExp('(^|[^a-z])${uf.toLowerCase()}([^a-z]|\$)').hasMatch(hay)) return false;
+      if (name.isNotEmpty && !hay.contains(name) && !RegExp('(^|[^a-z])${uf.toLowerCase()}([^a-z]|\$)').hasMatch(hay)) {
+        return false;
+      }
     }
     return true;
   }
@@ -311,13 +553,23 @@ class PreciseGeocoder implements AddressGeocoder {
   /// ViaCEP por endereço: UF + cidade + rua → CEP (prefere o do mesmo bairro).
   Future<String?> _cepByAddress(AddressParts p) async {
     if (p.uf.length != 2 || p.city.isEmpty || p.street.trim().length < 3) return null;
-    final street = p.street.replaceFirst(RegExp(r'^(r\.?|rua|av\.?|avenida|al\.?|alameda|tv\.?|travessa|pça\.?|praça|estrada|rodovia)\s+', caseSensitive: false), '');
-    final uri = Uri.parse('https://viacep.com.br/ws/${p.uf.toUpperCase()}/${Uri.encodeComponent(p.city)}/${Uri.encodeComponent(street)}/json/');
+    final street = p.street.replaceFirst(
+      RegExp(
+        r'^(r\.?|rua|av\.?|avenida|al\.?|alameda|tv\.?|travessa|pça\.?|praça|estrada|rodovia)\s+',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    final uri = Uri.parse(
+      'https://viacep.com.br/ws/${p.uf.toUpperCase()}/${Uri.encodeComponent(p.city)}/${Uri.encodeComponent(street)}/json/',
+    );
     final body = await _getJson(uri);
     if (body is! List || body.isEmpty) return null;
     final rows = body.whereType<Map>().toList();
     final hood = normalizeTag(p.hood);
-    final same = hood.isEmpty ? null : rows.where((r) => normalizeTag('${r['bairro'] ?? ''}') == hood).firstOrNull;
+    final same = hood.isEmpty
+        ? null
+        : rows.where((r) => normalizeTag('${r['bairro'] ?? ''}') == hood).firstOrNull;
     final pick = same ?? rows.first;
     final z = _digits('${pick['cep'] ?? ''}');
     return z.length == 8 ? z : null;
@@ -332,7 +584,9 @@ class PreciseGeocoder implements AddressGeocoder {
       if (p.uf.isNotEmpty) p.uf,
       'Brasil',
     ].join(', ');
-    final body = await _getJson(Uri.https('photon.komoot.io', '/api/', {'q': q, 'limit': '8', 'lang': 'default'}));
+    final body = await _getJson(
+      Uri.https('photon.komoot.io', '/api/', {'q': q, 'limit': '8', 'lang': 'default'}),
+    );
     return parsePhoton(body, p);
   }
 
@@ -340,7 +594,15 @@ class PreciseGeocoder implements AddressGeocoder {
   static List<GeocodeCandidate> parsePhoton(Object? body, AddressParts p) {
     final features = (body is Map ? body['features'] : null);
     if (features is! List) return const [];
-    final street = normalizeTag(p.street.replaceFirst(RegExp(r'^(r\.?|rua|av\.?|avenida|al\.?|alameda|tv\.?|travessa|praça|estrada|rodovia)\s+', caseSensitive: false), ''));
+    final street = normalizeTag(
+      p.street.replaceFirst(
+        RegExp(
+          r'^(r\.?|rua|av\.?|avenida|al\.?|alameda|tv\.?|travessa|praça|estrada|rodovia)\s+',
+          caseSensitive: false,
+        ),
+        '',
+      ),
+    );
     final out = <GeocodeCandidate>[];
     for (final f in features.whereType<Map>()) {
       final props = (f['properties'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -350,7 +612,8 @@ class PreciseGeocoder implements AddressGeocoder {
       final lat = (coords[1] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
       if ('${props['countrycode'] ?? 'BR'}'.toUpperCase() != 'BR') continue;
-      final place = '${props['city'] ?? ''} ${props['town'] ?? ''} ${props['village'] ?? ''} ${props['county'] ?? ''} ${props['district'] ?? ''} ${props['state'] ?? ''}';
+      final place =
+          '${props['city'] ?? ''} ${props['town'] ?? ''} ${props['village'] ?? ''} ${props['county'] ?? ''} ${props['district'] ?? ''} ${props['state'] ?? ''}';
       if (!cityMatches(p, place)) continue;
       final name = normalizeTag('${props['street'] ?? ''} ${props['name'] ?? ''}');
       final type = '${props['type'] ?? ''}';
@@ -364,7 +627,15 @@ class PreciseGeocoder implements AddressGeocoder {
       } else {
         prec = DestinationPrecision.locality;
       }
-      out.add(GeocodeCandidate(lat, lng, prec, 'photon', '${props['name'] ?? ''}, ${props['city'] ?? ''}'));
+      out.add(
+        GeocodeCandidate(
+          lat,
+          lng,
+          prec,
+          'photon',
+          '${props['name'] ?? ''}, ${props['city'] ?? ''}',
+        ),
+      );
     }
     return out;
   }
@@ -381,7 +652,50 @@ class PreciseGeocoder implements AddressGeocoder {
     final lng = double.tryParse('${body['lng'] ?? ''}');
     if (lat == null || lng == null || (lat == 0 && lng == 0)) return const [];
     if (!cityMatches(p, '${body['city'] ?? ''} ${body['state'] ?? ''}')) return const [];
-    return [GeocodeCandidate(lat, lng, DestinationPrecision.street, 'awesomeapi', '${body['address'] ?? ''}, ${body['city'] ?? ''}')];
+    return [
+      GeocodeCandidate(
+        lat,
+        lng,
+        DestinationPrecision.street,
+        'awesomeapi',
+        '${body['address'] ?? ''}, ${body['city'] ?? ''}',
+      ),
+    ];
+  }
+
+  /// BrasilAPI CEP v2 (`brasilapi.com.br/api/cep/v2/{cep}`): fallback oficial com coordenadas.
+  Future<List<GeocodeCandidate>> _brasilApiCep(AddressParts p, String zip) async {
+    final body = await _getJson(Uri.https('brasilapi.com.br', '/api/cep/v2/$zip'));
+    return parseBrasilApiCep(body, p);
+  }
+
+  static List<GeocodeCandidate> parseBrasilApiCep(Object? body, AddressParts p) {
+    if (body is! Map) return const [];
+    final location = body['location'];
+    final coords = location is Map ? location['coordinates'] : null;
+    if (coords is! Map) return const [];
+    final lat = double.tryParse('${coords['latitude'] ?? ''}');
+    final lng = double.tryParse('${coords['longitude'] ?? ''}');
+    if (lat == null || lng == null || (lat == 0 && lng == 0)) return const [];
+    final city = '${body['city'] ?? ''}';
+    final state = '${body['state'] ?? ''}';
+    if (!cityMatches(p, '$city $state')) return const [];
+    final street = '${body['street'] ?? ''}';
+    final hood = '${body['neighborhood'] ?? ''}';
+    final display = [
+      if (street.trim().isNotEmpty) street.trim(),
+      if (hood.trim().isNotEmpty) hood.trim(),
+      if (city.trim().isNotEmpty) city.trim(),
+    ].join(', ');
+    return [
+      GeocodeCandidate(
+        lat,
+        lng,
+        DestinationPrecision.street,
+        'brasilapi',
+        display,
+      ),
+    ];
   }
 
   Future<Object?> _getJson(Uri uri) async {
