@@ -1,6 +1,6 @@
 # Catálogo Sistemático e Guia de Leitura Científica do Diretório `docs/`
 
-Este documento constitui o índice taxonômico, o mapa conceitual e o guia de navegação da documentação técnico-científica do ecossistema **Desperrengue** (`v2.8.1+202611082`), catalogando a finalidade de todos os **20 documentos Markdown principais** e das **5 subpastas especializadas** contidas em `docs/`.
+Este documento constitui o índice taxonômico, o mapa conceitual e o guia de navegação da documentação técnico-científica do ecossistema **Desperrengue** (`v2.10.2`), catalogando a finalidade de todos os **20 documentos Markdown principais** e das **5 subpastas especializadas** contidas em `docs/`.
 
 ---
 
@@ -8,11 +8,11 @@ Este documento constitui o índice taxonômico, o mapa conceitual e o guia de na
 
 ```mermaid
 mindmap
-  root((Biblioteca Científica\nDesperrengue v2.8.1))
+  root((Biblioteca Científica\nDesperrengue v2.10.2))
     Arquitetura & Algoritmos
       ARCHITECTURE.md
       Arquitetura do Sistema.md
-      adr/ (0000 a 0020)
+      adr/ (0000 a 0022)
     Requisitos, Contexto & UI/UX
       Especificação do Projeto.md
       Documento de Contexto.md
@@ -67,8 +67,8 @@ mindmap
 
 ## 3. Catálogo das 5 Subpastas Especializadas de `docs/`
 
-1. **[`docs/adr/`](adr/README.md) — *Architecture Decision Records* (`ADR-0000` a `ADR-0020`)**:
-   - Registro histórico imutável das 20 decisões arquiteturais do projeto, culminando no [`ADR-0020`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) (Fundo de Garantia em 3 Camadas, Motor Antifraude $O(1)/O(\log N)$ e KYC Biométrico Ao Vivo com Scanner ISO ID-1 e OCR).
+1. **[`docs/adr/`](adr/README.md) — *Architecture Decision Records* (`ADR-0000` a `ADR-0022`)**:
+   - Registro histórico imutável das 23 decisões arquiteturais do projeto, incluindo [`ADR-0020`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) (Fundo de Garantia em 3 Camadas e Motor Antifraude), [`ADR-0021`](adr/0021-arquitetura-kyc-zero-trust-argon-carbon.md) (Arquitetura KYC Zero-Trust Híbrida Argon High + Carbon High e VIO/ICP-Brasil) e [`ADR-0022`](adr/ADR-0022-temporal-geo-privacy-lock.md) (Trava Temporal e Espacial de Privacidade Geográfica, HMAC-SHA256 Server-Side e Sanitização EXIF LGPD).
 2. **[`docs/planilhas/`](planilhas/) — Modelagem Quantitativa em CSV**:
    - Contém [`bsc_desperrengue.csv`](planilhas/bsc_desperrengue.csv) (métricas do Balanced Scorecard) e [`fluxo_de_caixa_12m.csv`](planilhas/fluxo_de_caixa_12m.csv) (projeção financeira de 12 meses com *Smart Split* e *Carve-out* de $1,5\%$).
 3. **[`docs/setup/`](setup/) — Guias de Provisionamento por Sistema Operacional**:
@@ -84,7 +84,7 @@ mindmap
 
 | Perfil do Leitor / Auditor | Sequência de Leitura Recomendada |
 | :--- | :--- |
-| **Arquitetos de Software e Engenheiros de Sistemas Distribuídos** | [`../README.md`](../README.md) $\to$ [`ARCHITECTURE.md`](ARCHITECTURE.md) $\to$ [`Arquitetura do Sistema.md`](Arquitetura%20do%20Sistema.md) $\to$ [`adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md`](adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) |
+| **Arquitetos de Software e Engenheiros de Sistemas Distribuídos** | [`../README.md`](../README.md) $\to$ [`ARCHITECTURE.md`](ARCHITECTURE.md) $\to$ [`Arquitetura do Sistema.md`](Arquitetura%20do%20Sistema.md) $\to$ [`adr/ADR-0022-temporal-geo-privacy-lock.md`](adr/ADR-0022-temporal-geo-privacy-lock.md) |
 | **Especialistas em Segurança, Criptografia e Visão Computacional** | [`onboarding_profissional.md`](onboarding_profissional.md) $\to$ [`../.github/SECURITY.md`](../.github/SECURITY.md) $\to$ [`TESTING.md`](TESTING.md) |
 | **Auditores Financeiros, Economistas e Avaliadores de Negócios** | [`Documento de Contexto.md`](Documento%20de%20Contexto.md) $\to$ [`Planos de Negocio e Tributação.md`](Planos%20de%20Negocio%20e%20Tributa%C3%A7%C3%A3o.md) $\to$ [`Fluxo de Caixa.md`](Fluxo%20de%20Caixa.md) $\to$ [`Balanced Scorecard (BSC).md`](Balanced%20Scorecard%20(BSC).md) |
 | **Engenheiros de Qualidade (QA) e Homologadores Mobile** | [`SETUP.md`](SETUP.md) $\to$ [`TESTING.md`](TESTING.md) $\to$ [`TESTE_COM_AMIGOS.md`](TESTE_COM_AMIGOS.md) $\to$ [`PLAY_STORE.md`](PLAY_STORE.md) |

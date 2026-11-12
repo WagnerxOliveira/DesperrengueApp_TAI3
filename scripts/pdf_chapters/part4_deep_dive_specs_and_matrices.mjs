@@ -238,10 +238,15 @@ export const part4Html = `
   </tbody>
 </table>
 
+<h3>14.3. Trava Temporal e Espacial de Privacidade Geográfica (ADR-0022), Mapa Full-Screen 100%, Imagens 0 ms e Badges O(1)</h3>
+<p>
+  A evolução <code>v2.10.2</code> consolida quatro pilares adicionais de segurança residencial e ergonomia 120 Hz: (1) <strong>Temporal &amp; Spatial Geo-Privacy Lock (<code>ADR-0022</code>)</strong> em três camadas (PostgreSQL 17 <code>private.geo_privacy_secrets</code> + <code>_geo_fuzzy_center</code> via <code>HMAC-SHA256(secret, job_id)</code> com offset <code>150–350 m</code> e raio <code>500–800 m</code> + motor Dart <code>GeoPrivacyPolicyEngine</code> no fuso fixo <code>America/Sao_Paulo UTC-3</code> + widgets <code>ProtectedAreaMapCard</code>/<code>GeoLockNotice</code>), liberando Rua/Número/Complemento ao profissional somente às <code>00:00:00</code> SP do dia agendado (<code>serviceDay</code>) e re-bloqueando após <code>completed/canceled/disputed</code> (<code>closed</code> — LGPD Art. 6º, III) com remoção de metadados EXIF/GPS no upload; (2) <strong>Mapa Full-Screen Imersivo (100% da Viewport, &ge; 80% Canvas Livre)</strong> com cascata OSRM dupla e arco geodésico <code>C&infin;</code>; (3) <strong>Motor de Imagens Instantâneo <code>0 ms</code></strong> (<code>InstantImageCacheEngine</code> L1 RAM + L2 <code>SharedPreferences</code> Base64); e (4) <strong>Badges de Pedidos Não Lidos em <code>O(1)</code></strong> (<code>UnreadOrdersBadgeController</code>).
+</p>
+
 <div class="doc-closing-box">
-  <div class="dcb-title">DECLARAÇÃO DE CONFORMIDADE ARQUITETURAL E CIENTÍFICA — DESPERRENGUE v2.8.2</div>
+  <div class="dcb-title">DECLARAÇÃO DE CONFORMIDADE ARQUITETURAL E CIENTÍFICA — DESPERRENGUE v2.10.2</div>
   <p>
-    Este tratado consolida de forma integral, exata e verificável toda a engenharia de software, modelagem de banco de dados, complexidade de algoritmos, visão computacional, blindagem antifraude, plano de negócios, auditoria de segurança Red Team e horizonte de inovação do ecossistema <strong>Desperrengue</strong> até o presente momento (<code>v2.8.2+202611101</code>).
+    Este tratado consolida de forma integral, exata e verificável toda a engenharia de software, modelagem de banco de dados, complexidade de algoritmos, visão computacional, blindagem antifraude, trava temporal e espacial de privacidade geográfica (<code>ADR-0022</code>), plano de negócios, auditoria de segurança Red Team e horizonte de inovação do ecossistema <strong>Desperrengue</strong> até o presente momento (<code>v2.10.2+62</code>).
   </p>
 </div>
 `;

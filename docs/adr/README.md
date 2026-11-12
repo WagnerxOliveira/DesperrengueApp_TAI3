@@ -20,7 +20,7 @@ Registro histórico e normativo das decisões arquiteturalmente significativas d
 | [0004](0004-unificacao-de-perfis-e-nomes-em-ingles.md) | Unificação de perfis em `public.profiles` e identificadores em inglês | Aceito | 2026-10-09 |
 | [0005](0005-modelo-multi-modo-por-flags.md) | Modelo multi-modo (Cliente e Profissional) por *flags* booleanas | Aceito | 2026-10-19 |
 | [0006](0006-pagamento-mock-com-custodia-e-pin.md) | Pagamento em custódia (*escrow*) e liberação presencial por PIN | Aceito (ampliado por 0018 e 0020) | 2026-10-19 |
-| [0007](0007-privacidade-por-minimizacao-de-dados.md) | Privacidade por minimização: tabelas segregadas, trava temporal e *views* | Aceito | 2026-10-19 |
+| [0007](0007-privacidade-por-minimizacao-de-dados.md) | Privacidade por minimização: tabelas segregadas, trava temporal e *views* | Aceito (ampliado por 0022) | 2026-10-19 |
 | [0008](0008-migrations-sem-docker-e-teste-transacional.md) | *Migrations* versionadas e bateria de testes SQL transacionais abortados | Aceito | 2026-10-09 |
 | [0009](0009-roteamento-por-funcao-pura-e-authgate.md) | Roteamento determinístico por função pura (`destinationFor`) e `AuthGate` | Aceito | 2026-10-09 |
 | [0010](0010-webhook-autenticado-por-segredo-no-vault.md) | *Webhook* do banco para Edge Function autenticado por segredo no Vault | Aceito | 2026-10-09 |
@@ -32,6 +32,7 @@ Registro histórico e normativo das decisões arquiteturalmente significativas d
 | [0016](0016-vitrine-de-cases-lifo.md) | Vitrine de cases (portfólio LIFO), curadoria e Case de Sucesso | Aceito | 2026-10-29 |
 | [0017](0017-distribuicao-beta-e-atualizacao-no-app.md) | Distribuição contínua (APK Beta / PWA) e verificação de atualização in-app | Aceito | 2026-10-29 |
 | [0018](0018-carteira-ledger-e-pix-sandbox.md) | Carteira do cliente, livro-razão de partida dobrada e Pix sandbox | Aceito | 2026-10-29 |
-| [0019](0019-agendamento-geofence-chat-dossies.md) | Serviço agendado vs. em execução, dupla trava (relógio + Haversine) e dossiês | Aceito | 2026-11-05 |
+| [0019](0019-agendamento-geofence-chat-dossies.md) | Serviço agendado vs. em execução, dupla trava (relógio + Haversine) e dossiês | Aceito (ampliado por 0022) | 2026-11-05 |
 | [0020](0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) | Fundo de Garantia em 3 Camadas, Motor Antifraude $O(1)/O(\log N)$ e KYC Biométrico/OCR | Aceito (ampliado por 0021) | 2026-11-08 |
 | [0021](0021-arquitetura-kyc-zero-trust-argon-carbon.md) | Arquitetura KYC Zero-Trust Híbrida (Argon High + Carbon High), Criptografia VIO/ICP-Brasil, Anti-Swap 180s e SHAP LGPD | Aceito | 2026-11-12 |
+| [0022](ADR-0022-temporal-geo-privacy-lock.md) | Trava Temporal e Espacial de Privacidade Geográfica (*Temporal & Spatial Geo-Privacy Lock*), HMAC-SHA256 Server-Side e Sanitização EXIF (LGPD) | Aceito | 2026-11-12 |

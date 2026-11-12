@@ -455,7 +455,7 @@ sequenceDiagram
 | `18` | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Cronograma Evolutivo de Engenharia (`gantt`), Marcos Concluídos e Horizontes B2B/IA |
 | `19` | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Registro Cronológico Auditável de Versões e Migrações SQL |
 | `20` | [`docs/Template.md`](docs/Template.md) | Padrão Metadocumental Científico para Criação de Futuros Artefatos em Linguagem de Especialidade |
-| `21` | [`docs/adr/README.md`](docs/adr/README.md) | Catálogo de 22 *Architecture Decision Records* (`ADR-0000` a [`ADR-0020`](docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) e [`ADR-0021`](docs/adr/0021-arquitetura-kyc-zero-trust-argon-carbon.md)) |
+| `21` | [`docs/adr/README.md`](docs/adr/README.md) | Catálogo de 23 *Architecture Decision Records* (`ADR-0000` a [`ADR-0020`](docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md), [`ADR-0021`](docs/adr/0021-arquitetura-kyc-zero-trust-argon-carbon.md) e [`ADR-0022`](docs/adr/ADR-0022-temporal-geo-privacy-lock.md)) |
 | `22` | [`Tratado_Completo_Desperrengue_v2.8.2.pdf`](Tratado_Completo_Desperrengue_v2.8.2.pdf) | Compêndio Mestre Completo de Engenharia, Segurança, Visão Computacional e Negócios (PDF) |
 | `23` | [`Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf`](Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf) | Tratado Completo de Inteligência Artificial Híbrida e 10 Inovações Fintech Inéditas Passo a Passo (PDF) |
 

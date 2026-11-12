@@ -128,3 +128,20 @@ Implementados em [`fintech_warranty_widgets.dart`](../app/lib/features/shared/pr
 │ 🛡️ Status do Disjuntor (Circuit Breaker): INATIVO (0 disputas abertas • RTS: 92,0/100)   │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+
+---
+
+## 5. Mapa Full-Screen Imersivo (`v2.10.x`), Trava de Privacidade Geográfica (`ADR-0022`), Motor de Imagens `0 ms` e Badges `O(1)`
+
+1. **Mapa Interativo Full-Screen (`OrderLiveMapModalScreen` & `LiveLocationMapSheet` em [`service_map_widgets.dart`](../app/lib/features/shared/presentation/service_map_widgets.dart) — commits `2601974`, `b2bd6de`, `eda6784`):**
+   - **Geometria Imersiva ($100\%$ da Viewport, $\ge 80\%$ Canvas Livre):** Eliminados quaisquer `Padding` laterais/superiores/inferiores ao redor do `FlutterMap`, garantindo tela cheia real borda a borda com controles flutuantes compactos sob `SafeArea`.
+   - **Roteamento OSRM em Cascata Dupla + Arco Geodésico $C^\infty$:** `AccurateGeoRoutingService` consulta em cascata `router.project-osrm.org` e `routing.openstreetmap.de` (timeout $4\text{s}$), fazendo fallback instantâneo para uma curva Bézier quadrática geodésica $C^\infty$ de 36 segmentos caso offline. Em chamados encerrados (`completed`, `canceled`, `disputed`), a polilinha de rota é suprimida automaticamente.
+   - **Barra Inferior de Ações em 1 Linha (`Rota · Copiar · Fechar`):** Botões com `maxLines: 1` e `TextOverflow.ellipsis` testados contra `RenderFlex overflow` em `320px`, `360px`, `412px` e `480px`.
+2. **Componentes Visuais da Trava Temporal e Espacial de Privacidade Geográfica (`ProtectedAreaMapCard`, `GeoLockNotice` e `ProtectedAreaMapSheet` — [`ADR-0022`](adr/ADR-0022-temporal-geo-privacy-lock.md)):**
+   - Nas fases `openQuoting` (pedido em cotação) e `confirmedFuture` (agendado para data futura em `America/Sao_Paulo` ou aguardando pagamento), o profissional visualiza exclusivamente um `CircleLayer` translúcido de raio $500\text{–}800\text{ m}$ centrado no ponto deslocado por `HMAC-SHA256`, acompanhado de **Bairro • Cidade - UF** e do banner informativo `"🔒 Endereço completo liberado no dia do atendimento (DD/MM/AAAA às 00h00)"`, **sem `DestinationMapPin` exato, sem polilinha de rota e sem botões de Waze/Google Maps**.
+   - A partir de `00:00:00` (`America/Sao_Paulo`) do dia agendado (`serviceDay`), o componente destrava automaticamente Logradouro, Número, Complemento, Referência e o mapa exato com rota. Após `completed`/`canceled`/`disputed` (`closed`), os dados prediais e a rota voltam a ficar permanentemente ocultos (LGPD Art. 6º, III).
+3. **Motor de Cache de Imagens Instantâneo (`0 ms` — [`instant_image_cache_engine.dart`](../app/lib/core/services/instant_image_cache_engine.dart) & [`widgets.dart`](../app/lib/core/ui/widgets.dart) — commits `0799a59`, `3fc9abe`):**
+   - `InstantUserAvatar` e `InstantCachedImage` consultam sincronamente o cache L1 em RAM (`Uint8List`) em $0\text{ ms}$ no `initState` e hidratam o avatar do usuário já no boot ([`app_session.dart`](../app/lib/core/services/app_session.dart)), eliminando 100% do efeito de piscar iniciais (*initials pop-in*) ao alternar abas ou reabrir o app.
+4. **Badges de Pedidos Não Lidos com Decremento Otimista em $O(1)$ ([`unread_orders_badge_controller.dart`](../app/lib/core/state/unread_orders_badge_controller.dart) — commits `bd8dc7b`, `9bd3134`):**
+   - Ao tocar em qualquer card de pedido, `markOrderAsViewedOptimistically(jobId)` atualiza o `ValueListenable<int>` no mesmo frame ($0\text{ ms}$), limpando ou reduzindo o badge imediatamente sem aguardar round-trip de rede.

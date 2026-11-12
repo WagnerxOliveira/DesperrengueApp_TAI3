@@ -111,6 +111,29 @@ Tanto no PostgreSQL (`public.hamming_distance_64(hash_a BIGINT, hash_b BIGINT)`)
 
 Em vez de executar *joins* e agregações `COUNT(*)` de custo $O(L)$ (onde $L$ é o número histórico de linhas no livro-razão e na tabela de ordens de serviço) durante cada busca de profissionais, a migração [`20261108110000_high_perf_warranty_antifraud_engine.sql`](../supabase/migrations/20261108110000_high_perf_warranty_antifraud_engine.sql) mantém contadores materializados (`completed_jobs_count` e `abandoned_warranty_count`) atualizados incrementalmente. A trigger `BEFORE INSERT OR UPDATE` `sync_profile_trust_and_rank_biu` invoca `public.calculate_relative_trust_score` e materializa `external_trust_score` e `waterfall_tier_rank` em **$O(1)$ estrito**.
 
+### 2.4. Motor de Cache de Imagens Instantâneo (`0 ms` L1 RAM + L2 Persistente) e Badges de Pedidos Otimistas em $O(1)$
+
+Para erradicar a latência visual de carregamento de avatares (*initials pop-in*) e a latência de confirmação de leitura em contadores de notificações/pedidos:
+
+1. **`InstantImageCacheEngine` e `InstantUserAvatar` (`0 ms` L1 Synchronous Lookup):**
+   - Implementados em [`instant_image_cache_engine.dart`](../app/lib/core/services/instant_image_cache_engine.dart) e [`widgets.dart`](../app/lib/core/ui/widgets.dart) (commits `0799a59` e `3fc9abe`).
+   - Opera em arquitetura híbrida **L1 (RAM `Map<String, Uint8List>` com chave canônica normalizada sem query strings voláteis)** + **L2 (`SharedPreferences` em Base64 validado por assinatura binária *magic bytes* PNG/JPEG/WEBP/GIF)**.
+   - No `initState` de `InstantCachedImage` e na hidratação inicial da sessão ([`app_session.dart`](../app/lib/core/services/app_session.dart)), `getMemoryBytes(url)` resolve o `Uint8List` sincronamente em **$O(1)$ ($0\text{ ms}$)** no primeiro frame, renderizando `Image.memory(..., gaplessPlayback: true)` sem piscar iniciais ou *placeholders*.
+2. **`UnreadOrdersBadgeController` (Decremento Otimista em $O(1)$ / $0\text{ ms}$):**
+   - Implementado em [`unread_orders_badge_controller.dart`](../app/lib/core/state/unread_orders_badge_controller.dart) (commits `bd8dc7b` e `9bd3134`).
+   - Mantém conjuntos `Set<String>` em memória (`_unreadIds` e `_locallySeenIds`) com complexidade de consulta e mutação **$O(1)$ estrita**. Ao tocar em um pedido (`markOrderAsViewedOptimistically(jobId)`), o badge na barra inferior e nos cabeçalhos de abas é decrementado no mesmo frame ($0\text{ ms}$) via `ValueListenableBuilder<int>`, enquanto a confirmação assíncrona no banco ocorre em segundo plano sem jamais ressuscitar IDs já vistos durante *polls* concorrentes.
+
+### 2.5. Trava Temporal e Espacial de Privacidade Geográfica (`ADR-0022`) e Roteamento Full-Screen $C^\infty$ (`v2.10.x`)
+
+Formalizada no [`ADR-0022`](adr/ADR-0022-temporal-geo-privacy-lock.md) e implementada em [`geo_privacy_policy_engine.dart`](../app/lib/core/security/geo_privacy_policy_engine.dart) (commits `7b61c4d` e `6aa248e`) e [`service_map_widgets.dart`](../app/lib/features/shared/presentation/service_map_widgets.dart) (commits `2601974`, `b2bd6de` e `eda6784`):
+
+1. **Ofuscação Espacial Não-Invertível via `HMAC-SHA256(secret, job_id)` em $O(1)$:**
+   - Diferentemente de um deslocamento público `SHA-256(job_id)` (que seria invertível em $O(1)$ por subtração vetorial), a função `public._geo_fuzzy_center` deriva no PostgreSQL um vetor polar $(d \in [150\text{ m}, 350\text{ m}], \theta \in [0, 2\pi))$ e raio $R \in [500\text{ m}, 800\text{ m}]$ usando chave secreta de 256 bits isolada em `private.geo_privacy_secrets`. Como $d \le 350\text{ m} < 500\text{ m} \le R$, o imóvel exato permanece **sempre dentro do círculo com margem mínima de $150\text{ m}$ da borda**.
+2. **Máquina Determinística de 4 Fases em `America/Sao_Paulo` (`UTC−3` fixo):**
+   - Avalia em tempo constante $O(1)$ as fases `openQuoting`, `confirmedFuture`, `serviceDay` e `closed` (além de `ownerFull` para o cliente dono). O endereço completo e as coordenadas exatas só são entregues ao profissional contratado a partir de **`00:00:00` (`America/Sao_Paulo`) do dia agendado** (`serviceDay`) e voltam a ser ocultados permanentemente após `completed`, `canceled` ou `disputed` (`closed` — minimização LGPD Art. 6º, III).
+3. **Mapa Full-Screen (`OrderLiveMapModalScreen`) e Cascata OSRM + Arco Geodésico $C^\infty$:**
+   - Ocupa $100\%$ da viewport com $\ge 80\%$ de área cartográfica livre, utilizando cascata de roteamento OSRM dupla (`router.project-osrm.org` $\to$ `routing.openstreetmap.de`) com fallback instantâneo para curva Bézier quadrática geodésica $C^\infty$ de 36 segmentos quando offline, e ocultação automática de polilinha em chamados encerrados.
+
 ---
 
 ## 3. Engenharia de Paralelismo em Memória Isolada (Dart Worker Isolates) e Orçamento a 120 Hz
