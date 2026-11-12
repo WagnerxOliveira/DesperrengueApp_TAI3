@@ -331,14 +331,18 @@ class _AddressFormState extends State<AddressForm> {
         if (!mounted) return;
         _applying = true;
         try {
-          if (addr.street.isNotEmpty) _street.text = addr.street;
-          if (addr.number.isNotEmpty) _number.text = addr.number;
-          if (addr.neighborhood.isNotEmpty) _neighborhood.text = addr.neighborhood;
-          if (addr.city.isNotEmpty) _city.text = addr.city;
-          if (addr.uf.isNotEmpty) _uf.text = addr.uf;
-          if (addr.cep.length == 8) {
-            _lastCep = addr.cep;
-            _cep.text = addr.cep;
+          if (addr.street.trim().isNotEmpty) _street.text = addr.street.trim();
+          final resolvedNumber = addr.number.trim();
+          if (resolvedNumber.isNotEmpty && resolvedNumber.toUpperCase() != 'S/N') {
+            _number.text = resolvedNumber;
+          }
+          if (addr.neighborhood.trim().isNotEmpty) _neighborhood.text = addr.neighborhood.trim();
+          if (addr.city.trim().isNotEmpty) _city.text = addr.city.trim();
+          if (addr.uf.trim().isNotEmpty) _uf.text = addr.uf.trim().toUpperCase();
+          final cleanCep = AddressLookup.onlyDigits(addr.cep);
+          if (cleanCep.length == 8) {
+            _lastCep = cleanCep;
+            _cep.text = cleanCep;
           }
         } finally {
           _applying = false;

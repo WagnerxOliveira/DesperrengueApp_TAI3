@@ -16,6 +16,7 @@ import '../../../core/services/provider_service.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/services/speech_service.dart';
 import '../../../core/services/text_refine_service.dart';
+import '../../../core/models/structured_service_address.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -299,7 +300,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       }
 
       final text = _description.text.trim();
-      final title = text.length <= 48 ? text : '${text.substring(0, 45).trimRight()}…';
+      final title = SmartOrderHeadlineFormatter.formatHeadline(text, category: _category, maxChars: 48);
       final annotatedLines = <String>[
         for (var i = 0; i < _images.length; i++)
           if (_images[i].hasContextAnnotation)
@@ -427,13 +428,23 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       },
       onAddressChanged: (addr) async {
         if (!mounted) return;
+        final prevParts = StructuredServiceAddress.parse(
+          _currentAddress,
+          summary: _summary,
+        );
+        final resolvedNum = addr.number.trim();
+        final preservedNumber = (resolvedNum.isNotEmpty && resolvedNum.toUpperCase() != 'S/N')
+            ? resolvedNum
+            : (_override?.number.trim().isNotEmpty == true ? _override!.number.trim() : prevParts.houseNumber);
         final updated = AddressData(
-          cep: addr.cep.isNotEmpty ? addr.cep : (_override?.cep ?? ''),
-          street: addr.street,
-          number: addr.number,
-          neighborhood: addr.neighborhood,
-          city: addr.city,
-          uf: addr.uf,
+          cep: addr.cep.isNotEmpty ? addr.cep : (_override?.cep ?? prevParts.cep),
+          street: addr.street.trim().isNotEmpty ? addr.street.trim() : (_override?.street ?? prevParts.streetName),
+          number: preservedNumber,
+          neighborhood: addr.neighborhood.trim().isNotEmpty
+              ? addr.neighborhood.trim()
+              : (_override?.neighborhood ?? prevParts.neighborhood),
+          city: addr.city.trim().isNotEmpty ? addr.city.trim() : (_override?.city ?? prevParts.city),
+          uf: addr.uf.trim().isNotEmpty ? addr.uf.trim().toUpperCase() : (_override?.uf ?? prevParts.uf),
           reference: _reference,
           latitude: addr.lat,
           longitude: addr.lng,
@@ -862,7 +873,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         ),
         AppCard(
           key: const ValueKey('location-card'),
-          onTap: (hasAddress && widget.mapOpener != null) ? _openMap : null,
+          onTap: hasAddress ? _openMap : null,
           child: Row(
             children: [
               CircleAvatar(
@@ -881,20 +892,18 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                     if (hasAddress) ...[
                       const SizedBox(height: 4),
                       Text(
-                        widget.mapOpener != null
-                            ? 'Toque para ver no mapa em tempo real'
-                            : 'Endereço registrado para o atendimento',
+                        'Toque para ver no mapa em tempo real',
                         style: TextStyle(
                           fontSize: 12.5,
-                          fontWeight: widget.mapOpener != null ? FontWeight.w700 : FontWeight.w500,
-                          color: widget.mapOpener != null ? context.tk.clientAccent : context.tk.textMuted,
+                          fontWeight: FontWeight.w700,
+                          color: context.tk.clientAccent,
                         ),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (hasAddress && widget.mapOpener != null) ...[
+              if (hasAddress) ...[
                 const SizedBox(width: 8),
                 Icon(Icons.map_rounded, color: context.tk.clientAccent),
               ],

@@ -8,12 +8,16 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/models/structured_service_address.dart';
 import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/scheduling_service.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/utils/geo.dart';
-import 'service_map_widgets.dart' show LocationPickerSheet, MapAttribution, buildTileLayer;
+import 'order_live_map_modal_screen.dart';
+import 'service_map_widgets.dart' show LocationPickerSheet, MapAttribution;
+
+export 'order_live_map_modal_screen.dart';
 
 /// Fonte da posição do usuário em tempo real (produção: `geolocator`).
 typedef UserPositionStream = Stream<GeoFix> Function();
@@ -179,7 +183,9 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
       }
       // Em produção, se o pino ainda não foi confirmado manualmente, geocodifica o endereço
       // para garantir que o mapa centralize exatamente na rua/número do endereço clicado.
-      if (!widget.pinConfirmed && widget.tileLayer == null) {
+      if (!widget.pinConfirmed &&
+          widget.tileLayer == null &&
+          (!isMapFlutterTestEnvironment() || widget.resolver != null)) {
         _resolveDestination(keepExistingOnNull: true);
       }
     } else {
@@ -310,15 +316,45 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
               source: _pinConfirmed ? 'client_pin' : 'client_geocode',
             ),
       onAddressResolved: (addr) async {
-        resolvedAddr = addr;
+        final previousParsed = StructuredServiceAddress.parse(
+          _addressLine,
+          summary: _summary,
+        );
+        final incomingNumber = addr.number.trim();
+        final preservePreviousNumber = previousParsed.houseNumber.isNotEmpty &&
+            (incomingNumber.isEmpty ||
+                incomingNumber.toUpperCase() == 'S/N' ||
+                incomingNumber.toUpperCase() == 'SN') &&
+            (addr.street.trim().isEmpty ||
+                addr.street.trim().toLowerCase() ==
+                    previousParsed.streetName.trim().toLowerCase());
+        final effectiveAddr = preservePreviousNumber
+            ? ReversedAddress(
+                street: addr.street.trim().isNotEmpty
+                    ? addr.street
+                    : previousParsed.streetName,
+                number: previousParsed.houseNumber,
+                neighborhood: addr.neighborhood.trim().isNotEmpty
+                    ? addr.neighborhood
+                    : previousParsed.neighborhood,
+                city: addr.city.trim().isNotEmpty
+                    ? addr.city
+                    : previousParsed.city,
+                uf: addr.uf.trim().isNotEmpty ? addr.uf : previousParsed.uf,
+                cep: addr.cep.isNotEmpty ? addr.cep : previousParsed.cep,
+                lat: addr.lat,
+                lng: addr.lng,
+              )
+            : addr;
+        resolvedAddr = effectiveAddr;
         if (mounted) {
           setState(() {
-            _addressLine = addr.fullLine;
-            _summary = addr.summary;
+            _addressLine = effectiveAddr.fullLine;
+            _summary = effectiveAddr.summary;
           });
         }
         if (widget.onAddressChanged != null) {
-          await widget.onAddressChanged!(addr);
+          await widget.onAddressChanged!(effectiveAddr);
         }
       },
       onConfirm: (lat, lng) async {
@@ -456,7 +492,10 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                     onMapReady: _fit,
                   ),
                   children: [
-                    widget.tileLayer ?? buildTileLayer(context),
+                    buildSafeMapTileLayer(
+                      context,
+                      tileLayerOverride: widget.tileLayer,
+                    ),
                     if (routePoints.length >= 2)
                       PolylineLayer(
                         key: const ValueKey('live-route-polyline'),

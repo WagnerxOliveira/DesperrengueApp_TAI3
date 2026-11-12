@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../utils/format.dart';
 import './app_tokens.dart';
+import 'media_widgets.dart';
 
 /// Botão principal (pílula, largura total, com estado de carregamento).
 class PrimaryButton extends StatelessWidget {
@@ -504,33 +505,11 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    final avatar = CircleAvatar(
+    return InstantUserAvatar(
+      url: url,
+      name: name,
       radius: radius,
-      backgroundColor: accent.withValues(alpha: 0.14),
-      backgroundImage: (url != null && url!.isNotEmpty) ? NetworkImage(url!) : null,
-      child: (url == null || url!.isEmpty)
-          ? Text(
-              initials(name),
-              style: TextStyle(color: accent, fontWeight: FontWeight.w800, fontSize: radius * 0.7),
-            )
-          : null,
-    );
-    if (!verified) return avatar;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        avatar,
-        Positioned(
-          right: -2,
-          bottom: -2,
-          child: Container(
-            padding: const EdgeInsets.all(2),
-            decoration: BoxDecoration(color: context.tk.card, shape: BoxShape.circle),
-            child: Icon(Icons.verified_rounded, color: context.tk.info, size: radius * 0.6),
-          ),
-        ),
-      ],
+      verified: verified,
     );
   }
 }
