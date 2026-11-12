@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
@@ -12,11 +13,32 @@ import 'package:desperrengue_app/core/services/real_time_route_and_traffic_servi
 import 'package:desperrengue_app/core/state/unread_orders_badge_controller.dart';
 import 'package:desperrengue_app/core/utils/order_utils.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// Calcula a maior variação angular (em graus) entre quaisquer dois vetores de segmentos
+/// consecutivos de uma polilinha. Uma curva quadrada em "L" teria ~90°; o arco geodésico C∞ tem < 2°.
+double _maxConsecutiveTurnAngleDegrees(List<LatLng> pts) {
+  if (pts.length < 3) return 0.0;
+  var maxDeg = 0.0;
+  for (var i = 1; i < pts.length - 1; i++) {
+    final v1Lat = pts[i].latitude - pts[i - 1].latitude;
+    final v1Lng = pts[i].longitude - pts[i - 1].longitude;
+    final v2Lat = pts[i + 1].latitude - pts[i].latitude;
+    final v2Lng = pts[i + 1].longitude - pts[i].longitude;
+    final n1 = math.sqrt(v1Lat * v1Lat + v1Lng * v1Lng);
+    final n2 = math.sqrt(v2Lat * v2Lat + v2Lng * v2Lng);
+    if (n1 < 1e-12 || n2 < 1e-12) continue;
+    final cosTheta = ((v1Lat * v2Lat + v1Lng * v2Lng) / (n1 * n2)).clamp(-1.0, 1.0);
+    final deg = math.acos(cosTheta) * 180.0 / math.pi;
+    if (deg > maxDeg) maxDeg = deg;
+  }
+  return maxDeg;
+}
 
 /// PNG válido minimalista 1x1 transparente (sem usar dart:io — 100% Web/Mobile safe).
 final Uint8List _kTransparentPng1x1 = base64Decode(
@@ -337,7 +359,7 @@ void main() {
       expect(lunchSnap.condition, TrafficConditionLevel.moderate);
       expect(lunchSnap.conditionLabel, 'Trânsito Moderado');
 
-      // 4) Fallback offline (rede indisponível) -> Malha urbana ortogonal suavizada (NUNCA linha reta seca de 2 pontos!):
+      // 4) Fallback offline (ambos servidores OSRM indisponíveis) -> Arco geodésico C∞ suave (ZERO dobra de 90° em "L"):
       final offlineSvc = RealTimeRouteAndTrafficService(
         client: MockClient((_) async => throw http.ClientException('offline')),
       );
@@ -347,9 +369,10 @@ void main() {
         departureTime: DateTime(2026, 11, 12, 8, 0), // Pico manhã
       );
       expect(fallbackSnap.isRoadGeometry, isFalse);
-      expect(fallbackSnap.polylinePoints.length, greaterThanOrEqualTo(10));
+      expect(fallbackSnap.polylinePoints.length, 29);
       expect(fallbackSnap.polylinePoints.first, equals(origin));
       expect(fallbackSnap.polylinePoints.last, equals(const LatLng(-21.80271, -46.60281)));
+      expect(_maxConsecutiveTurnAngleDegrees(fallbackSnap.polylinePoints), lessThan(15.0));
       expect(fallbackSnap.condition, TrafficConditionLevel.heavy);
       expect(fallbackSnap.conditionLabel, 'Trânsito Intenso');
       expect(fallbackSnap.formattedArrivalTime, matches(RegExp(r'^\d{2}:\d{2}$')));
@@ -588,6 +611,330 @@ void main() {
 
       // Já no primeiro frame (sem precisar de pumpAndSettle) o widget Image está montado e limpo:
       expect(find.byKey(const ValueKey('zero-ms-avatar')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  // ===========================================================================
+  // E) Coerência Contextual por Status, Cascata OSRM Dupla, Arco Geodésico C∞
+  //    (Zero Linha em "L") e Geometria Óptica de Câmera
+  // ===========================================================================
+  group('Coerência Contextual, Cascata OSRM Dupla, Arco Geodésico C∞ e Geometria Óptica', () {
+    test('1) resolveContextMode e shouldShowArrivalClock garantem coerência semântica absoluta em todos os status', () {
+      const inactiveOrNonTransitStatuses = <String?>[
+        null,
+        '',
+        'open',
+        'awaiting_payment',
+        'awaitingPayment',
+        'awaiting_approval',
+        'awaitingApproval',
+        'completed',
+        'canceled',
+        'disputed',
+      ];
+
+      for (final st in inactiveOrNonTransitStatuses) {
+        // Sem origem de prestador e sem pedido manual de rota -> foco puro no imóvel:
+        expect(
+          RealTimeRouteAndTrafficService.resolveContextMode(
+            orderStatus: st,
+            hasAssignedProviderOrigin: false,
+            userRequestedReferenceRoute: false,
+          ),
+          MapContextMode.propertyFocus,
+          reason: 'Status "$st" sem prestador deve focar no imóvel',
+        );
+
+        // Mesmo que alguma coordenada de prestador venha em pedido open/completed/canceled/disputed,
+        // NÃO entra em liveProviderTransit sozinho e JAMAIS mostra "Chegada ~HH:mm":
+        expect(
+          RealTimeRouteAndTrafficService.resolveContextMode(
+            orderStatus: st,
+            hasAssignedProviderOrigin: true,
+            userRequestedReferenceRoute: false,
+          ),
+          MapContextMode.propertyFocus,
+          reason: 'Status "$st" não possui deslocamento ativo',
+        );
+        expect(
+          RealTimeRouteAndTrafficService.shouldShowArrivalClock(
+            orderStatus: st,
+            hasAssignedProviderOrigin: false,
+          ),
+          isFalse,
+          reason: 'Status "$st" sem prestador jamais exibe relógio de chegada',
+        );
+        expect(
+          RealTimeRouteAndTrafficService.shouldShowArrivalClock(
+            orderStatus: st,
+            hasAssignedProviderOrigin: true,
+          ),
+          isFalse,
+          reason: 'Status "$st" com histórico de prestador jamais exibe relógio de chegada',
+        );
+
+        // Quando o usuário clica explicitamente para ver a rota de referência:
+        // resolveContextMode libera visualização da rota, mas shouldShowArrivalClock segue FALSE!
+        expect(
+          RealTimeRouteAndTrafficService.resolveContextMode(
+            orderStatus: st,
+            hasAssignedProviderOrigin: false,
+            userRequestedReferenceRoute: true,
+          ),
+          MapContextMode.liveProviderTransit,
+          reason: 'Toque explícito do usuário libera rota referencial em "$st"',
+        );
+      }
+
+      const activeTransitStatuses = <String>[
+        'scheduled',
+        'in_progress',
+        'inProgress',
+        'en_route',
+        'enRoute',
+        'provider_en_route',
+        'providerEnRoute',
+        ' IN_PROGRESS ',
+      ];
+
+      for (final st in activeTransitStatuses) {
+        // Sem origem real de prestador atribuído -> ainda foca no imóvel e NÃO inventa chegada:
+        expect(
+          RealTimeRouteAndTrafficService.resolveContextMode(
+            orderStatus: st,
+            hasAssignedProviderOrigin: false,
+            userRequestedReferenceRoute: false,
+          ),
+          MapContextMode.propertyFocus,
+          reason: 'Status "$st" sem origem real de prestador deve focar no imóvel',
+        );
+        expect(
+          RealTimeRouteAndTrafficService.shouldShowArrivalClock(
+            orderStatus: st,
+            hasAssignedProviderOrigin: false,
+          ),
+          isFalse,
+          reason: 'Status "$st" sem origem real jamais inventa Chegada ~HH:mm',
+        );
+
+        // Com origem real de prestador atribuído -> trânsito ao vivo + relógio de chegada autorizado!
+        expect(
+          RealTimeRouteAndTrafficService.resolveContextMode(
+            orderStatus: st,
+            hasAssignedProviderOrigin: true,
+            userRequestedReferenceRoute: false,
+          ),
+          MapContextMode.liveProviderTransit,
+          reason: 'Status "$st" com prestador atribuído deve exibir rota ao vivo',
+        );
+        expect(
+          RealTimeRouteAndTrafficService.shouldShowArrivalClock(
+            orderStatus: st,
+            hasAssignedProviderOrigin: true,
+          ),
+          isTrue,
+          reason: 'Status "$st" com prestador atribuído deve exibir Chegada ~HH:mm',
+        );
+      }
+    });
+
+    test('2) Cascata OSRM resiliente: quando router.project-osrm.org falha/sofre rate-limit, routing.openstreetmap.de entrega geometria viária rua a rua real', () async {
+      expect(RealTimeRouteAndTrafficService.kOsrmTimeout, const Duration(milliseconds: 4500));
+
+      const origin = LatLng(-21.78780, -46.56620);
+      const dest = LatLng(-21.78845, -46.59250);
+
+      final cascadeUrls = RealTimeRouteAndTrafficService.buildOsrmCascadeUrls(origin, dest);
+      expect(cascadeUrls.length, 2);
+      expect(cascadeUrls[0].host, 'router.project-osrm.org');
+      expect(cascadeUrls[0].path, contains('/route/v1/driving/'));
+      expect(cascadeUrls[1].host, 'routing.openstreetmap.de');
+      expect(cascadeUrls[1].path, contains('/routed-car/route/v1/driving/'));
+
+      final contactedHosts = <String>[];
+      final realStreetCoordinates = <List<double>>[
+        [-46.56620, -21.78780],
+        [-46.56950, -21.78850],
+        [-46.57420, -21.79010],
+        [-46.58110, -21.79180],
+        [-46.58800, -21.78990],
+        [-46.59120, -21.78790],
+        [-46.59250, -21.78845],
+      ];
+
+      final cascadeClient = MockClient((req) async {
+        contactedHosts.add(req.url.host);
+        expect(req.url.queryParameters['overview'], 'full');
+        expect(req.url.queryParameters['geometries'], 'geojson');
+        expect(req.url.queryParameters['steps'], 'true');
+
+        if (req.url.host == 'router.project-osrm.org') {
+          // Simula rate-limit / indisponibilidade no 4G do servidor primário:
+          return http.Response('{"message":"Too Many Requests"}', 429);
+        }
+        if (req.url.host == 'routing.openstreetmap.de') {
+          return http.Response(
+            jsonEncode({
+              'code': 'Ok',
+              'routes': [
+                {
+                  'distance': 3680.0,
+                  'duration': 455.0,
+                  'geometry': {
+                    'type': 'LineString',
+                    'coordinates': realStreetCoordinates,
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final svc = RealTimeRouteAndTrafficService(client: cascadeClient);
+      final snap = await svc.computeRoute(
+        origin: origin,
+        destination: dest,
+        departureTime: DateTime(2026, 11, 12, 14, 30),
+      );
+
+      expect(
+        contactedHosts,
+        equals(<String>['router.project-osrm.org', 'routing.openstreetmap.de']),
+      );
+      expect(snap.isRoadGeometry, isTrue);
+      expect(snap.distanceKm, closeTo(3.68, 0.01));
+      expect(snap.polylinePoints.length, realStreetCoordinates.length);
+      for (var i = 0; i < realStreetCoordinates.length; i++) {
+        expect(snap.polylinePoints[i].longitude, closeTo(realStreetCoordinates[i][0], 1e-6));
+        expect(snap.polylinePoints[i].latitude, closeTo(realStreetCoordinates[i][1], 1e-6));
+      }
+    });
+
+    test('3) Suavidade angular estrita de buildGeodesicArcPolyline (< 15° e < 20°): zero dobra quadrada de 90° em "L" em qualquer direção', () {
+      const testPairs = <(LatLng, LatLng)>[
+        // Leste-Oeste puro (caso clássico onde malhas ortogonais faziam "L" de 90°):
+        (LatLng(-21.78780, -46.56620), LatLng(-21.78780, -46.59250)),
+        // Norte-Sul puro:
+        (LatLng(-21.78000, -46.58000), LatLng(-21.81000, -46.58000)),
+        // Diagonal Country Club -> Centro:
+        (LatLng(-21.78845, -46.59250), LatLng(-21.78780, -46.56620)),
+        // Diagonal Maria Imaculada -> Centro:
+        (LatLng(-21.80271, -46.60281), LatLng(-21.78780, -46.56620)),
+        // Curta distância de quarteirão (~200 m):
+        (LatLng(-21.78795, -46.59190), LatLng(-21.78895, -46.59310)),
+      ];
+
+      for (final (origin, dest) in testPairs) {
+        final arc = RealTimeRouteAndTrafficService.buildGeodesicArcPolyline(origin, dest);
+        final legacyAlias =
+            RealTimeRouteAndTrafficService.buildSmoothedUrbanMeshPolyline(origin, dest);
+
+        expect(arc.length, 29); // segments = 28 -> 29 amostras de t=0.0 a t=1.0
+        expect(arc.first, equals(origin));
+        expect(arc.last, equals(dest));
+        expect(legacyAlias, equals(arc));
+
+        // Verifica flecha lateral suave exata de 0.07 * norm perpendicular à corda em t = 0.5 (índice 14):
+        final dLat = dest.latitude - origin.latitude;
+        final dLng = dest.longitude - origin.longitude;
+        final norm = math.sqrt(dLat * dLat + dLng * dLng);
+        final chordMidLat = (origin.latitude + dest.latitude) / 2.0;
+        final chordMidLng = (origin.longitude + dest.longitude) / 2.0;
+        final midPoint = arc[14];
+        final offsetLat = midPoint.latitude - chordMidLat;
+        final offsetLng = midPoint.longitude - chordMidLng;
+        final offsetNorm = math.sqrt(offsetLat * offsetLat + offsetLng * offsetLng);
+        final dotWithChord = (offsetLat * dLat) + (offsetLng * dLng);
+
+        expect(offsetNorm, closeTo(0.07 * norm, 1e-9));
+        expect(dotWithChord.abs(), lessThan(1e-12), reason: 'Flecha lateral deve ser 100% perpendicular à corda');
+
+        final maxAngle = _maxConsecutiveTurnAngleDegrees(arc);
+        expect(
+          maxAngle,
+          lessThan(15.0),
+          reason: 'Nenhum par consecutivo pode ter variação >= 15° (encontrado: $maxAngle°)',
+        );
+        expect(maxAngle, lessThan(20.0));
+      }
+    });
+
+    testWidgets('4) computeOpticallyCenteredTarget e computeRouteCameraFit compensam overlays com precisão Web Mercator e enquadram sem erro', (tester) async {
+      const target = LatLng(-21.78845, -46.59250);
+      const zoom = 17.0;
+
+      // Quando bottomOverlayPx > topOverlayPx (card inferior maior que barra superior),
+      // o centro da câmera desloca-se para o sul (latitude menor) para subir o pino ao centro óptico:
+      final centered = RealTimeRouteAndTrafficService.computeOpticallyCenteredTarget(
+        target: target,
+        zoom: zoom,
+        topOverlayPx: 96.0,
+        bottomOverlayPx: 176.0,
+      );
+      final expectedDegPerPx =
+          (360.0 / (256.0 * math.pow(2.0, zoom))) * math.cos(target.latitude * math.pi / 180.0);
+      final expectedLat = target.latitude - ((176.0 - 96.0) / 2.0) * expectedDegPerPx;
+
+      expect(centered.latitude, closeTo(expectedLat, 1e-10));
+      expect(centered.latitude, lessThan(target.latitude));
+      expect(centered.longitude, equals(target.longitude));
+
+      // Overlays simétricos -> deslocamento zero:
+      final symmetric = RealTimeRouteAndTrafficService.computeOpticallyCenteredTarget(
+        target: target,
+        zoom: zoom,
+        topOverlayPx: 120.0,
+        bottomOverlayPx: 120.0,
+      );
+      expect(symmetric.latitude, closeTo(target.latitude, 1e-12));
+      expect(symmetric.longitude, equals(target.longitude));
+
+      // Validação de computeRouteCameraFit (rota completa + caso degenerado de coordenadas idênticas):
+      final routePoints = RealTimeRouteAndTrafficService.buildGeodesicArcPolyline(
+        const LatLng(-21.78780, -46.56620),
+        target,
+      );
+      final routeFit = RealTimeRouteAndTrafficService.computeRouteCameraFit(
+        points: routePoints,
+        destination: target,
+      );
+      final degenerateFit = RealTimeRouteAndTrafficService.computeRouteCameraFit(
+        points: const <LatLng>[target],
+        destination: target,
+      );
+
+      final mapController = MapController();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 390,
+              height: 844,
+              child: FlutterMap(
+                mapController: mapController,
+                options: MapOptions(
+                  initialCenter: centered,
+                  initialZoom: zoom,
+                ),
+                children: const [],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Aplicar CameraFit tanto na rota completa quanto em coordenadas idênticas jamais lança erro:
+      mapController.fitCamera(routeFit);
+      await tester.pump();
+      expect(mapController.camera.zoom, lessThanOrEqualTo(16.8 + 1e-6));
+
+      mapController.fitCamera(degenerateFit);
+      await tester.pump();
+      expect(mapController.camera.zoom, lessThanOrEqualTo(16.8 + 1e-6));
       expect(tester.takeException(), isNull);
     });
   });
