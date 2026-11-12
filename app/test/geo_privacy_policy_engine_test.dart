@@ -309,6 +309,26 @@ void main() {
     });
   });
 
+  group('Job.fromMap campos públicos', () {
+    Map<String, dynamic> base() => {
+          'id': '11111111-2222-3333-4444-555555555555',
+          'client_id': 'c1',
+        };
+
+    test('lê public_lat/public_lng/fuzzy_radius_m e tolera ausência', () {
+      final j = Job.fromMap({...base(), 'public_lat': -21.8, 'public_lng': '-46.5', 'fuzzy_radius_m': 650});
+      expect(j.publicLat, -21.8);
+      expect(j.publicLng, -46.5);
+      expect(j.fuzzyRadiusM, 650);
+      expect(j.hasPublicCenter, isTrue);
+      expect(j.latitude, isNull);
+
+      final k = Job.fromMap(base());
+      expect(k.hasPublicCenter, isFalse);
+      expect(k.fuzzyRadiusM, isNull);
+    });
+  });
+
   group('compat accurate_geo_routing_service', () {
     test('isServiceDayUnlocked delega ao engine (fuso SP)', () {
       final sched = DateTime.utc(2026, 11, 15, 18);

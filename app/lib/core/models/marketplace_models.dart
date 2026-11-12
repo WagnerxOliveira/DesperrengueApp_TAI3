@@ -5,7 +5,11 @@ library;
 import '../utils/tag_normalizer.dart';
 
 DateTime? _dt(dynamic v) => v == null ? null : DateTime.parse(v as String).toLocal();
-double? _num(dynamic v) => (v as num?)?.toDouble();
+double? _num(dynamic v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v.trim()); // PostgREST pode serializar numeric como string
+  return null;
+}
 
 /// Categorias de serviço (única fonte de verdade para chips, ícones e filtros).
 class ServiceCategory {
@@ -97,6 +101,9 @@ class Job {
     this.pinAttempts = 0,
     this.latitude,
     this.longitude,
+    this.publicLat,
+    this.publicLng,
+    this.fuzzyRadiusM,
     this.paidAt,
     this.startedAt,
     this.startSimulated = false,
@@ -125,7 +132,16 @@ class Job {
   final int pinAttempts;
   final double? latitude;
   final double? longitude;
+
+  /// Centro FUZZY público (calculado só no servidor via HMAC) e raio do círculo aproximado.
+  /// Seguro para feed/ordenação por distância. `latitude/longitude` ficam nulos após a
+  /// trava de privacidade: o ponto exato só vem de `JobService.fetchLocationForViewer`.
+  final double? publicLat;
+  final double? publicLng;
+  final int? fuzzyRadiusM;
   final DateTime? paidAt;
+
+  bool get hasPublicCenter => publicLat != null && publicLng != null;
 
   /// Início REAL do serviço (gravado pelo servidor em `start_job` ou no aceite da emergência).
   final DateTime? startedAt;
@@ -169,6 +185,9 @@ class Job {
     pinAttempts: (m['pin_attempts'] as num?)?.toInt() ?? 0,
     latitude: _num(m['latitude']),
     longitude: _num(m['longitude']),
+    publicLat: _num(m['public_lat']),
+    publicLng: _num(m['public_lng']),
+    fuzzyRadiusM: _num(m['fuzzy_radius_m'])?.round(),
     paidAt: _dt(m['paid_at']),
     startedAt: _dt(m['started_at']),
     startSimulated: (m['start_simulated'] as bool?) ?? false,

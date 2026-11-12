@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:isolate';
 import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
@@ -7,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 
 import '../security/perceptual_hash_guard.dart';
+import '../utils/off_thread.dart';
 
 /// Tipos oficiais de documentos brasileiros aceitos no KYC do Cliente e do Profissional.
 enum OfficialDocumentType {
@@ -912,7 +912,7 @@ class DocumentOcrAndLivenessService {
     List<({double yawDeg, double pitchDeg})>? poseTimeline,
     bool enforceHumanFaceTextureCheck = true,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => verifyActiveLivenessSync(
         selfieBytes: selfieBytes,
         cpfDigits: cpfDigits,
@@ -1276,7 +1276,7 @@ class DocumentOcrAndLivenessService {
     String? rawOcrFrontTextOverride,
     String? rawOcrBackTextOverride,
   }) {
-    return Isolate.run(
+    return runOffMainThread(
       () => analyzeDocumentForensicsAndOcrSync(
         frontImageBytes: frontImageBytes,
         backImageBytes: backImageBytes,
