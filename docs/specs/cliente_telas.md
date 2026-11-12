@@ -44,7 +44,7 @@ flowchart LR
 ### 2.4. Gestão de Pedidos, Modal de PIN de 4 Dígitos e 4ª Aba *"Em Mediação"* (`ClientOrdersTab`)
 * **Arquivos de Implementação:** [`app/lib/features/client/presentation/client_orders_tab.dart`](../../app/lib/features/client/presentation/client_orders_tab.dart) e [`app/lib/features/shared/presentation/fintech_warranty_widgets.dart`](../../app/lib/features/shared/presentation/fintech_warranty_widgets.dart)
 * **Especificação Técnica:**
-  * Exibe o **PIN Presencial de 4 Dígitos** para liberação imediata do *Smart Escrow* mediante vistoria física aprovada;
+  * Exibe o **PIN Presencial de 4 Dígitos** para liberação imediata do *Smart Escrow* mediante vistoria física aprovada, garante ao cliente titular (`ownerFull`) visualização integral do endereço completo e do mapa exato em tela cheia (`OrderLiveMapModalScreen` a $100\%$ da viewport) em qualquer fase do pedido, e aplica decremento otimista em $O(1)$ ($0\text{ ms}$) nos badges de pedidos não lidos via [`unread_orders_badge_controller.dart`](../../app/lib/core/state/unread_orders_badge_controller.dart);
   * Integra a **4ª Aba "Em Mediação"**, equipada com o widget `ForensicSplitViewComparator` (comparação tripla lado a lado: `ANTES | DEPOIS | EVIDÊNCIA DA RECLAMAÇÃO`), cronômetro regressivo de SLA ($24\text{h}$) e acionamento autônomo da **Camada 3 (Retrabalho Gratuito por Novo Profissional)**.
 
 ### 2.5. Passaporte Oficial de Manutenção do Imóvel (`HistoricoServicosClienteScreen`)
