@@ -533,8 +533,10 @@ begin
    where id = p_mediation_id
    for update;
 
-  -- Controle de acesso Zero-Trust: apenas worker interno/service_role, admin ou o cliente titular após expirar o SLA de 6h
-  if current_user in ('authenticated', 'anon') then
+  -- Controle de acesso Zero-Trust: apenas worker interno/service_role, admin ou o cliente titular após expirar o SLA de 6h.
+  -- Nota: dentro de SECURITY DEFINER, `current_user` é o owner; usamos `auth.role()` + `current_setting('role', true)`.
+  if coalesce(auth.role(), '') in ('authenticated', 'anon')
+     or coalesce(current_setting('role', true), '') in ('authenticated', 'anon') then
     if v_uid is null then
       raise exception 'ERR_UNAUTHENTICATED: Sessão expirada.' using errcode = '28000';
     end if;
@@ -1300,7 +1302,8 @@ end $$;
 
 revoke all on function public.profiles_protect_columns() from public, anon, authenticated;
 
--- Preserva imutabilidade pós-conclusão contra usuários/prestadores sem quebrar o expurgo LGPD (`purge_account`)
+-- Preserva imutabilidade pós-conclusão contra usuários/prestadores sem quebrar o expurgo LGPD (`purge_account`).
+-- Nota: avalia `auth.role()` e `current_setting('role', true)` para identificar sessões `authenticated`/`anon` mesmo sob SECURITY DEFINER.
 create or replace function public.jobs_enforce_post_completion_immutability()
 returns trigger
 language plpgsql
@@ -1308,14 +1311,18 @@ security definer
 set search_path = public
 as $$
 declare
+  v_is_privileged boolean := (
+    coalesce(auth.role(), '') not in ('authenticated', 'anon')
+    and coalesce(current_setting('role', true), '') not in ('authenticated', 'anon')
+  );
   v_is_lgpd_client_purge boolean := (
-    current_user not in ('authenticated', 'anon')
+    v_is_privileged
     and old.client_id is not null
     and new.client_id is null
     and new.description = '[conteúdo removido a pedido do titular]'
   );
   v_is_lgpd_provider_purge boolean := (
-    current_user not in ('authenticated', 'anon')
+    v_is_privileged
     and new.provider_report is null
     and old.provider_report is not null
   );
@@ -1346,9 +1353,13 @@ set search_path = public
 as $$
 declare
   v_status text;
+  v_is_privileged boolean := (
+    coalesce(auth.role(), '') not in ('authenticated', 'anon')
+    and coalesce(current_setting('role', true), '') not in ('authenticated', 'anon')
+  );
 begin
   -- Permite deleção apenas pela rotina interna `purge_account` (service_role/owner) em exercício de direito LGPD
-  if tg_op = 'DELETE' and current_user not in ('authenticated', 'anon') then
+  if tg_op = 'DELETE' and v_is_privileged then
     return old;
   end if;
 

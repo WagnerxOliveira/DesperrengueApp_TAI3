@@ -342,6 +342,13 @@ check('04. Zero GRANT perigoso para anon/public e search_path obrigatório em SE
       );
       if (/\bsecurity\s+definer\b/i.test(header)) {
         count++;
+        const body = m[0].slice(m[0].toLowerCase().indexOf('as $$'));
+        const bodyStripped = lexSql(body, `${label}:${fnName}`);
+        assert.doesNotMatch(
+          bodyStripped,
+          /\bcurrent_user\b/i,
+          `${label}: função SECURITY DEFINER ${fnName} NÃO pode usar current_user (sempre seria o owner postgres)`
+        );
       }
       const revokeRe = new RegExp(
         `revoke\\s+all\\s+on\\s+function\\s+${fnName.replace('.', '\\.')}\\s*\\([\\s\\S]*?\\)\\s*from\\s+public\\s*,\\s*anon`,
@@ -428,8 +435,18 @@ check('07. Contrato A/B/C: máquina de estados SP, RPC 16 chaves JSON, RLS, trig
   }
 
   assert.match(geoSql, /America\/Sao_Paulo/, 'Deve usar fuso America/Sao_Paulo');
-  assert.match(geoSql, /create\s+policy\s+job_addresses_select[\s\S]*?_can_see_exact_location/i);
-  assert.match(geoSql, /create\s+policy\s+job_geo_select[\s\S]*?_can_see_exact_location/i);
+  assert.match(
+    geoSql,
+    /revoke\s+all\s+on\s+function\s+public\._can_see_exact_location\s*\(\s*uuid\s*,\s*uuid\s*\)\s+from\s+public,\s*anon,\s*authenticated/i,
+    'Sobrecarga 2-args _can_see_exact_location(uuid, uuid) deve ser revogada de authenticated (Zero-Oracle)'
+  );
+  assert.match(
+    geoSql,
+    /grant\s+execute\s+on\s+function\s+public\._can_see_exact_location\s*\(\s*uuid\s*\)\s+to\s+authenticated/i,
+    'Wrapper 1-arg _can_see_exact_location(uuid) deve ser concedido a authenticated'
+  );
+  assert.match(geoSql, /create\s+policy\s+job_addresses_select[\s\S]*?_can_see_exact_location\s*\(\s*job_id\s*\)/i);
+  assert.match(geoSql, /create\s+policy\s+job_geo_select[\s\S]*?_can_see_exact_location\s*\(\s*job_id\s*\)/i);
   assert.match(geoSql, /create\s+trigger\s+aa_jobs_geo_privacy_before/i);
   assert.match(geoSql, /create\s+trigger\s+aa_jobs_geo_privacy_after/i);
   assert.match(geoSql, /notify_service_day_address_unlocked/i);

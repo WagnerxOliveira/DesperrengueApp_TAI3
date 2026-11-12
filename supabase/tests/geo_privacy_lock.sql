@@ -290,8 +290,9 @@ begin
     '17 profissional de outra categoria recebe phase=denied sem coordenadas nem bairro'
   );
   perform pg_temp.t(
-    public._can_see_exact_location(j, c) = false,
-    '18 Zero-Oracle: _can_see_exact_location(job, owner_uid) retorna FALSE quando chamado por terceiro'
+    public._can_see_exact_location(j) = false
+    and starts_with(pg_temp.try(format('select public._can_see_exact_location(%L, %L)', j, c)), '42501'),
+    '18 Zero-Oracle: wrapper 1-arg avalia apenas auth.uid() (FALSE) e sobrecarga 2-args é bloqueada para authenticated (42501)'
   );
   reset role;
 
