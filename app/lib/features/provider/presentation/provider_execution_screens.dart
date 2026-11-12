@@ -47,24 +47,12 @@ class ServiceExecutionScreen extends StatefulWidget {
 
 class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
   final _jobs = JobService();
-  Timer? _tick;
   Map<String, dynamic>? _client;
 
   @override
   void initState() {
     super.initState();
-    // O cronômetro é DERIVADO do `started_at` gravado pelo servidor (não de um Stopwatch local):
-    // sobrevive a fechar o app e só existe para serviços realmente iniciados (`in_progress`).
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
-    });
     _load();
-  }
-
-  @override
-  void dispose() {
-    _tick?.cancel();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -73,13 +61,6 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
       if (!mounted) return;
       setState(() => _client = c);
     } catch (_) {}
-  }
-
-  Duration get _elapsed {
-    final since = widget.job.startedAt ?? widget.job.paidAt;
-    if (since == null) return Duration.zero;
-    final d = DateTime.now().difference(since);
-    return d.isNegative ? Duration.zero : d;
   }
 
   @override
@@ -117,12 +98,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Center(
-            child: Text(
-              clockHms(_elapsed),
-              style: TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: context.tk.providerAccent, fontFeatures: [FontFeature.tabularFigures()]),
-            ),
-          ),
+          Center(child: _ElapsedClock(since: job.startedAt ?? job.paidAt)),
           Center(
             child: const StatusChip('● Serviço em execução...', color: AppColors.providerBright),
           ),
@@ -239,6 +215,60 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
 }
 
 // ===================================================== garantia e portfólio (2)
+
+/// Cronômetro do serviço em execução. É DERIVADO do `started_at` gravado pelo servidor (não de
+/// um Stopwatch local): sobrevive a fechar o app. Tem o próprio temporizador de 1 s e fica numa
+/// camada de pintura separada, para a tela inteira (cards financeiros etc.) não reconstruir todo segundo.
+class _ElapsedClock extends StatefulWidget {
+  const _ElapsedClock({required this.since});
+
+  final DateTime? since;
+
+  @override
+  State<_ElapsedClock> createState() => _ElapsedClockState();
+}
+
+class _ElapsedClockState extends State<_ElapsedClock> {
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Duration get _elapsed {
+    final since = widget.since;
+    if (since == null) return Duration.zero;
+    final d = DateTime.now().difference(since);
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: Semantics(
+        label: 'Tempo de serviço',
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            clockHms(_elapsed),
+            key: const ValueKey('service-elapsed-clock'),
+            style: TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: context.tk.providerAccent, fontFeatures: const [FontFeature.tabularFigures()]),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class WarrantyIntroScreen extends StatelessWidget {
   const WarrantyIntroScreen({super.key, required this.job});

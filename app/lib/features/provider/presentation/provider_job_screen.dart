@@ -119,15 +119,31 @@ class _UnavailableScreen extends StatelessWidget {
 /// Respeita a Trava Temporal de Privacidade: a região vem do servidor
 /// (`fetchLocationForViewer`) e, enquanto o endereço não é liberado, não existe
 /// rua/número nem atalho para mapa exato — apenas Bairro • Cidade-UF.
-class ClientCardTile extends StatelessWidget {
+class ClientCardTile extends StatefulWidget {
   const ClientCardTile({super.key, required this.jobId});
 
   final String jobId;
 
   @override
+  State<ClientCardTile> createState() => _ClientCardTileState();
+}
+
+class _ClientCardTileState extends State<ClientCardTile> {
+  // Futuro criado UMA vez: antes era recriado a cada rebuild (a cada tecla digitada no orçamento).
+  late Future<Map<String, dynamic>?> _card = JobService().clientCard(widget.jobId);
+
+  @override
+  void didUpdateWidget(covariant ClientCardTile old) {
+    super.didUpdateWidget(old);
+    if (old.jobId != widget.jobId) _card = JobService().clientCard(widget.jobId);
+  }
+
+  String get jobId => widget.jobId;
+
+  @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>?>(
-      future: JobService().clientCard(jobId),
+      future: _card,
       builder: (context, snap) {
         final name = (snap.data?['full_name'] as String?) ?? 'Cliente';
         return Row(
@@ -314,6 +330,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
     return AppScaffold(
       appBar: AppBar(title: const Text('Detalhes do chamado')),
       body: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         children: [
           if (widget.invite != null && widget.invite!.isLive)
@@ -523,12 +540,12 @@ class _AwaitingResponseScreenState extends State<AwaitingResponseScreen> {
           const SizedBox(height: 22),
           if (inv != null)
             Center(
-              child: CountdownRing(
+              child: RepaintBoundary(child: CountdownRing(
                 remaining: inv.expiresAt.difference(DateTime.now()),
                 total: const Duration(hours: 2),
                 caption: 'prazo do convite',
                 icon: Icons.hourglass_bottom_rounded,
-              ),
+              )),
             )
           else
             const Center(child: CircularProgressIndicator()),
@@ -603,13 +620,13 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
         children: [
           Center(
-            child: CountdownRing(
+            child: RepaintBoundary(child: CountdownRing(
               remaining: widget.invite?.remaining ?? Duration.zero,
               total: const Duration(minutes: 5),
               size: 140,
               caption: 'para aceitar',
               icon: Icons.bolt_rounded,
-            ),
+            )),
           ),
           const SizedBox(height: 16),
           const InfoBanner('Se aceitar, vá imediatamente. A reserva de garantia do cliente já está em custódia.', tone: BannerTone.danger, title: 'Atendimento imediato'),

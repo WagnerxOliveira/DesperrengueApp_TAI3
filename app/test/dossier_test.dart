@@ -267,7 +267,7 @@ void main() {
 
     testWidgets('início simulado aparece discreto', (t) async {
       await openDossier(t, () => _dossier(extra: {'started_simulated': true}));
-      expect(find.text('(início simulado — homologação)'), findsOneWidget);
+      expect(find.text('(início de teste, sem efeito real)'), findsOneWidget);
     });
 
     testWidgets('privacidade ligada: todos os valores viram "R\$ •••••"', (t) async {
