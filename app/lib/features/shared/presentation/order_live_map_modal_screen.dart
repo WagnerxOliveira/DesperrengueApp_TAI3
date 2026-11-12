@@ -903,6 +903,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 

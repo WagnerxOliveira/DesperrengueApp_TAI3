@@ -215,8 +215,8 @@ void main() {
     );
   });
 
-  group('2. Cabeçalho Hierárquico em 2 Andares Anti-Overflow (320x640, 360x780, 412x915)', () {
-    for (final viewport in const [Size(320, 640), Size(360, 780), Size(412, 915)]) {
+  group('2. Cabeçalho Hierárquico em 2 Andares Anti-Overflow (320x640, 360x780, 412x915, 480x960)', () {
+    for (final viewport in const [Size(320, 640), Size(360, 780), Size(412, 915), Size(480, 960)]) {
       testWidgets(
         'DetalheServicoClienteScreen em viewport ${viewport.width.toInt()}x${viewport.height.toInt()} renderiza título em 100% da largura abaixo das pílulas sem quebra vertical',
         (tester) async {
@@ -303,21 +303,30 @@ void main() {
     );
   });
 
-  group('3. Mapa Sempre Presente e Modal Interativo em TODOS os Estados (Em Andamento, Concluídos, Cancelados)', () {
-    for (final status in const ['open', 'completed', 'canceled']) {
+  group('3. Mapa Sempre Presente e Modal Interativo em TODOS os Estados (Em Andamento, Concluídos, Cancelados, Em Mediação)', () {
+    for (final status in const ['open', 'completed', 'canceled', 'disputed']) {
       testWidgets(
         'Estado "$status" exibe mini-mapa (mesmo sem coordenadas prévias no banco) e abre OrderLiveMapModalScreen ao tocar em detail-location',
         (tester) async {
           await tester.binding.setSurfaceSize(const Size(412, 2600));
           addTearDown(() => tester.binding.setSurfaceSize(null));
 
-          // Simula pedido (inclusive concluído #DESP-278FD ou cancelado #DESP-C96AB) sem latitude/longitude salvas:
+          // Simula pedido (inclusive concluído #DESP-278FD, cancelado #DESP-C96AB ou em mediação) sem latitude/longitude salvas:
+          final address = status == 'completed'
+              ? 'Travessa Pedro de Castro Souza, 200 - Centro, Poços de Caldas - MG'
+              : 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG';
+          final expectedStreet = status == 'completed'
+              ? 'Travessa Pedro de Castro Souza'
+              : 'Rua Padre José Geraldi';
+          final expectedNumber = status == 'completed' ? '200' : '203';
+          final expectedDistrict = status == 'completed' ? 'Centro' : 'Maria Imaculada';
+
           final data = _dossierMap(
             id: 'job-$status-map',
             status: status,
             title: 'Reparo hidráulico especializado',
             category: 'Hidráulica',
-            addressLine: 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG',
+            addressLine: address,
             latitude: null,
             longitude: null,
           );
@@ -348,9 +357,9 @@ void main() {
           // Verifica que o modal cartográfico completo abriu com Rua, Número, Bairro, Cidade, km e min
           expect(find.byKey(const ValueKey('order-live-map-executive-card')), findsOneWidget);
           expect(find.byKey(const ValueKey('live-map-street-number')), findsOneWidget);
-          expect(find.textContaining('Rua Padre José Geraldi'), findsWidgets);
-          expect(find.textContaining('203'), findsWidgets);
-          expect(find.textContaining('Maria Imaculada'), findsWidgets);
+          expect(find.textContaining(expectedStreet), findsWidgets);
+          expect(find.textContaining(expectedNumber), findsWidgets);
+          expect(find.textContaining(expectedDistrict), findsWidgets);
           expect(find.textContaining('Poços de Caldas'), findsWidgets);
           expect(find.byKey(const ValueKey('telemetry-distance-pill')), findsOneWidget);
           expect(find.byKey(const ValueKey('telemetry-eta-pill')), findsOneWidget);
@@ -361,81 +370,83 @@ void main() {
   });
 
   group('4. Nova Tela "Pedido publicado" (WaitingQuotesScreen — LiveSearchRadarHeader & OrderPublishStepper)', () {
-    testWidgets(
-      'Renderiza LiveSearchRadarHeader (120 FPS), OrderPublishStepper de 4 estágios, estado vazio e cards comparativos sem overflow em 360px',
-      (tester) async {
-        await tester.binding.setSurfaceSize(const Size(360, 2600));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final width in const [320.0, 360.0, 480.0]) {
+      testWidgets(
+        'Renderiza LiveSearchRadarHeader (120 FPS), OrderPublishStepper de 4 estágios, estado vazio e cards comparativos sem overflow em ${width.toInt()}px',
+        (tester) async {
+          await tester.binding.setSurfaceSize(Size(width, 2600));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final job = _makeJob(
-          id: 'job-waiting-01',
-          status: JobStatus.open,
-          title: 'Trocar disjuntor bipolar',
-          description: 'O disjuntor desarma toda hora no quadro principal.',
-          category: 'Elétrica',
-          latitude: -21.7878,
-          longitude: -46.5614,
-        );
+          final job = _makeJob(
+            id: 'job-waiting-01',
+            status: JobStatus.open,
+            title: 'Trocar disjuntor bipolar',
+            description: 'O disjuntor desarma toda hora no quadro principal.',
+            category: 'Elétrica',
+            latitude: -21.7878,
+            longitude: -46.5614,
+          );
 
-        // 4.1 Sem orçamentos ainda
-        await tester.pumpWidget(
-          _host(
-            WaitingQuotesScreen(
-              job: job,
-              quotesStream: Stream.value(const <Quote>[]),
-              invitesStream: Stream.value(const <JobInvite>[]),
+          // 4.1 Sem orçamentos ainda
+          await tester.pumpWidget(
+            _host(
+              WaitingQuotesScreen(
+                job: job,
+                quotesStream: Stream.value(const <Quote>[]),
+                invitesStream: Stream.value(const <JobInvite>[]),
+              ),
             ),
-          ),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
 
-        expect(find.byKey(const ValueKey('waiting-back')), findsOneWidget);
-        expect(find.byKey(const ValueKey('waiting-hero')), findsOneWidget);
-        expect(find.byKey(const ValueKey('live-radar-specialists-badge')), findsOneWidget);
-        expect(find.byKey(const ValueKey('waiting-steps')), findsOneWidget);
-        expect(find.textContaining('1. Pedido Publicado'), findsOneWidget);
-        expect(find.textContaining('2. Especialistas Notificados'), findsOneWidget);
-        expect(find.textContaining('3. Aguardando Propostas (0/3)'), findsOneWidget);
-        expect(find.textContaining('4. Contratação Segura'), findsOneWidget);
-        expect(find.byKey(const ValueKey('waiting-summary')), findsOneWidget);
-        expect(find.byKey(const ValueKey('waiting-slots')), findsOneWidget);
-        expect(find.text('Pagamento Protegido em Custódia'), findsOneWidget);
-        expect(find.text('0% de taxa sobre materiais'), findsOneWidget);
-        expect(find.byKey(const ValueKey('waiting-cancel')), findsOneWidget);
-        expect(tester.takeException(), isNull);
+          expect(find.byKey(const ValueKey('waiting-back')), findsOneWidget);
+          expect(find.byKey(const ValueKey('waiting-hero')), findsOneWidget);
+          expect(find.byKey(const ValueKey('live-radar-specialists-badge')), findsOneWidget);
+          expect(find.byKey(const ValueKey('waiting-steps')), findsOneWidget);
+          expect(find.textContaining('1. Pedido Publicado'), findsOneWidget);
+          expect(find.textContaining('2. Especialistas Notificados'), findsOneWidget);
+          expect(find.textContaining('3. Aguardando Propostas (0/3)'), findsOneWidget);
+          expect(find.textContaining('4. Contratação Segura'), findsOneWidget);
+          expect(find.byKey(const ValueKey('waiting-summary')), findsOneWidget);
+          expect(find.byKey(const ValueKey('waiting-slots')), findsOneWidget);
+          expect(find.text('Pagamento Protegido em Custódia'), findsOneWidget);
+          expect(find.text('0% de taxa sobre materiais'), findsOneWidget);
+          expect(find.byKey(const ValueKey('waiting-cancel')), findsOneWidget);
+          expect(tester.takeException(), isNull);
 
-        // 4.2 Com orçamento recebido
-        final sampleQuote = Quote(
-          id: 'q-1',
-          jobId: job.id,
-          providerId: 'prov-1',
-          price: 195.0,
-          message: 'Chego em 20 minutos com disjuntor novo.',
-          estimatedHours: 1.5,
-          status: 'pending',
-          createdAt: DateTime.utc(2026, 11, 12, 13, 10),
-        );
+          // 4.2 Com orçamento recebido
+          final sampleQuote = Quote(
+            id: 'q-1',
+            jobId: job.id,
+            providerId: 'prov-1',
+            price: 195.0,
+            message: 'Chego em 20 minutos com disjuntor novo.',
+            estimatedHours: 1.5,
+            status: 'pending',
+            createdAt: DateTime.utc(2026, 11, 12, 13, 10),
+          );
 
-        await tester.pumpWidget(
-          _host(
-            WaitingQuotesScreen(
-              job: job,
-              quotesStream: Stream.value([sampleQuote]),
-              invitesStream: Stream.value(const <JobInvite>[]),
+          await tester.pumpWidget(
+            _host(
+              WaitingQuotesScreen(
+                job: job,
+                quotesStream: Stream.value([sampleQuote]),
+                invitesStream: Stream.value(const <JobInvite>[]),
+              ),
             ),
-          ),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 100));
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
 
-        expect(find.text('1 orçamento recebido'), findsOneWidget);
-        expect(find.textContaining('3. Aguardando Propostas (1/3)'), findsOneWidget);
-        expect(find.text('R\$ 195,00'), findsOneWidget);
-        expect(find.text('Ver orçamento'), findsOneWidget);
-        expect(tester.takeException(), isNull);
-      },
-    );
+          expect(find.text('1 orçamento recebido'), findsOneWidget);
+          expect(find.textContaining('3. Aguardando Propostas (1/3)'), findsOneWidget);
+          expect(find.text('R\$ 195,00'), findsOneWidget);
+          expect(find.text('Ver orçamento'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
   });
 
   group('5. Renderização Instantânea de Avatar e Fotos em 0 ms via Cache L1 (Zero Pop-in)', () {

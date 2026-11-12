@@ -1078,31 +1078,48 @@ class _QuoteCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              UserAvatar(url: p?.avatarUrl, name: p?.fullName ?? 'Profissional', radius: 28, verified: true),
-              const SizedBox(width: 12),
+              UserAvatar(url: p?.avatarUrl, name: p?.fullName ?? 'Profissional', radius: 24, verified: true),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p?.fullName ?? 'Profissional', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                    Text(
+                      p?.fullName ?? 'Profissional',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                    ),
                     if (p != null)
                       Text(
                         p.ratingCount > 0 ? '★ ${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} (${p.ratingCount}) • ${p.jobsDone} serviços' : 'Novo na plataforma',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: tk.textMuted, fontSize: 13),
                       ),
                   ],
                 ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(brl(quote.price), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-                  if (quote.estimatedHours != null)
-                    Text(
-                      '~${quote.estimatedHours!.toStringAsFixed(quote.estimatedHours! % 1 == 0 ? 0 : 1)}h estimadas',
-                      style: TextStyle(fontSize: 11, color: tk.textMuted, fontWeight: FontWeight.w600),
+              const SizedBox(width: 8),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 112),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(brl(quote.price), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
                     ),
-                ],
+                    if (quote.estimatedHours != null)
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          '~${quote.estimatedHours!.toStringAsFixed(quote.estimatedHours! % 1 == 0 ? 0 : 1)}h estimadas',
+                          style: TextStyle(fontSize: 11, color: tk.textMuted, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -1124,8 +1141,14 @@ class _QuoteCard extends StatelessWidget {
                             builder: (_) => ProviderPublicProfileScreen(provider: p, profile: profile, hideCta: true),
                           ));
                         },
-                  style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                  child: const Text('Ver perfil'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Ver perfil', maxLines: 1),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1134,8 +1157,14 @@ class _QuoteCard extends StatelessWidget {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => QuoteReceivedScreen(job: job, quote: quote, provider: p)),
                   ),
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                  child: const Text('Ver orçamento'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                  ),
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Ver orçamento', maxLines: 1),
+                  ),
                 ),
               ),
             ],
