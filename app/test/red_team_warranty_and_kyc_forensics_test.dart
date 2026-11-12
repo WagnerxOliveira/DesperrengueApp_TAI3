@@ -965,6 +965,13 @@ void main() {
       expect(find.byKey(const ValueKey('ocr-transcribed-card')), findsOneWidget);
       expect(find.text('Dados Transcritos Automaticamente do Documento (OCR)'), findsOneWidget);
       expect(find.text('WAGNER OLIVEIRA CLAUDIANO'), findsOneWidget);
+      expect(find.textContaining('***.787.236-**'), findsOneWidget);
+      expect(find.textContaining('119.787.236-10'), findsNothing);
+
+      final toggleCpfBtn = find.byKey(const ValueKey('toggle-cpf-reveal'));
+      await tester.ensureVisible(toggleCpfBtn);
+      await tester.tap(toggleCpfBtn);
+      await tester.pump();
       expect(find.textContaining('119.787.236-10'), findsOneWidget);
 
       // Conclui a validação no botão final

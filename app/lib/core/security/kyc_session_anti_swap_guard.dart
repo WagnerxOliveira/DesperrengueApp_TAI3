@@ -13,7 +13,12 @@ import 'perceptual_hash_guard.dart';
 /// ([CaptureOrigin.galleryOrFileBlocked]) é bloqueada deterministicamente.
 enum CaptureOrigin {
   liveCameraOnly,
-  galleryOrFileBlocked,
+  galleryOrFileBlocked;
+
+  String get wireCode => switch (this) {
+        CaptureOrigin.liveCameraOnly => 'LIVE_CAMERA',
+        CaptureOrigin.galleryOrFileBlocked => 'GALLERY_UPLOAD_BLOCKED',
+      };
 }
 
 /// Veredito de integridade de hardware/ambiente coletado no cliente.
@@ -22,7 +27,15 @@ enum DeviceIntegrityVerdict {
   appAttestHardware,
   homologationOrPwaLimited,
   virtualCameraBlocked,
-  untrustedDevice,
+  untrustedDevice;
+
+  String get wireCode => switch (this) {
+        DeviceIntegrityVerdict.meetsStrongIntegrity => 'MEETS_STRONG_INTEGRITY',
+        DeviceIntegrityVerdict.appAttestHardware => 'APP_ATTEST_HARDWARE',
+        DeviceIntegrityVerdict.homologationOrPwaLimited => 'WEB_LIMITED_ALCADA',
+        DeviceIntegrityVerdict.virtualCameraBlocked => 'UNTRUSTED',
+        DeviceIntegrityVerdict.untrustedDevice => 'UNTRUSTED',
+      };
 }
 
 /// Metadados estruturados de integridade do dispositivo e câmera física.
@@ -53,6 +66,7 @@ class DeviceIntegrityMetadata {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'verdict': verdict.name,
+        'attestation_verdict': verdict.wireCode,
         'attestation_provider': attestationProvider,
         if (attestationToken != null) 'attestation_token': attestationToken,
         'detected_camera_labels': detectedCameraLabels,
@@ -123,6 +137,7 @@ class FrozenCanonicalSelfie {
         'captured_at_utc': capturedAtUtc.toIso8601String(),
         'captured_at_epoch_sec': capturedAtEpochSec,
         'origin': origin.name,
+        'capture_source': origin.wireCode,
       };
 }
 
@@ -232,6 +247,9 @@ class KycSessionBindingTicket {
         'session_nonce': sessionNonce,
         'issued_at_utc': issuedAtUtc.toIso8601String(),
         'ttl_seconds': ttlSeconds,
+        'attestation_verdict': deviceIntegrity.verdict.wireCode,
+        'capture_source':
+            (frozenSelfie?.origin ?? CaptureOrigin.liveCameraOnly).wireCode,
         if (frozenSelfie != null) 'frozen_selfie': frozenSelfie!.toJson(),
         if (frontDocSha256 != null) 'front_doc_sha256': frontDocSha256,
         if (backDocSha256 != null) 'back_doc_sha256': backDocSha256,
@@ -254,6 +272,9 @@ class KycSessionAntiSwapGuard {
   /// Janela máxima estrita entre emissão/prova de vida e submissão dos documentos.
   static const int maxSessionTtlSeconds = 180;
 
+  /// Janela máxima estrita para conclusão da Prova de Vida após emissão do nonce (`90s`).
+  static const int maxLivenessWindowSeconds = 90;
+
   /// Padrões conhecidos de drivers de injeção de câmera virtual / deepfake.
   static const List<String> bannedVirtualCameraTokens = <String>[
     'obs',
@@ -273,16 +294,30 @@ class KycSessionAntiSwapGuard {
     'epoccam',
   ];
 
+  static final List<RegExp> _bannedVirtualCameraPatterns =
+      bannedVirtualCameraTokens
+          .map(
+            (token) => RegExp(
+              r'\b' + RegExp.escape(token) + r'\b',
+              caseSensitive: false,
+            ),
+          )
+          .toList(growable: false);
+
   /// Verifica se qualquer label de câmera reportado pelo SO corresponde
-  /// a um software de câmera virtual ou emulador de vídeo.
+  /// a um software de câmera virtual ou emulador de vídeo (com word-boundary
+  /// para evitar falso positivo em nomes legítimos de sensores como `jacobson`).
   static ({bool isVirtual, String? matchedLabel}) detectVirtualCameraLabels(
     List<String> cameraLabels,
   ) {
     for (final rawLabel in cameraLabels) {
-      final normalized = rawLabel.trim().toLowerCase();
+      final normalized = rawLabel
+          .trim()
+          .toLowerCase()
+          .replaceAll(RegExp(r'[_-]+'), ' ');
       if (normalized.isEmpty) continue;
-      for (final token in bannedVirtualCameraTokens) {
-        if (normalized.contains(token)) {
+      for (final pattern in _bannedVirtualCameraPatterns) {
+        if (pattern.hasMatch(normalized)) {
           return (isVirtual: true, matchedLabel: rawLabel.trim());
         }
       }
@@ -442,10 +477,12 @@ class KycSessionAntiSwapGuard {
     final capturedAt = (nowUtc ?? DateTime.now()).toUtc();
     final elapsedSinceIssue =
         capturedAt.difference(ticket.issuedAtUtc).inSeconds;
-    if (elapsedSinceIssue < 0 || elapsedSinceIssue > ticket.ttlSeconds) {
+    final maxAllowedLivenessWindow =
+        math.min(maxLivenessWindowSeconds, ticket.ttlSeconds);
+    if (elapsedSinceIssue < 0 || elapsedSinceIssue > maxAllowedLivenessWindow) {
       throw StateError(
         'ERR_SESSION_EXPIRED_OR_SWAP: A sessão de verificação expirou '
-        '(${elapsedSinceIssue}s > ${ticket.ttlSeconds}s). Inicie uma nova captura.',
+        '(${elapsedSinceIssue}s > ${maxAllowedLivenessWindow}s). Inicie uma nova captura.',
       );
     }
 

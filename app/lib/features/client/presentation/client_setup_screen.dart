@@ -2361,8 +2361,9 @@ class _DocumentCaptureCard extends StatelessWidget {
 }
 
 /// Card Executivo (*Quiet Luxury*, `<= 480px`) que exibe os dados transcritos
-/// automaticamente do documento via OCR após a validação real, com Zero Jargão Técnico.
-class _OcrTranscribedSummaryCard extends StatelessWidget {
+/// automaticamente do documento via OCR após a validação real, com Zero Jargão Técnico
+/// e máscara LGPD por padrão (`***.456.789-**`) com toggle seguro de conferência.
+class _OcrTranscribedSummaryCard extends StatefulWidget {
   const _OcrTranscribedSummaryCard({
     required this.ocr,
     required this.typedName,
@@ -2372,14 +2373,25 @@ class _OcrTranscribedSummaryCard extends StatelessWidget {
   final String typedName;
 
   @override
+  State<_OcrTranscribedSummaryCard> createState() =>
+      _OcrTranscribedSummaryCardState();
+}
+
+class _OcrTranscribedSummaryCardState extends State<_OcrTranscribedSummaryCard> {
+  bool _revealCpf = false;
+
+  @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final ocr = widget.ocr;
+    final typedName = widget.typedName;
     final facePct = (ocr.faceMatchCosineSimilarity * 100).clamp(0.0, 100.0);
     final namePct = (ocr.nameCrossCheckSimilarity * 100).clamp(0.0, 100.0);
     final maskedCpf = KycHumanFeedbackTranslator.formatCpfQuietLuxury(
       ocr.extractedCpfDigits,
       masked: true,
     );
+    final displayedCpf = _revealCpf ? ocr.extractedCpfFormatted : maskedCpf;
 
     return Center(
       child: ConstrainedBox(
@@ -2425,7 +2437,25 @@ class _OcrTranscribedSummaryCard extends StatelessWidget {
                 ),
               _OcrFieldRow(
                 'CPF do Titular',
-                '$maskedCpf • ${ocr.extractedCpfFormatted} (Confirmado)',
+                '$displayedCpf (Confirmado)',
+                trailing: InkWell(
+                  key: const ValueKey('toggle-cpf-reveal'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => setState(() => _revealCpf = !_revealCpf),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    child: Icon(
+                      _revealCpf
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      size: 18,
+                      color: tk.clientAccent,
+                    ),
+                  ),
+                ),
               ),
               _OcrFieldRow(
                 'Tipo de Documento',
@@ -2475,10 +2505,11 @@ class _OcrTranscribedSummaryCard extends StatelessWidget {
 }
 
 class _OcrFieldRow extends StatelessWidget {
-  const _OcrFieldRow(this.label, this.value);
+  const _OcrFieldRow(this.label, this.value, {this.trailing});
 
   final String label;
   final String value;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -2499,12 +2530,19 @@ class _OcrFieldRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        value,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    ?trailing,
+                  ],
                 ),
               ],
             );
@@ -2534,6 +2572,7 @@ class _OcrFieldRow extends StatelessWidget {
                   ),
                 ),
               ),
+              ?trailing,
             ],
           );
         },

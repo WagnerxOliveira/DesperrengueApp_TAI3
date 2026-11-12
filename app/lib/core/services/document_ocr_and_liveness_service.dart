@@ -1787,6 +1787,29 @@ class DocumentOcrAndLivenessService {
           computeIcaoMrzCheckDigit(expiry) != expiryCheck) {
         return false;
       }
+
+      final String optionalData = l2.substring(28, 42);
+      final String optionalCheckChar = l2[42];
+      final bool isAllFiller = RegExp(r'^<+$').hasMatch(optionalData);
+      if (isAllFiller) {
+        if (optionalCheckChar != '<' && optionalCheckChar != '0') {
+          return false;
+        }
+      } else {
+        final int? optionalCheck = int.tryParse(optionalCheckChar);
+        if (optionalCheck == null ||
+            computeIcaoMrzCheckDigit(optionalData) != optionalCheck) {
+          return false;
+        }
+      }
+
+      final String compositeSource =
+          '${l2.substring(0, 10)}${l2.substring(13, 20)}${l2.substring(21, 43)}';
+      final int? compositeCheck = int.tryParse(l2[43]);
+      if (compositeCheck == null ||
+          computeIcaoMrzCheckDigit(compositeSource) != compositeCheck) {
+        return false;
+      }
       return true;
     }
 
@@ -1982,27 +2005,66 @@ class DocumentOcrAndLivenessService {
   }) async {
     if (edgeFunctionInvoker != null) {
       try {
-        final Map<String, dynamic> response = await edgeFunctionInvoker(<String, dynamic>{
+        final String cleanCpf = digitsOnly(typedCpfRaw);
+        final Map<String, dynamic> response =
+            await edgeFunctionInvoker(<String, dynamic>{
+          'mode': 'kyc_document',
+          'frontBase64': base64Encode(frontImageBytes),
+          'backBase64': base64Encode(backImageBytes),
+          'typedCpf': cleanCpf,
+          'typedFullName': typedFullName,
           'document_type': documentType.code,
-          'expected_cpf': digitsOnly(typedCpfRaw),
+          'expected_cpf': cleanCpf,
           'expected_full_name': typedFullName,
           'front_bytes_len': frontImageBytes.length,
           'back_bytes_len': backImageBytes.length,
         });
 
-        final String decision =
-            (response['decision'] ?? 'APPROVED').toString().toUpperCase();
-        if (decision == 'REJECTED') {
-          final String reasonCode =
-              (response['reason_code'] ?? 'ERR_BLURRY_DOCUMENT_IMAGE').toString();
+        final bool readyFlagFalse =
+            response['ready_for_serpro_and_carbon'] == false;
+        final String decision = (response['decision'] ??
+                (readyFlagFalse ? 'REJECTED' : 'APPROVED'))
+            .toString()
+            .toUpperCase();
+        if (readyFlagFalse || decision == 'REJECTED') {
+          final Object? dossierObj = response['dossier'];
+          final String? dossierGuidance = dossierObj is Map
+              ? dossierObj['user_friendly_retake_guidance']?.toString()
+              : null;
+          final String reasonCode = (response['reason_code'] ??
+                  dossierGuidance ??
+                  'ERR_BLURRY_DOCUMENT_IMAGE')
+              .toString();
           return ArgonVisionGateVerificationResult(
             isApproved: false,
-            decision: decision,
+            decision: 'REJECTED',
             usedTier1EdgeFunction: true,
             degradedGracefullyToLocal: false,
             errorCode: reasonCode,
           );
         }
+
+        AuditedDocumentOcrResult? enrichedLocal;
+        try {
+          enrichedLocal = await analyzeDocumentForensicsAndOcrInIsolate(
+            frontImageBytes: frontImageBytes,
+            backImageBytes: backImageBytes,
+            documentType: documentType,
+            typedFullName: typedFullName,
+            typedCpfRaw: typedCpfRaw,
+            livenessFaceEmbedding128: livenessFaceEmbedding128,
+            rawOcrFrontTextOverride: rawOcrFrontTextOverride,
+            rawOcrBackTextOverride: rawOcrBackTextOverride,
+          );
+        } catch (_) {}
+
+        return ArgonVisionGateVerificationResult(
+          isApproved: true,
+          decision: 'APPROVED',
+          usedTier1EdgeFunction: true,
+          degradedGracefullyToLocal: false,
+          localResult: enrichedLocal,
+        );
       } catch (_) {
         // Degradação elegante automática para o motor óptico/matemático local
       }

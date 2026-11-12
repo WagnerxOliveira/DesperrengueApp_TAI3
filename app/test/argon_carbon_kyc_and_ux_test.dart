@@ -66,15 +66,27 @@ void main() {
       final String tamperedL2 = '880515${l2.substring(6)}';
       expect(DocumentOcrAndLivenessService.validateIcaoMrzLines(<String>[l1, tamperedL2, l3]), isFalse);
 
-      // Constrói MRZ TD3 (2x44 - Passaporte) válido
+      // Constrói MRZ TD3 (2x44 - Passaporte) válido com DV opcional (pos 42) e DV composto final (pos 43)
       const String passDoc = 'BR9876543';
       final int passDocDv = DocumentOcrAndLivenessService.computeIcaoMrzCheckDigit(passDoc);
-      final String td3L1 = 'P<BRACLAUDIANO<<WAGNER<OLIVEIRA<<<<<<<<<<<<<';
-      final String td3L2 =
-          '$passDoc${passDocDv}BRA$birth${birthDv}M$expiry$expiryDv<<<<<<<<<<<<<<02';
+      const String td3L1 = 'P<BRACLAUDIANO<<WAGNER<OLIVEIRA<<<<<<<<<<<<<';
+      final String td3L2WithoutComp =
+          '$passDoc${passDocDv}BRA$birth${birthDv}M$expiry$expiryDv<<<<<<<<<<<<<<0';
+      final String td3CompositeSource =
+          '${td3L2WithoutComp.substring(0, 10)}${td3L2WithoutComp.substring(13, 20)}${td3L2WithoutComp.substring(21, 43)}';
+      final int td3CompDv =
+          DocumentOcrAndLivenessService.computeIcaoMrzCheckDigit(td3CompositeSource);
+      final String td3L2 = '$td3L2WithoutComp$td3CompDv';
       expect(td3L1.length, equals(44));
       expect(td3L2.length, equals(44));
       expect(DocumentOcrAndLivenessService.validateIcaoMrzLines(<String>[td3L1, td3L2]), isTrue);
+
+      // Adultera o DV composto final l2[43] do TD3 -> deve reprovar
+      final String tamperedTd3L2 = '$td3L2WithoutComp${(td3CompDv + 1) % 10}';
+      expect(
+        DocumentOcrAndLivenessService.validateIcaoMrzLines(<String>[td3L1, tamperedTd3L2]),
+        isFalse,
+      );
     });
 
     test('Validador de CNH: RENACH (^[A-Z]{2}\\d{9}\$) e Código de Segurança de 11 dígitos', () {
@@ -318,11 +330,25 @@ void main() {
         ),
       );
 
-      // 3. Congela Selfie Canônica ao vivo
+      // 3. Bloqueia tentativa de congelar liveness após a janela estrita de 90s (t_liveness - t0 > 90s)
+      expect(
+        () => KycSessionAntiSwapGuard.freezeCanonicalSelfie(
+          ticket: issued,
+          selfieBytes: selfieA,
+          origin: CaptureOrigin.liveCameraOnly,
+          nowUtc: t0.add(const Duration(seconds: 95)),
+        ),
+        throwsA(
+          predicate((e) => e.toString().contains('ERR_SESSION_EXPIRED_OR_SWAP')),
+        ),
+      );
+
+      // 3b. Congela Selfie Canônica ao vivo dentro de 90s e valida que sensor legítimo ('Jacobson') não é bloqueado por word-boundary
       final frozen = KycSessionAntiSwapGuard.freezeCanonicalSelfie(
         ticket: issued,
         selfieBytes: selfieA,
         origin: CaptureOrigin.liveCameraOnly,
+        detectedCameraLabels: const <String>['Jacobson Optical Sensor Front 12MP'],
         nowUtc: t0.add(const Duration(seconds: 12)),
       );
       expect(frozen.hasFrozenSelfie, isTrue);
@@ -354,7 +380,7 @@ void main() {
         ),
       );
 
-      // 6. Vincula documentos dentro da janela de 180s e sela requestHash SHA-256
+      // 6. Vincula documentos dentro da janela de 180s e sela requestHash SHA-256 + wire codes canônicos
       final bound = KycSessionAntiSwapGuard.bindDocumentCapturesAndComputeRequestHash(
         ticket: frozen,
         frontDocBytes: frontDoc,
@@ -364,6 +390,9 @@ void main() {
       expect(bound.isFullyBound, isTrue);
       expect(bound.requestHash, isNotNull);
       expect(bound.requestHash!.length, equals(64));
+      final auditPayload = bound.toAuditHeadersAndPayload();
+      expect(auditPayload['attestation_verdict'], equals('WEB_LIMITED_ALCADA'));
+      expect(auditPayload['capture_source'], equals('LIVE_CAMERA'));
 
       // 7. Verifica integridade com a mesma selfie (OK) e bloqueia tentativa de swap por selfieB
       KycSessionAntiSwapGuard.verifyBoundTicketIntegrity(
@@ -409,6 +438,65 @@ void main() {
       expect(degradedResult.usedTier1EdgeFunction, isFalse);
       expect(degradedResult.isApproved, isTrue);
       expect(degradedResult.localResult, isNotNull);
+
+      // Cenário Tier-1 conectado (ready_for_serpro_and_carbon: true)
+      Map<String, dynamic>? capturedRequestPayload;
+      final tier1Approved =
+          await DocumentOcrAndLivenessService.invokeArgonVisionGateWithGracefulDegradation(
+        frontImageBytes: front,
+        backImageBytes: back,
+        documentType: OfficialDocumentType.cnh,
+        typedFullName: 'Wagner Oliveira',
+        typedCpfRaw: '119.787.236-10',
+        livenessFaceEmbedding128: liveness.faceEmbedding128,
+        edgeFunctionInvoker: (payload) async {
+          capturedRequestPayload = payload;
+          return <String, dynamic>{
+            'mode': 'kyc_document',
+            'ready_for_serpro_and_carbon': true,
+            'name_compatibility_score': 1.0,
+            'cpf_masked': '***.787.236-**',
+          };
+        },
+      );
+      expect(capturedRequestPayload, isNotNull);
+      expect(capturedRequestPayload!['mode'], equals('kyc_document'));
+      expect(capturedRequestPayload!['frontBase64'], isA<String>());
+      expect(capturedRequestPayload!['backBase64'], isA<String>());
+      expect(capturedRequestPayload!['typedCpf'], equals('11978723610'));
+      expect(capturedRequestPayload!['typedFullName'], equals('Wagner Oliveira'));
+      expect(tier1Approved.isApproved, isTrue);
+      expect(tier1Approved.decision, equals('APPROVED'));
+      expect(tier1Approved.usedTier1EdgeFunction, isTrue);
+      expect(tier1Approved.degradedGracefullyToLocal, isFalse);
+
+      // Cenário Tier-1 rejeitado (ready_for_serpro_and_carbon: false)
+      final tier1Rejected =
+          await DocumentOcrAndLivenessService.invokeArgonVisionGateWithGracefulDegradation(
+        frontImageBytes: front,
+        backImageBytes: back,
+        documentType: OfficialDocumentType.cnh,
+        typedFullName: 'Wagner Oliveira',
+        typedCpfRaw: '119.787.236-10',
+        edgeFunctionInvoker: (_) async {
+          return <String, dynamic>{
+            'mode': 'kyc_document',
+            'ready_for_serpro_and_carbon': false,
+            'dossier': <String, dynamic>{
+              'user_friendly_retake_guidance':
+                  'Havia um pequeno reflexo de luz sobre a foto do documento.',
+            },
+          };
+        },
+      );
+      expect(tier1Rejected.isApproved, isFalse);
+      expect(tier1Rejected.decision, equals('REJECTED'));
+      expect(tier1Rejected.usedTier1EdgeFunction, isTrue);
+      expect(tier1Rejected.degradedGracefullyToLocal, isFalse);
+      expect(
+        tier1Rejected.errorCode,
+        contains('Havia um pequeno reflexo de luz'),
+      );
     });
   });
 
@@ -585,6 +673,17 @@ void main() {
 
           expect(find.byKey(const ValueKey('ocr-transcribed-card')), findsOneWidget);
           expect(find.text('WAGNER OLIVEIRA CLAUDIANO'), findsOneWidget);
+          expect(find.textContaining('***.787.236-**'), findsOneWidget);
+          expect(find.textContaining('119.787.236-10'), findsNothing);
+
+          // Testa o toggle de conferência segura do CPF (revela e volta a mascarar)
+          final toggleCpf = find.byKey(const ValueKey('toggle-cpf-reveal'));
+          await tester.ensureVisible(toggleCpf);
+          await tester.tap(toggleCpf);
+          await tester.pump();
+          expect(find.textContaining('119.787.236-10'), findsOneWidget);
+          await tester.tap(toggleCpf);
+          await tester.pump();
           expect(find.textContaining('***.787.236-**'), findsOneWidget);
 
           // Garante que NENHUM widget Text na árvore possui jargão técnico proibido
