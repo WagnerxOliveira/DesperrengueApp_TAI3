@@ -1,15 +1,15 @@
 import '../../../core/ui/app_scaffold.dart';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 // Importação ativa. O VS Code não apagará esta linha pois a classe está em uso.
-import 'verificacao_step3_selfie.dart';
+import 'verificacao_step3_selfie.dart';
 import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep2VersoScreen extends StatefulWidget {
-  final File frenteDocumento; // Recebe a imagem da Etapa 1
+  final XFile frenteDocumento; // Recebe a imagem da Etapa 1
 
   const VerificacaoStep2VersoScreen({super.key, required this.frenteDocumento});
 
@@ -21,7 +21,8 @@ class VerificacaoStep2VersoScreen extends StatefulWidget {
 class _VerificacaoStep2VersoScreenState
     extends State<VerificacaoStep2VersoScreen> {
   final Color _primaryBlue = const Color(0xFF003366);
-  File? _imagemSelecionada;
+  XFile? _imagemSelecionada;
+  Uint8List? _previewBytes;
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _capturarImagem(ImageSource source) async {
@@ -32,8 +33,12 @@ class _VerificacaoStep2VersoScreenState
       );
 
       if (imagem != null) {
+        // Bytes lidos uma vez (Web-safe: sem dart:io/File) e reaproveitados no preview.
+        final bytes = await imagem.readAsBytes();
+        if (!mounted) return;
         setState(() {
-          _imagemSelecionada = File(imagem.path);
+          _imagemSelecionada = imagem;
+          _previewBytes = bytes;
         });
       }
     } catch (e) {
@@ -203,9 +208,11 @@ class _VerificacaoStep2VersoScreenState
                       child: _imagemSelecionada != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                _imagemSelecionada!,
+                              child: Image.memory(
+                                _previewBytes!,
                                 fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                cacheWidth: 1080,
                               ),
                             )
                           : Column(

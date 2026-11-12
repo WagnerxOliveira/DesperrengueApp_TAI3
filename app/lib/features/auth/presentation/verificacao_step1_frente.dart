@@ -1,11 +1,11 @@
 import '../../../core/ui/app_scaffold.dart';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 // O VS Code não apagará mais esta linha porque a classe está a ser usada abaixo!
-import 'verificacao_step2_verso.dart';
+import 'verificacao_step2_verso.dart';
 import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep1FrenteScreen extends StatefulWidget {
@@ -19,7 +19,8 @@ class VerificacaoStep1FrenteScreen extends StatefulWidget {
 class _VerificacaoStep1FrenteScreenState
     extends State<VerificacaoStep1FrenteScreen> {
   final Color _primaryBlue = const Color(0xFF003366);
-  File? _imagemSelecionada;
+  XFile? _imagemSelecionada;
+  Uint8List? _previewBytes;
   final ImagePicker _picker = ImagePicker();
 
   // Função central para capturar imagem (Câmara ou Galeria)
@@ -31,8 +32,12 @@ class _VerificacaoStep1FrenteScreenState
       );
 
       if (imagem != null) {
+        // Bytes lidos uma vez (Web-safe: sem dart:io/File) e reaproveitados no preview.
+        final bytes = await imagem.readAsBytes();
+        if (!mounted) return;
         setState(() {
-          _imagemSelecionada = File(imagem.path);
+          _imagemSelecionada = imagem;
+          _previewBytes = bytes;
         });
       }
     } catch (e) {
@@ -202,9 +207,11 @@ class _VerificacaoStep1FrenteScreenState
                       child: _imagemSelecionada != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                _imagemSelecionada!,
+                              child: Image.memory(
+                                _previewBytes!,
                                 fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                cacheWidth: 1080,
                               ),
                             )
                           : Column(

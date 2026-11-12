@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../utils/address_privacy.dart';
 import '../utils/tag_normalizer.dart' show normalizeTag;
 
 /// Refina um texto já estruturado (acentos, maiúsculas, pontuação). Nunca lança: se algo
@@ -18,8 +19,9 @@ abstract class TextRefiner {
 /// letras da palavra não muda (só caixa, acento ou pontuação). Nenhuma sugestão que troque uma
 /// palavra por outra é aplicada, então o sentido do relato nunca é alterado.
 ///
-/// Privacidade: só o texto do relato (sem identificação) é enviado, e só depois que o cliente
-/// para a gravação. Falha de rede/limite → o texto local (já formatado) é mantido.
+/// Privacidade: só o texto do relato é enviado, e só depois que o cliente para a gravação.
+/// E-mails, números (CPF/telefone/CEP/nº) e "Rua ..." são mascarados com `#` (mesmo comprimento)
+/// antes de sair do aparelho ([AddressPrivacy.maskForThirdParty]). Falha de rede/limite → o texto local (já formatado) é mantido.
 class LanguageToolRefiner implements TextRefiner {
   LanguageToolRefiner({http.Client? client, this.timeout = const Duration(seconds: 6), Uri? endpoint})
       : _client = client ?? http.Client(),
@@ -37,7 +39,7 @@ class LanguageToolRefiner implements TextRefiner {
     final input = text.trim();
     if (input.length < 3 || input.length > maxChars) return text;
     try {
-      final res = await _client.post(_endpoint, body: {'language': 'pt-BR', 'text': input}).timeout(timeout);
+      final res = await _client.post(_endpoint, body: {'language': 'pt-BR', 'text': AddressPrivacy.maskForThirdParty(input)}).timeout(timeout);
       if (res.statusCode != 200) return text;
       final json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
       final matches = (json['matches'] as List?)?.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList() ?? const [];

@@ -13,6 +13,27 @@ library;
 class AddressPrivacy {
   const AddressPrivacy._();
 
+  static final RegExp _maskEmail = RegExp(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+');
+  static final RegExp _maskDigits = RegExp(r'\d[\d.\-/() ]{1,}\d|\d{2,}');
+  static final RegExp _maskStreet = RegExp(
+    r'\b(?:rua|avenida|av|travessa|alameda|estrada|rodovia|pra[cç]a|largo|beco|viela)\.?\s+(?:[A-Za-zÀ-ÿ]+\s*){1,4}',
+    caseSensitive: false,
+  );
+
+  /// Versão do texto segura para enviar a terceiros (ex.: corretor ortográfico
+  /// público): e-mails, números com 2+ dígitos (CPF, telefone, CEP, nº da casa)
+  /// e "Rua/Av. + nome" viram `#`. **Mantém exatamente o mesmo comprimento**, então
+  /// os `offset`s devolvidos pelo serviço continuam valendo no texto original.
+  static String maskForThirdParty(String text) {
+    String blank(Match m) => '#' * m.group(0)!.length;
+    var out = text;
+    out = out.replaceAllMapped(_maskEmail, blank);
+    out = out.replaceAllMapped(_maskStreet, blank);
+    out = out.replaceAllMapped(_maskDigits, blank);
+    assert(out.length == text.length);
+    return out;
+  }
+
   static final RegExp _streetPrefix = RegExp(
     r'^(rua|r\.|avenida|av\.?|travessa|tv\.?|alameda|al\.?|estrada|est\.?|rodovia|rod\.?|pra[cç]a|p[cç]a\.?|largo|beco|viela|via|quadra|qd\.?|lote|lt\.?|bloco|bl\.?|apto?\.?|apartamento|casa|sala|conjunto|cj\.?|fundos|esquina|pr[oó]ximo|perto|ao lado|em frente|refer[eê]ncia|cep)\b',
     caseSensitive: false,

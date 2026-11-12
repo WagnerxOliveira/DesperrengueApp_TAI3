@@ -251,7 +251,34 @@ class ProviderPortfolioStore extends ChangeNotifier {
 
   /// Sincroniza o Histórico de Serviços Prestados e os Destaques do Portfólio
   /// diretamente com o Supabase para o profissional autenticado.
-  Future<void> syncFromSupabase([SupabaseClient? customClient]) async {
+  Future<void> syncFromSupabase([SupabaseClient? customClient]) {
+    // Chamadas concorrentes (aba abre + pull-to-refresh + push) viram UMA execução em
+    // voo; se chegar pedido novo durante a execução, roda mais uma vez ao final.
+    // Evita respostas fora de ordem sobrescrevendo dados mais novos e _isSyncing
+    // virando false com outra sincronização ainda ativa.
+    final running = _syncInFlight;
+    if (running != null) {
+      _syncAgain = true;
+      return running;
+    }
+    final f = _syncLoop(customClient).whenComplete(() {
+      _syncInFlight = null;
+    });
+    _syncInFlight = f;
+    return f;
+  }
+
+  Future<void>? _syncInFlight;
+  bool _syncAgain = false;
+
+  Future<void> _syncLoop(SupabaseClient? customClient) async {
+    do {
+      _syncAgain = false;
+      await _syncOnce(customClient);
+    } while (_syncAgain);
+  }
+
+  Future<void> _syncOnce([SupabaseClient? customClient]) async {
     SupabaseClient client;
     try {
       client = customClient ?? Supabase.instance.client;

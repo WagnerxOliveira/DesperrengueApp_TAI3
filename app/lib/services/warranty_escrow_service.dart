@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/security/perceptual_hash_guard.dart';
+import '../core/services/media_service.dart';
 
 /// Pipeline de Pré-Aquecimento de GPS e Upload Especulativo em Background (`PDF 3 Seção 4.3`).
 ///
@@ -55,10 +56,17 @@ class SpeculativeEvidencePipeline {
     final path =
         'evidence/$jobId/${DateTime.now().millisecondsSinceEpoch}_${photo.perceptualHash64.abs()}.jpg';
 
-    final Future<String> uploadFuture = supabase.storage
-        .from(bucket)
-        .uploadBinary(path, photo.bytes)
-        .then((_) => supabase.storage.from(bucket).getPublicUrl(path));
+    // LGPD (contrato B.3): a foto é tirada na casa do cliente; o EXIF pode trazer o GPS
+    // exato. O upload sai SEMPRE higienizado (o pHash é de pixels e não muda).
+    // Bucket forense é privado: devolvemos URL assinada (a pública não funcionaria).
+    final Future<String> uploadFuture = MediaService.sanitizeForUpload(photo.bytes, 'jpg').then((clean) async {
+      await supabase.storage.from(bucket).uploadBinary(
+            path,
+            clean.bytes,
+            fileOptions: FileOptions(contentType: clean.mime, upsert: false),
+          );
+      return supabase.storage.from(bucket).createSignedUrl(path, MediaService.signedUrlTtlSeconds);
+    });
 
     return (photo: photo, uploadFuture: uploadFuture);
   }
