@@ -148,6 +148,7 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
   @override
   void dispose() {
     _tick?.cancel();
+    EagerImagePrefetcher.cancelPending();
     super.dispose();
   }
 
@@ -204,19 +205,47 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
 
   Future<void> _openJobMapModal(BuildContext context) async {
     String line = widget.job.addressSummary ?? '';
+    String? cep;
+    String? referencePoint;
+    double? exactLat = widget.job.latitude;
+    double? exactLng = widget.job.longitude;
+
     try {
-      final addr = await JobService().jobAddress(widget.job.id);
-      final full = (addr?['address_line'] as String?)?.trim();
-      if (full != null && full.isNotEmpty) line = full;
+      final ownerLoc = await _jobs.fetchOwnerExactLocation(widget.job.id);
+      if (ownerLoc != null) {
+        if (ownerLoc.lat != null && ownerLoc.lng != null) {
+          exactLat = ownerLoc.lat;
+          exactLng = ownerLoc.lng;
+        }
+        final full = ownerLoc.fullStreetLine?.trim();
+        if (full != null && full.isNotEmpty) {
+          line = full;
+        }
+        cep = ownerLoc.cep;
+        referencePoint = ownerLoc.reference;
+      }
     } catch (_) {}
+
+    if (line.isEmpty || line == widget.job.addressSummary) {
+      try {
+        final addr = await _jobs.jobAddress(widget.job.id);
+        final full = (addr?['address_line'] as String?)?.trim();
+        if (full != null && full.isNotEmpty) line = full;
+        cep ??= (addr?['cep'] as String?)?.trim();
+        referencePoint ??= (addr?['reference'] as String?)?.trim();
+      } catch (_) {}
+    }
     if (line.isEmpty) line = 'Poços de Caldas - MG';
     if (!context.mounted) return;
     await OrderLiveMapModalScreen.show(
       context,
+      jobId: widget.job.id,
       addressLine: line,
       summary: widget.job.addressSummary,
-      latitude: widget.job.latitude,
-      longitude: widget.job.longitude,
+      cep: cep,
+      referencePoint: referencePoint,
+      latitude: exactLat,
+      longitude: exactLng,
       orderStatus: widget.job.status.name,
       onAdjustPin: (lat, lng) async {
         await SupabaseSchedulingBackend().setLocation(
@@ -362,7 +391,7 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
   late final AnimationController _radarCtrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 2800),
-  )..repeat();
+  );
 
   double _lat = -21.7878;
   double _lng = -46.5614;
@@ -377,15 +406,52 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
     unawaited(_resolveCoords());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    if (disableAnimations) {
+      if (_radarCtrl.isAnimating) _radarCtrl.stop();
+      _radarCtrl.value = 0.35;
+    } else if (!_radarCtrl.isAnimating) {
+      _radarCtrl.repeat();
+    }
+  }
+
   Future<void> _resolveCoords() async {
-    final addrLine = widget.job.addressSummary ?? '';
-    if (addrLine.isEmpty && widget.job.latitude != null && widget.job.longitude != null) return;
+    double? exactLat = widget.job.latitude;
+    double? exactLng = widget.job.longitude;
+    var addrLine = widget.job.addressSummary ?? '';
+
+    if (exactLat == null || exactLng == null) {
+      try {
+        final ownerLoc = await JobService().fetchOwnerExactLocation(widget.job.id);
+        if (ownerLoc != null) {
+          if (ownerLoc.lat != null && ownerLoc.lng != null) {
+            exactLat = ownerLoc.lat;
+            exactLng = ownerLoc.lng;
+            if (mounted) {
+              setState(() {
+                _lat = exactLat!;
+                _lng = exactLng!;
+              });
+            }
+          }
+          final full = ownerLoc.fullStreetLine?.trim();
+          if (full != null && full.isNotEmpty) {
+            addrLine = full;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (addrLine.isEmpty && exactLat != null && exactLng != null) return;
     try {
       final resolved = await RealTimeRouteAndTrafficService.instance.resolveExactAddress(
         addressLine: addrLine.isEmpty ? 'Poços de Caldas - MG' : addrLine,
         summary: widget.job.addressSummary,
-        latitude: widget.job.latitude,
-        longitude: widget.job.longitude,
+        latitude: exactLat,
+        longitude: exactLng,
       );
       if (!mounted) return;
       if (resolved.hasCoordinates) {
@@ -453,16 +519,18 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
                 fit: StackFit.expand,
                 children: [
                   IgnorePointer(
-                    child: FlutterMap(
-                      key: ValueKey('waiting-radar-map-${_lat.toStringAsFixed(4)}-${_lng.toStringAsFixed(4)}'),
-                      options: MapOptions(
-                        initialCenter: centerPoint,
-                        initialZoom: 15.2,
-                        interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                    child: RepaintBoundary(
+                      child: FlutterMap(
+                        key: ValueKey('waiting-radar-map-${_lat.toStringAsFixed(4)}-${_lng.toStringAsFixed(4)}'),
+                        options: MapOptions(
+                          initialCenter: centerPoint,
+                          initialZoom: 15.2,
+                          interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                        ),
+                        children: [
+                          buildSafeMapTileLayer(context),
+                        ],
                       ),
-                      children: [
-                        buildSafeMapTileLayer(context),
-                      ],
                     ),
                   ),
                   // Vinheta executiva para leitura e contraste
@@ -588,12 +656,16 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
                             children: [
                               Icon(Icons.map_rounded, size: 13, color: tk.clientAccent),
                               const SizedBox(width: 4),
-                              Text(
-                                'Ver mapa e rota',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: tk.clientAccent,
+                              Flexible(
+                                child: Text(
+                                  'Ver mapa e rota',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: tk.clientAccent,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1254,13 +1326,16 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
           ),
           const SizedBox(height: 18),
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 22),
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
             decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
                 Text('Valor do orçamento', style: TextStyle(color: context.tk.textMuted)),
                 const SizedBox(height: 4),
-                Text(brl(q.price), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(brl(q.price), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
+                ),
                 if (q.estimatedHours != null)
                   Text('Previsão: ${q.estimatedHours!.toStringAsFixed(q.estimatedHours! % 1 == 0 ? 0 : 1)} h de serviço',
                       style: TextStyle(color: context.tk.textMuted)),
@@ -1359,7 +1434,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final price = job.agreedPrice ?? 0;
     return AppScaffold(
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          tooltip: 'Voltar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
         title: const BrandLogo(),
       ),
       body: ListView(
@@ -1375,7 +1454,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: Row(
               children: [
                 const Expanded(child: Text('Total a pagar:', style: TextStyle(fontSize: 16))),
-                Text(brl(price), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(brl(price), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1431,6 +1516,7 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
   @override
   void dispose() {
     _tick?.cancel();
+    EagerImagePrefetcher.cancelPending();
     super.dispose();
   }
 
@@ -1542,7 +1628,14 @@ class _MatchDialog extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Align(alignment: Alignment.topRight, child: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))),
+            Align(
+              alignment: Alignment.topRight,
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded),
+                tooltip: 'Fechar',
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
             const Text('Temos um Match! 🎉', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
             const SizedBox(height: 8),
             StatusChip('Confirmado!', color: context.tk.successInk, background: context.tk.warningSoft),

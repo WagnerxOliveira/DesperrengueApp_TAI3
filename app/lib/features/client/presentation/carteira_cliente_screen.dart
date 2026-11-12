@@ -112,8 +112,9 @@ class _HeroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Text('Saldo disponível', style: TextStyle(color: Colors.white70, fontSize: 14)),
-            const Spacer(),
+            const Expanded(
+              child: Text('Saldo disponível', style: TextStyle(color: Colors.white70, fontSize: 14)),
+            ),
             IconButton(
               tooltip: hidden ? 'Mostrar valores' : 'Ocultar valores',
               onPressed: onToggle,
@@ -122,7 +123,11 @@ class _HeroCard extends StatelessWidget {
           ]),
           loading
               ? const SizedBox(height: 48, child: Align(alignment: Alignment.centerLeft, child: SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white))))
-              : Text(m(wallet.availableCents), style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: -1)),
+              : FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(m(wallet.availableCents), style: const TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: -1)),
+                ),
           const SizedBox(height: 12),
           InkWell(
             onTap: onEscrow,

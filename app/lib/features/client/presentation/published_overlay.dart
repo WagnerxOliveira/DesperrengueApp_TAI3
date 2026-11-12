@@ -107,94 +107,96 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
             mainAxisSize: MainAxisSize.min,
             children: [
               // Toques no círculo não fecham: só a área escura (barreira) e o botão Fechar.
-              SizedBox(
-                key: const ValueKey('published-circle'),
-                width: size,
-                height: size,
-                child: AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (context, child) => CustomPaint(
-                    painter: _WavesPainter(
-                      color: tk.clientAccent,
-                      t: _pulse.value,
-                    ),
-                    child: child,
-                  ),
-                  child: Center(
-                    child: Container(
-                      width: 252,
-                      height: 252,
-                      padding: const EdgeInsets.fromLTRB(26, 20, 26, 20),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: tk.card,
-                        border: Border.all(
-                          color: tk.clientAccent.withValues(alpha: 0.6),
-                          width: 3,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: tk.clientAccent.withValues(alpha: 0.45),
-                            blurRadius: 36,
-                            spreadRadius: 2,
-                          ),
-                        ],
+              RepaintBoundary(
+                child: SizedBox(
+                  key: const ValueKey('published-circle'),
+                  width: size,
+                  height: size,
+                  child: AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (context, child) => CustomPaint(
+                      painter: _WavesPainter(
+                        color: tk.clientAccent,
+                        t: _pulse.value,
                       ),
-                      // FittedBox: com fonte grande do sistema o conteúdo encolhe em vez de estourar o círculo.
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: SizedBox(
-                          width: 200,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const _AnimatedCheck(),
-                              const SizedBox(height: 10),
-                              Text(
-                                widget.direct
-                                    ? 'Pedido enviado!'
-                                    : 'Pedido publicado!',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  fontSize: 21,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    categoryIcon(widget.categoryName),
-                                    size: 15,
-                                    color: tk.clientAccent,
+                      child: child,
+                    ),
+                    child: Center(
+                      child: Container(
+                        width: 252,
+                        height: 252,
+                        padding: const EdgeInsets.fromLTRB(26, 20, 26, 20),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: tk.card,
+                          border: Border.all(
+                            color: tk.clientAccent.withValues(alpha: 0.6),
+                            width: 3,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: tk.clientAccent.withValues(alpha: 0.45),
+                              blurRadius: 36,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        // FittedBox: com fonte grande do sistema o conteúdo encolhe em vez de estourar o círculo.
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: SizedBox(
+                            width: 200,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const _AnimatedCheck(),
+                                const SizedBox(height: 10),
+                                Text(
+                                  widget.direct
+                                      ? 'Pedido enviado!'
+                                      : 'Pedido publicado!',
+                                  textAlign: TextAlign.center,
+                                  style: const TextStyle(
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w900,
                                   ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      widget.categoryName,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        color: tk.clientAccent,
+                                ),
+                                const SizedBox(height: 6),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      categoryIcon(widget.categoryName),
+                                      size: 15,
+                                      color: tk.clientAccent,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Flexible(
+                                      child: Text(
+                                        widget.categoryName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          color: tk.clientAccent,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                _body,
-                                textAlign: TextAlign.center,
-                                maxLines: 4,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  height: 1.3,
-                                  color: tk.textMuted,
+                                  ],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 6),
+                                Text(
+                                  _body,
+                                  textAlign: TextAlign.center,
+                                  maxLines: 4,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.3,
+                                    color: tk.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

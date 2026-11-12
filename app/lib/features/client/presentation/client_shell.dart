@@ -49,6 +49,12 @@ class _ClientShellState extends State<ClientShell> {
     }
   }
 
+  @override
+  void dispose() {
+    EagerImagePrefetcher.cancelPending();
+    super.dispose();
+  }
+
   void _selectTab(int i) {
     if (i == 1) {
       JobService.notifyJobsChanged();
@@ -138,8 +144,13 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
       children: [
         Row(
           children: [
-            const BrandLogo(size: 20),
-            const Spacer(),
+            const Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: BrandLogo(size: 20),
+              ),
+            ),
+            const SizedBox(width: 4),
             const AppQuickUpdateButton(compact: true),
             const SizedBox(width: 6),
             const WalletChip(),
@@ -209,13 +220,20 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
               ),
             ),
             const SizedBox(width: 10),
-            Material(
-              color: context.tk.surface,
-              borderRadius: BorderRadius.circular(14),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: () => _openSearch(query: _search.text),
-                child: const SizedBox(width: 54, height: 54, child: Icon(Icons.tune_rounded)),
+            Semantics(
+              button: true,
+              label: 'Filtrar busca',
+              child: Tooltip(
+                message: 'Filtrar busca',
+                child: Material(
+                  color: context.tk.surface,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => _openSearch(query: _search.text),
+                    child: const SizedBox(width: 54, height: 54, child: Icon(Icons.tune_rounded)),
+                  ),
+                ),
               ),
             ),
           ],
@@ -325,7 +343,19 @@ class _PulseDot extends StatefulWidget {
 }
 
 class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 1));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    if (disableAnimations) {
+      if (_c.isAnimating) _c.stop();
+      _c.value = 1.0;
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -334,10 +364,12 @@ class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixi
   }
 
   @override
-  Widget build(BuildContext context) => FadeTransition(
-    opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
-    child: Container(width: 14, height: 14, decoration: BoxDecoration(color: context.tk.clientAccent, shape: BoxShape.circle)),
-  );
+  Widget build(BuildContext context) => RepaintBoundary(
+        child: FadeTransition(
+          opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
+          child: Container(width: 14, height: 14, decoration: BoxDecoration(color: context.tk.clientAccent, shape: BoxShape.circle)),
+        ),
+      );
 }
 
 class _OpenJobBanner extends StatelessWidget {

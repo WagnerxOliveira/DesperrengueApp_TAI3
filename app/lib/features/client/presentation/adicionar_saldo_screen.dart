@@ -239,7 +239,10 @@ class _PixView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: [
-        Text(Money.brl(topup.amountCents), textAlign: TextAlign.center, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: tk.text)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(Money.brl(topup.amountCents), textAlign: TextAlign.center, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: tk.text)),
+        ),
         const SizedBox(height: 4),
         Text('Pague com o Pix abaixo', textAlign: TextAlign.center, style: TextStyle(color: tk.textMuted)),
         const SizedBox(height: 16),
@@ -305,7 +308,19 @@ class _Waiting extends StatefulWidget {
 }
 
 class _WaitingState extends State<_Waiting> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat(reverse: true);
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    if (disableAnimations) {
+      if (_c.isAnimating) _c.stop();
+      _c.value = 1.0;
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -319,7 +334,12 @@ class _WaitingState extends State<_Waiting> with SingleTickerProviderStateMixin 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        FadeTransition(opacity: Tween(begin: 0.35, end: 1.0).animate(_c), child: Icon(Icons.circle, size: 10, color: tk.warningInk)),
+        RepaintBoundary(
+          child: FadeTransition(
+            opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
+            child: Icon(Icons.circle, size: 10, color: tk.warningInk),
+          ),
+        ),
         const SizedBox(width: 10),
         Flexible(child: Text('Aguardando confirmação automática do banco...', style: TextStyle(color: tk.textMuted, fontSize: 13.5))),
       ],
