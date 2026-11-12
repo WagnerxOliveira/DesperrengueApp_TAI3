@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/scheduling_models.dart';
 import '../../../core/models/structured_service_address.dart';
 import '../../../core/services/accurate_geo_routing_service.dart';
+import '../../../core/services/job_service.dart';
 import '../../../core/services/real_time_route_and_traffic_service.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/duotone_service_icons.dart';
@@ -252,22 +253,25 @@ class PrecisionStatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: accent.withValues(alpha: 0.45)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: compact ? 11.5 : 12.5, color: accent),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: compact ? 10.5 : 11,
-              fontWeight: FontWeight.w700,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: compact ? 11.5 : 12.5, color: accent),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: compact ? 10.5 : 11,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -352,6 +356,7 @@ class InteractiveLocationPreviewCard extends StatefulWidget {
   const InteractiveLocationPreviewCard({
     super.key,
     required this.addressLine,
+    this.jobId,
     this.summary,
     this.cep,
     this.referencePoint,
@@ -370,6 +375,7 @@ class InteractiveLocationPreviewCard extends StatefulWidget {
   });
 
   final String addressLine;
+  final String? jobId;
   final String? summary;
   final String? cep;
   final String? referencePoint;
@@ -408,7 +414,8 @@ class _InteractiveLocationPreviewCardState
   @override
   void didUpdateWidget(covariant InteractiveLocationPreviewCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.addressLine != widget.addressLine ||
+    if (oldWidget.jobId != widget.jobId ||
+        oldWidget.addressLine != widget.addressLine ||
         oldWidget.summary != widget.summary ||
         oldWidget.latitude != widget.latitude ||
         oldWidget.longitude != widget.longitude ||
@@ -445,14 +452,71 @@ class _InteractiveLocationPreviewCardState
   }
 
   Future<void> _resolveExactCoordinatesIfNeeded() async {
-    if (widget.addressLine.trim().isEmpty) return;
+    double? ownerLat = widget.latitude;
+    double? ownerLng = widget.longitude;
+    String effectiveAddressLine = widget.addressLine;
+    String? effectiveCep = widget.cep;
+    String? effectiveReference = widget.referencePoint;
+
+    if ((ownerLat == null || ownerLng == null) &&
+        widget.jobId != null &&
+        widget.jobId!.trim().isNotEmpty) {
+      try {
+        final ownerLoc =
+            await JobService().fetchOwnerExactLocation(widget.jobId!);
+        if (ownerLoc != null &&
+            ownerLoc.lat != null &&
+            ownerLoc.lng != null) {
+          ownerLat = ownerLoc.lat;
+          ownerLng = ownerLoc.lng;
+          final rpcLine = ownerLoc.fullStreetLine;
+          if (rpcLine != null &&
+              rpcLine.trim().isNotEmpty &&
+              (effectiveAddressLine.trim().isEmpty ||
+                  effectiveAddressLine.trim() == widget.summary?.trim())) {
+            effectiveAddressLine = rpcLine.trim();
+          }
+          if ((effectiveCep == null || effectiveCep.trim().isEmpty) &&
+              ownerLoc.cep != null &&
+              ownerLoc.cep!.trim().isNotEmpty) {
+            effectiveCep = ownerLoc.cep!.trim();
+          }
+          if ((effectiveReference == null ||
+                  effectiveReference.trim().isEmpty) &&
+              ownerLoc.reference != null &&
+              ownerLoc.reference!.trim().isNotEmpty) {
+            effectiveReference = ownerLoc.reference!.trim();
+          }
+          if (mounted) {
+            setState(() {
+              _lat = ownerLat!;
+              _lng = ownerLng!;
+              _precision = widget.pinConfirmed
+                  ? DestinationPrecision.exact
+                  : DestinationPrecision.house;
+              _structured = StructuredServiceAddress.parse(
+                effectiveAddressLine,
+                summary: widget.summary,
+                cep: effectiveCep,
+                referencePoint: effectiveReference,
+                latitude: _lat,
+                longitude: _lng,
+                precision: _precision,
+                pinConfirmed: widget.pinConfirmed,
+              );
+            });
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (effectiveAddressLine.trim().isEmpty) return;
     if (isMapFlutterTestEnvironment()) {
       final localHit = AccurateGeoRoutingService.resolveFromLocalDictionary(
-        widget.addressLine,
+        effectiveAddressLine,
         summary: widget.summary,
       );
-      if (localHit != null &&
-          (widget.latitude == null || widget.longitude == null)) {
+      if (localHit != null && (ownerLat == null || ownerLng == null)) {
         if (!mounted) return;
         setState(() {
           _lat = localHit.lat;
@@ -468,12 +532,12 @@ class _InteractiveLocationPreviewCardState
     try {
       final resolved =
           await RealTimeRouteAndTrafficService.instance.resolveExactAddress(
-        addressLine: widget.addressLine,
+        addressLine: effectiveAddressLine,
         summary: widget.summary,
-        cep: widget.cep,
-        referencePoint: widget.referencePoint,
-        latitude: widget.latitude,
-        longitude: widget.longitude,
+        cep: effectiveCep,
+        referencePoint: effectiveReference,
+        latitude: ownerLat,
+        longitude: ownerLng,
         precision: widget.precision,
         pinConfirmed: widget.pinConfirmed,
       );
@@ -498,10 +562,15 @@ class _InteractiveLocationPreviewCardState
     }
     OrderLiveMapModalScreen.show(
       context,
-      addressLine: widget.addressLine,
+      jobId: widget.jobId,
+      addressLine: _structured.streetWithNumber.trim().isNotEmpty
+          ? _structured.formattedFullLine
+          : widget.addressLine,
       summary: widget.summary,
-      cep: widget.cep,
-      referencePoint: widget.referencePoint,
+      cep: _structured.cep.trim().isNotEmpty ? _structured.cep : widget.cep,
+      referencePoint: _structured.referencePoint.trim().isNotEmpty
+          ? _structured.referencePoint
+          : widget.referencePoint,
       latitude: _lat,
       longitude: _lng,
       precision: _precision,
@@ -569,43 +638,47 @@ class _InteractiveLocationPreviewCardState
                 fit: StackFit.expand,
                 children: [
                   IgnorePointer(
-                    child: FlutterMap(
-                      options: MapOptions(
-                        initialCenter: dest,
-                        initialZoom: 16.6,
-                        interactionOptions: const InteractionOptions(
-                          flags: InteractiveFlag.none,
+                    child: RepaintBoundary(
+                      child: FlutterMap(
+                        options: MapOptions(
+                          initialCenter: dest,
+                          initialZoom: 16.6,
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.none,
+                          ),
                         ),
+                        children: [
+                          buildSafeMapTileLayer(
+                            context,
+                            tileLayerOverride: widget.tileLayerOverride,
+                          ),
+                          CircleLayer(
+                            circles: [
+                              CircleMarker(
+                                point: dest,
+                                radius: 22,
+                                useRadiusInMeter: true,
+                                color: circleAccent.withValues(alpha: 0.14),
+                                borderColor:
+                                    circleAccent.withValues(alpha: 0.55),
+                                borderStrokeWidth: 1.5,
+                              ),
+                            ],
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: dest,
+                                width: 56,
+                                height: 64,
+                                alignment: Alignment.topCenter,
+                                child:
+                                    DestinationMapPin(confirmed: isConfirmed),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      children: [
-                        buildSafeMapTileLayer(
-                          context,
-                          tileLayerOverride: widget.tileLayerOverride,
-                        ),
-                        CircleLayer(
-                          circles: [
-                            CircleMarker(
-                              point: dest,
-                              radius: 22,
-                              useRadiusInMeter: true,
-                              color: circleAccent.withValues(alpha: 0.14),
-                              borderColor: circleAccent.withValues(alpha: 0.55),
-                              borderStrokeWidth: 1.5,
-                            ),
-                          ],
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: dest,
-                              width: 56,
-                              height: 64,
-                              alignment: Alignment.topCenter,
-                              child: DestinationMapPin(confirmed: isConfirmed),
-                            ),
-                          ],
-                        ),
-                      ],
                     ),
                   ),
                   Positioned(
@@ -760,6 +833,7 @@ class OrderLiveMapModalScreen extends StatefulWidget {
   const OrderLiveMapModalScreen({
     super.key,
     required this.addressLine,
+    this.jobId,
     this.summary,
     this.cep,
     this.referencePoint,
@@ -775,6 +849,7 @@ class OrderLiveMapModalScreen extends StatefulWidget {
   });
 
   final String addressLine;
+  final String? jobId;
   final String? summary;
   final String? cep;
   final String? referencePoint;
@@ -791,6 +866,7 @@ class OrderLiveMapModalScreen extends StatefulWidget {
   static Future<void> show(
     BuildContext context, {
     required String addressLine,
+    String? jobId,
     String? summary,
     String? cep,
     String? referencePoint,
@@ -810,6 +886,7 @@ class OrderLiveMapModalScreen extends StatefulWidget {
         fullscreenDialog: true,
         builder: (_) => OrderLiveMapModalScreen(
           addressLine: addressLine,
+          jobId: jobId,
           summary: summary,
           cep: cep,
           referencePoint: referencePoint,
@@ -841,7 +918,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
   late final AnimationController _pulseController = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1800),
-  )..repeat(reverse: true);
+  );
 
   Timer? _interactionIdleTimer;
   bool _isInteractingWithMap = false;
@@ -932,6 +1009,18 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    if (disableAnimations) {
+      if (_pulseController.isAnimating) _pulseController.stop();
+      _pulseController.value = 0.0;
+    } else if (!_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    }
+  }
+
+  @override
   void dispose() {
     _interactionIdleTimer?.cancel();
     _pulseController.dispose();
@@ -965,20 +1054,59 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
 
   Future<void> _loadExactAddressAndRoute() async {
     try {
+      double? ownerLat = widget.latitude;
+      double? ownerLng = widget.longitude;
+      String effectiveAddressLine = widget.addressLine;
+      String? effectiveCep = widget.cep;
+      String? effectiveReference = widget.referencePoint;
+
+      if ((ownerLat == null || ownerLng == null) &&
+          widget.jobId != null &&
+          widget.jobId!.trim().isNotEmpty) {
+        try {
+          final ownerLoc =
+              await JobService().fetchOwnerExactLocation(widget.jobId!);
+          if (ownerLoc != null &&
+              ownerLoc.lat != null &&
+              ownerLoc.lng != null) {
+            ownerLat = ownerLoc.lat;
+            ownerLng = ownerLoc.lng;
+            final rpcLine = ownerLoc.fullStreetLine;
+            if (rpcLine != null &&
+                rpcLine.trim().isNotEmpty &&
+                (effectiveAddressLine.trim().isEmpty ||
+                    effectiveAddressLine.trim() == widget.summary?.trim())) {
+              effectiveAddressLine = rpcLine.trim();
+            }
+            if ((effectiveCep == null || effectiveCep.trim().isEmpty) &&
+                ownerLoc.cep != null &&
+                ownerLoc.cep!.trim().isNotEmpty) {
+              effectiveCep = ownerLoc.cep!.trim();
+            }
+            if ((effectiveReference == null ||
+                    effectiveReference.trim().isEmpty) &&
+                ownerLoc.reference != null &&
+                ownerLoc.reference!.trim().isNotEmpty) {
+              effectiveReference = ownerLoc.reference!.trim();
+            }
+          }
+        } catch (_) {}
+      }
+
       final resolved =
           await RealTimeRouteAndTrafficService.instance.resolveExactAddress(
-        addressLine: widget.addressLine,
+        addressLine: effectiveAddressLine,
         summary: widget.summary,
-        cep: widget.cep,
-        referencePoint: widget.referencePoint,
-        latitude: widget.latitude ?? _lat,
-        longitude: widget.longitude ?? _lng,
+        cep: effectiveCep,
+        referencePoint: effectiveReference,
+        latitude: ownerLat ?? _lat,
+        longitude: ownerLng ?? _lng,
         precision: _precision,
         pinConfirmed: _pinConfirmed,
       );
       if (!mounted) return;
-      final nextLat = resolved.latitude ?? _lat;
-      final nextLng = resolved.longitude ?? _lng;
+      final nextLat = resolved.latitude ?? ownerLat ?? _lat;
+      final nextLng = resolved.longitude ?? ownerLng ?? _lng;
       final dest = LatLng(nextLat, nextLng);
       final origin = widget.providerOrigin ??
           RealTimeRouteAndTrafficService.defaultUrbanOriginForDestination(dest);
@@ -1247,111 +1375,116 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
         fit: StackFit.expand,
         children: [
           // 1. Mapa Cartográfico 100% da Viewport (120 FPS, gestos livres em todas as direções)
-          FlutterMap(
-            key: const ValueKey('live-map'),
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: initialCameraCenter,
-              initialZoom: _currentZoom,
-              minZoom: 3,
-              maxZoom: 19,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.all,
+          RepaintBoundary(
+            child: FlutterMap(
+              key: const ValueKey('live-map'),
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: initialCameraCenter,
+                initialZoom: _currentZoom,
+                minZoom: 3,
+                maxZoom: 19,
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all,
+                ),
+                onMapEvent: _handleMapEvent,
+                onTap: _adjustingPin
+                    ? (_, pt) {
+                        setState(() {
+                          _lat = pt.latitude;
+                          _lng = pt.longitude;
+                          _telemetry = _buildImmediateTelemetrySnapshot();
+                        });
+                      }
+                    : null,
               ),
-              onMapEvent: _handleMapEvent,
-              onTap: _adjustingPin
-                  ? (_, pt) {
-                      setState(() {
-                        _lat = pt.latitude;
-                        _lng = pt.longitude;
-                        _telemetry = _buildImmediateTelemetrySnapshot();
-                      });
-                    }
-                  : null,
-            ),
-            children: [
-              buildSafeMapTileLayer(
-                context,
-                tileLayerOverride: widget.tileLayerOverride,
-              ),
-              CircleLayer(
-                key: const ValueKey('destination-precision-circle'),
-                circles: [
-                  CircleMarker(
-                    point: dest,
-                    radius: 26,
-                    useRadiusInMeter: true,
-                    color: circleAccent.withValues(alpha: 0.14),
-                    borderColor: circleAccent.withValues(alpha: 0.58),
-                    borderStrokeWidth: 1.8,
-                  ),
-                ],
-              ),
-              if (_isShowingRoute && _telemetry.polylinePoints.length >= 2)
-                PolylineLayer(
-                  key: const ValueKey('live-route-polyline'),
-                  polylines: [
-                    Polyline(
-                      points: _telemetry.polylinePoints,
-                      strokeWidth: 8.0,
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.42),
-                      pattern: strokePattern,
-                    ),
-                    Polyline(
-                      points: _telemetry.polylinePoints,
-                      strokeWidth: 4.5,
-                      color: const Color(0xFF3B82F6),
-                      pattern: strokePattern,
+              children: [
+                buildSafeMapTileLayer(
+                  context,
+                  tileLayerOverride: widget.tileLayerOverride,
+                ),
+                CircleLayer(
+                  key: const ValueKey('destination-precision-circle'),
+                  circles: [
+                    CircleMarker(
+                      point: dest,
+                      radius: 26,
+                      useRadiusInMeter: true,
+                      color: circleAccent.withValues(alpha: 0.14),
+                      borderColor: circleAccent.withValues(alpha: 0.58),
+                      borderStrokeWidth: 1.8,
                     ),
                   ],
                 ),
-              MarkerLayer(
-                markers: [
-                  if (_isShowingRoute)
-                    Marker(
-                      point: _origin,
-                      width: 34,
-                      height: 34,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2563EB),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2.5),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF2563EB)
-                                  .withValues(alpha: 0.45),
-                              blurRadius: 10,
-                            ),
-                          ],
+                if (_isShowingRoute && _telemetry.polylinePoints.length >= 2)
+                  PolylineLayer(
+                    key: const ValueKey('live-route-polyline'),
+                    polylines: [
+                      Polyline(
+                        points: _telemetry.polylinePoints,
+                        strokeWidth: 8.0,
+                        color: const Color(0xFF0F172A).withValues(alpha: 0.42),
+                        pattern: strokePattern,
+                      ),
+                      Polyline(
+                        points: _telemetry.polylinePoints,
+                        strokeWidth: 4.5,
+                        color: const Color(0xFF3B82F6),
+                        pattern: strokePattern,
+                      ),
+                    ],
+                  ),
+                MarkerLayer(
+                  markers: [
+                    if (_isShowingRoute)
+                      Marker(
+                        point: _origin,
+                        width: 34,
+                        height: 34,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF2563EB)
+                                    .withValues(alpha: 0.45),
+                                blurRadius: 10,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.navigation_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.navigation_rounded,
-                          size: 16,
-                          color: Colors.white,
+                      ),
+                    Marker(
+                      point: dest,
+                      width: 64,
+                      height: 70,
+                      alignment: Alignment.topCenter,
+                      child: RepaintBoundary(
+                        child: AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) {
+                            final scale =
+                                1.0 + (_pulseController.value * 0.05);
+                            return Transform.scale(
+                              scale: scale,
+                              child: child,
+                            );
+                          },
+                          child: DestinationMapPin(confirmed: _pinConfirmed),
                         ),
                       ),
                     ),
-                  Marker(
-                    point: dest,
-                    width: 64,
-                    height: 70,
-                    alignment: Alignment.topCenter,
-                    child: AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        final scale = 1.0 + (_pulseController.value * 0.05);
-                        return Transform.scale(
-                          scale: scale,
-                          child: child,
-                        );
-                      },
-                      child: DestinationMapPin(confirmed: _pinConfirmed),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
 
           // 2. Barra Flutuante Superior Fina (50px) + Faixa Contextual Única (36px)
@@ -1418,10 +1551,13 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                               ),
                             ),
                             const SizedBox(width: 6),
-                            PrecisionStatusPill(
-                              precision: _precision,
-                              pinConfirmed: _pinConfirmed,
-                              compact: true,
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 128),
+                              child: PrecisionStatusPill(
+                                precision: _precision,
+                                pinConfirmed: _pinConfirmed,
+                                compact: true,
+                              ),
                             ),
                           ],
                         ),

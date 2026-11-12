@@ -98,6 +98,12 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
 
   bool _refined = false;
 
+  @override
+  void dispose() {
+    EagerImagePrefetcher.cancelPending();
+    super.dispose();
+  }
+
   Future<ClientDossier?> _load() async {
     final d = await (widget.dossierLoader != null ? widget.dossierLoader!(widget.jobId) : JobService().clientJobDossier(widget.jobId));
     if (d != null) {
@@ -449,17 +455,47 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
   }
 
   Future<void> _openMap(ClientDossier d) async {
-    final line = d.addressLine ?? d.addressSummary ?? '';
+    var line = d.addressLine ?? d.addressSummary ?? '';
+    String? cep;
+    String? referencePoint;
+    double? exactLat = d.latitude;
+    double? exactLng = d.longitude;
+
+    if (exactLat == null || exactLng == null || d.addressLine == null) {
+      try {
+        final ownerLoc = await JobService().fetchOwnerExactLocation(d.jobId);
+        if (ownerLoc != null) {
+          if (ownerLoc.lat != null && ownerLoc.lng != null) {
+            exactLat ??= ownerLoc.lat;
+            exactLng ??= ownerLoc.lng;
+          }
+          final full = ownerLoc.fullStreetLine?.trim();
+          if ((d.addressLine == null || d.addressLine!.trim().isEmpty) &&
+              full != null &&
+              full.isNotEmpty) {
+            line = full;
+          }
+          cep = ownerLoc.cep;
+          referencePoint = ownerLoc.reference;
+        }
+      } catch (_) {}
+    }
+
     if (line.isEmpty) {
+      if (!mounted) return;
       showSnack(context, 'Este pedido não tem endereço para mostrar no mapa.', error: true);
       return;
     }
+    if (!mounted) return;
     await OrderLiveMapModalScreen.show(
       context,
+      jobId: d.jobId,
       addressLine: line,
       summary: d.addressSummary,
-      latitude: d.latitude,
-      longitude: d.longitude,
+      cep: cep,
+      referencePoint: referencePoint,
+      latitude: exactLat,
+      longitude: exactLng,
       precision: d.geoPrecision,
       pinConfirmed: d.geoSource == 'client_pin' || d.geoPrecision == DestinationPrecision.house,
       orderStatus: d.status,
@@ -479,6 +515,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
       const SectionTitle('Localização'),
       InteractiveLocationPreviewCard(
         cardKey: const ValueKey('detail-location'),
+        jobId: d.jobId,
         addressLine: line,
         summary: d.addressSummary,
         latitude: d.latitude,
@@ -784,7 +821,15 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
                         ],
                       ),
                     ),
-                    Text(brl(q.price), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 104),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(brl(q.price), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                      ),
+                    ),
                   ],
                 ),
               ),

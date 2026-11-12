@@ -82,10 +82,31 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       ]);
       if (!mounted) return;
       final addr = results[1] as Map<String, dynamic>?;
+      var addressLine = (addr?['address_line'] as String?)?.trim();
+      var reference = (addr?['reference'] as String?)?.trim();
+
+      if (addressLine == null || addressLine.isEmpty) {
+        try {
+          final ownerLoc = await _jobs.fetchOwnerExactLocation(job.id);
+          if (ownerLoc != null) {
+            final full = ownerLoc.fullStreetLine?.trim();
+            if (full != null && full.isNotEmpty) {
+              addressLine = full;
+            }
+            if ((reference == null || reference.isEmpty) &&
+                ownerLoc.reference != null &&
+                ownerLoc.reference!.trim().isNotEmpty) {
+              reference = ownerLoc.reference!.trim();
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
       setState(() {
         _provider = results[0] as ProviderCard?;
-        _address = addr?['address_line'] as String?;
-        _reference = addr?['reference'] as String?;
+        _address = addressLine;
+        _reference = reference;
         _pin = results[2] as String?;
         _evidence = results[3] as List<Map<String, dynamic>>;
       });
@@ -129,7 +150,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       backgroundColor: context.tk.surface,
       appBar: AppBar(
         backgroundColor: context.tk.surface,
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          tooltip: 'Voltar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
         title: const BrandLogo(),
       ),
       body: ListView(
@@ -252,32 +277,39 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             const SizedBox(height: 12),
             _PinCard(pin: _pin!),
           ],
-          if (_evidence.where((e) => e['slot'] != 'video').isNotEmpty) ...[
-            const SizedBox(height: 12),
-            AppCard(
-              radius: 18,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Fotos do serviço', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 96,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: [
-                        for (final e in _evidence)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: SignedImage(path: e['path'] as String, width: 96, height: 96, radius: 14),
+          Builder(
+            builder: (context) {
+              final photos = _evidence.where((e) => e['slot'] != 'video').toList();
+              if (photos.isEmpty) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: AppCard(
+                  radius: 18,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Fotos do serviço', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 96,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: photos.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 10),
+                          itemBuilder: (_, i) => SignedImage(
+                            path: photos[i]['path'] as String,
+                            width: 96,
+                            height: 96,
+                            radius: 14,
                           ),
-                      ],
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              );
+            },
+          ),
           const SizedBox(height: 12),
           if (_provider != null)
             AppCard(
@@ -425,24 +457,29 @@ class _PinCard extends StatelessWidget {
           Row(
             children: [
               Icon(Icons.lock_rounded, color: context.tk.security),
-              SizedBox(width: 8),
-              Text('Código de confirmação', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Código de confirmação', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              ),
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (final d in pin.split(''))
-                Container(
-                  width: 52,
-                  height: 62,
-                  margin: const EdgeInsets.symmetric(horizontal: 5),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: context.tk.card, borderRadius: BorderRadius.circular(12)),
-                  child: Text(d, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: context.tk.brand)),
-                ),
-            ],
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (final d in pin.split(''))
+                  Container(
+                    width: 52,
+                    height: 62,
+                    margin: const EdgeInsets.symmetric(horizontal: 5),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: context.tk.card, borderRadius: BorderRadius.circular(12)),
+                    child: Text(d, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: context.tk.brand)),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Text(
