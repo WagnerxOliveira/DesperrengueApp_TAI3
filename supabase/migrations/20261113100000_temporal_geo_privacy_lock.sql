@@ -20,7 +20,7 @@
 --   3. Eliminação de vazamento em `public.jobs` e `supabase_realtime`:
 --      coordenadas exatas residem apenas em `public.job_geo` e endereço completo
 --      apenas em `public.job_addresses`, ambos protegidos por RLS via
---      `public._can_see_exact_location(job_id, auth.uid())`. Triggers migram
+--      `public._can_see_exact_location(job_id)`. Triggers migram
 --      automaticamente coordenadas/CEP enviados em `jobs` para `job_geo` /
 --      `job_addresses`, mantendo `jobs.latitude = NULL`, `jobs.longitude = NULL`,
 --      `jobs.address_cep = NULL`, `jobs.address_summary` sanitizado (apenas
@@ -483,7 +483,7 @@ comment on function public._job_privacy_phase(uuid, uuid, timestamptz) is
 
 create or replace function public._can_see_exact_location(
   p_job uuid,
-  p_viewer uuid default auth.uid()
+  p_viewer uuid
 )
 returns boolean
 language plpgsql
@@ -492,18 +492,39 @@ security definer
 set search_path = public
 as $$
 begin
-  -- Zero-Oracle: chamadas diretas como `authenticated` nunca consultam visibilidade de terceiros
-  if current_user in ('authenticated', 'anon') and p_viewer is distinct from auth.uid() then
+  if p_job is null or p_viewer is null then
     return false;
   end if;
-  return public._job_privacy_phase(p_job, coalesce(p_viewer, auth.uid()), now()) in ('owner_full', 'service_day');
+  return public._job_privacy_phase(p_job, p_viewer, now()) in ('owner_full', 'service_day');
 end $$;
 
-revoke all on function public._can_see_exact_location(uuid, uuid) from public, anon;
-grant execute on function public._can_see_exact_location(uuid, uuid) to authenticated;
+revoke all on function public._can_see_exact_location(uuid, uuid)
+  from public, anon, authenticated;
 
 comment on function public._can_see_exact_location(uuid, uuid) is
-  'Retorna TRUE somente para o cliente dono, admin ou profissional contratado em service_day (relógio do servidor em America/Sao_Paulo). Usado em policies RLS e RPCs.';
+  'Uso exclusivo interno do servidor (revogada de authenticated/anon para impedir oráculo sobre terceiros). Avalia se p_viewer tem acesso exato a p_job.';
+
+create or replace function public._can_see_exact_location(
+  p_job uuid
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+  return public._can_see_exact_location(p_job, auth.uid());
+end $$;
+
+revoke all on function public._can_see_exact_location(uuid) from public, anon;
+grant execute on function public._can_see_exact_location(uuid) to authenticated;
+
+comment on function public._can_see_exact_location(uuid) is
+  'Zero-Oracle wrapper para RLS e RPCs: avalia estritamente auth.uid() sem aceitar UUID arbitrário. Retorna TRUE somente para owner, admin ou provider contratado em service_day (America/Sao_Paulo).';
 
 -- -----------------------------------------------------------------------------
 -- 5. RPC Canônica de Localização por Visualizador (Contrato C)
@@ -927,16 +948,16 @@ update public.jobs j
   left join public.job_geo g on g.job_id = all_j.id
  where j.id = all_j.id;
 
--- Policies RLS de `job_addresses` e `job_geo`: leitura estritamente via `_can_see_exact_location`
+-- Policies RLS de `job_addresses` e `job_geo`: leitura estritamente via `_can_see_exact_location(job_id)`
 drop policy if exists job_addresses_select on public.job_addresses;
 create policy job_addresses_select on public.job_addresses
   for select to authenticated
-  using (public._can_see_exact_location(job_id, auth.uid()));
+  using (public._can_see_exact_location(job_id));
 
 drop policy if exists job_geo_select on public.job_geo;
 create policy job_geo_select on public.job_geo
   for select to authenticated
-  using (public._can_see_exact_location(job_id, auth.uid()));
+  using (public._can_see_exact_location(job_id));
 
 -- -----------------------------------------------------------------------------
 -- 7. Reescrita das RPCs, Views e Guards que tocam endereço / coordenadas
@@ -1095,7 +1116,7 @@ begin
     end;
   end if;
 
-  v_unlocked := public._can_see_exact_location(j.id, auth.uid());
+  v_unlocked := public._can_see_exact_location(j.id);
   v_summary := public._parse_job_address_parts(a.address_line, j.address_summary, c.address_city) ->> 'safe_summary';
 
   return jsonb_build_object(
