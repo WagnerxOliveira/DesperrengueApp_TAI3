@@ -1,14 +1,14 @@
-# Engenharia de Qualidade, Verificação Formal, Testes Red Team e Auditoria Forense — Desperrengue (`v2.8.6`)
+# Engenharia de Qualidade, Verificação Formal, Testes Red Team e Auditoria Forense — Desperrengue (`v2.10.2`)
 
-> **Classificação Epistemológica:** Tratado de Engenharia de Testes Automatizados, Verificação de Invariantes Contábeis, Simulação Adversarial (*Red Team*), Criptografia Governamental VIO/ICP-Brasil e Validação de Visão Computacional  
-> **Escopo Quantitativo Auditado:** `27` Suítes Dart/Flutter (`559` testes aprovados) · `3` Suítes Python KYC Zero-Trust (`64` testes aprovados) · `9` Suítes Smoke SQL (`577` asserções relacionais) · `1` Suíte Node.js Dossiê PDF (`17` testes) · `1` Validador de Hiperlinks Markdown (`0` links quebrados)  
-> **Implementação Auditada:** [`argon_carbon_kyc_and_ux_test.dart`](../app/test/argon_carbon_kyc_and_ux_test.dart) · [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) · [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart) · [`test_vision_ocr_argon.py`](../kyc_engine/tests/test_vision_ocr_argon.py) · [`test_carbon_security_and_crypto.py`](../kyc_engine/tests/test_carbon_security_and_crypto.py) · [`test_end_to_end_pipeline_redteam.py`](../kyc_engine/tests/test_end_to_end_pipeline_redteam.py) · [`test-dossie.mjs`](../scripts/test-dossie.mjs)
+> **Classificação Epistemológica:** Tratado de Engenharia de Testes Automatizados, Verificação de Invariantes Contábeis, Simulação Adversarial (*Red Team*), Trava Temporal e Espacial de Privacidade Geográfica (`ADR-0022`), Criptografia Governamental VIO/ICP-Brasil e Validação de Visão Computacional  
+> **Escopo Quantitativo Auditado:** `45` Suítes Dart/Flutter (`762` testes aprovados) · `3` Suítes Python KYC Zero-Trust (`64` testes aprovados) · `10` Suítes Smoke SQL (`622` asserções relacionais verificadas em PostgreSQL real via PGlite + `pgcrypto`) · `1` Suíte Node.js SQL Geo-Privacidade (`12` testes) · `1` Suíte Node.js Dossiê PDF (`17` testes) · `1` Validador de Hiperlinks Markdown (`0` links quebrados)  
+> **Implementação Auditada:** [`temporal_geo_privacy_lock_widgets_test.dart`](../app/test/temporal_geo_privacy_lock_widgets_test.dart) · [`provider_geo_privacy_ui_test.dart`](../app/test/provider_geo_privacy_ui_test.dart) · [`geo_privacy_policy_engine_test.dart`](../app/test/geo_privacy_policy_engine_test.dart) · [`ux_client_and_shared_polish_test.dart`](../app/test/ux_client_and_shared_polish_test.dart) · [`argon_carbon_kyc_and_ux_test.dart`](../app/test/argon_carbon_kyc_and_ux_test.dart) · [`red_team_warranty_and_kyc_forensics_test.dart`](../app/test/red_team_warranty_and_kyc_forensics_test.dart) · [`fintech_warranty_security_test.dart`](../app/test/fintech_warranty_security_test.dart) · [`geo_privacy_lock.sql`](../supabase/tests/geo_privacy_lock.sql) · [`test-geo-privacy-sql.mjs`](../scripts/test-geo-privacy-sql.mjs) · [`test-dossie.mjs`](../scripts/test-dossie.mjs)
 
 ---
 
 ## 1. Arquitetura da Pirâmide de Verificação Contínua (CI/CD)
 
-A estratégia de garantia de qualidade do **Desperrengue** fundamenta-se na verificação determinística em múltiplas camadas, assegurando que nenhuma alteração em regras de negócio financeiras, algoritmos geoespaciais, criptografia ICP-Brasil/VIO ou pipelines de visão computacional seja integrada à *branch* principal sem satisfazer integralmente as suítes de regressão.
+A estratégia de garantia de qualidade do **Desperrengue** fundamenta-se na verificação determinística em múltiplas camadas, assegurando que nenhuma alteração em regras de negócio financeiras, algoritmos geoespaciais (`HMAC-SHA256` server-side e máquina temporal `America/Sao_Paulo`), criptografia ICP-Brasil/VIO ou pipelines de visão computacional seja integrada à *branch* principal sem satisfazer integralmente as suítes de regressão.
 
 ```mermaid
 flowchart TB
@@ -17,25 +17,25 @@ flowchart TB
     classDef red fill:#31102F,stroke:#F43F5E,stroke-width:2px,color:#FFF1F2;
     classDef gate fill:#1E1B4B,stroke:#818CF8,stroke-width:2px,color:#EEF2FF;
 
-    subgraph L1["CAMADA 1: Verificação Formal e Estrutural de Banco de Dados (577 Asserções)"]
-        S1["9 Suítes SQL Smoke Tests (supabase/tests/*_smoke.sql)"]:::sql
-        S2["Invariantes DDL, Constraints CHECK, Índices GIST/GIN/B-Tree e Políticas RLS"]:::sql
-        S3["Gatilhos O(1) (trg_sync_profile_trust_and_rank) e RPCs SECURITY DEFINER"]:::sql
+    subgraph L1["CAMADA 1: Verificação Formal e Estrutural de Banco de Dados (10 Suítes SQL / 622 Asserções)"]
+        S1["10 Suítes SQL Smoke Tests (supabase/tests/*.sql) + PGlite/pgcrypto Real Postgres"]:::sql
+        S2["Invariantes DDL, Constraints CHECK, Índices GIST/GIN/B-Tree, RLS e Cofres private.*"]:::sql
+        S3["HMAC-SHA256 _geo_fuzzy_center (Monte Carlo 10k), Gatilhos O(1) e RPCs SECURITY DEFINER"]:::sql
     end
 
-    subgraph L2["CAMADA 2: Suítes Unitárias, Algorítmicas e de Interface Flutter (559 Testes em 27 Arquivos)"]
-        D1["Testes de Complexidade e Serviços Core (Smart Split, Haversine, Passaporte ABNT)"]:::dart
-        D2["Testes de Componentes de Interface (4ª Aba Em Mediação, UX 120 FPS Zero Jargão, Carteira Bipartida)"]:::dart
+    subgraph L2["CAMADA 2: Suítes Unitárias, Algorítmicas e de Interface Flutter (762 Testes em 45 Arquivos)"]
+        D1["Testes de Complexidade e Serviços Core (GeoPrivacyPolicyEngine, EXIF Stripper, Money Cents, Smart Split)"]:::dart
+        D2["Testes de Componentes de Interface (Geo-Privacy Lock 4 Fases, Mapa 100%, Imagens 0ms, Badges O(1), 33 Categorias)"]:::dart
     end
 
     subgraph L3["CAMADA 3: Baterias Adversariais Red Team, Visão Argon High e Criptografia Carbon High (64 Testes Python)"]
-        R1["Testes Red Team de Blindagem Financeira e Forense Mobile (fintech_warranty_security_test.dart & argon_carbon_kyc_and_ux_test.dart)"]:::red
+        R1["Testes Red Team Geo-Privacidade, Blindagem Financeira e Forense Mobile (temporal_geo_privacy_lock_widgets_test.dart)"]:::red
         R2["38 Testes Argon Vision/OCR + 16 Testes Carbon Crypto/mTLS + 10 Testes E2E Red Team (kyc_engine/tests/)"]:::red
     end
 
     subgraph L4["CAMADA 4: Validação Documental e Pipeline GitHub Actions"]
         G1["flutter analyze (0 warnings/errors) & pytest kyc_engine/tests/ (64/64 passed)"]:::gate
-        G2["node scripts/test-dossie.mjs (17/17 testes PDF)"]:::gate
+        G2["node scripts/test-geo-privacy-sql.mjs (12/12) & node scripts/test-dossie.mjs (17/17)"]:::gate
         G3["node scripts/check-md-links.mjs (0 links quebrados)"]:::gate
     end
 
@@ -74,7 +74,7 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 
 ---
 
-## 4. Catálogo Completo das 27 Suítes de Teste Flutter/Dart (`559` Testes)
+## 4. Catálogo Completo das 45 Suítes de Teste Flutter/Dart (`762` Testes)
 
 | # | Arquivo de Suíte em `app/test/` | Domínio Funcional Verificado | Status |
 | :---: | :--- | :--- | :---: |
@@ -122,6 +122,7 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 | **42** | [`eng_static_guards_test.dart`](../app/test/eng_static_guards_test.dart) | Guardas estáticas automatizadas sobre `app/lib/**`: zero `dart:io`, zero `Isolate.run` fora de `runOffMainThread`, zero `uploadBinary` sem `sanitizeForUpload` e zero vazamento de PII em `debugPrint`. | `PASS` |
 | **43** | [`eng_update_security_test.dart`](../app/test/eng_update_security_test.dart) | Validação estrita de domínio HTTPS (`github.com` / `*.githubusercontent.com`) para download de APK e proteção contra checagens concorrentes no `UpdateGate`. | `PASS` |
 | **44** | [`eng_smart_split_cents_test.dart`](../app/test/eng_smart_split_cents_test.dart) | Teste de propriedade algébrica (~4.400 combinações de valores e centavos ímpares) para `SmartSplitBreakdown` em centavos inteiros (`Money.rateOfCents`), provando conservação exata ($\text{taxa} + \text{repasse} == \text{mão de obra}$). | `PASS` |
+| **45** | [`ux_client_and_shared_polish_test.dart`](../app/test/ux_client_and_shared_polish_test.dart) | **Bateria UX Cliente & Polimento Multi-Viewport (`10` grupos/testes):** `RequestWizardScreen.sanitizePublicAddressSummary` (expurgo de rua/nº/complemento/CEP/ref), `fetchOwnerExactLocation`, 33 categorias (`"Impermeabilização"` sem quebra em `320px @ 1.4x`), medalhas `#CBD5E1` com `Semantics`, `friendlyError` e zero `RenderFlex overflow` de `320×640` a `480×960`. | `PASS` |
 
 ---
 
@@ -135,7 +136,7 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 
 ---
 
-## 6. Catálogo das 9 Suítes SQL Smoke Tests (`577` Asserções)
+## 6. Catálogo das 10 Suítes SQL Smoke Tests (`622` Asserções)
 
 | # | Arquivo em `supabase/tests/` | Escopo de Verificação Relacional |
 | :---: | :--- | :--- |
@@ -163,7 +164,10 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 │  No issues found! (ran in 3.8s)                                                       [PASS] │
 │                                                                                              │
 │  $ cd app && flutter test                                                                    │
-│  00:19 +559: All tests passed! (27 test suites, 559 assertions)                       [PASS] │
+│  00:26 +762: All tests passed! (45 test suites, 762 assertions)                       [PASS] │
+│                                                                                              │
+│  $ node scripts/test-geo-privacy-sql.mjs                                                     │
+│  RESULT: 12/12 PASS (27/27 migrations + 45/45 geo_privacy_lock + 65/65 security_smoke)[PASS] │
 │                                                                                              │
 │  $ PYTHONPATH=kyc_engine pytest kyc_engine/tests/ -v                                         │
 │  64 passed in 5.16s (3 test suites: 38 Argon + 16 Carbon + 10 E2E Red Team)           [PASS] │
