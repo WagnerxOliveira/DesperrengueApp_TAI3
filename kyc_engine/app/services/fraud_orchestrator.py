@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import math
 import re
 from typing import Any, Callable, List, Literal, Optional
 
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.config import KYCZeroTrustSettings
 from app.core.security import (
@@ -26,6 +27,8 @@ try:
         ExtractedDocumentDossierArgon,
         OpticalForensicsAndQualityGate,
         SpatialRegionsOfInterest,
+        validate_cnh_renach,
+        validate_cnh_security_code,
         validate_cpf_mod11,
     )
     from app.services.vision_ocr_argon import (
@@ -52,6 +55,21 @@ except ImportError:  # pragma: no cover - standalone fallback prior to branch me
             if int(digits[target_idx]) != dv:
                 return False
         return True
+
+    def validate_cnh_security_code(code_raw: Optional[str]) -> bool:
+        if not code_raw or not isinstance(code_raw, str) or re.search(r"[A-Za-z]", code_raw):
+            return False
+        digits = re.sub(r"\D", "", code_raw)
+        return len(digits) == 11 and digits != digits[0] * 11
+
+    def validate_cnh_renach(renach_raw: Optional[str]) -> bool:
+        if not renach_raw or not isinstance(renach_raw, str):
+            return False
+        cleaned = renach_raw.strip().upper()
+        if not re.match(r"^[A-Z]{2}\d{9}$", cleaned):
+            return False
+        num = cleaned[2:]
+        return num != num[0] * 9
 
     def compute_civil_name_compatibility(
         typed_name: str, extracted_name: Optional[str]
@@ -189,6 +207,19 @@ def sanitize_human_message_ptbr(text: str, status: str) -> str:
     return cleaned
 
 
+def _is_valid_unit_score(value: Any) -> bool:
+    """Rejects IEEE-754 NaN, +Inf, -Inf, non-numeric inputs, and out-of-range (<0 or >1) scores."""
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(num) and 0.0 <= num <= 1.0
+
+
+def _format_score_safe(value: Any) -> str:
+    return f"{float(value):.2f}" if _is_valid_unit_score(value) else "inválido"
+
+
 class _CarbonLLMCorrelationSchema(BaseModel):
     """Structured output schema requested from Gemini 4 Carbon High AFTER all 5 Hard Vetos pass."""
 
@@ -199,6 +230,13 @@ class _CarbonLLMCorrelationSchema(BaseModel):
     risk_tier: Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
     shap_top_3_factors: List[str] = Field(min_length=3, max_length=3)
     user_friendly_message_ptbr: str
+
+    @field_validator("confidence_score")
+    @classmethod
+    def _validate_finite_conf(cls, value: float) -> float:
+        if not math.isfinite(float(value)):
+            raise ValueError("confidence_score deve ser finito.")
+        return float(value)
 
 
 class FinalCarbonKYCVerdict(BaseModel):
@@ -216,6 +254,13 @@ class FinalCarbonKYCVerdict(BaseModel):
     face_liveness_hash: str
     shap_top_3_factors: List[str] = Field(min_length=3, max_length=3)
     user_friendly_message_ptbr: str
+
+    @field_validator("confidence_score")
+    @classmethod
+    def _validate_finite_verdict_conf(cls, value: float) -> float:
+        if not math.isfinite(float(value)):
+            raise ValueError("confidence_score deve ser finito.")
+        return float(value)
 
     @model_validator(mode="after")
     def _enforce_lgpd_and_human_ux(self) -> "FinalCarbonKYCVerdict":
@@ -400,7 +445,10 @@ class CarbonFraudOrchestrator:
                 ),
             )
 
-        if float(liveness_score) < self._settings.min_liveness_score:
+        if (
+            not _is_valid_unit_score(liveness_score)
+            or float(liveness_score) < self._settings.min_liveness_score
+        ):
             return FinalCarbonKYCVerdict(
                 status="REJECTED",
                 confidence_score=0.98,
@@ -411,7 +459,7 @@ class CarbonFraudOrchestrator:
                 cpf_anti_sybil_hash=cpf_hash,
                 face_liveness_hash=face_hash,
                 shap_top_3_factors=[
-                    f"Índice de prova de vida facial ({liveness_score:.2f}) abaixo do mínimo exigido ({self._settings.min_liveness_score:.2f}).",
+                    f"Índice de prova de vida facial ({_format_score_safe(liveness_score)}) abaixo do mínimo exigido ({self._settings.min_liveness_score:.2f}).",
                     "Presença física ao vivo não confirmada com segurança suficiente.",
                     "Verificação interrompida antes da etapa de aprovação cadastral.",
                 ],
@@ -534,6 +582,50 @@ class CarbonFraudOrchestrator:
                 ),
             )
 
+        if dossier.cnh_security_code_11 is not None and not validate_cnh_security_code(
+            dossier.cnh_security_code_11
+        ):
+            return FinalCarbonKYCVerdict(
+                status="REJECTED",
+                confidence_score=0.98,
+                risk_tier="HIGH",
+                alcada_restriction="BLOCKED",
+                hard_veto_triggered=True,
+                hard_veto_code="VETO_3_CNH_SECURITY_CODE_INVALID",
+                cpf_anti_sybil_hash=cpf_hash,
+                face_liveness_hash=face_hash,
+                shap_top_3_factors=[
+                    "Código numérico de segurança da CNH no verso inválido ou inconsistente.",
+                    "Validação determinística dos 11 dígitos reprovada.",
+                    "Bloqueio preventivo contra adulteração cadastral no verso.",
+                ],
+                user_friendly_message_ptbr=(
+                    "Não conseguimos confirmar o número de segurança no verso da sua CNH. "
+                    "Fotografe o verso novamente em local bem iluminado e sem reflexos."
+                ),
+            )
+
+        if dossier.cnh_renach is not None and not validate_cnh_renach(dossier.cnh_renach):
+            return FinalCarbonKYCVerdict(
+                status="REJECTED",
+                confidence_score=0.98,
+                risk_tier="HIGH",
+                alcada_restriction="BLOCKED",
+                hard_veto_triggered=True,
+                hard_veto_code="VETO_3_CNH_RENACH_INVALID",
+                cpf_anti_sybil_hash=cpf_hash,
+                face_liveness_hash=face_hash,
+                shap_top_3_factors=[
+                    "Número RENACH extraído da CNH fora do padrão oficial.",
+                    "Validação sintática e aritmética do registro nacional reprovada.",
+                    "Aprovação automática bloqueada por inconsistência cadastral.",
+                ],
+                user_friendly_message_ptbr=(
+                    "Não conseguimos confirmar todos os dados de registro da sua CNH. "
+                    "Envie uma nova foto nítida do documento aberto."
+                ),
+            )
+
         recomputed_name_score = compute_civil_name_compatibility(
             typed_full_name, dossier.full_civil_name
         )
@@ -560,6 +652,27 @@ class CarbonFraudOrchestrator:
                 user_friendly_message_ptbr=(
                     "O nome informado no seu cadastro está diferente do nome impresso no documento. "
                     "Confira seu nome completo e envie o seu próprio documento."
+                ),
+            )
+
+        if not argon_artifacts.ready_for_serpro_and_carbon:
+            return FinalCarbonKYCVerdict(
+                status="REJECTED",
+                confidence_score=0.97,
+                risk_tier="HIGH",
+                alcada_restriction="BLOCKED",
+                hard_veto_triggered=True,
+                hard_veto_code="VETO_3_TIER1_DOSSIER_NOT_READY",
+                cpf_anti_sybil_hash=cpf_hash,
+                face_liveness_hash=face_hash,
+                shap_top_3_factors=[
+                    "Dossiê documental reprovado no portão integrado de prontidão forense.",
+                    "Artefatos obrigatórios (retrato 3x4 ou consistência cadastral) incompletos.",
+                    "Progressão para aprovação bloqueada preventivamente.",
+                ],
+                user_friendly_message_ptbr=(
+                    "Não conseguimos ler todos os campos obrigatórios do seu documento. "
+                    "Posicione frente e verso sobre uma mesa bem iluminada e tire novas fotos."
                 ),
             )
 
@@ -614,8 +727,27 @@ class CarbonFraudOrchestrator:
                 )
 
             qr_cpf_clean = _NON_DIGIT_RE.sub("", vio_result.extracted_cpf or "")
+            vio_name_cloning = False
+            if vio_result.extracted_name:
+                vio_typed_compat = compute_civil_name_compatibility(
+                    typed_full_name, vio_result.extracted_name
+                )
+                vio_ocr_compat = (
+                    compute_civil_name_compatibility(
+                        dossier.full_civil_name, vio_result.extracted_name
+                    )
+                    if dossier.full_civil_name
+                    else 1.0
+                )
+                if (
+                    vio_typed_compat < self._settings.min_name_compatibility_score
+                    or vio_ocr_compat < self._settings.min_name_compatibility_score
+                ):
+                    vio_name_cloning = True
+
             if (
                 vio_result.cloning_detected
+                or vio_name_cloning
                 or (
                     vio_result.signature_valid
                     and qr_cpf_clean
@@ -672,7 +804,10 @@ class CarbonFraudOrchestrator:
         # ======================================================================
         # HARD VETO 5: Facial Biometric Divergence (Local < 0.88 or SERPRO < 0.90)
         # ======================================================================
-        if float(local_face_match_score) < self._settings.min_local_face_match:
+        if (
+            not _is_valid_unit_score(local_face_match_score)
+            or float(local_face_match_score) < self._settings.min_local_face_match
+        ):
             return FinalCarbonKYCVerdict(
                 status="REJECTED",
                 confidence_score=0.99,
@@ -683,7 +818,7 @@ class CarbonFraudOrchestrator:
                 cpf_anti_sybil_hash=cpf_hash,
                 face_liveness_hash=face_hash,
                 shap_top_3_factors=[
-                    f"Similaridade facial entre selfie ao vivo e retrato 3x4 ({local_face_match_score:.2f}) abaixo do limiar ({self._settings.min_local_face_match:.2f}).",
+                    f"Similaridade facial entre selfie ao vivo e retrato 3x4 ({_format_score_safe(local_face_match_score)}) abaixo do limiar ({self._settings.min_local_face_match:.2f}).",
                     "Divergência biométrica entre o portador presente na câmera e a foto impressa.",
                     "Acesso bloqueado para proteção contra falsidade ideológica.",
                 ],
@@ -696,6 +831,7 @@ class CarbonFraudOrchestrator:
         if serpro_result is not None and (
             not serpro_result.passed
             or not serpro_result.cpf_regular
+            or not _is_valid_unit_score(serpro_result.similarity)
             or serpro_result.similarity < self._settings.min_serpro_face_similarity
         ):
             return FinalCarbonKYCVerdict(

@@ -303,7 +303,7 @@ class GovCryptographicDocumentValidator:
         intermediate_pool: Sequence[x509.Certificate],
         now_utc: datetime,
     ) -> bool:
-        """Validates validity window and full cryptographic signature chain up to a trusted X.509 Root CA."""
+        """Validates RFC 5280 validity window, KeyUsage, BasicConstraints/path_length & signature chain."""
         if not self.trusted_certs:
             return False
 
@@ -314,14 +314,37 @@ class GovCryptographicDocumentValidator:
         def _within_validity(cert: x509.Certificate) -> bool:
             return cert.not_valid_before_utc <= now_utc <= cert.not_valid_after_utc
 
-        def _is_ca_certificate(cert: x509.Certificate) -> bool:
+        def _check_leaf_key_usage(cert: x509.Certificate) -> bool:
             try:
-                bc = cert.extensions.get_extension_for_class(x509.BasicConstraints)
-                return bool(bc.value.ca)
+                ku = cert.extensions.get_extension_for_class(x509.KeyUsage).value
+                return bool(ku.digital_signature or ku.content_commitment)
+            except x509.ExtensionNotFound:
+                return True
+
+        def _check_ca_constraints_and_key_usage(
+            cert: x509.Certificate, intermediates_followed: int
+        ) -> bool:
+            try:
+                bc = cert.extensions.get_extension_for_class(x509.BasicConstraints).value
+                if not bc.ca:
+                    return False
+                if (
+                    bc.path_length is not None
+                    and bc.path_length < intermediates_followed
+                ):
+                    return False
             except x509.ExtensionNotFound:
                 return False
 
-        if not _within_validity(leaf_cert):
+            try:
+                ku = cert.extensions.get_extension_for_class(x509.KeyUsage).value
+                if not ku.key_cert_sign:
+                    return False
+            except x509.ExtensionNotFound:
+                pass
+            return True
+
+        if not _within_validity(leaf_cert) or not _check_leaf_key_usage(leaf_cert):
             return False
 
         # Direct trust if leaf itself is explicitly pinned and valid
@@ -339,6 +362,7 @@ class GovCryptographicDocumentValidator:
         )
         current = leaf_cert
         visited = {leaf_fp}
+        intermediate_ca_count = 0
 
         for _depth in range(8):
             matching_issuers = [
@@ -351,7 +375,7 @@ class GovCryptographicDocumentValidator:
             for parent in matching_issuers:
                 if not _within_validity(parent):
                     continue
-                if not _is_ca_certificate(parent):
+                if not _check_ca_constraints_and_key_usage(parent, intermediate_ca_count):
                     continue
                 try:
                     current.verify_directly_issued_by(parent)
@@ -375,6 +399,8 @@ class GovCryptographicDocumentValidator:
             if parent_fp in visited:
                 return False
             visited.add(parent_fp)
+            if verified_parent.issuer != verified_parent.subject:
+                intermediate_ca_count += 1
             current = verified_parent
 
         return False
@@ -583,7 +609,23 @@ class GovCryptographicDocumentValidator:
 
     def _normalize_raw_vio_bytes(self, raw_qr_bytes: bytes) -> bytes:
         """Unwraps Base64/Hex ASCII framing and applies anti-zip-bomb decompression if outer layer is zlib."""
-        payload = raw_qr_bytes.strip()
+        if not raw_qr_bytes:
+            return b""
+        # Never call .strip() on raw binary ASN.1 DER or raw binary zlib streams (preserves trailing 0x09..0x20 octets)
+        if raw_qr_bytes.startswith(b"\x30"):
+            return raw_qr_bytes
+        if self._is_zlib_header(raw_qr_bytes):
+            return self.safe_zlib_decompress(raw_qr_bytes)
+
+        payload = raw_qr_bytes
+        if payload.startswith(b"VIO1:"):
+            payload = payload[5:]
+            if payload.startswith(b"\x30"):
+                return payload
+            if self._is_zlib_header(payload):
+                return self.safe_zlib_decompress(payload)
+
+        payload = payload.strip()
         if payload.startswith(b"VIO1:"):
             payload = payload[5:].strip()
 

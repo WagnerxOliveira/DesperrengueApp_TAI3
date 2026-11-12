@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 import inspect
 import json
 import logging
+import math
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 import uuid
@@ -228,6 +229,27 @@ except ImportError:  # pragma: no cover - standalone fallback prior to branch me
 logger = logging.getLogger("desperrengue.kyc.gateway")
 logger.addFilter(PiiRedactingLogFilter())
 
+MAX_UPLOAD_FILE_BYTES = 15 * 1024 * 1024  # 15 MiB strict anti-OOM DoS ceiling per file
+
+
+async def _read_bounded_upload(
+    upload: UploadFile,
+    *,
+    field_name: str,
+    max_bytes: int = MAX_UPLOAD_FILE_BYTES,
+) -> bytes:
+    """Reads at most `max_bytes + 1` bytes from an UploadFile, rejecting oversized payloads with HTTP 413."""
+    chunk = await upload.read(max_bytes + 1)
+    if len(chunk) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"O arquivo enviado em '{field_name}' excede o limite máximo de segurança "
+                f"de {max_bytes // (1024 * 1024)} MB."
+            ),
+        )
+    return chunk
+
 
 class FullKYCVerificationResponse(BaseModel):
     """Complete response envelope returned by POST /v1/kyc/verify-full."""
@@ -382,12 +404,12 @@ def create_kyc_app(
                 raise HTTPException(status_code=400, detail="JSON inválido.") from exc
             if isinstance(body, dict):
                 user_id_val = str(body.get("user_id") or "").strip()
-                if body.get("now_ts") is not None:
+                if not cfg.is_production and body.get("now_ts") is not None:
                     now_override = int(body["now_ts"])
         else:
             form_data = await request.form()
             user_id_val = str(form_data.get("user_id") or "").strip()
-            if form_data.get("now_ts") is not None:
+            if not cfg.is_production and form_data.get("now_ts") is not None:
                 now_override = int(str(form_data.get("now_ts")))
 
         if not user_id_val:
@@ -426,12 +448,19 @@ def create_kyc_app(
         nfc_dg1_b64: Optional[str] = Form(None),
         nfc_dg2_b64: Optional[str] = Form(None),
     ) -> FullKYCVerificationResponse:
-        selfie_bytes = await selfie_liveness.read()
-        front_bytes = await doc_front.read()
-        back_bytes = await doc_back.read()
-        qr_override_bytes = (
-            await vio_qr_crop_override.read() if vio_qr_crop_override is not None else None
+        selfie_bytes = await _read_bounded_upload(
+            selfie_liveness, field_name="selfie_liveness"
         )
+        front_bytes = await _read_bounded_upload(doc_front, field_name="doc_front")
+        back_bytes = await _read_bounded_upload(doc_back, field_name="doc_back")
+
+        # In production, enforce VIO strictly and disallow unbound vio_qr_crop_override
+        effective_require_vio = True if cfg.is_production else bool(require_vio_for_modern_docs)
+        qr_override_bytes: Optional[bytes] = None
+        if vio_qr_crop_override is not None and not cfg.is_production:
+            qr_override_bytes = await _read_bounded_upload(
+                vio_qr_crop_override, field_name="vio_qr_crop_override"
+            )
 
         if not selfie_bytes or not front_bytes or not back_bytes:
             raise HTTPException(
@@ -508,7 +537,7 @@ def create_kyc_app(
             should_check_vio = (
                 qr_override_bytes is not None
                 or (
-                    require_vio_for_modern_docs
+                    effective_require_vio
                     and detected_doc_type in {"CNH", "CIN"}
                 )
             )
@@ -540,8 +569,10 @@ def create_kyc_app(
             nfc_gate_ok = nfc_res is None or nfc_res.valid
             if (
                 argon_artifacts.ready_for_serpro_and_carbon
-                and liveness_score >= cfg.min_liveness_score
-                and local_face_match_score >= cfg.min_local_face_match
+                and math.isfinite(liveness_score)
+                and cfg.min_liveness_score <= liveness_score <= 1.0
+                and math.isfinite(local_face_match_score)
+                and cfg.min_local_face_match <= local_face_match_score <= 1.0
                 and vio_gate_ok
                 and nfc_gate_ok
             ):
@@ -576,7 +607,7 @@ def create_kyc_app(
             nfc_result=nfc_res,
             serpro_result=serpro_res,
             serpro_unavailable=serpro_unavailable,
-            require_vio_for_modern_docs=require_vio_for_modern_docs,
+            require_vio_for_modern_docs=effective_require_vio,
         )
 
         # Stage 5: Authenticated WORM Evidence Encryption (HKDF-SHA256 + AES-256-GCM)
@@ -628,13 +659,21 @@ def create_kyc_app(
                 serpro_res.similarity if serpro_res is not None else None
             ),
             "device_integrity_verdict": anti_swap_res.device_integrity_verdict,
-            "liveness_score": round(float(liveness_score), 4),
-            "local_face_match_score": round(float(local_face_match_score), 4),
+            "liveness_score": (
+                round(max(0.0, min(1.0, float(liveness_score))), 4)
+                if math.isfinite(float(liveness_score))
+                else 0.0
+            ),
+            "local_face_match_score": (
+                round(max(0.0, min(1.0, float(local_face_match_score))), 4)
+                if math.isfinite(float(local_face_match_score))
+                else 0.0
+            ),
             "session_nonce_hash": sec.sha256_hex(session_nonce.encode("utf-8")),
             "worm_evidence_digest": worm_digest,
         }
         raw_webhook_bytes = json.dumps(
-            webhook_payload, separators=(",", ":"), ensure_ascii=False
+            webhook_payload, separators=(",", ":"), ensure_ascii=False, allow_nan=False
         ).encode("utf-8")
         webhook_sig = sec.sign_supabase_webhook(raw_webhook_bytes, webhook_ts)
         webhook_headers = {
@@ -694,7 +733,9 @@ def create_kyc_app(
         job_id: str = Form("HOMOLOG-JOB"),
         invoice_image: UploadFile = File(...),
     ) -> SmartSplitInvoiceVerificationResponse:
-        img_bytes = await invoice_image.read()
+        img_bytes = await _read_bounded_upload(
+            invoice_image, field_name="invoice_image"
+        )
         if not img_bytes:
             raise HTTPException(
                 status_code=400,

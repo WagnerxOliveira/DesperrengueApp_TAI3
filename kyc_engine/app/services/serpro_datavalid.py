@@ -6,12 +6,13 @@ import asyncio
 import base64
 from enum import Enum
 import logging
+import math
 import ssl
 import time
 from typing import Callable, Optional
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import KYCZeroTrustSettings
 from app.core.security import PiiRedactingLogFilter, ZeroTrustSecurityEngine
@@ -42,6 +43,13 @@ class SerproBiometricResult(BaseModel):
     mode: str
     circuit_state: CircuitState
     reason_code: str
+
+    @field_validator("similarity")
+    @classmethod
+    def _ensure_finite_similarity(cls, value: float) -> float:
+        if not math.isfinite(float(value)):
+            raise ValueError("similarity deve ser um número real finito no intervalo [0.0, 1.0].")
+        return float(value)
 
 
 def create_tls13_mtls_ssl_context(
@@ -268,13 +276,21 @@ class SerproDatavalidMtlsClient:
             raise
 
         bio_obj = data.get("biometria_face")
-        if isinstance(bio_obj, dict):
-            similarity = float(bio_obj.get("similaridade", 0.0))
+        try:
+            if isinstance(bio_obj, dict):
+                raw_sim = float(bio_obj.get("similaridade", 0.0))
+            else:
+                raw_sim = float(data.get("similaridade", 0.0))
+        except (TypeError, ValueError):
+            raw_sim = float("nan")
+
+        if not math.isfinite(raw_sim) or raw_sim < 0.0 or raw_sim > 100.0:
+            similarity = 0.0
+            sim_valid = False
         else:
-            similarity = float(data.get("similaridade", 0.0))
-        if similarity > 1.0:
-            similarity = similarity / 100.0
-        similarity = max(0.0, min(1.0, similarity))
+            similarity = (raw_sim / 100.0) if raw_sim > 1.0 else raw_sim
+            similarity = max(0.0, min(1.0, similarity))
+            sim_valid = True
 
         cpf_situacao = data.get("situacao_cpf", data.get("cpf_disponivel", True))
         if isinstance(cpf_situacao, str):
@@ -283,16 +299,21 @@ class SerproDatavalidMtlsClient:
             cpf_regular = bool(cpf_situacao)
 
         passed = (
-            cpf_regular
+            sim_valid
+            and cpf_regular
             and similarity >= self._settings.min_serpro_face_similarity
         )
         reason = (
             "OK"
             if passed
             else (
-                "SERPRO_CPF_IRREGULAR"
-                if not cpf_regular
-                else "SERPRO_SIMILARITY_BELOW_THRESHOLD"
+                "SERPRO_INVALID_SIMILARITY_VALUE"
+                if not sim_valid
+                else (
+                    "SERPRO_CPF_IRREGULAR"
+                    if not cpf_regular
+                    else "SERPRO_SIMILARITY_BELOW_THRESHOLD"
+                )
             )
         )
         return SerproBiometricResult(

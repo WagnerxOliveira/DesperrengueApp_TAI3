@@ -180,6 +180,7 @@ def _build_cms_signed_data_der(
     payload_bytes: bytes,
     signer_key: ec.EllipticCurvePrivateKey | rsa.RSAPrivateKey,
     signer_cert: x509.Certificate,
+    extra_certs: tuple[x509.Certificate, ...] = (),
     use_signed_attrs: bool = True,
     use_ieee_p1363_ecdsa: bool = False,
     use_rsa_pss: bool = False,
@@ -189,6 +190,12 @@ def _build_cms_signed_data_der(
 ) -> bytes:
     cert_der = signer_cert.public_bytes(serialization.Encoding.DER)
     asn1_cert = asn1_x509.Certificate.load(cert_der)
+    asn1_cert_choices = [cms.CertificateChoices({"certificate": asn1_cert})]
+    for extra in extra_certs:
+        extra_asn1 = asn1_x509.Certificate.load(
+            extra.public_bytes(serialization.Encoding.DER)
+        )
+        asn1_cert_choices.append(cms.CertificateChoices({"certificate": extra_asn1}))
 
     signed_attrs_obj = None
     if use_signed_attrs:
@@ -277,7 +284,7 @@ def _build_cms_signed_data_der(
                 "content_type": content_type_oid,
                 "content": core.OctetString(encap_payload),
             },
-            "certificates": [cms.CertificateChoices({"certificate": asn1_cert})],
+            "certificates": asn1_cert_choices,
             "signer_infos": [cms.SignerInfo(signer_info_dict)],
         }
     )
@@ -336,6 +343,9 @@ def _make_clean_argon_artifacts(
     screen_replay: bool = False,
     front_back_consistent: bool = True,
     mrz_valid: bool | None = None,
+    cnh_security_code_11: str | None = None,
+    cnh_renach: str | None = None,
+    ready_override: bool | None = None,
     doc_type: str = "CNH",
     qr_png: bytes | None = None,
 ) -> ArgonProcessedArtifacts:
@@ -355,6 +365,8 @@ def _make_clean_argon_artifacts(
         spatial_rois=SpatialRegionsOfInterest(),
         full_civil_name=full_name,
         cpf_11_digits=cpf,
+        cnh_security_code_11=cnh_security_code_11,
+        cnh_renach=cnh_renach,
         front_back_cpf_consistent=front_back_consistent,
         cpf_mod11_valid=True,
         mrz_checksums_valid=mrz_valid,
@@ -367,6 +379,7 @@ def _make_clean_argon_artifacts(
     )
     if mrz_valid is not None:
         object.__setattr__(dossier, "mrz_checksums_valid", mrz_valid)
+    default_ready = is_readable and not prompt_injection and not screen_replay
     return ArgonProcessedArtifacts(
         dossier=dossier,
         cropped_portrait_3x4_jpeg=front_jpeg,
@@ -374,7 +387,7 @@ def _make_clean_argon_artifacts(
         canonical_front_jpeg=front_jpeg,
         canonical_back_jpeg=back_jpeg,
         ready_for_serpro_and_carbon=(
-            is_readable and not prompt_injection and not screen_replay
+            ready_override if ready_override is not None else default_ready
         ),
         name_compatibility_score=typed_name_score,
     )
@@ -1447,3 +1460,755 @@ def test_fastapi_gateway_full_kyc_attacks_smart_split_and_webhook_hmac() -> None
             files={"invoice_image": ("danfe.jpg", _make_jpeg_bytes(), "image/jpeg")},
         )
         assert ok_inv.status_code == 200 and ok_inv.json()["approved"] is True
+
+
+# ==============================================================================
+# 6. Red-Team Regression Suite (#11): Production Guards, NaN/Inf, CNH/VIO & RFC5280
+# ==============================================================================
+
+
+def test_production_http_guards_clock_override_vio_bypass_and_413_upload_ceiling() -> None:
+    import time as time_mod
+
+    prod_cfg = KYCZeroTrustSettings(
+        environment="production",
+        master_kek_hex="a1" * 32,
+        cpf_pepper_secret="prod-pepper-secret-2026",
+        session_hmac_secret="prod-session-hmac-secret-2026",
+        supabase_webhook_secret="prod-supabase-wh-secret-2026",
+        supabase_webhook_url="https://prod.supabase.co/functions/v1/kyc-carbon-webhook",
+        gemini_api_key="prod-gemini-key-placeholder",
+    )
+    assert prod_cfg.is_production is True
+
+    sec = ZeroTrustSecurityEngine(prod_cfg)
+    _, root_cert, leaf_key, leaf_cert = _generate_ecdsa_pki_hierarchy()
+    crypto_val = GovCryptographicDocumentValidator(trusted_roots=[root_cert])
+
+    async def _mock_serpro_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/token"):
+            return httpx.Response(
+                200, json={"access_token": "prod-tok", "expires_in": 3600}
+            )
+        return httpx.Response(
+            200, json={"similaridade": 0.96, "situacao_cpf": "regular"}
+        )
+
+    prod_serpro = SerproDatavalidMtlsClient(
+        prod_cfg, transport=httpx.MockTransport(_mock_serpro_handler)
+    )
+
+    class _DeterministicProdVisionStub:
+        async def extract_and_ground_document(
+            self,
+            *,
+            front_jpeg_bytes: bytes,
+            back_jpeg_bytes: bytes,
+            user_typed_cpf: str,
+            user_typed_name: str,
+        ) -> ArgonProcessedArtifacts:
+            clean_cpf = "".join(ch for ch in user_typed_cpf if ch.isdigit())
+            return ArgonProcessedArtifacts(
+                dossier=ExtractedDocumentDossierArgon(
+                    quality_gate=OpticalForensicsAndQualityGate(
+                        is_readable=True,
+                        canonical_rotation_deg=0,
+                        is_full_document_visible=True,
+                        has_glare_on_critical_zones=False,
+                        is_screen_replay_or_moire_suspected=False,
+                        has_portrait_paste_or_font_tampering=False,
+                        adversarial_prompt_injection_detected=False,
+                        detected_document_type="CNH",
+                    ),
+                    spatial_rois=SpatialRegionsOfInterest(),
+                    full_civil_name=user_typed_name.strip().upper(),
+                    cpf_11_digits=clean_cpf,
+                    front_back_cpf_consistent=True,
+                    cpf_mod11_valid=True,
+                ),
+                cropped_portrait_3x4_jpeg=front_jpeg_bytes,
+                cropped_qr_code_vio_png=back_jpeg_bytes,
+                canonical_front_jpeg=front_jpeg_bytes,
+                canonical_back_jpeg=back_jpeg_bytes,
+                ready_for_serpro_and_carbon=True,
+                name_compatibility_score=1.0,
+            )
+
+        async def analyze_fiscal_invoice_argon(
+            self, *, invoice_image_bytes: bytes, declared_materials_cents: int
+        ):
+            raise AssertionError("Should be blocked by 413 before vision call")
+
+    prod_orch = CarbonFraudOrchestrator(
+        prod_cfg,
+        sec,
+        genai_client=object(),
+        llm_responder=lambda _: _CarbonLLMCorrelationSchema(
+            recommended_status="APPROVED",
+            confidence_score=0.97,
+            risk_tier="LOW",
+            shap_top_3_factors=[
+                "Integridade de produção validada.",
+                "Selo criptográfico conferido.",
+                "Biometria consistente.",
+            ],
+            user_friendly_message_ptbr="Identidade confirmada com sucesso.",
+        ),
+    )
+
+    async def _noop_webhook(_url: str, _raw: bytes, _headers: dict) -> int:
+        return 200
+
+    app = create_kyc_app(
+        settings=prod_cfg,
+        security_engine=sec,
+        crypto_validator=crypto_val,
+        serpro_client=prod_serpro,
+        vision_service=_DeterministicProdVisionStub(),
+        fraud_orchestrator=prod_orch,
+        webhook_dispatcher=_noop_webhook,
+    )
+
+    user_uuid = "99999999-8888-4777-8666-555555555555"
+    with TestClient(app) as client:
+        # 1. Production POST /v1/kyc/session/init MUST ignore client-supplied now_ts (JSON & Form)
+        real_now = int(time_mod.time())
+        spoofed_future = real_now + 999_999
+        init_json = client.post(
+            "/v1/kyc/session/init",
+            json={"user_id": user_uuid, "now_ts": spoofed_future},
+        )
+        assert init_json.status_code == 200
+        ch = init_json.json()
+        assert abs(ch["issued_at"] - real_now) <= 5
+
+        init_form = client.post(
+            "/v1/kyc/session/init",
+            data={"user_id": user_uuid, "now_ts": str(spoofed_future)},
+        )
+        assert init_form.status_code == 200
+        assert abs(init_form.json()["issued_at"] - int(time_mod.time())) <= 5
+
+        # 2. Production POST /v1/kyc/verify-full MUST ignore now_ts_override on expired token
+        expired_t0 = int(time_mod.time()) - 500
+        expired_ch = sec.issue_anti_swap_session_token(user_uuid, now_ts=expired_t0)
+        selfie_bytes = _make_jpeg_bytes(400, 400)
+        front_bytes = _make_jpeg_bytes(800, 500)
+        back_without_qr = _make_jpeg_bytes(800, 500)
+        expired_rh = sec.compute_anti_swap_request_hash(
+            user_uuid,
+            expired_ch.session_nonce,
+            sec.sha256_hex(selfie_bytes),
+            sec.sha256_hex(front_bytes),
+            sec.sha256_hex(back_without_qr),
+        )
+        expired_resp = client.post(
+            "/v1/kyc/verify-full",
+            data={
+                "user_id": user_uuid,
+                "typed_cpf": VALID_CPF_A,
+                "typed_full_name": "Wagner Oliveira",
+                "session_nonce": expired_ch.session_nonce,
+                "session_issued_at": str(expired_ch.issued_at),
+                "session_signature": expired_ch.session_signature,
+                "liveness_timestamp": str(expired_t0 + 10),
+                "doc_capture_timestamp": str(expired_t0 + 25),
+                "request_hash": expired_rh,
+                "liveness_score": "0.97",
+                "local_face_match_score": "0.94",
+                "now_ts_override": str(expired_t0 + 30),
+            },
+            files={
+                "selfie_liveness": ("selfie.jpg", selfie_bytes, "image/jpeg"),
+                "doc_front": ("front.jpg", front_bytes, "image/jpeg"),
+                "doc_back": ("back.jpg", back_without_qr, "image/jpeg"),
+            },
+        )
+        assert expired_resp.status_code == 200
+        assert expired_resp.json()["verdict"]["status"] == "REJECTED"
+        assert (
+            expired_resp.json()["verdict"]["hard_veto_code"]
+            == "VETO_1_ANTI_SWAP_SESSION_TTL_EXPIRED"
+        )
+
+        # 3. Production POST /v1/kyc/verify-full MUST force require_vio_for_modern_docs=True
+        #    AND ignore unbound vio_qr_crop_override!
+        cms_der = _build_cms_signed_data_der(
+            payload_bytes=json.dumps(
+                {"cpf": VALID_CPF_A, "name": "WAGNER OLIVEIRA"}
+            ).encode("utf-8"),
+            signer_key=leaf_key,
+            signer_cert=leaf_cert,
+        )
+        valid_qr_png = _render_vio_qr_png(cms_der)
+        live_now = int(time_mod.time())
+        live_ch = client.post(
+            "/v1/kyc/session/init", json={"user_id": user_uuid}
+        ).json()
+        live_rh = sec.compute_anti_swap_request_hash(
+            user_uuid,
+            live_ch["session_nonce"],
+            sec.sha256_hex(selfie_bytes),
+            sec.sha256_hex(front_bytes),
+            sec.sha256_hex(back_without_qr),
+        )
+        bypass_attempt = client.post(
+            "/v1/kyc/verify-full",
+            data={
+                "user_id": user_uuid,
+                "typed_cpf": VALID_CPF_A,
+                "typed_full_name": "Wagner Oliveira",
+                "session_nonce": live_ch["session_nonce"],
+                "session_issued_at": str(live_ch["issued_at"]),
+                "session_signature": live_ch["session_signature"],
+                "liveness_timestamp": str(max(live_ch["issued_at"], live_now)),
+                "doc_capture_timestamp": str(max(live_ch["issued_at"], live_now)),
+                "request_hash": live_rh,
+                "liveness_score": "0.97",
+                "local_face_match_score": "0.94",
+                "require_vio_for_modern_docs": "false",
+            },
+            files={
+                "selfie_liveness": ("selfie.jpg", selfie_bytes, "image/jpeg"),
+                "doc_front": ("front.jpg", front_bytes, "image/jpeg"),
+                "doc_back": ("back.jpg", back_without_qr, "image/jpeg"),
+                "vio_qr_crop_override": ("vio_qr.png", valid_qr_png, "image/png"),
+            },
+        )
+        assert bypass_attempt.status_code == 200
+        bypass_verdict = bypass_attempt.json()["verdict"]
+        assert bypass_verdict["status"] == "REJECTED"
+        assert bypass_verdict["hard_veto_triggered"] is True
+        assert bypass_verdict["hard_veto_code"].startswith("VETO_4_VIO_")
+
+        # 4. Bounded 15 MiB upload ceiling -> HTTP 413 on oversized files (anti-OOM DoS)
+        oversized_blob = b"\xff\xd8\xff\xe0" + (b"\x00" * (15 * 1024 * 1024 + 64))
+        too_large_kyc = client.post(
+            "/v1/kyc/verify-full",
+            data={
+                "user_id": user_uuid,
+                "typed_cpf": VALID_CPF_A,
+                "typed_full_name": "Wagner Oliveira",
+                "session_nonce": live_ch["session_nonce"],
+                "session_issued_at": str(live_ch["issued_at"]),
+                "session_signature": live_ch["session_signature"],
+                "liveness_timestamp": str(live_ch["issued_at"]),
+                "doc_capture_timestamp": str(live_ch["issued_at"]),
+                "request_hash": live_rh,
+                "liveness_score": "0.97",
+                "local_face_match_score": "0.94",
+            },
+            files={
+                "selfie_liveness": ("huge.jpg", oversized_blob, "image/jpeg"),
+                "doc_front": ("front.jpg", front_bytes, "image/jpeg"),
+                "doc_back": ("back.jpg", back_without_qr, "image/jpeg"),
+            },
+        )
+        assert too_large_kyc.status_code == 413
+
+        too_large_inv = client.post(
+            "/v1/smart-split/verify-invoice",
+            data={"user_id": user_uuid, "declared_materials_cents": "15000"},
+            files={"invoice_image": ("huge_inv.jpg", oversized_blob, "image/jpeg")},
+        )
+        assert too_large_inv.status_code == 413
+
+
+def test_nan_inf_biometric_bypass_cnh_codes_tier1_readiness_and_vio_name_cloning() -> None:
+    cfg = KYCZeroTrustSettings(environment="homologation")
+    sec = ZeroTrustSecurityEngine(cfg)
+    _, root_cert, leaf_key, leaf_cert = _generate_ecdsa_pki_hierarchy()
+    crypto_val = GovCryptographicDocumentValidator(trusted_roots=[root_cert])
+
+    llm_calls = {"count": 0}
+
+    def _never_called_llm(_payload: dict) -> _CarbonLLMCorrelationSchema:
+        llm_calls["count"] += 1
+        return _CarbonLLMCorrelationSchema(
+            recommended_status="APPROVED",
+            confidence_score=0.99,
+            risk_tier="LOW",
+            shap_top_3_factors=["Fator 1", "Fator 2", "Fator 3"],
+            user_friendly_message_ptbr="Aprovado.",
+        )
+
+    orch = CarbonFraudOrchestrator(cfg, sec, llm_responder=_never_called_llm)
+    user_id = "22222222-3333-4444-8555-666666666666"
+    t0 = 1_760_600_000
+    selfie = _make_jpeg_bytes(320, 320)
+    sh = sec.sha256_hex(selfie)
+    ch = sec.issue_anti_swap_session_token(user_id, now_ts=t0)
+    rh = sec.compute_anti_swap_request_hash(user_id, ch.session_nonce, sh, sh, sh)
+    valid_as = sec.verify_anti_swap_and_device_integrity(
+        user_id=user_id,
+        session_nonce=ch.session_nonce,
+        session_issued_at=ch.issued_at,
+        session_signature=ch.session_signature,
+        liveness_timestamp=t0 + 10,
+        doc_capture_timestamp=t0 + 20,
+        selfie_hash=sh,
+        doc_front_hash=sh,
+        doc_back_hash=sh,
+        request_hash=rh,
+        capture_source="LIVE_CAMERA",
+        platform="ANDROID",
+        attestation_verdict="MEETS_STRONG_INTEGRITY",
+        now_ts=t0 + 25,
+    )
+
+    cms_wagner = _build_cms_signed_data_der(
+        payload_bytes=json.dumps(
+            {"cpf": VALID_CPF_A, "name": "WAGNER OLIVEIRA CLAUDIANO"}
+        ).encode("utf-8"),
+        signer_key=leaf_key,
+        signer_cert=leaf_cert,
+    )
+    vio_wagner_ok = crypto_val.validate_vio_payload_bytes(
+        cms_wagner, ocr_cpf=VALID_CPF_A, typed_cpf=VALID_CPF_A
+    )
+    assert vio_wagner_ok.valid is True
+    assert vio_wagner_ok.extracted_name == "WAGNER OLIVEIRA CLAUDIANO"
+
+    serpro_ok = SerproBiometricResult(
+        passed=True,
+        similarity=0.95,
+        cpf_regular=True,
+        active_external_mtls=True,
+        mode="SERPRO_MTLS_LIVE",
+        circuit_state=CircuitState.CLOSED,
+        reason_code="OK",
+    )
+
+    async def _run_checks() -> None:
+        # 1. NaN / +Inf / -Inf / >1.0 on liveness_score MUST trigger VETO_2_LIVENESS_BELOW_THRESHOLD
+        for bad_live in (float("nan"), float("inf"), float("-inf"), 1.5, -0.1):
+            v_live = await orch.evaluate_kyc_dossier(
+                user_id=user_id,
+                typed_cpf=VALID_CPF_A,
+                typed_full_name="Wagner Oliveira Claudiano",
+                canonical_selfie_bytes=selfie,
+                liveness_score=bad_live,
+                local_face_match_score=0.95,
+                anti_swap_result=valid_as,
+                argon_artifacts=_make_clean_argon_artifacts(),
+                vio_result=vio_wagner_ok,
+                serpro_result=serpro_ok,
+            )
+            assert v_live.status == "REJECTED"
+            assert v_live.hard_veto_code == "VETO_2_LIVENESS_BELOW_THRESHOLD"
+
+        # 2. NaN / +Inf / -Inf / >1.0 on local_face_match_score MUST trigger VETO_5_LOCAL_FACE_MISMATCH
+        for bad_face in (float("nan"), float("inf"), float("-inf"), 1.2, -0.2):
+            v_face = await orch.evaluate_kyc_dossier(
+                user_id=user_id,
+                typed_cpf=VALID_CPF_A,
+                typed_full_name="Wagner Oliveira Claudiano",
+                canonical_selfie_bytes=selfie,
+                liveness_score=0.96,
+                local_face_match_score=bad_face,
+                anti_swap_result=valid_as,
+                argon_artifacts=_make_clean_argon_artifacts(),
+                vio_result=vio_wagner_ok,
+                serpro_result=serpro_ok,
+            )
+            assert v_face.status == "REJECTED"
+            assert v_face.hard_veto_code == "VETO_5_LOCAL_FACE_MISMATCH"
+
+        # 3. SERPRO NaN / out-of-range similarity handling
+        with pytest.raises(Exception):
+            SerproBiometricResult(
+                passed=True,
+                similarity=float("nan"),
+                cpf_regular=True,
+                active_external_mtls=True,
+                mode="SERPRO_MTLS_LIVE",
+                circuit_state=CircuitState.CLOSED,
+                reason_code="OK",
+            )
+
+        responses = [
+            {"similaridade": "NaN", "situacao_cpf": "regular"},
+            {"similaridade": 150.0, "situacao_cpf": "regular"},
+        ]
+
+        async def _bad_serpro_handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/token"):
+                return httpx.Response(
+                    200, json={"access_token": "tok", "expires_in": 3600}
+                )
+            return httpx.Response(200, json=responses.pop(0))
+
+        bad_serpro_client = SerproDatavalidMtlsClient(
+            cfg, transport=httpx.MockTransport(_bad_serpro_handler)
+        )
+        try:
+            r_nan = await bad_serpro_client.validate_pf_facial_biometrics(
+                cpf_digits=VALID_CPF_A, canonical_selfie_bytes=selfie
+            )
+            assert r_nan.passed is False
+            assert r_nan.similarity == 0.0
+            assert r_nan.reason_code == "SERPRO_INVALID_SIMILARITY_VALUE"
+
+            r_oob = await bad_serpro_client.validate_pf_facial_biometrics(
+                cpf_digits=VALID_CPF_A, canonical_selfie_bytes=selfie
+            )
+            assert r_oob.passed is False
+            assert r_oob.similarity == 0.0
+            assert r_oob.reason_code == "SERPRO_INVALID_SIMILARITY_VALUE"
+        finally:
+            await bad_serpro_client.close()
+
+        # 4. Hard Veto 3: Invalid CNH security code, invalid RENACH & unready Tier-1 dossier
+        v_sec_code = await orch.evaluate_kyc_dossier(
+            user_id=user_id,
+            typed_cpf=VALID_CPF_A,
+            typed_full_name="Wagner Oliveira Claudiano",
+            canonical_selfie_bytes=selfie,
+            liveness_score=0.96,
+            local_face_match_score=0.94,
+            anti_swap_result=valid_as,
+            argon_artifacts=_make_clean_argon_artifacts(
+                cnh_security_code_11="11111111111", ready_override=False
+            ),
+            vio_result=vio_wagner_ok,
+            serpro_result=None,
+        )
+        assert v_sec_code.status == "REJECTED"
+        assert v_sec_code.hard_veto_code == "VETO_3_CNH_SECURITY_CODE_INVALID"
+
+        v_renach = await orch.evaluate_kyc_dossier(
+            user_id=user_id,
+            typed_cpf=VALID_CPF_A,
+            typed_full_name="Wagner Oliveira Claudiano",
+            canonical_selfie_bytes=selfie,
+            liveness_score=0.96,
+            local_face_match_score=0.94,
+            anti_swap_result=valid_as,
+            argon_artifacts=_make_clean_argon_artifacts(
+                cnh_renach="12345678901", ready_override=False
+            ),
+            vio_result=vio_wagner_ok,
+            serpro_result=None,
+        )
+        assert v_renach.status == "REJECTED"
+        assert v_renach.hard_veto_code == "VETO_3_CNH_RENACH_INVALID"
+
+        v_unready = await orch.evaluate_kyc_dossier(
+            user_id=user_id,
+            typed_cpf=VALID_CPF_A,
+            typed_full_name="Wagner Oliveira Claudiano",
+            canonical_selfie_bytes=selfie,
+            liveness_score=0.96,
+            local_face_match_score=0.94,
+            anti_swap_result=valid_as,
+            argon_artifacts=_make_clean_argon_artifacts(ready_override=False),
+            vio_result=vio_wagner_ok,
+            serpro_result=None,
+        )
+        assert v_unready.status == "REJECTED"
+        assert v_unready.hard_veto_code == "VETO_3_TIER1_DOSSIER_NOT_READY"
+
+        # 5. Hard Veto 4: VIO QR Signed Civil Name Anti-Cloning
+        #    Attacker forges front OCR + typed_full_name to "MARCOS ANTONIO SOUZA" while keeping
+        #    the victim's CPF + authentic VIO QR signed for "WAGNER OLIVEIRA CLAUDIANO".
+        v_name_clone = await orch.evaluate_kyc_dossier(
+            user_id=user_id,
+            typed_cpf=VALID_CPF_A,
+            typed_full_name="Marcos Antonio Souza",
+            canonical_selfie_bytes=selfie,
+            liveness_score=0.96,
+            local_face_match_score=0.94,
+            anti_swap_result=valid_as,
+            argon_artifacts=_make_clean_argon_artifacts(
+                cpf=VALID_CPF_A,
+                full_name="MARCOS ANTONIO SOUZA",
+                typed_name_score=1.0,
+            ),
+            vio_result=vio_wagner_ok,
+            serpro_result=serpro_ok,
+        )
+        assert v_name_clone.status == "REJECTED"
+        assert v_name_clone.hard_veto_code == "VETO_4_VIO_CPF_CLONING_DETECTED"
+
+        assert llm_calls["count"] == 0
+
+    asyncio.run(_run_checks())
+
+    # 6. End-to-End HTTP NaN/Infinity form submission: must reject cleanly & emit valid RFC 8259 JSON webhook
+    captured_wh: list[bytes] = []
+    serpro_http_calls = {"count": 0}
+
+    async def _cap_wh(_url: str, raw: bytes, _headers: dict) -> int:
+        captured_wh.append(raw)
+        return 200
+
+    async def _track_serpro(request: httpx.Request) -> httpx.Response:
+        serpro_http_calls["count"] += 1
+        return httpx.Response(500)
+
+    tracked_serpro = SerproDatavalidMtlsClient(
+        cfg, transport=httpx.MockTransport(_track_serpro)
+    )
+    app = create_kyc_app(
+        settings=cfg,
+        security_engine=sec,
+        crypto_validator=crypto_val,
+        serpro_client=tracked_serpro,
+        fraud_orchestrator=orch,
+        webhook_dispatcher=_cap_wh,
+    )
+    with TestClient(app) as client:
+        ch_http = client.post(
+            "/v1/kyc/session/init", json={"user_id": user_id, "now_ts": t0}
+        ).json()
+        rh_http = sec.compute_anti_swap_request_hash(
+            user_id, ch_http["session_nonce"], sh, sh, sh
+        )
+        nan_resp = client.post(
+            "/v1/kyc/verify-full",
+            data={
+                "user_id": user_id,
+                "typed_cpf": VALID_CPF_A,
+                "typed_full_name": "Wagner Oliveira Claudiano",
+                "session_nonce": ch_http["session_nonce"],
+                "session_issued_at": str(ch_http["issued_at"]),
+                "session_signature": ch_http["session_signature"],
+                "liveness_timestamp": str(t0 + 5),
+                "doc_capture_timestamp": str(t0 + 15),
+                "request_hash": rh_http,
+                "liveness_score": "NaN",
+                "local_face_match_score": "Infinity",
+                "now_ts_override": str(t0 + 20),
+            },
+            files={
+                "selfie_liveness": ("selfie.jpg", selfie, "image/jpeg"),
+                "doc_front": ("front.jpg", selfie, "image/jpeg"),
+                "doc_back": ("back.jpg", selfie, "image/jpeg"),
+            },
+        )
+        assert nan_resp.status_code == 200
+        assert nan_resp.json()["verdict"]["status"] == "REJECTED"
+        assert (
+            nan_resp.json()["verdict"]["hard_veto_code"]
+            == "VETO_2_LIVENESS_BELOW_THRESHOLD"
+        )
+        assert serpro_http_calls["count"] == 0
+        assert len(captured_wh) == 1
+        parsed_wh = json.loads(captured_wh[0].decode("utf-8"))
+        assert parsed_wh["liveness_score"] == 0.0
+        assert parsed_wh["local_face_match_score"] == 0.0
+
+
+def test_rfc5280_x509_key_usage_and_path_length_constraints() -> None:
+    now = datetime.now(timezone.utc)
+    payload = json.dumps(
+        {"cpf": VALID_CPF_A, "name": "WAGNER OLIVEIRA CLAUDIANO"}
+    ).encode("utf-8")
+
+    def _make_three_tier_pki(
+        *,
+        root_path_len: int | None = 1,
+        root_key_cert_sign: bool = True,
+        inter_is_ca: bool = True,
+        inter_path_len: int | None = 0,
+        inter_key_cert_sign: bool = True,
+        leaf_digital_sig: bool = True,
+        leaf_content_commitment: bool = False,
+    ) -> tuple[x509.Certificate, x509.Certificate, ec.EllipticCurvePrivateKey, x509.Certificate]:
+        root_key = ec.generate_private_key(ec.SECP256R1())
+        root_name = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "BR"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "ICP-Brasil Root RFC5280 Test"),
+            ]
+        )
+        root_cert = (
+            x509.CertificateBuilder()
+            .subject_name(root_name)
+            .issuer_name(root_name)
+            .public_key(root_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=365))
+            .not_valid_after(now + timedelta(days=3650))
+            .add_extension(
+                x509.BasicConstraints(ca=True, path_length=root_path_len), critical=True
+            )
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    content_commitment=False,
+                    key_encipherment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=root_key_cert_sign,
+                    crl_sign=True,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+            .sign(root_key, hashes.SHA256())
+        )
+
+        inter_key = ec.generate_private_key(ec.SECP256R1())
+        inter_name = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "BR"),
+                x509.NameAttribute(
+                    NameOID.COMMON_NAME, "AC Intermediaria SENATRAN Test"
+                ),
+            ]
+        )
+        inter_cert = (
+            x509.CertificateBuilder()
+            .subject_name(inter_name)
+            .issuer_name(root_name)
+            .public_key(inter_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=180))
+            .not_valid_after(now + timedelta(days=1800))
+            .add_extension(
+                x509.BasicConstraints(
+                    ca=inter_is_ca,
+                    path_length=inter_path_len if inter_is_ca else None,
+                ),
+                critical=True,
+            )
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    content_commitment=False,
+                    key_encipherment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=inter_key_cert_sign,
+                    crl_sign=True,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+            .sign(root_key, hashes.SHA256())
+        )
+
+        leaf_key = ec.generate_private_key(ec.SECP256R1())
+        leaf_name = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "BR"),
+                x509.NameAttribute(NameOID.COMMON_NAME, "Emissor Final VIO Test"),
+            ]
+        )
+        leaf_cert = (
+            x509.CertificateBuilder()
+            .subject_name(leaf_name)
+            .issuer_name(inter_name)
+            .public_key(leaf_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=30))
+            .not_valid_after(now + timedelta(days=365))
+            .add_extension(
+                x509.BasicConstraints(ca=False, path_length=None), critical=True
+            )
+            .add_extension(
+                x509.KeyUsage(
+                    digital_signature=leaf_digital_sig,
+                    content_commitment=leaf_content_commitment,
+                    key_encipherment=not (leaf_digital_sig or leaf_content_commitment),
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=False,
+                    crl_sign=False,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+            .sign(inter_key, hashes.SHA256())
+        )
+        return root_cert, inter_cert, leaf_key, leaf_cert
+
+    # 1. Valid 3-tier chain (Root path_length=1 -> Intermediate path_length=0 -> Leaf digital_signature=True)
+    r_ok, i_ok, lk_ok, lc_ok = _make_three_tier_pki(root_path_len=1, inter_path_len=0)
+    cms_ok = _build_cms_signed_data_der(
+        payload_bytes=payload,
+        signer_key=lk_ok,
+        signer_cert=lc_ok,
+        extra_certs=(i_ok,),
+    )
+    res_ok = GovCryptographicDocumentValidator(
+        trusted_roots=[r_ok]
+    ).validate_vio_payload_bytes(
+        cms_ok, ocr_cpf=VALID_CPF_A, typed_cpf=VALID_CPF_A, now_utc=now
+    )
+    assert res_ok.valid is True and res_ok.cert_chain_valid is True
+
+    # 2. Violated BasicConstraints.path_length (Root path_length=0 cannot authorize an Intermediate CA)
+    r_pl, i_pl, lk_pl, lc_pl = _make_three_tier_pki(root_path_len=0, inter_path_len=0)
+    cms_pl = _build_cms_signed_data_der(
+        payload_bytes=payload,
+        signer_key=lk_pl,
+        signer_cert=lc_pl,
+        extra_certs=(i_pl,),
+    )
+    res_pl = GovCryptographicDocumentValidator(
+        trusted_roots=[r_pl]
+    ).validate_vio_payload_bytes(
+        cms_pl, ocr_cpf=VALID_CPF_A, typed_cpf=VALID_CPF_A, now_utc=now
+    )
+    assert res_pl.valid is False
+    assert res_pl.cert_chain_valid is False
+    assert res_pl.reason_code == "X509_TRUST_CHAIN_INVALID"
+
+    # 3. Violated Intermediate CA KeyUsage (key_cert_sign=False)
+    r_ku, i_ku, lk_ku, lc_ku = _make_three_tier_pki(inter_key_cert_sign=False)
+    cms_ku = _build_cms_signed_data_der(
+        payload_bytes=payload,
+        signer_key=lk_ku,
+        signer_cert=lc_ku,
+        extra_certs=(i_ku,),
+    )
+    res_ku = GovCryptographicDocumentValidator(
+        trusted_roots=[r_ku]
+    ).validate_vio_payload_bytes(
+        cms_ku, ocr_cpf=VALID_CPF_A, typed_cpf=VALID_CPF_A, now_utc=now
+    )
+    assert res_ku.valid is False
+    assert res_ku.cert_chain_valid is False
+    assert res_ku.reason_code == "X509_TRUST_CHAIN_INVALID"
+
+    # 4. Violated Non-CA Intermediate (ca=False attempting to sign leaf certificate)
+    r_nca, i_nca, lk_nca, lc_nca = _make_three_tier_pki(inter_is_ca=False)
+    cms_nca = _build_cms_signed_data_der(
+        payload_bytes=payload,
+        signer_key=lk_nca,
+        signer_cert=lc_nca,
+        extra_certs=(i_nca,),
+    )
+    res_nca = GovCryptographicDocumentValidator(
+        trusted_roots=[r_nca]
+    ).validate_vio_payload_bytes(
+        cms_nca, ocr_cpf=VALID_CPF_A, typed_cpf=VALID_CPF_A, now_utc=now
+    )
+    assert res_nca.valid is False
+    assert res_nca.cert_chain_valid is False
+    assert res_nca.reason_code == "X509_TRUST_CHAIN_INVALID"
+
+    # 5. Violated Leaf KeyUsage (neither digital_signature nor content_commitment enabled)
+    r_lf, i_lf, lk_lf, lc_lf = _make_three_tier_pki(
+        leaf_digital_sig=False, leaf_content_commitment=False
+    )
+    cms_lf = _build_cms_signed_data_der(
+        payload_bytes=payload,
+        signer_key=lk_lf,
+        signer_cert=lc_lf,
+        extra_certs=(i_lf,),
+    )
+    res_lf = GovCryptographicDocumentValidator(
+        trusted_roots=[r_lf]
+    ).validate_vio_payload_bytes(
+        cms_lf, ocr_cpf=VALID_CPF_A, typed_cpf=VALID_CPF_A, now_utc=now
+    )
+    assert res_lf.valid is False
+    assert res_lf.cert_chain_valid is False
+    assert res_lf.reason_code == "X509_TRUST_CHAIN_INVALID"
+
