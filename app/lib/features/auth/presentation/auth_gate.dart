@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/draft_store.dart';
+import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/media_service.dart';
 import 'deep_link_policy.dart';
 import 'login_screen.dart';
@@ -64,6 +65,8 @@ class _AuthGateState extends State<AuthGate> {
   /// assinadas de mídia privada não ficam no aparelho para o próximo usuário.
   void _wipeLocalUserData(String userId) {
     MediaService.clearSignedCache();
+    EagerImagePrefetcher.cancelPending();
+    unawaited(InstantImageCacheEngine.instance.purgeAllUserImages());
     unawaited(DraftStore.clearAllForUser(userId));
   }
 
