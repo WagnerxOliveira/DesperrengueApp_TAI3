@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/security/perceptual_hash_guard.dart';
@@ -12,9 +12,9 @@ import '../../../core/ui/light_island.dart';
 import 'auth_gate.dart';
 
 class VerificacaoStep5FinalizacaoScreen extends StatefulWidget {
-  final File frenteDocumento;
-  final File versoDocumento;
-  final File selfie;
+  final XFile frenteDocumento;
+  final XFile versoDocumento;
+  final XFile selfie;
   final String tipoRegistro;
   final String numeroRegistro;
 
@@ -38,9 +38,10 @@ class _VerificacaoStep5FinalizacaoScreenState
   bool _isUploading = false;
 
   /// Extensão segura (jpg/png/webp) a partir do caminho do arquivo capturado.
-  static String _ext(File file) {
-    final dot = file.path.lastIndexOf('.');
-    final raw = dot == -1 ? 'jpg' : file.path.substring(dot + 1).toLowerCase();
+  static String _ext(XFile file) {
+    final name = file.name.isNotEmpty ? file.name : file.path;
+    final dot = name.lastIndexOf('.');
+    final raw = dot == -1 ? 'jpg' : name.substring(dot + 1).toLowerCase();
     if (raw == 'jpeg') return 'jpg';
     return const {'jpg', 'png', 'webp'}.contains(raw) ? raw : 'jpg';
   }

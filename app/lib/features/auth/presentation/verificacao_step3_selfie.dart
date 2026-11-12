@@ -1,15 +1,15 @@
 import '../../../core/ui/app_scaffold.dart';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-import 'verificacao_step4_registro.dart';
+import 'verificacao_step4_registro.dart';
 import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep3SelfieScreen extends StatefulWidget {
-  final File frenteDocumento;
-  final File versoDocumento;
+  final XFile frenteDocumento;
+  final XFile versoDocumento;
 
   const VerificacaoStep3SelfieScreen({
     super.key,
@@ -25,7 +25,8 @@ class VerificacaoStep3SelfieScreen extends StatefulWidget {
 class _VerificacaoStep3SelfieScreenState
     extends State<VerificacaoStep3SelfieScreen> {
   final Color _primaryBlue = const Color(0xFF003366);
-  File? _imagemSelecionada;
+  XFile? _imagemSelecionada;
+  Uint8List? _previewBytes;
   final ImagePicker _picker = ImagePicker();
 
   // Função configurada especificamente para abrir a CÂMARA FRONTAL
@@ -38,8 +39,12 @@ class _VerificacaoStep3SelfieScreenState
       );
 
       if (imagem != null) {
+        // Bytes lidos uma vez (Web-safe: sem dart:io/File) e reaproveitados no preview.
+        final bytes = await imagem.readAsBytes();
+        if (!mounted) return;
         setState(() {
-          _imagemSelecionada = File(imagem.path);
+          _imagemSelecionada = imagem;
+          _previewBytes = bytes;
         });
       }
     } catch (e) {
@@ -216,9 +221,11 @@ class _VerificacaoStep3SelfieScreenState
                       child: _imagemSelecionada != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                _imagemSelecionada!,
+                              child: Image.memory(
+                                _previewBytes!,
                                 fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                cacheWidth: 1080,
                               ),
                             )
                           : Column(
