@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/client_dossier_models.dart';
 import '../models/marketplace_models.dart';
+import '../security/geo_privacy_policy_engine.dart';
 import '../utils/order_utils.dart';
 import '../utils/tag_normalizer.dart';
 import 'media_service.dart';
@@ -163,6 +164,21 @@ class JobService {
     final r = await _client.rpc('client_job_dossier', params: {'p_job': jobId});
     if (r is Map) return ClientDossier.fromMap(Map<String, dynamic>.from(r));
     return null;
+  }
+
+  /// Localização do serviço já filtrada pelo servidor para quem está olhando
+  /// (RPC `get_job_location_for_viewer`). Retorna null quando o acesso é negado
+  /// (`denied`/`viewer_role == none`), quando o payload é inválido ou em qualquer erro.
+  /// Nunca propaga mensagens de erro (podem conter PII/ids): falha vira null.
+  Future<ProviderLocationView?> fetchLocationForViewer(String jobId) async {
+    try {
+      final r = await _client.rpc('get_job_location_for_viewer', params: {'p_job': jobId});
+      return ProviderLocationView.tryFromRpc(r);
+    } on PostgrestException catch (_) {
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Serviços concluídos, sob proteção pós-serviço, em mediação ou cancelados do cliente logado,

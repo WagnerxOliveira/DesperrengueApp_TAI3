@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/geocode_models.dart';
 import '../models/marketplace_models.dart';
 import '../models/scheduling_models.dart';
+import '../security/geo_privacy_policy_engine.dart';
 import '../ui/app_tokens.dart';
 import '../utils/geo.dart';
 import '../utils/tag_normalizer.dart';
@@ -23,18 +24,31 @@ bool isServiceDayUnlocked(
   bool isEmergency = false,
   DateTime? now,
 }) {
-  if (isEmergency) return true;
-  if (status == JobStatus.inProgress ||
-      status == JobStatus.awaitingApproval ||
-      status == JobStatus.completed) {
-    return true;
-  }
-  if (scheduledDate == null) return false;
-  final current = (now ?? DateTime.now()).toLocal();
-  final target = scheduledDate.toLocal();
-  return current.year == target.year &&
-      current.month == target.month &&
-      current.day == target.day;
+  return _evaluateProviderPrivacy(
+    scheduledDate,
+    status: status,
+    isEmergency: isEmergency,
+    now: now,
+  ).exactUnlocked;
+}
+
+/// Delegação ao [GeoPrivacyPolicyEngine] (fuso America/Sao_Paulo fixo UTC−3).
+/// Chamadores legados só consultam jobs com profissional atribuído, exceto `open`.
+GeoPrivacyDecision _evaluateProviderPrivacy(
+  DateTime? scheduledDate, {
+  JobStatus? status,
+  bool isEmergency = false,
+  DateTime? now,
+}) {
+  final effective = status ?? JobStatus.scheduled;
+  return GeoPrivacyPolicyEngine.evaluate(
+    role: GeoViewerRole.provider,
+    status: effective,
+    scheduledFor: scheduledDate,
+    isEmergency: isEmergency,
+    isAssignedProvider: effective != JobStatus.open,
+    now: now,
+  );
 }
 
 /// Projeção de privacidade do endereço para a visão do Profissional.
@@ -868,12 +882,13 @@ class AccurateGeoRoutingService {
     final effectiveSummary = addressSummary ?? summary;
     final effectiveOriginLat = providerLat ?? originLat;
     final effectiveOriginLng = providerLng ?? originLng;
-    final unlocked = isServiceDayUnlocked(
+    final decision = _evaluateProviderPrivacy(
       scheduledDate,
       status: status,
       isEmergency: isEmergency,
       now: now,
     );
+    final unlocked = decision.exactUnlocked;
     final rawAddress =
         (effectiveLine?.trim().isNotEmpty == true ? effectiveLine! : (effectiveSummary ?? '')).trim();
     final cityState = extractCityAndState(rawAddress, summary: effectiveSummary);
@@ -887,7 +902,7 @@ class AccurateGeoRoutingService {
     );
     final radiusFormatted = radiusKm.toStringAsFixed(1).replaceAll('.', ',');
     final dateFormatted = scheduledDate != null
-        ? '${scheduledDate.toLocal().day.toString().padLeft(2, '0')}/${scheduledDate.toLocal().month.toString().padLeft(2, '0')}/${scheduledDate.toLocal().year}'
+        ? GeoPrivacyPolicyEngine.formatDate(GeoPrivacyPolicyEngine.saoPauloDay(scheduledDate))
         : 'data agendada';
 
     if (!unlocked) {
@@ -896,8 +911,9 @@ class AccurateGeoRoutingService {
         cityAndState: cityState,
         approximateRadiusKm: radiusKm,
         headlineText: '📍 Raio aproximado de $radiusFormatted km • $cityState',
-        privacyBadgeText:
-            'Endereço exato e rota no mapa serão liberados automaticamente no dia agendado para o serviço ($dateFormatted).',
+        privacyBadgeText: decision.phase == GeoPrivacyPhase.closed
+            ? 'Atendimento encerrado • endereço completo e rota indisponíveis por privacidade.'
+            : 'Endereço exato e rota no mapa serão liberados automaticamente no dia agendado para o serviço ($dateFormatted).',
         fullAddress: null,
         reference: null,
         scheduledDateFormatted: dateFormatted,
