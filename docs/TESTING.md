@@ -148,7 +148,7 @@ A bateria forense em [`red_team_warranty_and_kyc_forensics_test.dart`](../app/te
 | **07** | [`achievements_smoke.sql`](../supabase/tests/achievements_smoke.sql) | Regras de concessão de conquistas, insígnias e progressão de *Tiered Waterfall* (`1..5`). |
 | **08** | [`scheduled_start_smoke.sql`](../supabase/tests/scheduled_start_smoke.sql) | Ciclo de vida temporal de ordens agendadas, janelas de *check-in* e expiração de SLA. |
 | **09** | [`offboarding_showcase_smoke.sql`](../supabase/tests/offboarding_showcase_smoke.sql) | Extração agregada de dados para geração de dossiê e auditoria de encerramento. |
-| **10** | [`geo_privacy_lock.sql`](../supabase/tests/geo_privacy_lock.sql) | **Suíte SQL da Trava Temporal e Espacial (`45` asserções + [`test-geo-privacy-sql.mjs`](../scripts/test-geo-privacy-sql.mjs) `11/11 PASS`):** Valida `owner`, `admin`, `provider` em `open_quoting`, `confirmed_future`, fronteira `02:59:59Z` vs `03:00:00Z` SP, `service_day`, `closed`, IDOR, cofres `private.geo_privacy_secrets`/`private.job_forensic_secrets`, bucket privado `forensic-evidence` e Monte Carlo de 10.000 amostras do HMAC-SHA256 (`dist=[150.97m..348.98m]`, `radius=[500m..800m]`). |
+| **10** | [`geo_privacy_lock.sql`](../supabase/tests/geo_privacy_lock.sql) | **Suíte SQL da Trava Temporal e Espacial (`45` asserções + [`test-geo-privacy-sql.mjs`](../scripts/test-geo-privacy-sql.mjs) `12/12 PASS`):** Valida `owner`, `admin`, `provider` em `open_quoting`, `confirmed_future`, fronteira `02:59:59Z` vs `03:00:00Z` SP, `service_day`, `closed`, IDOR, cofres `private.geo_privacy_secrets`/`private.job_forensic_secrets`, bucket privado `forensic-evidence` e Monte Carlo de 10.000 amostras do HMAC-SHA256 (`dist=[150.97m..348.98m]`, `radius=[500m..800m]`). |
 
 ---
 
