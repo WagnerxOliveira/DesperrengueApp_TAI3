@@ -217,6 +217,7 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
       summary: widget.job.addressSummary,
       latitude: widget.job.latitude,
       longitude: widget.job.longitude,
+      orderStatus: widget.job.status.name,
       onAdjustPin: (lat, lng) async {
         await SupabaseSchedulingBackend().setLocation(
           widget.job.id,

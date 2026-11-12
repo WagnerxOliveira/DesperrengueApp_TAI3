@@ -110,6 +110,7 @@ class LiveLocationMapSheet extends StatefulWidget {
       showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
+        enableDrag: false,
         useSafeArea: true,
         showDragHandle: true,
         builder: (_) => FractionallySizedBox(

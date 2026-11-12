@@ -18,6 +18,8 @@ import 'package:desperrengue_app/core/utils/order_utils.dart';
 import 'package:desperrengue_app/features/client/presentation/client_job_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/client_orders_tab.dart';
 import 'package:desperrengue_app/features/client/presentation/detalhe_servico_cliente_screen.dart';
+import 'package:desperrengue_app/features/shared/presentation/order_live_map_modal_screen.dart';
+import 'package:latlong2/latlong.dart';
 
 Widget _host(Widget child, {Brightness brightness = Brightness.dark}) => MaterialApp(
       theme: AppTheme.resolve(null, brightness),
@@ -307,70 +309,213 @@ void main() {
     );
   });
 
-  group('3. Mapa Sempre Presente e Modal Interativo em TODOS os Estados (Em Andamento, Concluídos, Cancelados, Em Mediação)', () {
-    for (final status in const ['open', 'completed', 'canceled', 'disputed']) {
-      testWidgets(
-        'Estado "$status" exibe mini-mapa (mesmo sem coordenadas prévias no banco) e abre OrderLiveMapModalScreen ao tocar em detail-location',
-        (tester) async {
-          await tester.binding.setSurfaceSize(const Size(412, 2600));
-          addTearDown(() => tester.binding.setSurfaceSize(null));
+  group('3. Mapa Sempre Presente e Tela Cheia Real (100% Viewport, Zero Duplicação, 1 Linha de Botões e Coerência por Status)', () {
+    for (final viewport in const [Size(360, 780), Size(412, 915)]) {
+      for (final status in const ['open', 'completed', 'canceled', 'disputed']) {
+        testWidgets(
+          'Estado "$status" em ${viewport.width.toInt()}x${viewport.height.toInt()} abre OrderLiveMapModalScreen em 100% da tela (>=62% livre), 1x endereço, 1 linha de botões e sem "Chegada ~"',
+          (tester) async {
+            await tester.binding.setSurfaceSize(viewport);
+            addTearDown(() => tester.binding.setSurfaceSize(null));
 
-          // Simula pedido (inclusive concluído #DESP-278FD, cancelado #DESP-C96AB ou em mediação) sem latitude/longitude salvas:
-          final address = status == 'completed'
-              ? 'Travessa Pedro de Castro Souza, 200 - Centro, Poços de Caldas - MG'
-              : 'Rua Padre José Geraldi, 203 - Maria Imaculada, Poços de Caldas - MG';
-          final expectedStreet = status == 'completed'
-              ? 'Travessa Pedro de Castro Souza'
-              : 'Rua Padre José Geraldi';
-          final expectedNumber = status == 'completed' ? '200' : '203';
-          final expectedDistrict = status == 'completed' ? 'Centro' : 'Maria Imaculada';
+            const address =
+                'Travessa Pedro de Castro Souza, 200 - Country Club, Poços de Caldas - MG';
 
-          final data = _dossierMap(
-            id: 'job-$status-map',
-            status: status,
-            title: 'Reparo hidráulico especializado',
-            category: 'Hidráulica',
-            addressLine: address,
-            latitude: null,
-            longitude: null,
-          );
+            final data = _dossierMap(
+              id: 'job-$status-map',
+              status: status,
+              title: 'Reparo hidráulico especializado',
+              category: 'Hidráulica',
+              addressLine: address,
+              latitude: null,
+              longitude: null,
+            );
 
-          await tester.pumpWidget(
-            _host(
-              DetalheServicoClienteScreen(
-                jobId: 'job-$status-map',
-                dossierLoader: (_) async => ClientDossier.fromMap(data),
-                quotesLoader: (_) async => const [],
-                imageBuilder: (_, path, _) => Container(key: ValueKey('img:$path'), color: Colors.blueGrey),
+            await tester.pumpWidget(
+              _host(
+                DetalheServicoClienteScreen(
+                  jobId: 'job-$status-map',
+                  dossierLoader: (_) async => ClientDossier.fromMap(data),
+                  quotesLoader: (_) async => const [],
+                  imageBuilder: (_, path, _) =>
+                      Container(key: ValueKey('img:$path'), color: Colors.blueGrey),
+                ),
               ),
-            ),
-          );
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 50));
+            );
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 50));
 
-          final locationCard = find.byKey(const ValueKey('detail-location'));
-          expect(locationCard, findsOneWidget);
-          expect(find.byKey(const ValueKey('preview-live-map-cta-pill')), findsOneWidget);
+            final locationCard = find.byKey(const ValueKey('detail-location'));
+            await tester.scrollUntilVisible(
+              locationCard,
+              180,
+              scrollable: find.byType(Scrollable).first,
+            );
+            await tester.pump();
 
-          await tester.ensureVisible(locationCard);
-          await tester.pump();
-          await tester.tap(locationCard);
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 350));
+            expect(locationCard, findsOneWidget);
+            expect(
+              find.byKey(const ValueKey('preview-live-map-cta-pill')),
+              findsOneWidget,
+            );
+            // No card de preview em Detalhe do serviço, o nome da rua aparece exatamente 1 vez (sem pílulas duplicadas)
+            expect(
+              find.textContaining('Travessa Pedro de Castro Souza'),
+              findsOneWidget,
+            );
 
-          // Verifica que o modal cartográfico completo abriu com Rua, Número, Bairro, Cidade, km e min
-          expect(find.byKey(const ValueKey('order-live-map-executive-card')), findsOneWidget);
-          expect(find.byKey(const ValueKey('live-map-street-number')), findsOneWidget);
-          expect(find.textContaining(expectedStreet), findsWidgets);
-          expect(find.textContaining(expectedNumber), findsWidgets);
-          expect(find.textContaining(expectedDistrict), findsWidgets);
-          expect(find.textContaining('Poços de Caldas'), findsWidgets);
-          expect(find.byKey(const ValueKey('telemetry-distance-pill')), findsOneWidget);
-          expect(find.byKey(const ValueKey('telemetry-eta-pill')), findsOneWidget);
-          expect(tester.takeException(), isNull);
-        },
-      );
+            await tester.tap(locationCard);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 50));
+            await tester.pump(const Duration(milliseconds: 450));
+
+            // 1) Tela cheia real: FlutterMap ocupa 100% da tela (>= 95% da viewport) e janela central livre >= 62%
+            final mapSize =
+                tester.getSize(find.byKey(const ValueKey('live-map')));
+            expect(
+              mapSize.height,
+              greaterThanOrEqualTo(viewport.height * 0.95),
+              reason:
+                  'OrderLiveMapModalScreen deve ocupar 100% da tela (nunca ~140px)',
+            );
+
+            final topStripBottom = tester
+                .getRect(find.byKey(const ValueKey('shortest-route-summary')))
+                .bottom;
+            final bottomCardTop = tester
+                .getRect(
+                  find.byKey(const ValueKey('order-live-map-executive-card')),
+                )
+                .top;
+            final unobstructedHeight = bottomCardTop - topStripBottom;
+            expect(
+              unobstructedHeight,
+              greaterThanOrEqualTo(viewport.height * 0.62),
+              reason:
+                  'Janela vertical desobstruída entre o topo e o card inferior deve ser >= 62% da altura da tela',
+            );
+
+            // 2) Zero duplicação/triplicação de endereço na tela do mapa:
+            expect(
+              find.byKey(const ValueKey('live-map-street-number')),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const ValueKey('live-map-district-city-cep')),
+              findsOneWidget,
+            );
+            expect(
+              find.textContaining('Travessa Pedro de Castro Souza'),
+              findsOneWidget,
+              reason:
+                  'O nome da rua deve aparecer EXATAMENTE 1 VEZ na tela do mapa (zero duplicação/triplicação)',
+            );
+            expect(find.textContaining('200'), findsOneWidget);
+            expect(find.textContaining('Poços de Caldas'), findsOneWidget);
+
+            // 3) 1 única linha horizontal de botões (mesmo dy central):
+            final copyCenterDy = tester
+                .getCenter(find.byKey(const ValueKey('copy-address-button')))
+                .dy;
+            final mapsCenterDy = tester
+                .getCenter(
+                  find.byKey(const ValueKey('open-external-maps-button')),
+                )
+                .dy;
+            expect((copyCenterDy - mapsCenterDy).abs(), lessThan(1.0));
+
+            if (status == 'open') {
+              final adjustFinder = find.byKey(const ValueKey('adjust-pin'));
+              expect(adjustFinder, findsOneWidget);
+              final adjustCenterDy = tester.getCenter(adjustFinder).dy;
+              expect((copyCenterDy - adjustCenterDy).abs(), lessThan(1.0));
+            } else {
+              expect(find.byKey(const ValueKey('adjust-pin')), findsNothing);
+            }
+
+            // 4) Coerência contextual por status: sem técnico ativo -> SEM "Chegada ~HH:mm" e SEM polilinha inicial:
+            expect(
+              find.byKey(const ValueKey('telemetry-distance-pill')),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const ValueKey('telemetry-eta-pill')),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const ValueKey('telemetry-arrival-pill')),
+              findsNothing,
+            );
+            expect(find.textContaining('Chegada ~'), findsNothing);
+            expect(
+              find.byKey(const ValueKey('live-route-polyline')),
+              findsNothing,
+            );
+
+            // Botão de 1 toque para ver rota de referência sem inventar "Chegada ~HH:mm":
+            final toggleRouteBtn =
+                find.byKey(const ValueKey('toggle-reference-route-button'));
+            expect(toggleRouteBtn, findsOneWidget);
+            await tester.tap(toggleRouteBtn);
+            await tester.pump();
+            expect(
+              find.byKey(const ValueKey('live-route-polyline')),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const ValueKey('telemetry-arrival-pill')),
+              findsNothing,
+            );
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
     }
+
+    testWidgets(
+      'Em 320x640 com onAdjustPin ativo e quando providerOrigin é fornecido em in_progress: 3 botões em 1 única linha horizontal e rota + Chegada ~HH:mm visíveis',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(320, 640));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          _host(
+            OrderLiveMapModalScreen(
+              addressLine:
+                  'Travessa Pedro de Castro Souza, 200 - Country Club, Poços de Caldas - MG',
+              latitude: -21.7878,
+              longitude: -46.5614,
+              providerOrigin: const LatLng(-21.7800, -46.5550),
+              orderStatus: 'in_progress',
+              onAdjustPin: (_, _) async {},
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        // Em in_progress com providerOrigin ativo, exibe polilinha + Chegada ~HH:mm:
+        expect(find.byKey(const ValueKey('live-route-polyline')), findsOneWidget);
+        expect(
+          find.byKey(const ValueKey('telemetry-arrival-pill')),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Chegada ~'), findsOneWidget);
+
+        // Mesmo em 320x640, os 3 botões ficam alinhados na mesma linha horizontal:
+        final dy1 = tester
+            .getCenter(find.byKey(const ValueKey('copy-address-button')))
+            .dy;
+        final dy2 = tester
+            .getCenter(find.byKey(const ValueKey('open-external-maps-button')))
+            .dy;
+        final dy3 =
+            tester.getCenter(find.byKey(const ValueKey('adjust-pin'))).dy;
+        expect((dy1 - dy2).abs(), lessThan(1.0));
+        expect((dy1 - dy3).abs(), lessThan(1.0));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('4. Nova Tela "Pedido publicado" (WaitingQuotesScreen — LiveSearchRadarHeader & OrderPublishStepper)', () {

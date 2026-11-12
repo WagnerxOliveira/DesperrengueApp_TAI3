@@ -462,6 +462,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
       longitude: d.longitude,
       precision: d.geoPrecision,
       pinConfirmed: d.geoSource == 'client_pin' || d.geoPrecision == DestinationPrecision.house,
+      orderStatus: d.status,
       onAdjustPin: _pinEditable(d)
           ? (lat, lng) async {
               await (widget.onSavePin ?? _defaultSavePin)(d.jobId, lat, lng);
@@ -484,6 +485,7 @@ class _DetalheServicoClienteScreenState extends State<DetalheServicoClienteScree
         longitude: d.longitude,
         precision: d.geoPrecision,
         pinConfirmed: d.geoSource == 'client_pin',
+        orderStatus: d.status,
         onTap: () => _openMap(d),
       ),
     ];
