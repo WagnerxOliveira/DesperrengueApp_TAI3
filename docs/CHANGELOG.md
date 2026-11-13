@@ -20,6 +20,12 @@ flowchart LR
 
 ---
 
+## [v2.11.1+202611132] — 2026-11-13 — Banco em produção atualizado, check-in sem simulação e fluxo real de nota fiscal e fotos forenses
+
+* **Banco de produção (Supabase):** aplicadas as migrations `20261108110000` a `20261113130000` (Temporal Geo-Privacy Lock ativo, endurecimento zero-trust, `jobs.updated_at`, `register_forensic_photo`) com validação funcional remota (fases do profissional, RLS de `job_addresses`/`job_geo`, criação de pedido).
+* **Check-in:** `app_settings.checkin_sandbox = 'false'` (migration `20261113120000`) e botão "Simular dia/hora e GPS" desligado por padrão em builds release (`shouldShowCheckinSandbox`).
+* **Smart Split / registro forense reais:** captura da chave de acesso da NFC-e (44 dígitos, DV módulo 11, CNPJ) com foto do cupom, estado honesto "Registrada — conferência na SEFAZ em andamento", isenção de 0% sobre materiais provisória por nota registrada com clawback de 15% se a SEFAZ cancelar, e fotos de check-in/check-out pela câmera ao vivo com hash perceptual e cofre privado `forensic-evidence`. Removidos os dados de demonstração (NFC-e fictícia e `forensic://`).
+* **Aviso:** a consulta automática à SEFAZ ainda não existe no servidor; até lá toda nota fica `PENDING_SEFAZ`.
 ## [v2.11.0+202611131] — 2026-11-12 — Trava Temporal e Espacial de Privacidade Geográfica (`ADR-0022`), Mapa Full-Screen Imersivo (`100%` Viewport), Motor de Imagens `0 ms`, Badges `O(1)` e Auditoria Forense Multi-Agente
 
 ### Adicionado & Endurecido (Segurança Geoespacial Zero-Trust, Criptografia HMAC-SHA256, UX 120 FPS e QA Adversarial)
