@@ -342,6 +342,11 @@ check('04. Zero GRANT perigoso para anon/public e search_path obrigatório em SE
       /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i,
       `${label}: proibido conceder GRANT para anon ou public`
     );
+    assert.doesNotMatch(
+      stripped,
+      /\brevoke\s+insert\s*,\s*update\s*\(/i,
+      `${label}: proibido combinar 'revoke insert' sem colunas com 'update (...)' (revogaria INSERT da tabela inteira)`
+    );
 
     const fnBlockRegex =
       /create\s+or\s+replace\s+function\s+(public\.[a-z0-9_]+)\s*\(([\s\S]*?)\)\s*returns[\s\S]*?\bas\s+\$\$[\s\S]*?\$\$\s*;/gi;

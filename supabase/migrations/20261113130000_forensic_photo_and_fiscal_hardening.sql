@@ -34,7 +34,7 @@ alter table public.jobs
   add column if not exists checkin_photo_path text,
   add column if not exists checkout_photo_path text;
 
-revoke insert, update (
+revoke update (
   checkin_photo_phash,
   checkout_photo_phash,
   checkin_photo_path,
