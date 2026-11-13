@@ -79,7 +79,7 @@ class FiscalReceiptService {
         'p_job_id': jobId,
         'p_provider_id': providerId,
         'p_fiscal_document_mode': key.documentMode,
-        'p_capture_channel': fromQrUrl ? 'QR_CODE' : 'OCR_CHAVE_44',
+        'p_capture_channel': fromQrUrl ? 'QR_CODE' : 'MANUAL_KEY',
         'p_access_key_44': key.key,
         'p_tp_amb': '1',
         'p_emitter_cnpj': key.emitterCnpj,

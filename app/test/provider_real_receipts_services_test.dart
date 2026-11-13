@@ -89,7 +89,7 @@ void main() {
         'p_ela_tamper_score', 'p_receipt_photo_phash',
       });
       expect(p['p_fiscal_document_mode'], 'NFCE_65');
-      expect(p['p_capture_channel'], 'OCR_CHAVE_44');
+      expect(p['p_capture_channel'], 'MANUAL_KEY');
       expect(p['p_access_key_44'], key);
       expect(p['p_emitter_cnpj'], '11222333000181');
       expect(p['p_receipt_number'], '1234-1');
