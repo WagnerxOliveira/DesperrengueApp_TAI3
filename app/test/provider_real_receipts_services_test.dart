@@ -110,6 +110,25 @@ void main() {
       expect(b.calls, hasLength(1));
     });
 
+    test('contrato v2.11.1 (recorded + PENDING_SEFAZ + verified:false) ⇒ em verificação', () async {
+      final b = _Backend(result: {'recorded': true, 'verified': false, 'sefaz_confirmed': false, 'verification_status': 'PENDING_SEFAZ', 'document_id': 'doc-7'});
+      final o = await FiscalReceiptService(backend: b, storage: _Storage()).register(jobId: 'j', providerId: 'p', rawKey: key, amount: 50, photoBytes: bytes, photoPhash: 5);
+      expect(o.state, FiscalReceiptState.underReview);
+      expect(o.registered, isTrue);
+      expect(o.message, 'Registrada — conferência na SEFAZ em andamento.');
+    });
+
+    test('resposta sem "recorded" nem "verified" não conta como gravada', () async {
+      final o = await FiscalReceiptService(backend: _Backend(result: {'verified': false}), storage: _Storage()).register(jobId: 'j', providerId: 'p', rawKey: key, amount: 50, photoBytes: bytes, photoPhash: 5);
+      expect(o.state, FiscalReceiptState.rejected);
+      expect(o.registered, isFalse);
+    });
+
+    test('VERIFIED_SEFAZ ou sefaz_verified ⇒ validada', () async {
+      final o = await FiscalReceiptService(backend: _Backend(result: {'recorded': true, 'verification_status': 'VERIFIED_SEFAZ'}), storage: _Storage()).register(jobId: 'j', providerId: 'p', rawKey: key, amount: 50, photoBytes: bytes, photoPhash: 5);
+      expect(o.state, FiscalReceiptState.validated);
+    });
+
     test('só vira "validada" quando o servidor afirma a confirmação na SEFAZ', () async {
       final s = FiscalReceiptService(backend: _Backend(result: {'verified': true, 'sefaz_confirmed': true}), storage: _Storage());
       final o = await s.register(jobId: 'j', providerId: 'p', rawKey: key, amount: 50, photoBytes: bytes, photoPhash: 5);

@@ -130,13 +130,16 @@ class FiscalReceiptService {
         amount: amount,
         photoPhash: photoPhash,
       ));
-      if (res['verified'] != true) {
+      // Contrato v2.11.1: o servidor devolve recorded=true e verification_status='PENDING_SEFAZ'.
+      // (Versões antigas devolviam verified=true.) Sem nenhum dos dois, a nota NÃO foi gravada.
+      // (Versões antigas devolviam erified:true.) Sem nenhum dos dois, a nota NÃO foi gravada.
+      if (res['recorded'] != true && res['verified'] != true) {
         return FiscalReceiptOutcome(FiscalReceiptState.rejected, 'O servidor não aceitou esta nota. Confira os dados e tente de novo.', photoPath: path);
       }
       final id = res['document_id']?.toString();
       // Só "validada" quando o servidor afirmar a confirmação na SEFAZ. Hoje ele só confere a
       // chave e registra para conferência posterior ⇒ "em verificação".
-      final sefazConfirmed = res['sefaz_confirmed'] == true || res['sefaz_authorized'] == true;
+      final sefazConfirmed = res['sefaz_confirmed'] == true || res['sefaz_verified'] == true || res['verification_status'] == 'VERIFIED_SEFAZ';
       return FiscalReceiptOutcome(
         sefazConfirmed ? FiscalReceiptState.validated : FiscalReceiptState.underReview,
         sefazConfirmed
