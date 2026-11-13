@@ -558,18 +558,22 @@ class FintechLedgerStore extends ValueNotifier<AntiBypassFintechGlobalState> {
     required String fiscalReceiptNumber,
     required double receiptTotalAmount,
     bool approvedByClient = true,
+    // Fluxo REAL (nota registrada no servidor): caminho da foto no cofre privado e metadados reais.
+    // Sem estes, mantém o comportamento legado (usado só em telas de demonstração do cliente).
+    String? receiptStoragePath,
+    ({double? lat, double? lng, bool gpsVerified})? realCapture,
   }) {
     final current = ensureOrder(orderId: orderId);
     final safeAmount = SecurityAndLgpdGuard.validateAmount(receiptTotalAmount);
     final receiptPhoto = ForensicPhotoEvidence.verified(
       id: 'nfce-${DateTime.now().millisecondsSinceEpoch}',
       orderId: orderId,
-      imagePathOrUrl: 'forensic://receipt/$fiscalReceiptNumber',
+      imagePathOrUrl: receiptStoragePath ?? 'forensic://receipt/$fiscalReceiptNumber',
       stage: ForensicStage.materialFiscalReceipt,
       capturedAt: DateTime.now().toUtc(),
-      latitude: -18.9186,
-      longitude: -48.2772,
-      isGpsVerifiedAtAddress: true,
+      latitude: realCapture != null ? realCapture.lat : -18.9186,
+      longitude: realCapture != null ? realCapture.lng : -48.2772,
+      isGpsVerifiedAtAddress: realCapture?.gpsVerified ?? true,
       captionOrTechnicalNote: 'Cupom Fiscal $fiscalReceiptNumber ($storeName)',
       amount: safeAmount,
     );
