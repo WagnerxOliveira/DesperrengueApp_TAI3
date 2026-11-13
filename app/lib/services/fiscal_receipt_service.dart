@@ -141,7 +141,7 @@ class FiscalReceiptService {
         sefazConfirmed ? FiscalReceiptState.validated : FiscalReceiptState.underReview,
         sefazConfirmed
             ? 'Nota validada na SEFAZ.'
-            : 'Nota registrada. A conferência na SEFAZ será feita pela plataforma antes do repasse dos materiais.',
+            : 'Registrada — conferência na SEFAZ em andamento.',
         documentId: id,
         photoPath: path,
       );
