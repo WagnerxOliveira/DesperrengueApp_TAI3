@@ -383,6 +383,7 @@ sequenceDiagram
 ├── README.md                                                       # Tratado Executivo e Arquitetural Mestre (Raiz)
 ├── Tratado_Completo_Desperrengue_v2.8.2.pdf                        # Compêndio Técnico-Científico Mestre (PDF Executivo)
 ├── Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf   # Tratado de Inteligência Artificial & 10 Inovações Fintech (PDF)
+├── Tratado_Enciclopedico_Completo_Desperrengue_v2.11.0.pdf         # Tratado Enciclopédico Completo de Engenharia, CS, Segurança e Negócios (PDF v2.11.0)
 ├── LICENSE.md                                                      # Governança Jurídica, Propriedade Intelectual e LGPD
 ├── .github/
 │   ├── workflows/                             # Pipelines CI/CD (ci.yml e beta-release.yml)
@@ -458,6 +459,7 @@ sequenceDiagram
 | `21` | [`docs/adr/README.md`](docs/adr/README.md) | Catálogo de 23 *Architecture Decision Records* (`ADR-0000` a [`ADR-0020`](docs/adr/0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md), [`ADR-0021`](docs/adr/0021-arquitetura-kyc-zero-trust-argon-carbon.md) e [`ADR-0022`](docs/adr/ADR-0022-temporal-geo-privacy-lock.md)) |
 | `22` | [`Tratado_Completo_Desperrengue_v2.8.2.pdf`](Tratado_Completo_Desperrengue_v2.8.2.pdf) | Compêndio Mestre Completo de Engenharia, Segurança, Visão Computacional e Negócios (PDF) |
 | `23` | [`Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf`](Tratado_Completo_IA_Fintech_Inovacoes_Desperrengue_v2.8.6.pdf) | Tratado Completo de Inteligência Artificial Híbrida e 10 Inovações Fintech Inéditas Passo a Passo (PDF) |
+| `24` | [`Tratado_Enciclopedico_Completo_Desperrengue_v2.11.0.pdf`](Tratado_Enciclopedico_Completo_Desperrengue_v2.11.0.pdf) | Tratado Enciclopédico Completo de Engenharia de Software, Ciência da Computação, Segurança e Negócios (`v2.11.0`) — PDF Mestre A4 ([cópia canônica em `docs/`](docs/Tratado_Enciclopedico_Completo_Desperrengue_v2.11.0.pdf)) |
 
 ---
 
