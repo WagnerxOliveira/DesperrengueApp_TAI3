@@ -141,7 +141,34 @@ class SmartSplitTransparencyCard extends StatelessWidget {
               ],
             ),
           ),
-          if (dossier.reimbursedMaterials.isNotEmpty) ...[
+          if (dossier.reimbursedMaterials.isEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              key: const ValueKey('smart-split-empty-materials'),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: tk.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: tk.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.receipt_long_rounded, size: 18, color: tk.textMuted),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Nenhuma nota de material registrada ainda',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: tk.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
             const SizedBox(height: 12),
             Text(
               'Cupons Fiscais de Peças (Carteira B)',

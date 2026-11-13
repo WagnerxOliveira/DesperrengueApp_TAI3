@@ -2,7 +2,9 @@ import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/models/fintech_warranty_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/smart_triage_models.dart';
 import '../../../core/services/job_service.dart';
@@ -21,9 +23,16 @@ import '../../../core/ui/app_tokens.dart';
 /// "Acompanhe seu Pedido" (protótipos 16 e 05): timeline, endereço, PIN de
 /// confirmação, evidências enviadas pelo profissional e contato.
 class OrderTrackingScreen extends StatefulWidget {
-  const OrderTrackingScreen({super.key, required this.job});
+  const OrderTrackingScreen({
+    super.key,
+    required this.job,
+    @visibleForTesting this.fiscalDocsLoader,
+  });
 
   final Job job;
+
+  /// Carregador opcional de notas fiscais registradas no servidor (`job_fiscal_documents`).
+  final Future<List<Map<String, dynamic>>> Function(String jobId)? fiscalDocsLoader;
 
   @override
   State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
@@ -36,6 +45,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   String? _reference;
   String? _pin;
   List<Map<String, dynamic>> _evidence = const [];
+  List<MaterialReimbursementTicket> _serverMaterialTickets = const [];
   Timer? _poll;
   late SmartTriageResult _triage = JobTriageStore.instance.resolveForJob(widget.job);
 
@@ -45,6 +55,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     JobTriageStore.instance.addListener(_onTriageChanged);
     _loadStatic();
     _poll = Timer.periodic(const Duration(seconds: 10), (_) => _loadEvidence());
+  }
+
+  @override
+  void didUpdateWidget(covariant OrderTrackingScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.job.id != widget.job.id ||
+        oldWidget.fiscalDocsLoader != widget.fiscalDocsLoader) {
+      _loadStatic();
+    }
   }
 
   void _onTriageChanged() {
@@ -71,8 +90,49 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     super.dispose();
   }
 
+  Future<List<MaterialReimbursementTicket>> _fetchServerFiscalDocuments(String jobId) async {
+    try {
+      final List<Map<String, dynamic>> rows;
+      if (widget.fiscalDocsLoader != null) {
+        rows = await widget.fiscalDocsLoader!(jobId);
+      } else {
+        final raw = await Supabase.instance.client
+            .from('job_fiscal_documents')
+            .select('id, fiscal_document_mode, emitter_cnpj, receipt_number, declared_material_amount, clawback_triggered, created_at')
+            .eq('job_id', jobId)
+            .order('created_at');
+        rows = (raw as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+      final out = <MaterialReimbursementTicket>[];
+      for (final row in rows) {
+        if (row['clawback_triggered'] == true) continue;
+        final amount = (row['declared_material_amount'] as num?)?.toDouble() ?? 0.0;
+        if (amount <= 0) continue;
+        final id = (row['id']?.toString() ?? '').trim();
+        final mode = (row['fiscal_document_mode'] as String?) ?? 'NFCE_65';
+        final modeLabel = mode == 'NFE_55' ? 'NF-e' : 'NFC-e';
+        final receiptNum = (row['receipt_number']?.toString() ?? '').trim();
+        final cnpj = (row['emitter_cnpj']?.toString() ?? '').trim();
+        out.add(
+          MaterialReimbursementTicket.validated(
+            id: id.isEmpty ? 'srv-${out.length + 1}' : id,
+            materialDescription: 'Material registrado (${widget.job.category})',
+            storeName: cnpj.isNotEmpty ? 'Emitente CNPJ $cnpj' : 'Fornecedor registrado',
+            fiscalReceiptNumber: receiptNum.isNotEmpty ? '$modeLabel $receiptNum' : modeLabel,
+            receiptTotalAmount: amount,
+            isApprovedByClient: false,
+          ),
+        );
+      }
+      return out;
+    } catch (_) {
+      return const <MaterialReimbursementTicket>[];
+    }
+  }
+
   Future<void> _loadStatic() async {
     final job = widget.job;
+    final fiscalFuture = _fetchServerFiscalDocuments(job.id);
     try {
       final results = await Future.wait([
         job.providerId == null ? Future.value(null) : ProviderService().byId(job.providerId!),
@@ -111,6 +171,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         _evidence = results[3] as List<Map<String, dynamic>>;
       });
     } catch (_) {}
+    final fiscalTickets = await fiscalFuture;
+    if (mounted) {
+      setState(() => _serverMaterialTickets = fiscalTickets);
+    }
   }
 
   Future<void> _loadEvidence() async {
@@ -118,6 +182,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       final ev = await _jobs.evidence(widget.job.id);
       if (mounted) setState(() => _evidence = ev);
     } catch (_) {}
+    final fiscalTickets = await _fetchServerFiscalDocuments(widget.job.id);
+    if (mounted) {
+      setState(() => _serverMaterialTickets = fiscalTickets);
+    }
   }
 
   List<_Step> _steps(Job job) {
@@ -234,38 +302,54 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           ValueListenableBuilder(
             valueListenable: FintechLedgerStore.instance,
             builder: (context, _, _) {
-              final dossier = FintechLedgerStore.instance.resolveForJob(
+              final rawDossier = FintechLedgerStore.instance.resolveForJob(
                 job,
                 addressOverride: _address ?? job.addressSummary,
+              );
+              final realInSessionTickets = rawDossier.reimbursedMaterials
+                  .where(
+                    (m) =>
+                        m.id != 'mat-1-${job.id}' &&
+                        (m.receiptPhoto == null ||
+                            m.receiptPhoto!.imagePathOrUrl.startsWith('evidence/')),
+                  )
+                  .toList();
+              final mergedMaterials = <MaterialReimbursementTicket>[
+                ..._serverMaterialTickets,
+                for (final t in realInSessionTickets)
+                  if (!_serverMaterialTickets.any(
+                    (s) => s.fiscalReceiptNumber == t.fiscalReceiptNumber,
+                  ))
+                    t,
+              ];
+              final dossier = rawDossier.copyWith(
+                reimbursedMaterials: mergedMaterials,
               );
               return Column(
                 children: [
                   SmartSplitTransparencyCard(
                     dossier: dossier,
-                    onToggleMaterialApproval: (ticketId) => FintechLedgerStore.instance
-                        .toggleMaterialReceiptApproval(orderId: job.id, ticketId: ticketId),
-                    onAddMaterialReceipt: () => FintechLedgerStore.instance.addMaterialReceipt(
-                      orderId: job.id,
-                      materialDescription: 'Peça Adicional Homologada (${job.category})',
-                      storeName: 'Loja de Materiais Credenciada',
-                      fiscalReceiptNumber: 'NFC-e #000.${DateTime.now().millisecond.toString().padLeft(3, '0')}',
-                      receiptTotalAmount: 45.00,
-                      approvedByClient: true,
-                    ),
+                    onToggleMaterialApproval: (ticketId) {
+                      if (_serverMaterialTickets.any((m) => m.id == ticketId)) {
+                        setState(() {
+                          _serverMaterialTickets = _serverMaterialTickets
+                              .map(
+                                (m) => m.id == ticketId
+                                    ? m.copyWith(isApprovedByClient: !m.isApprovedByClient)
+                                    : m,
+                              )
+                              .toList();
+                        });
+                      }
+                      FintechLedgerStore.instance.toggleMaterialReceiptApproval(
+                        orderId: job.id,
+                        ticketId: ticketId,
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   ForensicCheckInOutCard(
                     dossier: dossier,
-                    onAddCheckInPhoto: () => FintechLedgerStore.instance.addCheckInPhoto(
-                      orderId: job.id,
-                      imagePathOrUrl: 'forensic://checkin/client/${DateTime.now().millisecondsSinceEpoch}',
-                      captionOrTechnicalNote: 'Registro antes da execução confirmado no local.',
-                    ),
-                    onAddCheckOutPhoto: () => FintechLedgerStore.instance.addCheckOutPhoto(
-                      orderId: job.id,
-                      imagePathOrUrl: 'forensic://checkout/client/${DateTime.now().millisecondsSinceEpoch}',
-                      captionOrTechnicalNote: 'Serviço concluído e testado com sucesso.',
-                    ),
                     onOpenThreeLayerWarranty: () =>
                         WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
                   ),
