@@ -19,6 +19,10 @@ import '../../../core/utils/format.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
 import '../../shared/presentation/geo_privacy_widgets.dart';
+import 'material_receipt_capture_screen.dart';
+import '../../../services/forensic_photo_service.dart';
+import '../../../core/models/fintech_warranty_models.dart' show ForensicStage;
+import '../../../core/security/geo_privacy_policy_engine.dart' show ProviderLocationView;
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
@@ -61,6 +65,65 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
       if (!mounted) return;
       setState(() => _client = c);
     } catch (_) {}
+  }
+
+  final _forensic = ForensicPhotoService();
+  bool _forensicBusy = false;
+
+  /// Nota fiscal REAL dos materiais: o dossiê só recebe o que o servidor confirmou.
+  Future<void> _addMaterialReceipt() async {
+    final job = widget.job;
+    final r = await Navigator.of(context).push<MaterialReceiptResult>(
+      MaterialPageRoute(builder: (_) => MaterialReceiptCaptureScreen(jobId: job.id)),
+    );
+    if (r == null || !mounted) return;
+    FintechLedgerStore.instance.addMaterialReceipt(
+      orderId: job.id,
+      materialDescription: 'Materiais do serviço (${job.category})',
+      storeName: 'CNPJ ${r.info.formattedCnpj}',
+      fiscalReceiptNumber: r.info.label,
+      receiptTotalAmount: r.amount,
+      approvedByClient: false,
+      receiptStoragePath: r.outcome.photoPath,
+      realCapture: (lat: null, lng: null, gpsVerified: false),
+    );
+    showSnack(context, r.outcome.message);
+  }
+
+  /// Foto REAL de check-in/check-out (câmera ao vivo, no local, EXIF removido, cofre privado).
+  Future<void> _captureForensic(ForensicStage stage, ProviderLocationView? view) async {
+    if (_forensicBusy) return;
+    setState(() => _forensicBusy = true);
+    try {
+      final o = await _forensic.captureAndRegister(jobId: widget.job.id, stage: stage, view: view);
+      if (!mounted) return;
+      if (o.stored) {
+        final isIn = stage == ForensicStage.beforeCheckIn;
+        final note = isIn ? 'Foto Antes (check-in) registrada no local.' : 'Foto Depois (check-out) registrada no local.';
+        if (isIn) {
+          FintechLedgerStore.instance.addCheckInPhoto(
+            orderId: widget.job.id,
+            imagePathOrUrl: o.storagePath!,
+            captionOrTechnicalNote: note,
+            latitude: o.latitude,
+            longitude: o.longitude,
+            isGpsVerifiedAtAddress: true,
+          );
+        } else {
+          FintechLedgerStore.instance.addCheckOutPhoto(
+            orderId: widget.job.id,
+            imagePathOrUrl: o.storagePath!,
+            captionOrTechnicalNote: note,
+            latitude: o.latitude,
+            longitude: o.longitude,
+            isGpsVerifiedAtAddress: true,
+          );
+        }
+      }
+      if (o.state != ForensicCaptureState.cancelled) showSnack(context, o.message, error: !o.stored);
+    } finally {
+      if (mounted) setState(() => _forensicBusy = false);
+    }
   }
 
   @override
@@ -170,29 +233,14 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                   SmartSplitTransparencyCard(
                     dossier: dossier,
                     isProviderView: true,
-                    onAddMaterialReceipt: () => FintechLedgerStore.instance.addMaterialReceipt(
-                      orderId: job.id,
-                      materialDescription: 'Peça de Reposição Técnica (${job.category})',
-                      storeName: 'Distribuidora Técnica Autorizada',
-                      fiscalReceiptNumber: 'NFC-e #001.${DateTime.now().millisecond.toString().padLeft(3, '0')}',
-                      receiptTotalAmount: 65.00,
-                      approvedByClient: true,
-                    ),
+                    onAddMaterialReceipt: _addMaterialReceipt,
                   ),
                   const SizedBox(height: 12),
                   ForensicCheckInOutCard(
                     dossier: dossier,
                     isProviderView: true,
-                    onAddCheckInPhoto: () => FintechLedgerStore.instance.addCheckInPhoto(
-                      orderId: job.id,
-                      imagePathOrUrl: 'forensic://checkin/provider/${DateTime.now().millisecondsSinceEpoch}',
-                      captionOrTechnicalNote: 'Foto Antes (Check-in): Diagnóstico inicial no local.',
-                    ),
-                    onAddCheckOutPhoto: () => FintechLedgerStore.instance.addCheckOutPhoto(
-                      orderId: job.id,
-                      imagePathOrUrl: 'forensic://checkout/provider/${DateTime.now().millisecondsSinceEpoch}',
-                      captionOrTechnicalNote: 'Foto Depois (Check-out): Reparo finalizado e testado.',
-                    ),
+                    onAddCheckInPhoto: _forensicBusy ? null : () => _captureForensic(ForensicStage.beforeCheckIn, locView),
+                    onAddCheckOutPhoto: _forensicBusy ? null : () => _captureForensic(ForensicStage.afterCheckOut, locView),
                     onOpenThreeLayerWarranty: () =>
                         WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
                   ),
