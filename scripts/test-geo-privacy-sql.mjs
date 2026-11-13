@@ -24,6 +24,7 @@ const TESTS_DIR = path.join(ROOT, 'supabase', 'tests');
 
 const MIG_GEO = path.join(MIGRATIONS_DIR, '20261113100000_temporal_geo_privacy_lock.sql');
 const MIG_SEC = path.join(MIGRATIONS_DIR, '20261113110000_security_hardening_audit.sql');
+const MIG_JOBS_UPDATED = path.join(MIGRATIONS_DIR, '20261113125000_jobs_updated_at.sql');
 const MIG_FORENSIC = path.join(MIGRATIONS_DIR, '20261113130000_forensic_photo_and_fiscal_hardening.sql');
 const TEST_GEO = path.join(TESTS_DIR, 'geo_privacy_lock.sql');
 const TEST_SMOKE = path.join(TESTS_DIR, 'security_smoke.sql');
@@ -261,6 +262,7 @@ console.log('=== DESPERRENGUE — Verificação SQL Geo-Privacy Lock & Zero-Trus
 
 const geoSql = fs.readFileSync(MIG_GEO, 'utf8');
 const secSql = fs.readFileSync(MIG_SEC, 'utf8');
+const jobsUpdatedSql = fs.readFileSync(MIG_JOBS_UPDATED, 'utf8');
 const forensicSql = fs.readFileSync(MIG_FORENSIC, 'utf8');
 const testGeoSql = fs.readFileSync(TEST_GEO, 'utf8');
 const testSmokeSql = fs.readFileSync(TEST_SMOKE, 'utf8');
@@ -269,6 +271,7 @@ const testForensicSql = fs.readFileSync(TEST_FORENSIC, 'utf8');
 check('01. Arquivos obrigatórios existem e não estão vazios', () => {
   assert.ok(geoSql.length > 10_000, '20261113100000 deve ser completa');
   assert.ok(secSql.length > 10_000, '20261113110000 deve ser completa');
+  assert.ok(jobsUpdatedSql.length > 500, '20261113125000 deve ser completa');
   assert.ok(forensicSql.length > 10_000, '20261113130000 deve ser completa');
   assert.ok(testGeoSql.length > 5_000, 'geo_privacy_lock.sql deve ser completa');
   assert.ok(testForensicSql.length > 5_000, 'forensic_photo_and_fiscal.sql deve ser completa');
@@ -277,6 +280,7 @@ check('01. Arquivos obrigatórios existem e não estão vazios', () => {
 check('02. Integridade léxica (strings, dollar-quotes, comentários, parênteses e transações)', () => {
   const strippedGeo = lexSql(geoSql, '20261113100000_temporal_geo_privacy_lock.sql');
   const strippedSec = lexSql(secSql, '20261113110000_security_hardening_audit.sql');
+  const strippedJobsUpdated = lexSql(jobsUpdatedSql, '20261113125000_jobs_updated_at.sql');
   const strippedForensic = lexSql(forensicSql, '20261113130000_forensic_photo_and_fiscal_hardening.sql');
   const strippedTestGeo = lexSql(testGeoSql, 'supabase/tests/geo_privacy_lock.sql');
   const strippedSmoke = lexSql(testSmokeSql, 'supabase/tests/security_smoke.sql');
@@ -286,6 +290,8 @@ check('02. Integridade léxica (strings, dollar-quotes, comentários, parêntese
   assert.match(strippedGeo, /commit\s*;\s*$/i, '20261113100000 deve encerrar com commit;');
   assert.match(strippedSec, /^\s*begin\s*;/i, '20261113110000 deve abrir com begin;');
   assert.match(strippedSec, /commit\s*;\s*$/i, '20261113110000 deve encerrar com commit;');
+  assert.match(strippedJobsUpdated, /^\s*begin\s*;/i, '20261113125000 deve abrir com begin;');
+  assert.match(strippedJobsUpdated, /commit\s*;\s*$/i, '20261113125000 deve encerrar com commit;');
   assert.match(strippedForensic, /^\s*begin\s*;/i, '20261113130000 deve abrir com begin;');
   assert.match(strippedForensic, /commit\s*;\s*$/i, '20261113130000 deve encerrar com commit;');
   assert.match(strippedTestGeo, /^\s*begin\s*;/i, 'geo_privacy_lock.sql deve abrir com begin;');
@@ -295,10 +301,11 @@ check('02. Integridade léxica (strings, dollar-quotes, comentários, parêntese
   assert.match(strippedSmoke, /rollback\s*;\s*$/i, 'security_smoke.sql deve encerrar com rollback;');
 });
 
-check('03. Idempotência estrita em 20261113100000, 20261113110000 e 20261113130000', () => {
+check('03. Idempotência estrita em 20261113100000, 20261113110000, 20261113125000 e 20261113130000', () => {
   for (const [label, content] of [
     ['20261113100000', lexSql(geoSql, 'geo')],
     ['20261113110000', lexSql(secSql, 'sec')],
+    ['20261113125000', lexSql(jobsUpdatedSql, 'jobsUpdated')],
     ['20261113130000', lexSql(forensicSql, 'forensic')],
   ]) {
     const rawCreateTables = content.match(/\bcreate\s+table\s+(?!if\s+not\s+exists\b)/gi) ?? [];
@@ -334,6 +341,7 @@ check('04. Zero GRANT perigoso para anon/public e search_path obrigatório em SE
   for (const [label, sql, minSecDef] of [
     ['20261113100000', geoSql, 8],
     ['20261113110000', secSql, 8],
+    ['20261113125000', jobsUpdatedSql, 0],
     ['20261113130000', forensicSql, 4],
   ]) {
     const stripped = lexSql(sql, label);
@@ -636,10 +644,26 @@ check('12. Cadeia limpa para `supabase db reset`/`db push`: zero `.concat(`, `pu
     assert.doesNotMatch(noLineComments, /\bpublic\.users\b/i, `${f}: relação inexistente public.users`);
     assert.doesNotMatch(noLineComments, /\bm\.phase\b/i, `${f}: coluna inexistente m.phase em job_mediations`);
   }
-  assert.doesNotMatch(forensicSql, /\bwallet_ledger_entries\b/i, '20261113130000 não pode referenciar tabela inexistente wallet_ledger_entries');
+  assert.doesNotMatch(
+    lexSql(forensicSql, 'forensic-nocomment'),
+    /\bwallet_ledger_entries\b/i,
+    '20261113130000 não pode referenciar tabela inexistente wallet_ledger_entries'
+  );
 });
 
-check('13. Contrato v2.11.1 (`20261113130000`): `register_forensic_photo`, `MANUAL_KEY`, `PENDING_SEFAZ`, Smart Split `VERIFIED_SEFAZ` e suíte `forensic_photo_and_fiscal.sql`', () => {
+check('13. Contrato v2.11.1 (`20261113125000` + `20261113130000`): `jobs.updated_at`, `register_forensic_photo`, `MANUAL_KEY`, `PENDING_SEFAZ`, Smart Split `VERIFIED_SEFAZ` e suíte `forensic_photo_and_fiscal.sql`', () => {
+  assert.match(
+    jobsUpdatedSql,
+    /alter\s+table\s+public\.jobs[\s\S]{0,80}?add\s+column\s+if\s+not\s+exists\s+updated_at\s+timestamptz/i,
+    '20261113125000 deve adicionar public.jobs.updated_at'
+  );
+  assert.match(jobsUpdatedSql, /create\s+or\s+replace\s+function\s+public\._touch_updated_at\s*\(\s*\)/i);
+  assert.match(jobsUpdatedSql, /create\s+trigger\s+jobs_touch_updated_at\s+before\s+update\s+on\s+public\.jobs/i);
+  assert.match(
+    forensicSql,
+    /drop\s+function\s+if\s+exists\s+public\.trigger_layer3_rework\s*\(\s*uuid\s*\)\s*;/i,
+    '20261113130000 deve remover sobrecarga morta trigger_layer3_rework(uuid)'
+  );
   assert.match(forensicSql, /create\s+or\s+replace\s+function\s+public\.register_forensic_photo\s*\(/i);
   assert.match(forensicSql, /FORENSIC_CHECKIN_IMMUTABLE/);
   assert.match(forensicSql, /FORENSIC_PHOTO_DUPLICATE/);
@@ -669,6 +693,47 @@ check('13. Contrato v2.11.1 (`20261113130000`): `register_forensic_photo`, `MANU
     'CANCELED_CLAWBACK',
   ]) {
     assert.ok(testForensicSql.includes(token), `forensic_photo_and_fiscal.sql deve cobrir: ${token}`);
+  }
+});
+
+check('14. Varredura cumulativa de catálogo PL/pgSQL: zero função ativa referenciando tabelas/colunas fantasmas', () => {
+  const files = fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+  assert.ok(files.length >= 29, `Esperado >= 29 migrations no worktree, encontradas ${files.length}`);
+
+  const activeFns = new Map();
+  for (const f of files) {
+    const s = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
+    const cleanTop = s.replace(/--.*$/gm, '');
+    for (const dm of cleanTop.matchAll(/drop\s+function\s+(?:if\s+exists\s+)?(public\.[a-z0-9_]+)\s*\(([^)]*)\)/gi)) {
+      const argCount = dm[2].trim() === '' ? 0 : dm[2].split(',').length;
+      activeFns.delete(`${dm[1].toLowerCase()}/${argCount}`);
+    }
+    const fnRe =
+      /create\s+(?:or\s+replace\s+)?function\s+(public\.[a-z0-9_]+)\s*\(([\s\S]*?)\)\s*returns[\s\S]*?\bas\s+(\$[A-Za-z0-9_]*\$)([\s\S]*?)\3\s*;/gi;
+    for (const m of s.matchAll(fnRe)) {
+      const cleanArgs = m[2].replace(/--.*$/gm, '').trim();
+      const argCount = cleanArgs === '' ? 0 : cleanArgs.split(',').length;
+      activeFns.set(`${m[1].toLowerCase()}/${argCount}`, { file: f, body: m[4] });
+    }
+  }
+
+  const forbiddenRefs = [
+    /\bpublic\.warranty_claims\b/i,
+    /\bpublic\.wallet_ledger_entries\b/i,
+    /\bpublic\.security_device_sessions\b/i,
+    /\bphash_hamming_distance\b/i,
+    /\bcheckin_phash_64\b/i,
+    /\bescrow_state\b/i,
+  ];
+
+  for (const [sig, { file, body }] of activeFns.entries()) {
+    const cleanBody = body.replace(/--.*$/gm, '');
+    for (const re of forbiddenRefs) {
+      assert.doesNotMatch(cleanBody, re, `Função ativa ${sig} (${file}) referencia identificador inexistente: ${re}`);
+    }
   }
 });
 

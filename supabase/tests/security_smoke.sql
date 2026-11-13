@@ -42,6 +42,8 @@ begin
   c := ids[1]; p1 := ids[2]; p2 := ids[3]; p3 := ids[4]; p4 := ids[5]; x := ids[6];
 
   -- ---------------------------------------------------------------- preparação
+  insert into public.app_settings (key, value) values ('checkin_sandbox', 'true')
+    on conflict (key) do update set value = 'true';
   update public.profiles set role = null, is_client = false, is_provider = false,
          client_setup_done = false, provider_setup_done = false, verification_status = 'NOT_SUBMITTED';
   update public.profiles set is_client = true, client_setup_done = true where id in (c, p1);

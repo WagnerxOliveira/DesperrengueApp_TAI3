@@ -661,7 +661,7 @@ begin
 
       update public.profiles
          set clawback_debt_balance = clawback_debt_balance + v_evaded_fee,
-             external_trust_score = greatest(0, external_trust_score - 120)
+             external_trust_score = greatest(0, external_trust_score - 25.00)
        where id = v_doc.provider_id;
 
       if v_reserve_fee > 0 then
@@ -713,5 +713,10 @@ grant execute on function public.audit_sefaz_phase2_cancellation_and_clawback(uu
 
 comment on function public.audit_sefaz_phase2_cancellation_and_clawback(uuid, int) is
   'Oráculo server-side (service_role) de confirmação/rechecagem SEFAZ: promove PENDING_SEFAZ -> VERIFIED_SEFAZ (cStat=100) ou REJECTED_SEFAZ / CANCELED_CLAWBACK (cStat 101/151/155).';
+
+-- Remove sobrecarga legada morta de 1 argumento (`20261110234000`) que referenciava tabelas
+-- inexistentes (`warranty_claims`, `wallet_ledger_entries`, `security_device_sessions`),
+-- preservando apenas a assinatura canônica de 3 argumentos `public.trigger_layer3_rework(uuid, numeric, uuid)`.
+drop function if exists public.trigger_layer3_rework(uuid);
 
 commit;

@@ -103,6 +103,9 @@ begin
   -- ---------------------------------------------------------------------------
   -- Preparação isolada na transação
   -- ---------------------------------------------------------------------------
+  insert into public.app_settings (key, value) values ('checkin_sandbox', 'true')
+    on conflict (key) do update set value = 'true';
+
   update public.profiles
      set role = null,
          is_client = false,
@@ -110,10 +113,18 @@ begin
          client_setup_done = false,
          provider_setup_done = false,
          verification_status = 'NOT_SUBMITTED',
+         has_open_dispute = false,
+         trust_tier = 'STANDARD',
+         waterfall_tier_rank = 2,
          clawback_debt_balance = 0.00,
          maturing_wallet_balance = 0.00,
          available_wallet_balance = 0.00,
-         external_trust_score = 500,
+         external_trust_score = 85.00,
+         last_latitude = null,
+         last_longitude = null,
+         cpf_hash = null,
+         face_liveness_hash = null,
+         device_fingerprint_hash = null,
          address_city = 'São Paulo - SP';
 
   update public.profiles
@@ -221,7 +232,7 @@ begin
     '04 register_forensic_photo rejeita job em estado scheduled antes do start_job (' || v_err || ')'
   );
 
-  perform public.start_job(j, null, null, null, true);
+  perform public.start_job(j, -23.561414, -46.691415, 10.0, false);
   reset role;
 
   perform pg_temp.login(c);
@@ -538,7 +549,7 @@ begin
    where id = j2;
 
   perform pg_temp.login(p1);
-  perform public.start_job(j2, null, null, null, true);
+  perform public.start_job(j2, -23.5891, -46.6347, 10.0, false);
   perform public.register_forensic_photo(j2, 'check_in', c_phash_in, 'evidence/' || j2 || '/checkin.jpg');
   perform public.register_forensic_photo(j2, 'check_out', c_phash_out1, 'evidence/' || j2 || '/checkout.jpg');
   v_res := public.register_and_verify_material_fiscal_document(
@@ -587,6 +598,43 @@ begin
          and w.amount = 1.50
     ),
     '22 fraude de cancelamento pós-liquidação (cStat=101 em nota VERIFIED_SEFAZ) debita clawback de R$ 15,00 (15%) e recompõe 1,5% no Fundo Garantidor'
+  );
+
+  -- ---------------------------------------------------------------------------
+  -- 23. Regressão `jobs.updated_at` em runtime: `open_warranty_mediation`,
+  --     `trigger_layer3_rework` e `process_autonomous_escrow_and_mediation_queues`
+  --     (sem falso-positivo em `jobs_enforce_post_completion_immutability`)
+  -- ---------------------------------------------------------------------------
+  perform pg_temp.login(c);
+  v_doc1 := public.open_warranty_mediation(
+    j,
+    c,
+    'EXECUTION_DEFECT',
+    'Disjuntor voltou a desarmar em carga nominal',
+    'evidence/' || j || '/defect.jpg',
+    4294967295, -- distinto de check_in e check_out
+    18.0
+  );
+  reset role;
+
+  update public.job_mediations
+     set original_provider_deadline_at = now() - interval '5 minutes'
+   where id = v_doc1;
+
+  perform pg_temp.login(c);
+  v_doc2 := public.trigger_layer3_rework(v_doc1, 120.00);
+  reset role;
+
+  v_res := public.process_autonomous_escrow_and_mediation_queues();
+  select * into r_job from public.jobs where id = j;
+  perform pg_temp.t(
+    v_doc1 is not null
+    and v_doc2 is not null
+    and r_job.status = 'disputed'
+    and r_job.updated_at is not null
+    and (v_res ->> 'auto_released_jobs')::int >= 0
+    and to_regprocedure('public.trigger_layer3_rework(uuid)') is null,
+    '23 jobs.updated_at + trigger _touch_updated_at sustentam open_warranty_mediation, trigger_layer3_rework e fila autônoma pós-conclusão'
   );
 
   -- ---------------------------------------------------------------------------
