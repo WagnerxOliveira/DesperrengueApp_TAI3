@@ -24,8 +24,10 @@ const TESTS_DIR = path.join(ROOT, 'supabase', 'tests');
 
 const MIG_GEO = path.join(MIGRATIONS_DIR, '20261113100000_temporal_geo_privacy_lock.sql');
 const MIG_SEC = path.join(MIGRATIONS_DIR, '20261113110000_security_hardening_audit.sql');
+const MIG_FORENSIC = path.join(MIGRATIONS_DIR, '20261113130000_forensic_photo_and_fiscal_hardening.sql');
 const TEST_GEO = path.join(TESTS_DIR, 'geo_privacy_lock.sql');
 const TEST_SMOKE = path.join(TESTS_DIR, 'security_smoke.sql');
+const TEST_FORENSIC = path.join(TESTS_DIR, 'forensic_photo_and_fiscal.sql');
 
 const results = [];
 function check(name, fn) {
@@ -259,34 +261,45 @@ console.log('=== DESPERRENGUE — Verificação SQL Geo-Privacy Lock & Zero-Trus
 
 const geoSql = fs.readFileSync(MIG_GEO, 'utf8');
 const secSql = fs.readFileSync(MIG_SEC, 'utf8');
+const forensicSql = fs.readFileSync(MIG_FORENSIC, 'utf8');
 const testGeoSql = fs.readFileSync(TEST_GEO, 'utf8');
 const testSmokeSql = fs.readFileSync(TEST_SMOKE, 'utf8');
+const testForensicSql = fs.readFileSync(TEST_FORENSIC, 'utf8');
 
 check('01. Arquivos obrigatórios existem e não estão vazios', () => {
   assert.ok(geoSql.length > 10_000, '20261113100000 deve ser completa');
   assert.ok(secSql.length > 10_000, '20261113110000 deve ser completa');
+  assert.ok(forensicSql.length > 10_000, '20261113130000 deve ser completa');
   assert.ok(testGeoSql.length > 5_000, 'geo_privacy_lock.sql deve ser completa');
+  assert.ok(testForensicSql.length > 5_000, 'forensic_photo_and_fiscal.sql deve ser completa');
 });
 
 check('02. Integridade léxica (strings, dollar-quotes, comentários, parênteses e transações)', () => {
   const strippedGeo = lexSql(geoSql, '20261113100000_temporal_geo_privacy_lock.sql');
   const strippedSec = lexSql(secSql, '20261113110000_security_hardening_audit.sql');
+  const strippedForensic = lexSql(forensicSql, '20261113130000_forensic_photo_and_fiscal_hardening.sql');
   const strippedTestGeo = lexSql(testGeoSql, 'supabase/tests/geo_privacy_lock.sql');
   const strippedSmoke = lexSql(testSmokeSql, 'supabase/tests/security_smoke.sql');
+  const strippedTestForensic = lexSql(testForensicSql, 'supabase/tests/forensic_photo_and_fiscal.sql');
 
   assert.match(strippedGeo, /^\s*begin\s*;/i, '20261113100000 deve abrir com begin;');
   assert.match(strippedGeo, /commit\s*;\s*$/i, '20261113100000 deve encerrar com commit;');
   assert.match(strippedSec, /^\s*begin\s*;/i, '20261113110000 deve abrir com begin;');
   assert.match(strippedSec, /commit\s*;\s*$/i, '20261113110000 deve encerrar com commit;');
+  assert.match(strippedForensic, /^\s*begin\s*;/i, '20261113130000 deve abrir com begin;');
+  assert.match(strippedForensic, /commit\s*;\s*$/i, '20261113130000 deve encerrar com commit;');
   assert.match(strippedTestGeo, /^\s*begin\s*;/i, 'geo_privacy_lock.sql deve abrir com begin;');
   assert.match(strippedTestGeo, /rollback\s*;\s*$/i, 'geo_privacy_lock.sql deve encerrar com rollback;');
+  assert.match(strippedTestForensic, /^\s*begin\s*;/i, 'forensic_photo_and_fiscal.sql deve abrir com begin;');
+  assert.match(strippedTestForensic, /rollback\s*;\s*$/i, 'forensic_photo_and_fiscal.sql deve encerrar com rollback;');
   assert.match(strippedSmoke, /rollback\s*;\s*$/i, 'security_smoke.sql deve encerrar com rollback;');
 });
 
-check('03. Idempotência estrita em 20261113100000 e 20261113110000', () => {
+check('03. Idempotência estrita em 20261113100000, 20261113110000 e 20261113130000', () => {
   for (const [label, content] of [
     ['20261113100000', lexSql(geoSql, 'geo')],
     ['20261113110000', lexSql(secSql, 'sec')],
+    ['20261113130000', lexSql(forensicSql, 'forensic')],
   ]) {
     const rawCreateTables = content.match(/\bcreate\s+table\s+(?!if\s+not\s+exists\b)/gi) ?? [];
     assert.equal(rawCreateTables.length, 0, `${label}: todo CREATE TABLE deve usar IF NOT EXISTS`);
@@ -318,9 +331,10 @@ check('03. Idempotência estrita em 20261113100000 e 20261113110000', () => {
 });
 
 check('04. Zero GRANT perigoso para anon/public e search_path obrigatório em SECURITY DEFINER', () => {
-  for (const [label, sql] of [
-    ['20261113100000', geoSql],
-    ['20261113110000', secSql],
+  for (const [label, sql, minSecDef] of [
+    ['20261113100000', geoSql, 8],
+    ['20261113110000', secSql, 8],
+    ['20261113130000', forensicSql, 4],
   ]) {
     const stripped = lexSql(sql, label);
     assert.doesNotMatch(
@@ -356,7 +370,7 @@ check('04. Zero GRANT perigoso para anon/public e search_path obrigatório em SE
       );
       assert.match(sql, revokeRe, `${label}: função ${fnName} deve ter REVOKE ALL FROM public, anon`);
     }
-    assert.ok(count >= 8, `${label}: esperado auditar >= 8 funções SECURITY DEFINER (auditadas: ${count})`);
+    assert.ok(count >= minSecDef, `${label}: esperado auditar >= ${minSecDef} funções SECURITY DEFINER (auditadas: ${count})`);
   }
 });
 
@@ -603,11 +617,12 @@ check('11. Auditoria cumulativa de TODAS as funções SECURITY DEFINER nas 27 mi
   assert.deepEqual(missingRevoke, [], `Funções SECURITY DEFINER sem REVOKE de public/anon: ${missingRevoke.join(', ')}`);
 });
 
-check('12. Cadeia limpa para `supabase db reset`/`db push`: zero `.concat(`, `public.users` ou `m.phase` legado nas 27 migrations', () => {
+check('12. Cadeia limpa para `supabase db reset`/`db push`: zero `.concat(`, `public.users`, `wallet_ledger_entries` ou `m.phase` legado nas migrations', () => {
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql'))
     .sort();
+  assert.ok(files.length >= 28, `Esperado >= 28 migrations no worktree, encontradas ${files.length}`);
   for (const f of files) {
     const content = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
     lexSql(content, f);
@@ -615,6 +630,40 @@ check('12. Cadeia limpa para `supabase db reset`/`db push`: zero `.concat(`, `pu
     assert.doesNotMatch(noLineComments, /\.concat\s*\(/i, `${f}: sintaxe JS .concat() inválida em SQL/PLpgSQL`);
     assert.doesNotMatch(noLineComments, /\bpublic\.users\b/i, `${f}: relação inexistente public.users`);
     assert.doesNotMatch(noLineComments, /\bm\.phase\b/i, `${f}: coluna inexistente m.phase em job_mediations`);
+  }
+  assert.doesNotMatch(forensicSql, /\bwallet_ledger_entries\b/i, '20261113130000 não pode referenciar tabela inexistente wallet_ledger_entries');
+});
+
+check('13. Contrato v2.11.1 (`20261113130000`): `register_forensic_photo`, `MANUAL_KEY`, `PENDING_SEFAZ`, Smart Split `VERIFIED_SEFAZ` e suíte `forensic_photo_and_fiscal.sql`', () => {
+  assert.match(forensicSql, /create\s+or\s+replace\s+function\s+public\.register_forensic_photo\s*\(/i);
+  assert.match(forensicSql, /FORENSIC_CHECKIN_IMMUTABLE/);
+  assert.match(forensicSql, /FORENSIC_PHOTO_DUPLICATE/);
+  assert.match(forensicSql, /FORENSIC_PATH_INVALID/);
+  assert.match(forensicSql, /9223372036854775807::bigint/, 'hamming_distance_64 deve proteger bit de sinal INT64_MIN');
+  assert.match(forensicSql, /'MANUAL_KEY'/, 'job_fiscal_documents deve aceitar capture_channel = MANUAL_KEY');
+  assert.match(forensicSql, /'PENDING_SEFAZ'/, 'documentos fiscais devem nascer em PENDING_SEFAZ');
+  assert.match(forensicSql, /'sefaz_confirmed'\s*,\s*false/i, 'resposta RPC deve retornar sefaz_confirmed = false até conferência SEFAZ');
+  assert.match(
+    forensicSql,
+    /d\.verification_status\s*=\s*'VERIFIED_SEFAZ'[\s\S]{0,120}?d\.sefaz_status_recheck\s*=\s*100/i,
+    'settle_escrow_with_carveout_and_maturation deve exigir VERIFIED_SEFAZ + cStat=100 para isenção 0%'
+  );
+
+  const forensicAssertions = (testForensicSql.match(/perform\s+pg_temp\.t\s*\(/gi) ?? []).length;
+  assert.ok(
+    forensicAssertions >= 20,
+    `Esperado >= 20 asserções em forensic_photo_and_fiscal.sql (encontradas: ${forensicAssertions})`
+  );
+  for (const token of [
+    'FORENSIC_CHECKIN_IMMUTABLE',
+    'FORENSIC_PHOTO_DUPLICATE',
+    'FORENSIC_PATH_INVALID',
+    'MANUAL_KEY',
+    'PENDING_SEFAZ',
+    'VERIFIED_SEFAZ',
+    'CANCELED_CLAWBACK',
+  ]) {
+    assert.ok(testForensicSql.includes(token), `forensic_photo_and_fiscal.sql deve cobrir: ${token}`);
   }
 });
 
