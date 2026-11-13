@@ -651,7 +651,7 @@ check('12. Cadeia limpa para `supabase db reset`/`db push`: zero `.concat(`, `pu
   );
 });
 
-check('13. Contrato v2.11.1 (`20261113125000` + `20261113130000`): `jobs.updated_at`, `register_forensic_photo`, `MANUAL_KEY`, `PENDING_SEFAZ`, Smart Split `VERIFIED_SEFAZ` e suíte `forensic_photo_and_fiscal.sql`', () => {
+check('13. Contrato v2.11.1 (`20261113125000` + `20261113130000`): `jobs.updated_at`, `register_forensic_photo`, `MANUAL_KEY`, `PENDING_SEFAZ`, Smart Split Isenção Provisória + Clawback e suíte `forensic_photo_and_fiscal.sql`', () => {
   assert.match(
     jobsUpdatedSql,
     /alter\s+table\s+public\.jobs[\s\S]{0,80}?add\s+column\s+if\s+not\s+exists\s+updated_at\s+timestamptz/i,
@@ -674,14 +674,19 @@ check('13. Contrato v2.11.1 (`20261113125000` + `20261113130000`): `jobs.updated
   assert.match(forensicSql, /'sefaz_confirmed'\s*,\s*false/i, 'resposta RPC deve retornar sefaz_confirmed = false até conferência SEFAZ');
   assert.match(
     forensicSql,
-    /d\.verification_status\s*=\s*'VERIFIED_SEFAZ'[\s\S]{0,120}?d\.sefaz_status_recheck\s*=\s*100/i,
-    'settle_escrow_with_carveout_and_maturation deve exigir VERIFIED_SEFAZ + cStat=100 para isenção 0%'
+    /d\.verification_status\s+in\s*\(\s*'PENDING_SEFAZ'\s*,\s*'VERIFIED_SEFAZ'\s*\)[\s\S]{0,120}?d\.clawback_triggered\s*=\s*false/i,
+    'settle_escrow_with_carveout_and_maturation deve conceder isenção provisória para PENDING_SEFAZ/VERIFIED_SEFAZ sem clawback'
+  );
+  assert.match(
+    forensicSql,
+    /v_was_exempt_eligible\s*:=\s*\(\s*v_doc\.verification_status\s+in\s*\(\s*'PENDING_SEFAZ'\s*,\s*'VERIFIED_SEFAZ'\s*\)/i,
+    'audit_sefaz_phase2_cancellation_and_clawback deve debitar clawback de 15% também sobre nota PENDING_SEFAZ cancelada/invalidada'
   );
 
   const forensicAssertions = (testForensicSql.match(/perform\s+pg_temp\.t\s*\(/gi) ?? []).length;
   assert.ok(
-    forensicAssertions >= 20,
-    `Esperado >= 20 asserções em forensic_photo_and_fiscal.sql (encontradas: ${forensicAssertions})`
+    forensicAssertions >= 24,
+    `Esperado >= 24 asserções em forensic_photo_and_fiscal.sql (encontradas: ${forensicAssertions})`
   );
   for (const token of [
     'FORENSIC_CHECKIN_IMMUTABLE',
@@ -691,6 +696,7 @@ check('13. Contrato v2.11.1 (`20261113125000` + `20261113130000`): `jobs.updated
     'PENDING_SEFAZ',
     'VERIFIED_SEFAZ',
     'CANCELED_CLAWBACK',
+    'REJECTED_SEFAZ',
   ]) {
     assert.ok(testForensicSql.includes(token), `forensic_photo_and_fiscal.sql deve cobrir: ${token}`);
   }

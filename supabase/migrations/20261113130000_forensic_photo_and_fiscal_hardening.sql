@@ -14,14 +14,18 @@
 --        cliente (parâmetros mantidos na assinatura apenas por compatibilidade retroativa,
 --        mas ignorados no servidor: todo documento nasce em `verification_status = 'PENDING_SEFAZ'`,
 --        `sefaz_status_initial = NULL`, `ela_tamper_score = 0.0000`, `verified = false`).
---   3. Impacto Financeiro Corrigido no Smart Split (`settle_escrow_with_carveout_and_maturation`):
+--   3. Regra Financeira do Smart Split (Isenção Provisória + Clawback Anti-Fraude):
 --      - Antes desta migration, `settle_escrow_with_carveout_and_maturation` concedia isenção
---        de 0% sobre todo `jobs.materials_amount` sem verificar `public.job_fiscal_documents`.
---      - Agora, a isenção de 0% de taxa sobre materiais SOMENTE é aplicada à parcela coberta por
---        documento fiscal com `verification_status = 'VERIFIED_SEFAZ'`, `sefaz_status_recheck = 100`
---        e `clawback_triggered = false`. Enquanto o documento estiver `PENDING_SEFAZ` (ou ausente /
---        rejeitado / cancelado), a parcela não verificada sofre incidência integral da taxa padrão
---        (13,5% operacional + 1,5% Fundo Garantidor = 15%).
+--        de 0% sobre todo `jobs.materials_amount` mesmo SEM nenhum documento fiscal registrado.
+--      - Agora, a isenção de 0% de taxa sobre materiais aplica-se à parcela coberta por
+--        documento fiscal REGISTRADO com `verification_status in ('PENDING_SEFAZ', 'VERIFIED_SEFAZ')`,
+--        `clawback_triggered = false` e não recusado/cancelado, limitada a
+--        `least(soma_declarada_documentos_validos, jobs.materials_amount)`.
+--      - Materiais SEM documento fiscal registrado (ou com documento recusado/cancelado antes
+--        da liquidação) pagam a taxa padrão de 15% (13,5% operacional + 1,5% Fundo Garantidor).
+--      - Se um documento que já gerou isenção (`PENDING_SEFAZ` ou `VERIFIED_SEFAZ`) for
+--        posteriormente cancelado ou invalidado na SEFAZ, `audit_sefaz_phase2_cancellation_and_clawback`
+--        debita o clawback retroativo de 15% e recompõe o Fundo Garantidor.
 -- =============================================================================
 
 begin;
@@ -300,6 +304,7 @@ declare
   v_effective_mode text := upper(btrim(coalesce(p_fiscal_document_mode, '')));
   v_receipt_num    text := btrim(coalesce(p_receipt_number, ''));
   v_doc_id         uuid;
+  v_provisional_exempt numeric(12,2);
 begin
   -- Nota Zero-Trust: `p_ela_tamper_score` e `p_sefaz_status_initial` são mantidos na
   -- assinatura exclusivamente por compatibilidade retroativa com clientes instalados,
@@ -433,6 +438,12 @@ begin
     'PENDING_SEFAZ'
   ) returning id into v_doc_id;
 
+  v_provisional_exempt := case
+    when coalesce(v_job.materials_amount, 0.00) > 0.00
+      then least(p_declared_material_amount, v_job.materials_amount)
+    else p_declared_material_amount
+  end;
+
   return jsonb_build_object(
     'recorded', true,
     'verified', false,
@@ -446,7 +457,7 @@ begin
     'emitter_cnpj', v_clean_cnpj,
     'receipt_number', v_receipt_num,
     'declared_material_amount', p_declared_material_amount,
-    'exempt_material_amount', 0.00,
+    'exempt_material_amount', v_provisional_exempt,
     'smart_fiscal_cap_applied', (v_effective_mode = 'MEI_RECEIPT_CGSN140')
   );
 end $$;
@@ -462,19 +473,24 @@ grant execute on function public.register_and_verify_material_fiscal_document(
 comment on function public.register_and_verify_material_fiscal_document(
   uuid, uuid, text, text, text, char(1), text, boolean, text, numeric(12,2), text[], numeric(5,4), bigint, int
 ) is
-  'Registra documento fiscal de materiais (QR_CODE, BARCODE_1D_CODE128C, OCR_CHAVE_44, OCR_MEI_RECEIPT ou MANUAL_KEY) com validação Mod-11 server-side. Ignora p_sefaz_status_initial e p_ela_tamper_score do cliente: nasce sempre em PENDING_SEFAZ (verified=false, exempt_material_amount=0.00) até conferência SEFAZ no servidor.';
+  'Registra documento fiscal de materiais (QR_CODE, BARCODE_1D_CODE128C, OCR_CHAVE_44, OCR_MEI_RECEIPT ou MANUAL_KEY) com validação Mod-11 server-side. Ignora p_sefaz_status_initial e p_ela_tamper_score do cliente: nasce em PENDING_SEFAZ (verified=false) com isenção provisória (exempt_material_amount = least(declared, materials_amount)) sujeita a clawback de 15% se cancelada/invalidada na SEFAZ.';
 
 -- -----------------------------------------------------------------------------
 -- 5. Blindagem Financeira do Smart Split (`settle_escrow_with_carveout_and_maturation`
 --    e `audit_sefaz_phase2_cancellation_and_clawback`)
 -- -----------------------------------------------------------------------------
--- IMPACTO FINANCEIRO DOCUMENTADO:
---   A isenção de 0% de taxa sobre materiais (`materials_amount`) SÓ é aplicada
---   sobre o montante coberto por documentos fiscais do job com
---   `verification_status = 'VERIFIED_SEFAZ'`, `sefaz_status_recheck = 100` e
---   `clawback_triggered = false`. Enquanto o documento estiver em `PENDING_SEFAZ`
---   (ou ausente/rejeitado/cancelado), a parcela de materiais não verificada compõe
---   a base tributável da plataforma (13,5% operacional + 1,5% Fundo de Garantia).
+-- REGRA FINANCEIRA DOCUMENTADA (Isenção Provisória + Clawback Anti-Fraude):
+--   - A isenção de 0% de taxa sobre materiais (`materials_amount`) aplica-se à
+--     parcela coberta por documento fiscal REGISTRADO no atendimento com
+--     `verification_status in ('PENDING_SEFAZ', 'VERIFIED_SEFAZ')`,
+--     `clawback_triggered = false` e sem status de recusa/cancelamento,
+--     limitada a `least(soma(declared_material_amount), jobs.materials_amount)`.
+--   - Materiais SEM documento fiscal registrado (ou com nota cancelada/recusada
+--     antes da liquidação) pagam a taxa padrão de 15% (13,5% operacional + 1,5%
+--     Fundo Garantidor).
+--   - Caso uma nota que gerou isenção (`PENDING_SEFAZ` ou `VERIFIED_SEFAZ`) seja
+--     posteriormente cancelada ou invalidada na SEFAZ, `audit_sefaz_phase2_cancellation_and_clawback`
+--     debita o clawback retroativo de 15% sobre a parcela isenta.
 create or replace function public.settle_escrow_with_carveout_and_maturation(
   p_job_id uuid
 )
@@ -488,9 +504,9 @@ declare
   v_provider             public.profiles%rowtype;
   v_labor                numeric(12,2);
   v_materials            numeric(12,2);
-  v_verified_materials   numeric(12,2) := 0.00;
+  v_covered_materials    numeric(12,2) := 0.00;
   v_exempt_materials     numeric(12,2) := 0.00;
-  v_unverified_materials numeric(12,2) := 0.00;
+  v_uncovered_materials  numeric(12,2) := 0.00;
   v_fee_bearing_base     numeric(12,2);
   v_operational_fee      numeric(12,2);
   v_warranty_carveout    numeric(12,2);
@@ -513,20 +529,20 @@ begin
 
   if v_materials > 0 then
     select coalesce(sum(d.declared_material_amount), 0.00)
-      into v_verified_materials
+      into v_covered_materials
       from public.job_fiscal_documents d
      where d.job_id = v_job.id
-       and d.verification_status = 'VERIFIED_SEFAZ'
-       and d.sefaz_status_recheck = 100
-       and d.clawback_triggered = false;
+       and d.verification_status in ('PENDING_SEFAZ', 'VERIFIED_SEFAZ')
+       and d.clawback_triggered = false
+       and (d.sefaz_status_recheck is null or d.sefaz_status_recheck = 100);
 
-    v_exempt_materials := least(v_materials, v_verified_materials);
+    v_exempt_materials := least(v_materials, v_covered_materials);
   end if;
 
-  v_unverified_materials := greatest(0.00, v_materials - v_exempt_materials);
-  v_fee_bearing_base := v_labor + v_unverified_materials;
+  v_uncovered_materials := greatest(0.00, v_materials - v_exempt_materials);
+  v_fee_bearing_base := v_labor + v_uncovered_materials;
 
-  -- 13,5% operacional + 1,5% Fundo Garantidor sobre mão de obra + materiais NÃO verificados na SEFAZ
+  -- 13,5% operacional + 1,5% Fundo Garantidor sobre mão de obra + materiais SEM documento válido registrado
   v_operational_fee := round(v_fee_bearing_base * 0.135, 2);
   v_warranty_carveout := round(v_fee_bearing_base * 0.015, 2);
   v_net_provider := (v_labor + v_materials) - v_operational_fee - v_warranty_carveout;
@@ -556,8 +572,8 @@ begin
       v_job.id, 'CARVEOUT_CONTRIBUTION_1_5_PCT', v_warranty_carveout, v_fee_bearing_base,
       v_provider.id, v_job.client_id,
       case
-        when v_unverified_materials > 0
-          then 'Carve-out de 1,5% sobre mão de obra + materiais sem verificação SEFAZ concluída.'
+        when v_uncovered_materials > 0
+          then 'Carve-out de 1,5% sobre mão de obra + materiais sem documento fiscal registrado.'
         else 'Carve-out de 1,5% da taxa de intermediação sobre mão de obra.'
       end
     );
@@ -592,7 +608,7 @@ revoke all on function public.settle_escrow_with_carveout_and_maturation(uuid)
   from public, anon, authenticated;
 
 comment on function public.settle_escrow_with_carveout_and_maturation(uuid) is
-  'Liquidação interna do escrow com carve-out de 1,5% e maturação D+N. A isenção de 0% sobre materiais só se aplica a documentos fiscais com verification_status = VERIFIED_SEFAZ (cStat=100, sem clawback); materiais PENDING_SEFAZ ou sem nota pagam taxa padrão de 15%.';
+  'Liquidação interna do escrow com carve-out de 1,5% e maturação D+N. Concede 0% de taxa sobre materiais cobertos por documento registrado em PENDING_SEFAZ ou VERIFIED_SEFAZ (sem clawback), limitada a least(declarado, materials_amount); materiais sem documento registrado pagam 15%.';
 
 create or replace function public.audit_sefaz_phase2_cancellation_and_clawback(
   p_document_id uuid,
@@ -604,12 +620,16 @@ security definer
 set search_path = public
 as $$
 declare
-  v_doc          public.job_fiscal_documents%rowtype;
-  v_job          public.jobs%rowtype;
-  v_was_verified boolean;
-  v_op_fee       numeric(12,2);
-  v_reserve_fee  numeric(12,2);
-  v_evaded_fee   numeric(12,2);
+  v_doc                 public.job_fiscal_documents%rowtype;
+  v_job                 public.jobs%rowtype;
+  v_entry               public.escrow_maturation_entries%rowtype;
+  v_was_exempt_eligible boolean;
+  v_is_canceled         boolean;
+  v_next_status         text;
+  v_reimbursed_cap      numeric(12,2) := 0.00;
+  v_op_fee              numeric(12,2) := 0.00;
+  v_reserve_fee         numeric(12,2) := 0.00;
+  v_evaded_fee          numeric(12,2) := 0.00;
 begin
   select *
     into v_doc
@@ -621,7 +641,10 @@ begin
     raise exception 'FISCAL_DOCUMENT_NOT_FOUND' using errcode = 'P0002';
   end if;
 
-  v_was_verified := (v_doc.verification_status = 'VERIFIED_SEFAZ');
+  v_was_exempt_eligible := (
+    v_doc.verification_status in ('PENDING_SEFAZ', 'VERIFIED_SEFAZ')
+    and not v_doc.clawback_triggered
+  );
 
   if p_sefaz_status_recheck = 100 then
     update public.job_fiscal_documents
@@ -640,69 +663,62 @@ begin
     );
   end if;
 
-  -- cStat 101 / 151 / 155 = Cancelamento homologado na SEFAZ
-  if p_sefaz_status_recheck in (101, 151, 155) then
-    update public.job_fiscal_documents
-       set sefaz_status_recheck = p_sefaz_status_recheck,
-           verification_status = 'CANCELED_CLAWBACK',
-           clawback_triggered = true,
-           rechecked_at = now()
-     where id = p_document_id;
+  -- Qualquer cStat != 100 invalida a nota: 101/151/155 = cancelada; demais = recusada/inexistente
+  v_is_canceled := p_sefaz_status_recheck in (101, 151, 155);
+  v_next_status := case when v_is_canceled then 'CANCELED_CLAWBACK' else 'REJECTED_SEFAZ' end;
 
-    -- Só aplica clawback retroativo de 15% se a nota já havia concedido isenção em liquidação anterior
-    if v_was_verified and not v_doc.clawback_triggered and exists (
-      select 1 from public.escrow_maturation_entries e
-       where e.job_id = v_doc.job_id and e.materials_reimbursement_amount > 0
-    ) then
-      select * into v_job from public.jobs where id = v_doc.job_id;
-      v_op_fee := round(v_doc.declared_material_amount * 0.1350, 2);
-      v_reserve_fee := round(v_doc.declared_material_amount * 0.0150, 2);
-      v_evaded_fee := v_op_fee + v_reserve_fee;
+  select *
+    into v_entry
+    from public.escrow_maturation_entries
+   where job_id = v_doc.job_id
+     for update;
 
-      update public.profiles
-         set clawback_debt_balance = clawback_debt_balance + v_evaded_fee,
-             external_trust_score = greatest(0, external_trust_score - 25.00)
-       where id = v_doc.provider_id;
-
-      if v_reserve_fee > 0 then
-        insert into public.warranty_pool_ledger (
-          job_id, entry_type, amount, labor_reference_cap,
-          original_provider_id, client_id, notes
-        ) values (
-          v_doc.job_id, 'CARVEOUT_CONTRIBUTION_1_5_PCT', v_reserve_fee, v_doc.declared_material_amount,
-          v_doc.provider_id, v_job.client_id,
-          'Recuperação de Carve-Out (1,5%) por cancelamento de nota fiscal na SEFAZ (cStat ' || p_sefaz_status_recheck || ').'
-        );
-      end if;
-
-      return jsonb_build_object(
-        'canceled_on_sefaz', true,
-        'verification_status', 'CANCELED_CLAWBACK',
-        'clawback_debited', v_evaded_fee,
-        'reclassified_amount', v_doc.declared_material_amount
-      );
-    end if;
-
-    return jsonb_build_object(
-      'canceled_on_sefaz', true,
-      'verification_status', 'CANCELED_CLAWBACK',
-      'clawback_debited', 0.00,
-      'reclassified_amount', v_doc.declared_material_amount
-    );
+  if v_was_exempt_eligible and v_entry.id is not null and v_entry.materials_reimbursement_amount > 0 then
+    v_reimbursed_cap := least(v_doc.declared_material_amount, v_entry.materials_reimbursement_amount);
   end if;
 
-  -- Qualquer outro cStat != 100 (denegada / inexistente)
   update public.job_fiscal_documents
      set sefaz_status_recheck = p_sefaz_status_recheck,
-         verification_status = 'REJECTED_SEFAZ',
+         verification_status = v_next_status,
+         clawback_triggered = (v_doc.clawback_triggered or v_is_canceled or v_reimbursed_cap > 0),
          rechecked_at = now()
    where id = p_document_id;
 
+  if v_reimbursed_cap > 0 then
+    select * into v_job from public.jobs where id = v_doc.job_id;
+    v_op_fee := round(v_reimbursed_cap * 0.1350, 2);
+    v_reserve_fee := round(v_reimbursed_cap * 0.0150, 2);
+    v_evaded_fee := v_op_fee + v_reserve_fee;
+
+    update public.escrow_maturation_entries
+       set materials_reimbursement_amount = greatest(0.00, materials_reimbursement_amount - v_reimbursed_cap)
+     where id = v_entry.id;
+
+    update public.profiles
+       set clawback_debt_balance = clawback_debt_balance + v_evaded_fee,
+           external_trust_score = greatest(0, external_trust_score - 25.00)
+     where id = v_doc.provider_id;
+
+    if v_reserve_fee > 0 then
+      insert into public.warranty_pool_ledger (
+        job_id, entry_type, amount, labor_reference_cap,
+        original_provider_id, client_id, notes
+      ) values (
+        v_doc.job_id, 'CARVEOUT_CONTRIBUTION_1_5_PCT', v_reserve_fee, v_reimbursed_cap,
+        v_doc.provider_id, v_job.client_id,
+        'Recuperação de Carve-Out (1,5%) por invalidação/cancelamento de nota fiscal na SEFAZ (cStat ' || p_sefaz_status_recheck || ').'
+      );
+    end if;
+  end if;
+
   return jsonb_build_object(
-    'canceled_on_sefaz', false,
+    'canceled_on_sefaz', v_is_canceled,
+    'sefaz_confirmed', false,
     'sefaz_verified', false,
-    'verification_status', 'REJECTED_SEFAZ',
-    'sefaz_status_recheck', p_sefaz_status_recheck
+    'verification_status', v_next_status,
+    'sefaz_status_recheck', p_sefaz_status_recheck,
+    'clawback_debited', v_evaded_fee,
+    'reclassified_amount', v_reimbursed_cap
   );
 end $$;
 
@@ -712,7 +728,7 @@ grant execute on function public.audit_sefaz_phase2_cancellation_and_clawback(uu
   to service_role;
 
 comment on function public.audit_sefaz_phase2_cancellation_and_clawback(uuid, int) is
-  'Oráculo server-side (service_role) de confirmação/rechecagem SEFAZ: promove PENDING_SEFAZ -> VERIFIED_SEFAZ (cStat=100) ou REJECTED_SEFAZ / CANCELED_CLAWBACK (cStat 101/151/155).';
+  'Oráculo server-side (service_role) de confirmação/rechecagem SEFAZ: promove PENDING_SEFAZ -> VERIFIED_SEFAZ (cStat=100) ou invalida com clawback de 15% sobre isenção já concedida (PENDING_SEFAZ ou VERIFIED_SEFAZ).';
 
 -- Remove sobrecarga legada morta de 1 argumento (`20261110234000`) que referenciava tabelas
 -- inexistentes (`warranty_claims`, `wallet_ledger_entries`, `security_device_sessions`),

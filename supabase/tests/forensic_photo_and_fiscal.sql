@@ -66,18 +66,22 @@ declare
   adm          uuid;
   j            uuid;
   j2           uuid;
+  j_nodoc      uuid;
   j_mei        uuid;
   q1           uuid;
   q2           uuid;
+  q_nodoc      uuid;
   q_mei        uuid;
   v_pin1       text;
   v_pin2       text;
+  v_pin_nodoc  text;
   v_key1       text;
   v_key2       text;
   v_bad_key    text;
   v_doc1       uuid;
   v_doc2       uuid;
   v_res        jsonb;
+  v_res2       jsonb;
   v_err        text;
   v_debt_before numeric(12,2);
   v_debt_after  numeric(12,2);
@@ -419,9 +423,9 @@ begin
     and (v_res ->> 'sefaz_verified')::boolean = false
     and (v_res ->> 'verification_status') = 'PENDING_SEFAZ'
     and (v_res ->> 'capture_channel') = 'MANUAL_KEY'
-    and (v_res ->> 'exempt_material_amount')::numeric = 0.00
+    and (v_res ->> 'exempt_material_amount')::numeric = 100.00
     and (v_res ->> 'receipt_number') = '000000101',
-    '16 MANUAL_KEY válido ignora p_sefaz_status_initial/p_ela_tamper_score do cliente e retorna verified=false, sefaz_confirmed=false, PENDING_SEFAZ, exempt=0.00'
+    '16 MANUAL_KEY válido ignora p_sefaz_status_initial/p_ela_tamper_score do cliente e retorna verified=false, sefaz_confirmed=false, PENDING_SEFAZ e isenção provisória exempt=100.00'
   );
 
   v_err := pg_temp.try(format(
@@ -478,14 +482,15 @@ begin
     position('SMART_FISCAL_CAP_EXCEEDED' in v_err) > 0
     and (v_res ->> 'verified')::boolean = false
     and (v_res ->> 'verification_status') = 'PENDING_SEFAZ'
-    and (v_res ->> 'exempt_material_amount')::numeric = 0.00
+    and (v_res ->> 'exempt_material_amount')::numeric = 80.00
     and (v_res ->> 'smart_fiscal_cap_applied')::boolean = true,
-    '18 recibo MEI aplica teto de R$ 150,00 e também nasce em PENDING_SEFAZ com exempt_material_amount=0.00'
+    '18 recibo MEI aplica teto de R$ 150,00 e nasce em PENDING_SEFAZ (verified=false) com isenção provisória exempt=80.00'
   );
 
   -- ---------------------------------------------------------------------------
-  -- 19 & 20. Liquidação Financeira Smart Split COM nota ainda `PENDING_SEFAZ`:
-  --          NÃO concede isenção de 0% (cobra 15% sobre R$ 200 + R$ 100 = R$ 300)
+  -- 19 & 20. Liquidação Financeira Smart Split COM nota registrada em `PENDING_SEFAZ`:
+  --          concede isenção provisória de 0% sobre materiais (R$ 100) +
+  --          Clawback retroativo de 15% se cancelada na SEFAZ (cStat=101)
   -- ---------------------------------------------------------------------------
   perform pg_temp.login(p1);
   v_res := public.complete_job_and_schedule_escrow(j, p1, c_phash_out2, 15.0, v_pin1);
@@ -495,30 +500,92 @@ begin
   perform pg_temp.t(
     (v_res ->> 'status') = 'COMPLETED_BY_PIN'
     and r_mat.gross_labor_amount = 200.00
+    and r_mat.materials_reimbursement_amount = 100.00
+    and r_mat.platform_operational_fee = 27.00
+    and r_mat.warranty_carveout_fee = 3.00
+    and r_mat.net_provider_amount = 270.00,
+    '19 liquidação com nota registrada PENDING_SEFAZ concede isenção provisória 0% sobre materiais R$ 100 (op=27.00, gar=3.00, isento=100.00, líq=270.00)'
+  );
+
+  -- Se a SEFAZ depois reportar cancelamento (cStat=101) na nota provisoriamente isenta, debita clawback de 15% (idempotente)
+  perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
+  execute 'set local role service_role';
+  v_res := public.audit_sefaz_phase2_cancellation_and_clawback(v_doc1, 101);
+  v_res2 := public.audit_sefaz_phase2_cancellation_and_clawback(v_doc1, 101);
+  reset role;
+
+  select * into r_mat from public.escrow_maturation_entries where job_id = j;
+  select clawback_debt_balance into v_debt_after from public.profiles where id = p1;
+  perform pg_temp.t(
+    (v_res ->> 'verification_status') = 'CANCELED_CLAWBACK'
+    and (v_res ->> 'clawback_debited')::numeric = 15.00
+    and (v_res2 ->> 'clawback_debited')::numeric = 0.00
+    and r_mat.materials_reimbursement_amount = 0.00
+    and v_debt_after = 15.00
+    and exists (
+      select 1 from public.warranty_pool_ledger w
+       where w.job_id = j
+         and w.entry_type = 'CARVEOUT_CONTRIBUTION_1_5_PCT'
+         and w.amount = 1.50
+    ),
+    '20 cancelamento SEFAZ (cStat=101) em nota PENDING_SEFAZ liquidada marca CANCELED_CLAWBACK, debita clawback de R$ 15,00 (15%), recompõe 1,5% no Fundo e é idempotente'
+  );
+
+  -- Zera saldo devedor para isolar a matemática pura dos cenários 21 e 22
+  update public.profiles set clawback_debt_balance = 0.00 where id = p1;
+
+  -- ---------------------------------------------------------------------------
+  -- 21. Liquidação Financeira Smart Split SEM documento fiscal registrado:
+  --     materiais (R$ 100) pagam a taxa padrão de 15% junto com a mão de obra
+  -- ---------------------------------------------------------------------------
+  perform pg_temp.login(c);
+  insert into public.jobs (
+    client_id, title, description, category, urgency, visibility,
+    scheduled_for, address_summary, latitude, longitude
+  ) values (
+    c, 'Troca de Disjuntor Geral', 'Sem nota fiscal de material', 'Elétrica',
+    'scheduled', 'open', now(), 'Moema, São Paulo - SP', -23.6015, -46.6652
+  ) returning id into j_nodoc;
+  insert into public.job_addresses (job_id, address_line, cep)
+  values (j_nodoc, 'Av. Ibirapuera, 2500', '04028-002');
+  reset role;
+
+  perform pg_temp.login(p1);
+  insert into public.quotes (job_id, provider_id, price) values (j_nodoc, p1, 300.00) returning id into q_nodoc;
+  reset role;
+
+  perform pg_temp.login(c);
+  perform public.accept_quote(q_nodoc);
+  perform public.pay_job_mock(j_nodoc, 'pix');
+  select pin into v_pin_nodoc from public.job_secrets where job_id = j_nodoc;
+  reset role;
+
+  update public.jobs
+     set labor_amount = 200.00,
+         materials_amount = 100.00,
+         escrow_status = 'LOCKED_100'
+   where id = j_nodoc;
+
+  perform pg_temp.login(p1);
+  perform public.start_job(j_nodoc, -23.6015, -46.6652, 10.0, false);
+  perform public.register_forensic_photo(j_nodoc, 'check_in', c_phash_in, 'evidence/' || j_nodoc || '/checkin.jpg');
+  perform public.register_forensic_photo(j_nodoc, 'check_out', c_phash_out1, 'evidence/' || j_nodoc || '/checkout.jpg');
+  perform public.complete_job_and_schedule_escrow(j_nodoc, p1, c_phash_out1, 9.0, v_pin_nodoc);
+  reset role;
+
+  select * into r_mat from public.escrow_maturation_entries where job_id = j_nodoc;
+  perform pg_temp.t(
+    r_mat.gross_labor_amount = 200.00
     and r_mat.materials_reimbursement_amount = 0.00
     and r_mat.platform_operational_fee = 40.50
     and r_mat.warranty_carveout_fee = 4.50
     and r_mat.net_provider_amount = 255.00,
-    '19 liquidação com nota PENDING_SEFAZ tributa 15% sobre R$ 300 (op=40.50, gar=4.50, isento=0.00, líq=255.00)'
-  );
-
-  -- Se a SEFAZ depois reportar cancelamento (cStat=101) numa nota que NUNCA deu isenção, não há bitributação
-  perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
-  execute 'set local role service_role';
-  v_res := public.audit_sefaz_phase2_cancellation_and_clawback(v_doc1, 101);
-  reset role;
-
-  select clawback_debt_balance into v_debt_after from public.profiles where id = p1;
-  perform pg_temp.t(
-    (v_res ->> 'verification_status') = 'CANCELED_CLAWBACK'
-    and (v_res ->> 'clawback_debited')::numeric = 0.00
-    and v_debt_after = 0.00,
-    '20 cancelamento SEFAZ (cStat=101) em nota nunca isenta marca CANCELED_CLAWBACK com clawback_debited=0.00 (sem bitributação)'
+    '21 materiais SEM documento fiscal registrado pagam taxa de 15% sobre R$ 300 (isento=0.00, op=40.50, gar=4.50, líq=255.00)'
   );
 
   -- ---------------------------------------------------------------------------
-  -- 21 & 22. Liquidação Financeira Smart Split APÓS oráculo SEFAZ confirmar `cStat=100`
-  --          (`VERIFIED_SEFAZ` -> 0% taxa sobre materiais) + Clawback pós-cancelamento
+  -- 22 & 23. Liquidação Financeira Smart Split APÓS oráculo SEFAZ confirmar `cStat=100`
+  --          (`VERIFIED_SEFAZ` -> 0% taxa sobre materiais) + Clawback por invalidação (`cStat=217`)
   -- ---------------------------------------------------------------------------
   perform pg_temp.login(c);
   insert into public.jobs (
@@ -576,19 +643,19 @@ begin
     and r_mat.platform_operational_fee = 27.00
     and r_mat.warranty_carveout_fee = 3.00
     and r_mat.net_provider_amount = 270.00,
-    '21 após oráculo SEFAZ (cStat=100 -> VERIFIED_SEFAZ), materiais R$ 100 têm isenção 0% (op=27.00, gar=3.00, líq=270.00)'
+    '22 após oráculo SEFAZ (cStat=100 -> VERIFIED_SEFAZ), materiais R$ 100 mantêm isenção 0% (op=27.00, gar=3.00, líq=270.00)'
   );
 
   select clawback_debt_balance into v_debt_before from public.profiles where id = p1;
   perform set_config('request.jwt.claims', json_build_object('role', 'service_role')::text, true);
   execute 'set local role service_role';
-  v_res := public.audit_sefaz_phase2_cancellation_and_clawback(v_doc2, 101);
+  v_res := public.audit_sefaz_phase2_cancellation_and_clawback(v_doc2, 217);
   reset role;
 
   select clawback_debt_balance into v_debt_after from public.profiles where id = p1;
   perform pg_temp.t(
-    (v_res ->> 'canceled_on_sefaz')::boolean = true
-    and (v_res ->> 'verification_status') = 'CANCELED_CLAWBACK'
+    (v_res ->> 'canceled_on_sefaz')::boolean = false
+    and (v_res ->> 'verification_status') = 'REJECTED_SEFAZ'
     and (v_res ->> 'clawback_debited')::numeric = 15.00
     and (v_debt_after - v_debt_before) = 15.00
     and exists (
@@ -597,11 +664,11 @@ begin
          and w.entry_type = 'CARVEOUT_CONTRIBUTION_1_5_PCT'
          and w.amount = 1.50
     ),
-    '22 fraude de cancelamento pós-liquidação (cStat=101 em nota VERIFIED_SEFAZ) debita clawback de R$ 15,00 (15%) e recompõe 1,5% no Fundo Garantidor'
+    '23 invalidação SEFAZ pós-liquidação (cStat=217 -> REJECTED_SEFAZ em nota VERIFIED_SEFAZ) também debita clawback de R$ 15,00 (15%) e recompõe 1,5% no Fundo Garantidor'
   );
 
   -- ---------------------------------------------------------------------------
-  -- 23. Regressão `jobs.updated_at` em runtime: `open_warranty_mediation`,
+  -- 24. Regressão `jobs.updated_at` em runtime: `open_warranty_mediation`,
   --     `trigger_layer3_rework` e `process_autonomous_escrow_and_mediation_queues`
   --     (sem falso-positivo em `jobs_enforce_post_completion_immutability`)
   -- ---------------------------------------------------------------------------
@@ -634,7 +701,7 @@ begin
     and r_job.updated_at is not null
     and (v_res ->> 'auto_released_jobs')::int >= 0
     and to_regprocedure('public.trigger_layer3_rework(uuid)') is null,
-    '23 jobs.updated_at + trigger _touch_updated_at sustentam open_warranty_mediation, trigger_layer3_rework e fila autônoma pós-conclusão'
+    '24 jobs.updated_at + trigger _touch_updated_at sustentam open_warranty_mediation, trigger_layer3_rework e fila autônoma pós-conclusão'
   );
 
   -- ---------------------------------------------------------------------------
