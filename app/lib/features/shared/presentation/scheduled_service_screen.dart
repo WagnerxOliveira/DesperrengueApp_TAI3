@@ -1,6 +1,7 @@
 import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -25,11 +26,20 @@ import 'service_map_widgets.dart';
 import 'smart_triage_widgets.dart';
 import '../../../core/state/smart_triage_controller.dart';
 
-/// Botão de homologação "Simular dia/hora e GPS no local". O servidor também precisa estar com
-/// `app_settings.checkin_sandbox = 'true'` (em produção: `--dart-define=CHECKIN_SANDBOX=false`
-/// e desligar a flag no banco).
-const bool kCheckinSandboxUi = bool.fromEnvironment('CHECKIN_SANDBOX', defaultValue: true);
+/// Botão de teste "Simular dia/hora e GPS no local" (ignora a trava de horário e de distância).
+///
+/// Padrão: LIGADO só em debug/teste e DESLIGADO em build release (APK beta/produção). Para um
+/// build de homologação específico use `--dart-define=CHECKIN_SANDBOX=true`. Em produção o servidor
+/// também fica com `app_settings.checkin_sandbox = 'false'`, então mesmo que o botão apareça o
+/// servidor recusa (`START_SANDBOX_OFF`).
+bool shouldShowCheckinSandbox({required bool releaseMode, bool? envOverride}) => envOverride ?? !releaseMode;
 
+const bool _kCheckinSandboxEnvSet = bool.hasEnvironment('CHECKIN_SANDBOX');
+const bool _kCheckinSandboxEnv = bool.fromEnvironment('CHECKIN_SANDBOX');
+final bool kCheckinSandboxUi = shouldShowCheckinSandbox(
+  releaseMode: kReleaseMode,
+  envOverride: _kCheckinSandboxEnvSet ? _kCheckinSandboxEnv : null,
+);
 enum LocationAccess { granted, denied }
 
 /// Dependências do pré-serviço (tudo que toca rede/GPS), substituíveis nos testes.
