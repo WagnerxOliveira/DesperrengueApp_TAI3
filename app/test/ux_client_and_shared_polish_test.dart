@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:desperrengue_app/core/models/client_achievements.dart';
 import 'package:desperrengue_app/core/models/client_dossier_models.dart';
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
@@ -11,10 +13,12 @@ import 'package:desperrengue_app/features/client/presentation/category_picker.da
 import 'package:desperrengue_app/features/client/presentation/client_job_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/client_orders_tab.dart';
 import 'package:desperrengue_app/features/client/presentation/detalhe_servico_cliente_screen.dart';
+import 'package:desperrengue_app/features/client/presentation/order_tracking_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/published_overlay.dart';
 import 'package:desperrengue_app/features/client/presentation/request_wizard.dart';
 import 'package:desperrengue_app/features/home/presentation/home_screens.dart';
 import 'package:desperrengue_app/features/shared/presentation/achievement_widgets.dart';
+import 'package:desperrengue_app/features/shared/presentation/fintech_warranty_widgets.dart';
 import 'package:desperrengue_app/features/shared/presentation/order_live_map_modal_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -468,6 +472,104 @@ void main() {
       );
       expect(sqlLeak.contains('jobs_pkey'), isFalse);
       expect(sqlLeak.contains('PostgrestException'), isFalse);
+    });
+  });
+
+  group('6. Zero Demo NFC-e / Forensic Data in Client Tracking & Completion Screens', () {
+    test('order_tracking_screen.dart and completion_screens.dart contain no fake NFC-e #000, 45.00 or forensic:// strings', () {
+      final trackingSrc = File(
+        'lib/features/client/presentation/order_tracking_screen.dart',
+      ).readAsStringSync();
+      expect(trackingSrc.contains('NFC-e #000'), isFalse);
+      expect(trackingSrc.contains('45.00'), isFalse);
+      expect(trackingSrc.contains('Peça Adicional Homologada'), isFalse);
+      expect(trackingSrc.contains('Loja de Materiais Credenciada'), isFalse);
+      expect(trackingSrc.contains('forensic://'), isFalse);
+
+      final completionSrc = File(
+        'lib/features/client/presentation/completion_screens.dart',
+      ).readAsStringSync();
+      expect(completionSrc.contains('NFC-e #000'), isFalse);
+      expect(completionSrc.contains('forensic://'), isFalse);
+    });
+
+    testWidgets('OrderTrackingScreen shows honest empty state "Nenhuma nota de material registrada ainda" when server has no receipts, and renders real server receipts when registered', (tester) async {
+      addTearDown(() => _resetViewport(tester));
+      await _setViewport(tester, const Size(360, 1800));
+
+      final job = Job(
+        id: 'job-track-real-nfce-1',
+        clientId: 'client-1',
+        providerId: 'prov-1',
+        category: 'Elétrica',
+        title: 'Troca de disjuntor geral',
+        description: 'Disjuntor bipolar 40A aquecendo.',
+        status: JobStatus.inProgress,
+        urgency: 'scheduled',
+        visibility: 'open',
+        paymentStatus: 'escrow',
+        agreedPrice: 180.0,
+        addressSummary: 'Centro, Poços de Caldas - MG',
+        createdAt: DateTime(2026, 6, 10, 10, 0),
+      );
+
+      // 1) Empty server receipts -> honest empty state
+      await tester.pumpWidget(
+        _wrapForUxTest(
+          OrderTrackingScreen(
+            job: job,
+            fiscalDocsLoader: (_) async => const [],
+          ),
+          disableAnimations: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.scrollUntilVisible(
+        find.byType(SmartSplitTransparencyCard),
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(
+        find.text('Nenhuma nota de material registrada ainda'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('NFC-e #000'), findsNothing);
+      expect(
+        find.text('Anexar Cupom Fiscal de Peça (0% Taxa)'),
+        findsNothing,
+      );
+
+      // 2) Server returns a real registered fiscal document
+      await tester.pumpWidget(
+        _wrapForUxTest(
+          OrderTrackingScreen(
+            job: job,
+            fiscalDocsLoader: (_) async => const [
+              {
+                'id': 'doc-real-1',
+                'fiscal_document_mode': 'NFCE_65',
+                'emitter_cnpj': '11222333000181',
+                'receipt_number': '1234-1',
+                'declared_material_amount': 89.90,
+                'clawback_triggered': false,
+              },
+            ],
+          ),
+          disableAnimations: true,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(
+        find.text('Nenhuma nota de material registrada ainda'),
+        findsNothing,
+      );
+      expect(find.textContaining('NFC-e 1234-1'), findsOneWidget);
+      expect(find.textContaining('11222333000181'), findsOneWidget);
     });
   });
 }

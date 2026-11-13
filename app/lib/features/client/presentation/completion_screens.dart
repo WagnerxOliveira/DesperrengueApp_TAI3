@@ -145,16 +145,6 @@ class _CompletionScreenState extends State<CompletionScreen> {
                       children: [
                         ForensicCheckInOutCard(
                           dossier: dossier,
-                          onAddCheckInPhoto: () => FintechLedgerStore.instance.addCheckInPhoto(
-                            orderId: job.id,
-                            imagePathOrUrl: 'forensic://checkin/done/${DateTime.now().millisecondsSinceEpoch}',
-                            captionOrTechnicalNote: 'Foto Antes registrada no dossiê.',
-                          ),
-                          onAddCheckOutPhoto: () => FintechLedgerStore.instance.addCheckOutPhoto(
-                            orderId: job.id,
-                            imagePathOrUrl: 'forensic://checkout/done/${DateTime.now().millisecondsSinceEpoch}',
-                            captionOrTechnicalNote: 'Foto Depois confirmada na conclusão.',
-                          ),
                           onOpenThreeLayerWarranty: () =>
                               WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
                         ),
