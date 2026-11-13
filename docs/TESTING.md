@@ -1,4 +1,4 @@
-# Engenharia de Qualidade, Verificação Formal, Testes Red Team e Auditoria Forense — Desperrengue (`v2.10.2`)
+# Engenharia de Qualidade, Verificação Formal, Testes Red Team e Auditoria Forense — Desperrengue (`v2.11.0`)
 
 > **Classificação Epistemológica:** Tratado de Engenharia de Testes Automatizados, Verificação de Invariantes Contábeis, Simulação Adversarial (*Red Team*), Trava Temporal e Espacial de Privacidade Geográfica (`ADR-0022`), Criptografia Governamental VIO/ICP-Brasil e Validação de Visão Computacional  
 > **Escopo Quantitativo Auditado:** `45` Suítes Dart/Flutter (`762` testes aprovados) · `3` Suítes Python KYC Zero-Trust (`64` testes aprovados) · `10` Suítes Smoke SQL (`622` asserções relacionais verificadas em PostgreSQL real via PGlite + `pgcrypto`) · `1` Suíte Node.js SQL Geo-Privacidade (`12` testes) · `1` Suíte Node.js Dossiê PDF (`17` testes) · `1` Validador de Hiperlinks Markdown (`0` links quebrados)  

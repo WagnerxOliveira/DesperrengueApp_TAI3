@@ -1,6 +1,6 @@
 # Catálogo Sistemático e Guia de Leitura Científica do Diretório `docs/`
 
-Este documento constitui o índice taxonômico, o mapa conceitual e o guia de navegação da documentação técnico-científica do ecossistema **Desperrengue** (`v2.10.2`), catalogando a finalidade de todos os **20 documentos Markdown principais** e das **5 subpastas especializadas** contidas em `docs/`.
+Este documento constitui o índice taxonômico, o mapa conceitual e o guia de navegação da documentação técnico-científica do ecossistema **Desperrengue** (`v2.11.0`), catalogando a finalidade de todos os **20 documentos Markdown principais** e das **5 subpastas especializadas** contidas em `docs/`.
 
 ---
 
@@ -8,7 +8,7 @@ Este documento constitui o índice taxonômico, o mapa conceitual e o guia de na
 
 ```mermaid
 mindmap
-  root((Biblioteca Científica\nDesperrengue v2.10.2))
+  root((Biblioteca Científica\nDesperrengue v2.11.0))
     Arquitetura & Algoritmos
       ARCHITECTURE.md
       Arquitetura do Sistema.md
