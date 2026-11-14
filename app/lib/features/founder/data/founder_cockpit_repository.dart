@@ -113,6 +113,13 @@ class FounderCockpitRepository {
         }
       } on StateError {
         rethrow;
+      } on PostgrestException catch (e) {
+        if (e.code == '42501' ||
+            e.code == 'P0001' ||
+            e.code == '22023' ||
+            e.message.contains('ERR_')) {
+          throw StateError('${e.code ?? "PG_DENIED"}: ${e.message}');
+        }
       } catch (_) {
         // Fallback determinístico caso o banco de testes não esteja ativo na sessão.
       }
@@ -122,10 +129,8 @@ class FounderCockpitRepository {
             'wagner.ceo@desperrengue.com.br')
         .toLowerCase();
 
-    final isCeoLogin = normalizedEmail.isEmpty ||
-        normalizedEmail == ceoEmail ||
-        normalizedEmail.contains('ceo') ||
-        normalizedEmail.contains('wagner');
+    final isCeoLogin =
+        normalizedEmail.isEmpty || normalizedEmail == ceoEmail;
 
     if (isCeoLogin) {
       if (trimmedPin != _ceoPin && trimmedPin != '849201' && trimmedPin != '202611') {
@@ -228,6 +233,13 @@ class FounderCockpitRepository {
           );
           return _snapshot;
         }
+      } on PostgrestException catch (e) {
+        if (e.code == '42501' ||
+            e.code == 'P0001' ||
+            e.code == '22023' ||
+            e.message.contains('ERR_')) {
+          throw StateError('${e.code ?? "PG_DENIED"}: ${e.message}');
+        }
       } catch (_) {}
     }
 
@@ -258,6 +270,13 @@ class FounderCockpitRepository {
             'p_initial_pin': initialPin.trim(),
           },
         );
+      } on PostgrestException catch (e) {
+        if (e.code == '42501' ||
+            e.code == 'P0001' ||
+            e.code == '22023' ||
+            e.message.contains('ERR_')) {
+          throw StateError('${e.code ?? "PG_DENIED"}: ${e.message}');
+        }
       } catch (_) {}
     }
 
@@ -297,6 +316,13 @@ class FounderCockpitRepository {
             'p_target_user_id': targetUserId,
           },
         );
+      } on PostgrestException catch (e) {
+        if (e.code == '42501' ||
+            e.code == 'P0001' ||
+            e.code == '22023' ||
+            e.message.contains('ERR_')) {
+          throw StateError('${e.code ?? "PG_DENIED"}: ${e.message}');
+        }
       } catch (_) {}
     }
 
@@ -328,6 +354,13 @@ class FounderCockpitRepository {
             'p_payload': payload,
           },
         );
+      } on PostgrestException catch (e) {
+        if (e.code == '42501' ||
+            e.code == 'P0001' ||
+            e.code == '22023' ||
+            e.message.contains('ERR_')) {
+          throw StateError('${e.code ?? "PG_DENIED"}: ${e.message}');
+        }
       } catch (_) {}
     }
     _auditTrail.add(<String, dynamic>{
