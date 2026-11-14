@@ -199,6 +199,11 @@ void main() {
       'mipmap-xhdpi/ic_launcher.png',
       'mipmap-xxhdpi/ic_launcher.png',
       'mipmap-xxxhdpi/ic_launcher.png',
+      'mipmap-mdpi/ic_launcher_round.png',
+      'mipmap-hdpi/ic_launcher_round.png',
+      'mipmap-xhdpi/ic_launcher_round.png',
+      'mipmap-xxhdpi/ic_launcher_round.png',
+      'mipmap-xxxhdpi/ic_launcher_round.png',
       'drawable-xxxhdpi/ic_launcher_background.png',
       'drawable-xxxhdpi/ic_launcher_foreground.png',
       'drawable-xxxhdpi/ic_launcher_monochrome.png',
@@ -228,5 +233,56 @@ void main() {
     final founderV31 = _repoFile('app/android/app/src/founder/res/values-v31/styles.xml').readAsStringSync();
     expect(publicV31, contains('#0F172A'));
     expect(founderV31, contains('#07090D'));
+  });
+
+  test('Zero-Fake Policy & Cofre Monocrático Desperrengue CEO: zero dados demo, zero delegados e zero campos pré-preenchidos', () {
+    final forbiddenPatterns = <RegExp>[
+      RegExp(r'\bdeterministicDemo\b'),
+      RegExp(r'\bAUTHORIZED_DELEGATE\b'),
+      RegExp(r'\bFounderSeatRole\b'),
+      RegExp(r'\bFounderPermissionScope\b'),
+      RegExp(r'\bSovereignDelegateSlot\b'),
+      RegExp(r'wagner\.ceo@desperrengue\.com\.br'),
+      RegExp(r'_buildDefaultNeighborhoodHeatmap'),
+      RegExp(r'_buildDefaultCohortRows'),
+    ];
+
+    final offenders = <String>[];
+    for (final f in libFiles) {
+      final rel = _rel(f);
+      final lines = f.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final line = lines[i].trimLeft();
+        if (line.startsWith('//') || line.startsWith('///')) continue;
+        for (final pat in forbiddenPatterns) {
+          if (pat.hasMatch(line)) {
+            offenders.add('$rel:${i + 1} (${pat.pattern})');
+          }
+        }
+      }
+      if (_isFounderOnlyLibFile(rel)) {
+        final fullText = f.readAsStringSync();
+        if (RegExp(r'TextEditingController\s*\(\s*text\s*:').hasMatch(fullText)) {
+          offenders.add('$rel (TextEditingController pré-preenchido proibido)');
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'Zero-Fake Policy ou proibição de pré-preenchimento/delegados violada: $offenders',
+    );
+
+    final mainActivity = _repoFile(
+      'app/android/app/src/main/kotlin/br/com/desperrengue/app/MainActivity.kt',
+    ).readAsStringSync();
+    expect(mainActivity, contains('FLAG_SECURE'));
+    expect(mainActivity, contains('br.com.desperrengue.app.founder/security'));
+
+    final manifest = _repoFile('app/android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(manifest, contains('android:roundIcon="@mipmap/ic_launcher_round"'));
+
+    final workflow = _repoFile('.github/workflows/beta-release.yml').readAsStringSync();
+    expect(workflow, contains('--dart-define=BETA_UPDATES=true'));
   });
 }

@@ -928,9 +928,7 @@ class FounderAntiBypassAndSefazRadarWidget extends StatefulWidget {
 
 class _FounderAntiBypassAndSefazRadarWidgetState
     extends State<FounderAntiBypassAndSefazRadarWidget> {
-  final TextEditingController _phraseController = TextEditingController(
-    text: 'm3 ch4m4 n0 z.4.p nove nove oito sete seis cinco quatro tres',
-  );
+  final TextEditingController _phraseController = TextEditingController();
   final AntiBypassAndLeakageDetector _detector =
       const AntiBypassAndLeakageDetector();
   late BypassRiskAssessment _assessment;
@@ -938,7 +936,7 @@ class _FounderAntiBypassAndSefazRadarWidgetState
   @override
   void initState() {
     super.initState();
-    _runDetector(_phraseController.text);
+    _runDetector('');
   }
 
   @override
@@ -948,13 +946,14 @@ class _FounderAntiBypassAndSefazRadarWidgetState
   }
 
   void _runDetector(String text) {
+    final trimmed = text.trim();
     setState(() {
       _assessment = _detector.evaluateRisk(
-        chatSnippet: text,
-        cancelledWithinMinutesAfterChat: 12,
-        laborCents: 3000,
-        materialsExemptCents: 27000,
-        hasVerified44DigitNfe: false,
+        chatSnippet: trimmed,
+        cancelledWithinMinutesAfterChat: null,
+        laborCents: 0,
+        materialsExemptCents: 0,
+        hasVerified44DigitNfe: true,
       );
     });
   }
@@ -1283,13 +1282,13 @@ class _FounderSilentDuressWarRoomWidgetState
   @override
   Widget build(BuildContext context) {
     final incidents = widget.securityWatch.duressIncidents;
-    final activeIncident = incidents.isNotEmpty
-        ? incidents.first
-        : DuressIncidentRecord.fromJson(const <String, dynamic>{});
+    final activeIncident = incidents.isNotEmpty ? incidents.first : null;
 
     return FounderGlassCard(
       key: const ValueKey<String>('founder-innovation-7-duress-war-room'),
-      accentTopBarColor: FounderSovereignTokens.crimsonAlert,
+      accentTopBarColor: activeIncident != null
+          ? FounderSovereignTokens.crimsonAlert
+          : FounderSovereignTokens.solvencyEmerald,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -1300,72 +1299,97 @@ class _FounderSilentDuressWarRoomWidgetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                'Inovação 7 · Sala de Guerra Silent Duress (FROZEN_UNDER_DURESS)',
+                'Custódia Anticoação Silent Duress (FROZEN_UNDER_DURESS)',
                 style: FounderSovereignTokens.monoMetric(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: FounderSovereignTokens.crimsonAlert,
+                  color: activeIncident != null
+                      ? FounderSovereignTokens.crimsonAlert
+                      : FounderSovereignTokens.primaryInk,
                 ),
               ),
-              FilledButton.icon(
-                key: const ValueKey<String>('generate-duress-dossier-btn'),
-                onPressed: _generating
-                    ? null
-                    : () => _generateDossier(activeIncident),
-                style: FilledButton.styleFrom(
-                  backgroundColor: FounderSovereignTokens.crimsonAlert,
-                  foregroundColor: const Color(0xFF111827),
-                  minimumSize: const Size(0, 36),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                ),
-                icon: const Icon(Icons.policy_rounded, size: 16),
-                label: Text(
-                  _generating
-                      ? 'Assinando Dossiê...'
-                      : 'Emitir Dossiê Policial Assinado (SHA-256)',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
+              if (activeIncident != null)
+                FilledButton.icon(
+                  key: const ValueKey<String>('generate-duress-dossier-btn'),
+                  onPressed: _generating
+                      ? null
+                      : () => _generateDossier(activeIncident),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: FounderSovereignTokens.crimsonAlert,
+                    foregroundColor: const Color(0xFF111827),
+                    minimumSize: const Size(0, 36),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  icon: const Icon(Icons.policy_rounded, size: 16),
+                  label: Text(
+                    _generating
+                        ? 'Assinando Dossiê...'
+                        : 'Emitir Dossiê Policial Assinado (SHA-256)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: FounderSovereignTokens.crimsonAlertSoft,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: FounderSovereignTokens.crimsonAlert),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'Incidente ${activeIncident.incidentId} · Ordem ${activeIncident.orderCode} · '
-                  'Retido: ${Money.formatBrl(activeIncident.frozenAmountCents)}',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: FounderSovereignTokens.primaryInk,
-                  ),
+          if (activeIncident == null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.solvencyEmeraldSoft,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: FounderSovereignTokens.solvencyEmerald
+                      .withValues(alpha: 0.45),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  'Tx Bloqueio: ${activeIncident.ledgerFreezeTxId} · Macrozona: ${activeIncident.coarseNeighborhood}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: FounderSovereignTokens.mutedInk,
-                  ),
+              ),
+              child: const Text(
+                'Zero incidentes de coação (FROZEN_UNDER_DURESS) registrados no banco real.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: FounderSovereignTokens.solvencyEmerald,
                 ),
-              ],
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.crimsonAlertSoft,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: FounderSovereignTokens.crimsonAlert),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Incidente ${activeIncident.incidentId} · Ordem ${activeIncident.orderCode} · '
+                    'Retido: ${Money.formatBrl(activeIncident.frozenAmountCents)}',
+                    style: FounderSovereignTokens.monoMetric(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: FounderSovereignTokens.primaryInk,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Tx Bloqueio: ${activeIncident.ledgerFreezeTxId} · Macrozona: ${activeIncident.coarseNeighborhood}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: FounderSovereignTokens.mutedInk,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
           if (_dossier != null) ...<Widget>[
             const SizedBox(height: 10),
             Container(

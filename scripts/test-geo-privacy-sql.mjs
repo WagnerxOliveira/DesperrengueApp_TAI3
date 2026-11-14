@@ -743,6 +743,32 @@ check('14. Varredura cumulativa de catálogo PL/pgSQL: zero função ativa refer
   }
 });
 
+check('15. Cofre Monocrático Desperrengue CEO (`20261114180000` + `ceo_monocratic_vault_and_realtime_smoke.sql`): titularidade exclusiva `wagneroliveira2395@gmail.com`, zero delegados, PIN/OTP SHA-256 em tempo constante e triggers Realtime isolados', () => {
+  const migCeoPath = path.join(MIGRATIONS_DIR, '20261114180000_ceo_monocratic_vault_and_realtime_truth.sql');
+  const testCeoPath = path.join(TESTS_DIR, 'ceo_monocratic_vault_and_realtime_smoke.sql');
+  assert.ok(fs.existsSync(migCeoPath), 'Migration 20261114180000_ceo_monocratic_vault_and_realtime_truth.sql obrigatória');
+  assert.ok(fs.existsSync(testCeoPath), 'Suíte ceo_monocratic_vault_and_realtime_smoke.sql obrigatória');
+
+  const migCeo = fs.readFileSync(migCeoPath, 'utf8');
+  const testCeo = fs.readFileSync(testCeoPath, 'utf8');
+  lexSql(migCeo, '20261114180000_ceo_monocratic_vault_and_realtime_truth.sql');
+  lexSql(testCeo, 'ceo_monocratic_vault_and_realtime_smoke.sql');
+
+  assert.match(migCeo, /lower\(btrim\(owner_email\)\)\s*=\s*'wagneroliveira2395@gmail\.com'/i);
+  assert.match(migCeo, /drop\s+function\s+if\s+exists\s+public\.founder_authorize_delegate/i);
+  assert.match(migCeo, /create\s+or\s+replace\s+function\s+private\.ceo_compute_pin_sha256/i);
+  assert.match(migCeo, /create\s+or\s+replace\s+function\s+private\.ceo_constant_time_eq_hex/i);
+  assert.match(migCeo, /create\s+or\s+replace\s+function\s+public\.ceo_register_personal_pin/i);
+  assert.match(migCeo, /create\s+or\s+replace\s+function\s+public\.ceo_unlock_sovereign_vault/i);
+  assert.match(migCeo, /create\s+or\s+replace\s+function\s+public\.ceo_get_live_cockpit_snapshot/i);
+  assert.match(migCeo, /realtime\.send\s*\(/i);
+  assert.match(migCeo, /ceo:war-room:live/);
+  assert.match(migCeo, /exception\s+when\s+others\s+then\s+null/i);
+
+  const ceoAssertions = (testCeo.match(/perform\s+pg_temp\.t\s*\(/gi) ?? []).length;
+  assert.ok(ceoAssertions >= 12, `Esperado >= 12 asserções em ceo_monocratic_vault_and_realtime_smoke.sql (encontradas: ${ceoAssertions})`);
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {

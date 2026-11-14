@@ -1,9 +1,9 @@
-# ADR-0023: Cockpit Soberano do Fundador (*Founder Sovereign Cockpit & War Room*), Isolamento Físico Dual-APK Zero-Footprint, Trava Física de 3 Delegados no PostgreSQL 17, Contabilidade CPC 47 em Centavos Inteiros (`BIGINT`) e Motores de Programação Dinâmica
+# ADR-0023: Cockpit Soberano do Fundador (`Desperrengue CEO`), Isolamento Físico Dual-APK Zero-Footprint, Cofre Monocrático `SHA-256` (`wagneroliveira2395@gmail.com`), Ponte Criptografada em Tempo Real (`Zero-Fake`), Contabilidade CPC 47 (`BIGINT`) e Motores de Programação Dinâmica
 
-* **Status:** Aceito (amplia e endurece [ADR-0003](0003-regras-de-negocio-no-banco-via-rpc.md), [ADR-0014](0014-design-tokens-e-modo-escuro.md), [ADR-0017](0017-distribuicao-beta-e-atualizacao-no-app.md), [ADR-0018](0018-carteira-ledger-e-pix-sandbox.md), [ADR-0020](0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) e [ADR-0022](ADR-0022-temporal-geo-privacy-lock.md))
+* **Status:** Aceito — atualizado em **`v2.13.0`** (amplia e endurece [ADR-0003](0003-regras-de-negocio-no-banco-via-rpc.md), [ADR-0014](0014-design-tokens-e-modo-escuro.md), [ADR-0017](0017-distribuicao-beta-e-atualizacao-no-app.md), [ADR-0018](0018-carteira-ledger-e-pix-sandbox.md), [ADR-0020](0020-garantia-3-camadas-antifraude-e-kyc-biometrico-ocr.md) e [ADR-0022](ADR-0022-temporal-geo-privacy-lock.md))
 * **Data:** 2026-11-14
-* **Decisores:** Arquitetura de Sistemas Distribuídos, Engenharia de Banco de Dados Zero-Trust (`@fnd-db`, SHA `2e91794`), Engenharia Quantitativa, Programação Dinâmica e Contabilidade CPC 47 (`@fnd-dp`, SHA `f48fd04`), Sistemas de Design Executivo 120 FPS (`@fnd-ui`, SHAs `9af18ca`, `c212935` e `6aec511`), Engenharia de Build/Release Dual-APK (`@fnd-ops`, SHA `7446fd3`) e Auditoria Red-Team & Integração (`@fnd-qa`)
-* **Tags:** `founder-cockpit`, `dual-apk`, `zero-trust`, `sovereign-acl`, `cpc-47`, `ifrs-15`, `dynamic-programming`, `monte-carlo`, `pdf-1-4`, `ota-security`, `stride`
+* **Decisores:** Arquitetura de Sistemas Distribuídos, Engenharia de Banco de Dados Zero-Trust (`20261114100000` $\to$ endurecido em [`20261114180000_ceo_monocratic_vault_and_realtime_truth.sql`](../../supabase/migrations/20261114180000_ceo_monocratic_vault_and_realtime_truth.sql)), Engenharia Criptográfica & Edge (`ceo-sovereign-auth`), Engenharia Quantitativa, Programação Dinâmica e Contabilidade CPC 47, Sistemas de Design Executivo 120 FPS e Engenharia de Build/Release Dual-APK
+* **Tags:** `founder-cockpit`, `monocratic-vault`, `sha-256`, `email-otp-6d`, `zero-fake`, `realtime-wss`, `dual-apk`, `zero-trust`, `cpc-47`, `ifrs-15`, `dynamic-programming`, `flag-secure`
 
 ---
 
@@ -84,9 +84,23 @@ flowchart TB
 
 ---
 
-### 2. Cofre Relacional Zero-Trust, Exclusividade Soberana e Teto Físico de 3 Delegados no PostgreSQL 17
+### 2. Evolução `v2.13.0`: Cofre Monocrático de Titular Único (`wagneroliveira2395@gmail.com`), Código de 6 Dígitos por E-mail, PIN Pessoal `SHA-256` e Ponte Criptografada em Tempo Real (`Zero-Fake`)
 
-Na migração idempotente [`20261114100000_founder_sovereign_cockpit_zero_trust.sql`](../../supabase/migrations/20261114100000_founder_sovereign_cockpit_zero_trust.sql), toda a governança de acesso reside no schema isolado `private` (`ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL SECURITY` e `REVOKE ALL FROM PUBLIC, anon, authenticated`):
+Na migração [`20261114180000_ceo_monocratic_vault_and_realtime_truth.sql`](../../supabase/migrations/20261114180000_ceo_monocratic_vault_and_realtime_truth.sql) e na Edge Function [`ceo-sovereign-auth`](../../supabase/functions/ceo-sovereign-auth/index.ts), o modelo inicial de `v2.12.0` (que admitia até 3 delegados e exibia constantes sintéticas `deterministicDemo` em modo fallback) foi **integralmente substituído por governança monocrática absoluta e verdade operacional 100% verídica em tempo real**:
+
+| Invariante `v2.13.0` | Implementação no PostgreSQL 17 / Deno Edge / Flutter | Garantias Criptográficas e Operacionais |
+| :--- | :--- | :--- |
+| **Titularidade Exclusiva Monocrática (`Zero Delegados`)** | `private.ceo_sovereign_vault` (`singleton_id = TRUE`, `CHECK (lower(btrim(owner_email)) = 'wagneroliveira2395@gmail.com')`); remoção física de `founder_authorize_delegate`, `founder_revoke_delegate`, `founder_unlock_stepup_session` e `founder_get_cockpit_snapshot`. | Apenas `wagneroliveira2395@gmail.com` acessa o `Desperrengue CEO`. Qualquer outro e-mail grava `INTRUSION_CANARY` comitado em `private.founder_audit_log`, força `signOut` e recebe `ERR_MONOCRATIC_OWNER_ONLY_42501`. |
+| **Zero Campos Pré-Preenchidos + Código de 6 Dígitos por E-mail** | `ceo-sovereign-auth` emite código CSPRNG de 6 dígitos exclusivamente para `wagneroliveira2395@gmail.com`, gravando apenas `SHA-256` salgado + *pepper* de 512 bits (`private.ceo_crypto_pepper`) em `private.ceo_otp_challenges` (`TTL 5 min`, máx. 5 tentativas, *cooldown* `30s -> 60s -> 180s -> 900s`). | Todos os inputs iniciam `100%` em branco (`''`) e limpam memória ao minimizar/desmontar. Exigido em `INITIAL_PIN_SETUP`, `PIN_RESET` e `NEW_DEVICE_BIND`. |
+| **PIN Pessoal `6–8` Dígitos com Hash `SHA-256` em Tempo Constante** | Teclado vetorial embaralhável (`_SovereignPinPad` CSPRNG) $\to$ `PBKDF2-HMAC-SHA256` (`120.000` iterações em `runOffMainThread`) $\to$ `10.000` rodadas `HMAC-SHA256` no PostgreSQL (`private.ceo_compute_pin_sha256`) $\to$ digest `CHAR(64)` comparado via `private.ceo_constant_time_eq_hex`. | Zero exposição a teclados IME de terceiros, bloqueio de sequências triviais/repetidas e *lockout* progressivo comitado no WAL. |
+| **Política `Zero-Fake` & Ponte Criptografada em Tempo Real** | Triggers `AFTER INSERT OR UPDATE` isoladas em subtransação (`EXCEPTION WHEN OTHERS THEN NULL`) alimentam `private.ceo_live_events` + `realtime.send(..., 'ceo:war-room:live', true)` sob RLS em `realtime.messages` + `ceo_fetch_live_events_since` e `ceo_get_live_cockpit_snapshot`. | Zero impacto transacional no `Desperrengue` público; métricas vazias exibem honestamente `0` / `R$ 0,00` (`emptyZero()`), com sincronia ao vivo `< 250 ms`. |
+| **Proteção Óptica `FLAG_SECURE`, Splash 120 FPS & OTA Exclusivo** | `MainActivity.kt` (`FLAG_SECURE` + `setRecentsScreenshotEnabled(false)` + janela temporária auditada de 5 min), `FounderAnimatedSplashScreen` (`1,75 s`), `@mipmap/ic_launcher_round` e `FounderUpdateService`. | Bloqueia prints/gravações no Android por padrão e atualiza estritamente `desperrengue-founder-ceo.apk` em `beta-latest`. |
+
+---
+
+### 2.1 Histórico `v2.12.0` (Substituído em `v2.13.0`): Cofre Relacional Inicial com Teto de 3 Delegados
+
+Na migração inicial [`20261114100000_founder_sovereign_cockpit_zero_trust.sql`](../../supabase/migrations/20261114100000_founder_sovereign_cockpit_zero_trust.sql) (superada pela migração monocrática `20261114180000` acima), a governança residia no schema `private`:
 
 | Invariante de Segurança | Mecanismo Físico no PostgreSQL 17 | Código de Erro / Comportamento |
 | :--- | :--- | :--- |

@@ -1,44 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'core/constants/env.dart';
+import 'core/boot/app_initialization_service.dart';
 import 'core/services/instant_image_cache_engine.dart';
-import 'core/storage/secure_session_storage.dart';
+import 'features/founder/presentation/founder_animated_splash_screen.dart';
 import 'features/founder/presentation/founder_animations_and_shaders.dart';
 import 'features/founder/presentation/founder_cockpit_screen.dart';
+import 'features/founder/presentation/founder_update_gate.dart';
 
 /// Entrypoint exclusivo do binário Soberano do Fundador/CEO (`desperrengue-founder-ceo.apk`
-/// / `flutter build web --target=lib/main_founder.dart`).
+/// / `br.com.desperrengue.app.founder`).
 ///
 /// Isolado fisicamente do entrypoint público (`lib/main.dart`):
 /// - Zero código ou rota do Founder Cockpit embarcado no APK público;
-/// - Sem trava de `480px` em telas largas, habilitando o Command Center Panorâmico
-///   de 3 colunas em `1440px+` (Desktop/Web) e o modo Pocket de 6 abas no celular.
+/// - Cold-start 120 FPS sem flash branco (`#07090D` nativo -> `FounderAnimatedSplashScreen`
+///   enquanto `AppInitializationService` inicializa Supabase + Keystore em paralelo);
+/// - Auto-updater dedicado (`FounderUpdateGate`) restrito ao asset `desperrengue-founder-ceo.apk`;
+/// - Sem trava de `480px` em telas largas, habilitando a Sala de Guerra Panorâmica no Desktop
+///   e o Dock de Vidro Flutuante de 5 abas no celular.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  InstantImageCacheEngine.instance.configureGlobalImageCache();
-
-  try {
-    await Supabase.initialize(
-      url: Env.supabaseUrl,
-      publishableKey: Env.supabasePublishableKey,
-      authOptions: FlutterAuthClientOptions(
-        localStorage: SecureSessionStorage(
-          persistSessionKey: SecureSessionStorage.keyFor(Env.supabaseUrl),
-        ),
-      ),
-    );
-  } catch (_) {
-    // Segue em modo determinístico/offline caso já inicializado ou sem rede.
-  }
-
   runApp(const ProviderScope(child: DesperrengueFounderApp()));
 }
 
-class DesperrengueFounderApp extends StatelessWidget {
-  const DesperrengueFounderApp({super.key});
+class DesperrengueFounderApp extends StatefulWidget {
+  const DesperrengueFounderApp({
+    super.key,
+    this.bootService,
+    this.splashDuration = const Duration(milliseconds: 1750),
+  });
+
+  final AppInitializationService? bootService;
+  final Duration splashDuration;
+
+  @override
+  State<DesperrengueFounderApp> createState() => _DesperrengueFounderAppState();
+}
+
+class _DesperrengueFounderAppState extends State<DesperrengueFounderApp> {
+  late final AppInitializationService _service =
+      widget.bootService ?? AppInitializationService(warmUp: _warmUpFounder);
+
+  static Future<void> _warmUpFounder() async {
+    InstantImageCacheEngine.instance.configureGlobalImageCache();
+    try {
+      await InstantImageCacheEngine.instance.ensurePersistentCacheLoaded();
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +65,13 @@ class DesperrengueFounderApp extends StatelessWidget {
       theme: sovereignTheme,
       darkTheme: sovereignTheme,
       themeMode: ThemeMode.dark,
-      home: const FounderCockpitScreen(),
+      home: FounderBootGate(
+        service: _service,
+        splashDuration: widget.splashDuration,
+        readyChild: const FounderUpdateGate(
+          child: FounderCockpitScreen(),
+        ),
+      ),
     );
   }
 }

@@ -721,7 +721,7 @@ def main() -> None:
         bg_1x1 = Image.new("RGB", (1, 1), (7, 9, 13))
         bg_1x1.save(d_dir / "background.png", optimize=True)
 
-    # 4. Export mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png
+    # 4. Export mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png & ic_launcher_round.png
     mipmap_sizes = {
         "mdpi": 48,
         "hdpi": 72,
@@ -729,12 +729,22 @@ def main() -> None:
         "xxhdpi": 144,
         "xxxhdpi": 192,
     }
+    pub_1024_master = Image.open(PUBLIC_ICONS_DIR / "app_icon_padded.png").convert("RGBA")
     ceo_mdpi_48 = None
     for density, px in mipmap_sizes.items():
         m_dir = FOUNDER_RES_DIR / f"mipmap-{density}"
         m_dir.mkdir(parents=True, exist_ok=True)
         im_m = ceo_1024.resize((px, px), Image.Resampling.LANCZOS)
         im_m.save(m_dir / "ic_launcher.png", optimize=True)
+        im_m_round = _apply_mask(im_m, "circle")
+        im_m_round.save(m_dir / "ic_launcher_round.png", optimize=True)
+
+        pub_m_dir = MAIN_RES_DIR / f"mipmap-{density}"
+        pub_m_dir.mkdir(parents=True, exist_ok=True)
+        pub_im = pub_1024_master.resize((px, px), Image.Resampling.LANCZOS)
+        pub_im_round = _apply_mask(pub_im, "circle")
+        pub_im_round.save(pub_m_dir / "ic_launcher_round.png", optimize=True)
+
         if density == "mdpi":
             ceo_mdpi_48 = im_m
 

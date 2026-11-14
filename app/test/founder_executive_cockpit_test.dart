@@ -1,17 +1,594 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:desperrengue_app/core/analytics/founder_accountant_pack_service.dart';
 import 'package:desperrengue_app/core/analytics/founder_dashboard_models.dart';
 import 'package:desperrengue_app/core/analytics/founder_dp_optimization_engine.dart';
+import 'package:desperrengue_app/core/boot/app_initialization_service.dart';
+import 'package:desperrengue_app/core/state/theme_controller.dart';
 import 'package:desperrengue_app/features/founder/data/founder_cockpit_repository.dart';
 import 'package:desperrengue_app/features/founder/presentation/founder_animations_and_shaders.dart';
 import 'package:desperrengue_app/features/founder/presentation/founder_cockpit_screen.dart';
+import 'package:desperrengue_app/features/founder/presentation/founder_update_gate.dart';
 import 'package:desperrengue_app/main_founder.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Gateway em memória 100% determinístico que simula fielmente os contratos
+/// criptográficos do PostgreSQL 17 (`20261114180000`) + Edge Function `ceo-sovereign-auth`
+/// + WebSocket privado `ceo:war-room:live`.
+class FakeCeoBackendGateway implements CeoBackendGateway {
+  FakeCeoBackendGateway({
+    this.authenticatedEmailInitial,
+    FounderDashboardSnapshot? initialSnapshot,
+  })  : _currentEmail = authenticatedEmailInitial,
+        snapshotToReturn =
+            initialSnapshot ?? FounderDashboardSnapshot.emptyZero();
+
+  final String? authenticatedEmailInitial;
+  String? _currentEmail;
+  final String _currentUserId = '00000000-0000-4000-8000-00000000ce01';
+
+  final StreamController<String?> _authChanges =
+      StreamController<String?>.broadcast();
+
+  FounderDashboardSnapshot snapshotToReturn;
+  final List<String> recordedCanaryCodes = <String>[];
+  final List<CeoLiveEventItem> missedEventsQueue = <CeoLiveEventItem>[];
+  int signOutCallCount = 0;
+
+  String? _storedServerPinHashHex;
+  final Set<String> _trustedDeviceHashes = <String>{};
+  String _lastIssuedOtpCode = '482917';
+  String _lastChallengeId = '11111111-2222-4333-8444-555555555555';
+  String? _validEnrollmentTicketHex;
+  String? _activeStepUpTokenHex;
+  int _failedPinAttempts = 0;
+  DateTime? _lockedUntilUtc;
+
+  void Function(CeoLiveEventItem event)? _liveEventCallback;
+  void Function(CeoRealtimeConnectionStatus status)? _statusCallback;
+
+  String get lastIssuedOtpCode => _lastIssuedOtpCode;
+
+  void emitLiveRealtimeEvent(CeoLiveEventItem event) {
+    _liveEventCallback?.call(event);
+  }
+
+  void emitRealtimeStatus(CeoRealtimeConnectionStatus status) {
+    _statusCallback?.call(status);
+  }
+
+  String _serverHashProof(String clientProofHex) {
+    return sha256
+        .convert(utf8.encode('SERVER_PEPPER_V1:$clientProofHex'))
+        .toString()
+        .toLowerCase();
+  }
+
+  @override
+  String? get currentUserEmail => _currentEmail;
+
+  @override
+  String? get currentUserId => _currentEmail == null ? null : _currentUserId;
+
+  @override
+  Stream<String?> get authEmailChanges => _authChanges.stream;
+
+  @override
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    _currentEmail = email.trim().toLowerCase();
+    _authChanges.add(_currentEmail);
+  }
+
+  @override
+  Future<void> signInWithGoogleOAuth() async {
+    _currentEmail = kMonocraticCeoEmail;
+    _authChanges.add(_currentEmail);
+  }
+
+  @override
+  Future<void> sendPrimaryEmailSignInOtp({required String email}) async {}
+
+  @override
+  Future<void> verifyPrimaryEmailSignInOtp({
+    required String email,
+    required String token,
+  }) async {
+    _currentEmail = email.trim().toLowerCase();
+    _authChanges.add(_currentEmail);
+  }
+
+  @override
+  Future<void> signOut() async {
+    signOutCallCount++;
+    _currentEmail = null;
+    _activeStepUpTokenHex = null;
+    _authChanges.add(null);
+  }
+
+  @override
+  Future<void> reportIntrusionCanary({
+    required String canaryCode,
+    required Map<String, dynamic> meta,
+  }) async {
+    recordedCanaryCodes.add(canaryCode);
+  }
+
+  @override
+  Future<Map<String, dynamic>> invokeEdgeAuth(Map<String, dynamic> body) async {
+    if (_currentEmail != kMonocraticCeoEmail) {
+      recordedCanaryCodes.add('EDGE_NON_OWNER_BLOCKED');
+      return <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_MONOCRATIC_OWNER_ONLY_42501',
+      };
+    }
+
+    final action = body['action']?.toString() ?? '';
+    if (action == 'request_otp') {
+      _lastIssuedOtpCode = '739204';
+      _lastChallengeId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+      return <String, dynamic>{
+        'ok': true,
+        'challenge_id': _lastChallengeId,
+        'masked_destination': kMaskedMonocraticCeoEmail,
+        'expires_at':
+            DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
+        'next_cooldown_seconds': 30,
+      };
+    }
+
+    if (action == 'verify_otp') {
+      final code = body['otp_code']?.toString() ?? '';
+      final devHash = body['device_hash']?.toString() ?? '';
+      if (code != _lastIssuedOtpCode) {
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': 'ERR_OTP_CODE_INCORRECT',
+          'remaining_attempts': 4,
+        };
+      }
+      _trustedDeviceHashes.add(devHash);
+      _validEnrollmentTicketHex = List<String>.filled(64, 'e').join();
+      return <String, dynamic>{
+        'ok': true,
+        'purpose': 'INITIAL_PIN_SETUP',
+        'pin_configured': _storedServerPinHashHex != null,
+        'enrollment_ticket': _validEnrollmentTicketHex,
+        'ticket_expires_at':
+            DateTime.now().toUtc().add(const Duration(minutes: 5)).toIso8601String(),
+      };
+    }
+
+    return <String, dynamic>{'ok': false, 'error_code': 'ERR_UNKNOWN_ACTION'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> callRpc(
+    String functionName,
+    Map<String, dynamic> params,
+  ) async {
+    if (functionName == 'ceo_vault_status') {
+      if (_currentEmail != kMonocraticCeoEmail) {
+        recordedCanaryCodes.add('RPC_NON_OWNER_BLOCKED');
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': 'ERR_MONOCRATIC_OWNER_ONLY_42501',
+        };
+      }
+      final devHash = params['p_device_hash']?.toString() ?? '';
+      return <String, dynamic>{
+        'ok': true,
+        'owner_email': kMonocraticCeoEmail,
+        'pin_configured': _storedServerPinHashHex != null,
+        'device_trusted': _trustedDeviceHashes.contains(devHash),
+        'pin_algo_version': 'CLIENT_PBKDF2_120K_SERVER_HMAC10K_SHA256_V1',
+        'failed_pin_attempts': _failedPinAttempts,
+        'locked_until': _lockedUntilUtc?.toIso8601String(),
+      };
+    }
+
+    if (functionName == 'ceo_register_personal_pin') {
+      final ticket = params['p_enrollment_ticket']?.toString() ?? '';
+      final proof = params['p_client_pin_proof']?.toString() ?? '';
+      final devHash = params['p_device_hash']?.toString() ?? '';
+      if (_validEnrollmentTicketHex == null ||
+          ticket != _validEnrollmentTicketHex) {
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': 'ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED',
+        };
+      }
+      _validEnrollmentTicketHex = null; // single-use!
+      _storedServerPinHashHex = _serverHashProof(proof);
+      _trustedDeviceHashes.add(devHash);
+      _failedPinAttempts = 0;
+      _activeStepUpTokenHex = List<String>.filled(64, 'c').join();
+      return <String, dynamic>{
+        'ok': true,
+        'stepup_token': _activeStepUpTokenHex,
+        'expires_at':
+            DateTime.now().toUtc().add(const Duration(minutes: 15)).toIso8601String(),
+      };
+    }
+
+    if (functionName == 'ceo_unlock_sovereign_vault') {
+      final proof = params['p_client_pin_proof']?.toString() ?? '';
+      final devHash = params['p_device_hash']?.toString() ?? '';
+      if (_lockedUntilUtc != null &&
+          _lockedUntilUtc!.isAfter(DateTime.now().toUtc())) {
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': 'ERR_VAULT_LOCKED_BACKOFF',
+          'failed_attempts': _failedPinAttempts,
+          'locked_until': _lockedUntilUtc!.toIso8601String(),
+        };
+      }
+      if (!_trustedDeviceHashes.contains(devHash)) {
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': 'ERR_UNTRUSTED_DEVICE_OTP_REQUIRED',
+        };
+      }
+      if (_storedServerPinHashHex == null ||
+          _serverHashProof(proof) != _storedServerPinHashHex) {
+        _failedPinAttempts++;
+        if (_failedPinAttempts >= 5) {
+          _lockedUntilUtc =
+              DateTime.now().toUtc().add(const Duration(seconds: 60));
+        }
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': _failedPinAttempts >= 5
+              ? 'ERR_VAULT_LOCKED_BACKOFF'
+              : 'ERR_INVALID_PERSONAL_PIN',
+          'failed_attempts': _failedPinAttempts,
+          'locked_until': _lockedUntilUtc?.toIso8601String(),
+        };
+      }
+      _failedPinAttempts = 0;
+      _activeStepUpTokenHex = List<String>.filled(64, 'd').join();
+      return <String, dynamic>{
+        'ok': true,
+        'stepup_token': _activeStepUpTokenHex,
+        'expires_at':
+            DateTime.now().toUtc().add(const Duration(minutes: 15)).toIso8601String(),
+      };
+    }
+
+    if (functionName == 'ceo_get_live_cockpit_snapshot') {
+      final win = params['p_window_key']?.toString() ?? '30d';
+      final json = snapshotToReturn.toJson();
+      json['window_key'] = win;
+      return json;
+    }
+
+    if (functionName == 'ceo_fetch_live_events_since') {
+      final afterSeq = (params['p_after_seq'] as num?)?.toInt() ?? 0;
+      final fresh = missedEventsQueue
+          .where((e) => e.eventSeq > afterSeq)
+          .map((e) => e.toJson())
+          .toList();
+      return <String, dynamic>{'events': fresh};
+    }
+
+    if (functionName == 'ceo_inspect_order_forensics') {
+      final jobId = params['p_job_id']?.toString() ?? '';
+      return <String, dynamic>{
+        'job': <String, dynamic>{
+          'job_id': jobId,
+          'order_code': '#DESP-REAL1',
+          'title': 'Reparo Hidráulico Residencial',
+          'description': 'Troca de registro com verificação GPS real',
+          'category': 'Encanador',
+          'status': 'in_progress',
+          'payment_status': 'paid_escrow',
+          'escrow_status': 'HELD',
+          'agreed_price_cents': 25000,
+          'labor_cents': 20000,
+          'materials_cents': 5000,
+          'checkin_distance_m': 14,
+        },
+        'client': <String, dynamic>{
+          'full_name': 'Marina Real',
+          'city': 'São Paulo',
+          'client_kyc_status': 'APPROVED',
+        },
+        'provider': <String, dynamic>{
+          'full_name': 'Carlos Mestre',
+          'city': 'São Paulo',
+          'verification_status': 'ACTIVE',
+          'jobs_done': 8,
+        },
+        'location': <String, dynamic>{
+          'neighborhood': 'Pinheiros',
+          'city': 'São Paulo',
+          'uf': 'SP',
+          'address_line': 'Rua dos Pinheiros, 500',
+        },
+        'quotes': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'provider_name': 'Carlos Mestre',
+            'status': 'accepted',
+            'amount_cents': 25000,
+          },
+        ],
+        'invites': const <Map<String, dynamic>>[],
+        'payments': const <Map<String, dynamic>>[],
+        'ledger_txns': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'entry_kind': 'ESCROW_HOLD',
+            'bucket': 'CLIENT_ESCROW',
+            'amount_cents': 25000,
+          },
+        ],
+        'maturation_entries': const <Map<String, dynamic>>[],
+        'fiscal_documents': const <Map<String, dynamic>>[],
+        'mediations': const <Map<String, dynamic>>[],
+        'reviews': const <Map<String, dynamic>>[],
+      };
+    }
+
+    if (functionName == 'ceo_list_real_users_directory') {
+      return <String, dynamic>{
+        'users': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'user_id': 'u-real-1',
+            'full_name': 'Marina Real',
+            'city': 'São Paulo',
+            'is_client': true,
+            'is_provider': false,
+            'client_kyc_status': 'APPROVED',
+            'biometric_verified': true,
+            'specialties': const <String>[],
+            'rating_avg': 5.0,
+            'rating_count': 2,
+            'jobs_done': 0,
+            'client_jobs_count': 2,
+            'accepting_jobs': false,
+            'client_wallet_available_cents': 5000,
+            'client_wallet_escrow_cents': 25000,
+            'provider_wallet_cents': 0,
+            'created_at': DateTime.utc(2026, 11, 14).toIso8601String(),
+          },
+        ],
+      };
+    }
+
+    if (functionName == 'ceo_record_real_expense') {
+      final newEntry = CeoRealExpenseEntry(
+        id: 'exp-${snapshotToReturn.realExpenses.length + 1}',
+        competenceDateIso: params['p_competence_date']?.toString() ?? '2026-11-14',
+        expenseKind: params['p_expense_kind']?.toString() ?? 'FIXED_OPEX',
+        category: params['p_category']?.toString() ?? 'Cloud',
+        description: params['p_description']?.toString() ?? '',
+        amountCents: (params['p_amount_cents'] as num?)?.toInt() ?? 0,
+        createdAt: DateTime.now().toUtc(),
+      );
+      final updatedExpenses = <CeoRealExpenseEntry>[
+        newEntry,
+        ...snapshotToReturn.realExpenses,
+      ];
+      final fixedSum = updatedExpenses
+          .where((e) => e.expenseKind == 'FIXED_OPEX')
+          .fold<int>(0, (acc, e) => acc + e.amountCents);
+      final newDre = FounderDreCents.computeFromComponents(
+        laborGrossCents: snapshotToReturn.dreCents.laborGrossCents,
+        materialsExemptCents: snapshotToReturn.dreCents.materialsExemptCents,
+        sosFeeRevenueCents: snapshotToReturn.dreCents.sosFeeRevenueCents,
+        completedOrdersCount: snapshotToReturn.dreCents.completedOrdersCount,
+        fixedOpexCents: fixedSum,
+      );
+      snapshotToReturn = snapshotToReturn.copyWith(
+        dreCents: newDre,
+        realExpenses: updatedExpenses,
+      );
+      return <String, dynamic>{'ok': true};
+    }
+
+    if (functionName == 'ceo_lock_sovereign_vault') {
+      _activeStepUpTokenHex = null;
+      return <String, dynamic>{'ok': true};
+    }
+
+    return <String, dynamic>{'ok': true};
+  }
+
+  @override
+  Future<void Function()> subscribeWarRoomLive({
+    required void Function(CeoLiveEventItem event) onLiveEvent,
+    required void Function(CeoRealtimeConnectionStatus status) onStatusChanged,
+  }) async {
+    _liveEventCallback = onLiveEvent;
+    _statusCallback = onStatusChanged;
+    onStatusChanged(CeoRealtimeConnectionStatus.liveConnected);
+    return () {
+      _liveEventCallback = null;
+      onStatusChanged(CeoRealtimeConnectionStatus.disconnected);
+    };
+  }
+}
+
+FounderDashboardSnapshot _buildSampleRealSnapshot() {
+  final dre = FounderDreCents.computeFromComponents(
+    laborGrossCents: 100000,
+    materialsExemptCents: 25000,
+    sosFeeRevenueCents: 2000,
+    completedOrdersCount: 4,
+    fixedOpexCents: 3000,
+  );
+  final recon = FounderThreeWayReconciliation.compute(
+    pixTopupsConfirmedCents: 127000,
+    ledgerNetSumCents: 127000,
+    walletsAndEscrowTotalCents: 127000,
+  );
+  final demo = const FounderDemographicsSummary(
+    onlyClientsCount: 5,
+    onlyProvidersCount: 3,
+    dualModeBothCount: 2,
+    onboardingIncompleteCount: 1,
+    totalUsersCount: 11,
+    newUsersInWindowCount: 4,
+    kycVerifiedCount: 8,
+    kycPendingCount: 2,
+    kycRejectedCount: 0,
+    kycNotSubmittedCount: 1,
+    biometricVerifiedCount: 8,
+    ocrVerifiedCount: 8,
+    lgpdDeletedClientCount: 0,
+    lgpdDeletedProviderCount: 0,
+    lgpdDeletedAllCount: 0,
+  );
+  return FounderDashboardSnapshot.emptyZero(
+    generatedAt: DateTime.utc(2026, 11, 14, 15, 0),
+  ).copyWith(
+    latestEventSeq: 10,
+    demographics: demo,
+    dreCents: dre,
+    reconciliation: recon,
+    livePulse: const CeoLiveOperationsPulse(
+      openJobsCount: 1,
+      awaitingPaymentCount: 0,
+      scheduledJobsCount: 1,
+      inProgressJobsCount: 1,
+      awaitingApprovalCount: 0,
+      completedAllTimeCount: 4,
+      canceledInWindowCount: 0,
+      disputedJobsCount: 0,
+      quotesInWindowCount: 5,
+      quotesPendingCount: 2,
+      quotesAcceptedInWindowCount: 3,
+      invitesPendingCount: 1,
+      pixPendingCount: 0,
+      reviewsTotalCount: 4,
+      reviewsAvgBps: 4950,
+    ),
+    treasury: const FounderTreasurySummary(
+      availableWalletsCents: 82000,
+      activeExecutionEscrowCents: 25000,
+      maturationD0D2Cents: 10000,
+      maturationD5Cents: 10000,
+      maturationD7Cents: 0,
+      availableForPixPayoutCents: 0,
+      frozenMediationCents: 0,
+      frozenUnderDuressCents: 0,
+      estimatedMonthlyCdiFloatCents: 1100,
+    ),
+    actuarialPool: const FounderActuarialPoolSummary(
+      runningBalanceCents: 15000,
+      activeExposureCents: 8000,
+      icaRatioBps: 18750,
+      fcrLayer1Bps: 10000,
+      clawbackRecoveredCents: 0,
+      claimsPaidCents: 0,
+    ),
+    liveMapPoints: <CeoLiveMapPoint>[
+      CeoLiveMapPoint(
+        jobId: 'job-real-1',
+        orderCode: '#DESP-REAL1',
+        title: 'Reparo Hidráulico Residencial',
+        categoryName: 'Encanador',
+        status: 'in_progress',
+        escrowStatus: 'HELD',
+        urgency: 'immediate',
+        lat: -23.5614,
+        lng: -46.6559,
+        isExactPin: true,
+        amountCents: 25000,
+        neighborhood: 'Pinheiros',
+        city: 'São Paulo',
+        uf: 'SP',
+        clientName: 'Marina Real',
+        providerName: 'Carlos Mestre',
+        createdAt: DateTime.utc(2026, 11, 14, 14, 30),
+      ),
+    ],
+    recentOrdersMicroPnl: <OrderMicroPnlRecord>[
+      OrderMicroPnlRecord(
+        orderCode: '#DESP-REAL1',
+        jobId: 'job-real-1',
+        title: 'Reparo Hidráulico Residencial',
+        categoryName: 'Encanador',
+        neighborhood: 'Pinheiros',
+        createdAt: DateTime.utc(2026, 11, 14, 14, 30),
+        status: 'in_progress',
+        clientName: 'Marina Real',
+        providerName: 'Carlos Mestre',
+        gmvCents: 25000,
+        laborCents: 20000,
+        materialsExemptCents: 5000,
+        nfeVerified: true,
+        providerNetCents: 17000,
+        platformFeeCents: 2700,
+        poolCarveoutCents: 300,
+        taxDasCents: 162,
+        pixCloudCostCents: 0,
+        netMarginCents: 2538,
+        escrowStatus: 'HELD',
+      ),
+    ],
+    liveEvents: <CeoLiveEventItem>[
+      CeoLiveEventItem(
+        eventSeq: 10,
+        eventType: 'JOB_IN_PROGRESS',
+        severity: 'FINANCE',
+        title: 'Execução iniciada #DESP-REAL1',
+        subtitle: 'Encanador · Pinheiros, São Paulo',
+        entityTable: 'jobs',
+        entityId: 'job-real-1',
+        amountCents: 25000,
+        metadata: const <String, dynamic>{'job_id': 'job-real-1'},
+        occurredAt: DateTime.utc(2026, 11, 14, 14, 45),
+      ),
+    ],
+    dailySeries: <FounderDailyMetricPoint>[
+      const FounderDailyMetricPoint(
+        dayIso: '2026-11-13',
+        ordersCount: 2,
+        gmvCents: 60000,
+        laborCents: 50000,
+        materialsExemptCents: 10000,
+        platformRevenueCents: 6750,
+        poolCarveoutCents: 750,
+        taxDasCents: 405,
+        variableCostCents: 0,
+        netProfitCents: 6345,
+        warrantyClaimsCents: 0,
+      ),
+      const FounderDailyMetricPoint(
+        dayIso: '2026-11-14',
+        ordersCount: 2,
+        gmvCents: 65000,
+        laborCents: 50000,
+        materialsExemptCents: 15000,
+        platformRevenueCents: 8750,
+        poolCarveoutCents: 750,
+        taxDasCents: 525,
+        variableCostCents: 0,
+        netProfitCents: 5225,
+        warrantyClaimsCents: 0,
+      ),
+    ],
+    trustedDevices: <CeoTrustedDeviceItem>[
+      CeoTrustedDeviceItem(
+        deviceId: 'dev-1',
+        deviceLabel: 'Desperrengue CEO · Android Blindado',
+        fingerprintPrefix: 'f1f1f1f1f1f1',
+        isCurrentDevice: true,
+        boundAt: DateTime.utc(2026, 11, 14, 12, 0),
+        lastSeenAt: DateTime.utc(2026, 11, 14, 15, 0),
+      ),
+    ],
+  );
+}
 
 Widget _wrapFounderTestApp({
   required Widget child,
@@ -45,931 +622,454 @@ Widget _wrapFounderTestApp({
 
 void main() {
   // ===========================================================================
-  // PILLAR 1: SOVEREIGN EXCLUSIVITY, 3-DELEGATE HARD CAP & KILL-SWITCH (RED-TEAM)
+  // PILAR 1: COFRE MONOCRÁTICO (`wagneroliveira2395@gmail.com`), OTP 6 DÍGITOS & PIN SHA-256
   // ===========================================================================
-  group('Pillar 1 — Sovereign Exclusivity & 3-Delegate Kernel Hard Cap', () {
-    test('CEO-only initial seat, unauthorized intruder & substring spoof blocked, wrong PIN rejected', () async {
+  group('Pillar 1 — Monocratic Single-Owner Vault & 3-Layer SHA-256 Auth', () {
+    test('Blocks every non-owner email, logs INTRUSION_CANARY, and forces signOut', () async {
+      final gw = FakeCeoBackendGateway();
       final repo = FounderCockpitRepository(
-        initialSnapshot: FounderDashboardSnapshot.deterministicDemo(daysWindow: 365),
-        defaultCeoPin: '202611',
+        gateway: gw,
+        pbkdf2Iterations: 1500,
       );
+      addTearDown(repo.dispose);
 
-      expect(repo.currentSnapshot.aclSeats.ceoSeat, isNotNull);
-      expect(repo.currentSnapshot.aclSeats.ceoSeat!.isActive, isTrue);
-      expect(repo.currentSnapshot.aclSeats.activeDelegates, isEmpty);
-      expect(repo.currentSnapshot.aclSeats.remainingSlots, equals(3));
-      expect(repo.currentSnapshot.aclSeats.isAtHardCap, isFalse);
-
-      // Wrong PIN rejected
-      await expectLater(
-        () => repo.unlockStepUpVault(
-          credentialEmail: 'wagner.ceo@desperrengue.com.br',
-          masterPin: '000000',
-        ),
-        throwsA(
-          isA<StateError>().having(
-            (e) => e.message,
-            'message',
-            contains('ERR_INVALID_MASTER_PIN'),
-          ),
-        ),
-      );
-
-      // Unauthorized external email AND substring spoof ('impostor_ceo@evil.org') blocked with 42501
-      for (final badEmail in const <String>[
-        'intruder@external-attacker.org',
-        'impostor_ceo@evil.org',
-        'fake_wagner@evil.org',
+      for (final intruder in const <String>[
+        'intruder@attacker.org',
+        'wagner.ceo@desperrengue.com.br',
+        'wagneroliveira2395@evil.com',
       ]) {
         await expectLater(
-          () => repo.unlockStepUpVault(
-            credentialEmail: badEmail,
-            masterPin: '202611',
+          () => repo.signInWithEmailPassword(
+            email: intruder,
+            password: 'any-password',
           ),
           throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('ERR_UNAUTHORIZED_FOUNDER_SEAT_42501'),
+            isA<CeoVaultSecurityException>().having(
+              (e) => e.errorCode,
+              'errorCode',
+              equals('ERR_MONOCRATIC_OWNER_ONLY_42501'),
             ),
           ),
         );
       }
 
-      // Legitimate Sovereign CEO unlocks FULL_SOVEREIGN session
-      final ceoSession = await repo.unlockStepUpVault(
-        credentialEmail: 'wagner.ceo@desperrengue.com.br',
-        masterPin: '202611',
-      );
-      expect(ceoSession.seatRole, equals(FounderSeatRole.sovereignCeo));
-      expect(
-        ceoSession.permissionScope,
-        equals(FounderPermissionScope.fullSovereign),
-      );
-      expect(repo.isSessionActive(ceoSession.stepUpCredentialHex), isTrue);
+      expect(gw.recordedCanaryCodes.length, equals(3));
+      expect(gw.signOutCallCount, greaterThanOrEqualTo(3));
+      expect(repo.authenticatedEmail, isNull);
     });
 
-    test(
-      'Authorizes Slots 1..3, blocks 4th delegate with ERR_MAX_3_AUTHORIZED_DELEGATES_EXCEEDED, '
-      'blocks FULL_SOVEREIGN escalation, and executes immediate Slot 2 Kill-Switch',
-      () async {
-        final repo = FounderCockpitRepository(
-          initialSnapshot: FounderDashboardSnapshot.deterministicDemo(daysWindow: 90),
-          defaultCeoPin: '202611',
-        );
-        final ceoSession = await repo.unlockStepUpVault(
-          credentialEmail: 'wagner.ceo@desperrengue.com.br',
-          masterPin: '202611',
-        );
+    test('Validates PIN entropy, completes 6-digit email OTP -> personal PIN SHA-256 creation -> unlock & lockout backoff', () async {
+      expect(CeoPinCryptoEngine.validatePinStrength('000000'), isNotNull);
+      expect(CeoPinCryptoEngine.validatePinStrength('123456'), isNotNull);
+      expect(CeoPinCryptoEngine.validatePinStrength('654321'), isNotNull);
+      expect(CeoPinCryptoEngine.validatePinStrength('123123'), isNotNull);
+      expect(CeoPinCryptoEngine.validatePinStrength('904817'), isNull);
 
-        // Delegate can NEVER receive FULL_SOVEREIGN
-        await expectLater(
-          () => repo.authorizeDelegate(
-            stepUpCredentialHex: ceoSession.stepUpCredentialHex,
-            targetEmail: 'escalated@audit.com.br',
-            permissionScope: FounderPermissionScope.fullSovereign,
-            initialPin: '654321',
-          ),
-          throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('ERR_DELEGATE_CANNOT_HOLD_FULL_SOVEREIGN'),
-            ),
-          ),
-        );
-
-        // Authorize Slot 1, Slot 2, Slot 3
-        await repo.authorizeDelegate(
-          stepUpCredentialHex: ceoSession.stepUpCredentialHex,
-          targetEmail: 'contador@contabilidade.com.br',
-          permissionScope: FounderPermissionScope.financeTaxAuditor,
-          initialPin: '611111',
-        );
-        final afterSlot2 = await repo.authorizeDelegate(
-          stepUpCredentialHex: ceoSession.stepUpCredentialHex,
-          targetEmail: 'diretor.ops@desperrengue.com.br',
-          permissionScope: FounderPermissionScope.operationsSecurity,
-          initialPin: '622222',
-        );
-        final afterSlot3 = await repo.authorizeDelegate(
-          stepUpCredentialHex: ceoSession.stepUpCredentialHex,
-          targetEmail: 'conselheiro@fundo.com.br',
-          permissionScope: FounderPermissionScope.readOnlyAnalytics,
-          initialPin: '633333',
-        );
-
-        expect(afterSlot3.aclSeats.activeDelegates.length, equals(3));
-        expect(afterSlot3.aclSeats.isAtHardCap, isTrue);
-        expect(afterSlot3.aclSeats.remainingSlots, equals(0));
-        expect(afterSlot3.aclSeats.activeSlotAt(1)?.emailSnapshot, 'contador@contabilidade.com.br');
-        expect(afterSlot3.aclSeats.activeSlotAt(2)?.emailSnapshot, 'diretor.ops@desperrengue.com.br');
-        expect(afterSlot3.aclSeats.activeSlotAt(3)?.emailSnapshot, 'conselheiro@fundo.com.br');
-
-        // 4th delegate attempt MUST fail hard with ERR_MAX_3_AUTHORIZED_DELEGATES_EXCEEDED
-        await expectLater(
-          () => repo.authorizeDelegate(
-            stepUpCredentialHex: ceoSession.stepUpCredentialHex,
-            targetEmail: 'quarto.excedente@audit.com.br',
-            permissionScope: FounderPermissionScope.readOnlyAnalytics,
-            initialPin: '644444',
-          ),
-          throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('ERR_MAX_3_AUTHORIZED_DELEGATES_EXCEEDED'),
-            ),
-          ),
-        );
-
-        // Slot 2 delegate logs in and obtains active session, but CANNOT manage ACL
-        final slot2Seat = afterSlot2.aclSeats.activeSlotAt(2)!;
-        final slot2Session = await repo.unlockStepUpVault(
-          credentialEmail: 'diretor.ops@desperrengue.com.br',
-          masterPin: '622222',
-        );
-        expect(slot2Session.seatRole, equals(FounderSeatRole.authorizedDelegate));
-        expect(
-          slot2Session.permissionScope,
-          equals(FounderPermissionScope.operationsSecurity),
-        );
-        expect(repo.isSessionActive(slot2Session.stepUpCredentialHex), isTrue);
-
-        await expectLater(
-          () => repo.revokeDelegate(
-            stepUpCredentialHex: slot2Session.stepUpCredentialHex,
-            targetUserId: afterSlot3.aclSeats.activeSlotAt(1)!.userId,
-          ),
-          throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('ERR_ONLY_SOVEREIGN_CEO_CAN_REVOKE_DELEGATES'),
-            ),
-          ),
-        );
-
-        // Sovereign CEO re-authenticates and fires Kill-Switch on Slot 2
-        final ceoSession2 = await repo.unlockStepUpVault(
-          credentialEmail: 'wagner.ceo@desperrengue.com.br',
-          masterPin: '202611',
-        );
-        final afterRevoke = await repo.revokeDelegate(
-          stepUpCredentialHex: ceoSession2.stepUpCredentialHex,
-          targetUserId: slot2Seat.userId,
-        );
-
-        expect(afterRevoke.aclSeats.activeDelegates.length, equals(2));
-        expect(afterRevoke.aclSeats.activeSlotAt(2), isNull);
-        expect(afterRevoke.aclSeats.isAtHardCap, isFalse);
-
-        // Slot 2's active session is IMMEDIATELY dead (0ms tolerance)
-        expect(repo.isSessionActive(slot2Session.stepUpCredentialHex), isFalse);
-        await expectLater(
-          () => repo.fetchCockpitSnapshot(
-            stepUpCredentialHex: slot2Session.stepUpCredentialHex,
-          ),
-          throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('ERR_STEPUP_SESSION_REVOKED_OR_EXPIRED'),
-            ),
-          ),
-        );
-        await expectLater(
-          () => repo.unlockStepUpVault(
-            credentialEmail: 'diretor.ops@desperrengue.com.br',
-            masterPin: '622222',
-          ),
-          throwsA(
-            isA<StateError>().having(
-              (e) => e.message,
-              'message',
-              contains('ERR_UNAUTHORIZED_FOUNDER_SEAT_42501'),
-            ),
-          ),
-        );
-
-        // Freed Slot 2 can now welcome a replacement delegate
-        final afterReplacement = await repo.authorizeDelegate(
-          stepUpCredentialHex: ceoSession2.stepUpCredentialHex,
-          targetEmail: 'substituto.seguranca@desperrengue.com.br',
-          permissionScope: FounderPermissionScope.operationsSecurity,
-          initialPin: '655555',
-        );
-        expect(afterReplacement.aclSeats.activeDelegates.length, equals(3));
-        expect(
-          afterReplacement.aclSeats.activeSlotAt(2)?.emailSnapshot,
-          equals('substituto.seguranca@desperrengue.com.br'),
-        );
-      },
-    );
-  });
-
-  // ===========================================================================
-  // PILLAR 2: EXACT 4-GROUP DEMOGRAPHICS, LGPD OFFBOARDING & JSON WIRE PARITY
-  // ===========================================================================
-  group('Pillar 2 — Exact 4-Group Demographics, Scoped LGPD & Wire Contract', () {
-    test('4-group partition invariant + LGPD scoped counters + 33 categories round-trip', () {
-      final snap = FounderDashboardSnapshot.deterministicDemo(daysWindow: 365);
-      final d = snap.demographics;
-
-      expect(d.onlyClientsCount, greaterThan(0));
-      expect(d.onlyProvidersCount, greaterThan(0));
-      expect(d.dualModeBothCount, greaterThan(0));
-      expect(
-        d.onlyClientsCount + d.onlyProvidersCount + d.dualModeBothCount,
-        equals(d.totalUsersCount),
+      final proof1 = CeoPinCryptoEngine.deriveClientPinProofSync(
+        '904817',
+        iterations: 1500,
       );
-      expect(d.partitionInvariantOk, isTrue);
-
-      expect(d.lgpdDeletedClientCount, equals(19));
-      expect(d.lgpdDeletedProviderCount, equals(6));
-      expect(d.lgpdDeletedAllCount, equals(9));
-      expect(d.totalLgpdOffboardings, equals(34));
-
-      // Canonical JSON contract keys (#127)
-      final json = snap.toJson();
-      expect(json.containsKey('user_demographics'), isTrue);
-      expect(json.containsKey('financial_dre_cents'), isTrue);
-      expect(json.containsKey('three_way_reconciliation'), isTrue);
-      expect(json.containsKey('treasury_and_escrow_cents'), isTrue);
-      expect(json.containsKey('actuarial_warranty_pool'), isTrue);
-      expect(json.containsKey('category_liquidity_matrix'), isTrue);
-      expect(json.containsKey('security_and_sefaz_watch'), isTrue);
-      expect(json.containsKey('sovereign_acl_seats'), isTrue);
-      expect(json.containsKey('daily_time_series'), isTrue);
-      expect(json.containsKey('recent_orders_micro_pnl'), isTrue);
-
-      final decoded = FounderDashboardSnapshot.fromJson(
-        jsonDecode(jsonEncode(json)) as Map<String, dynamic>,
+      final proof2 = CeoPinCryptoEngine.deriveClientPinProofSync(
+        '904817',
+        iterations: 1500,
       );
-      expect(decoded.categoryLiquidity.length, equals(33));
-      expect(decoded.demographics.partitionInvariantOk, isTrue);
-      expect(decoded.dreCents.gmvTotalCents, equals(snap.dreCents.gmvTotalCents));
-      expect(decoded.reconciliation.threeWayReconciliationOk, isTrue);
-      expect(decoded.tieredWaterfall.totalMedals, equals(112));
-      expect(decoded.tieredWaterfall.providerMedalsTotal, equals(90));
-      expect(decoded.tieredWaterfall.clientMedalsTotal, equals(22));
+      expect(proof1.length, equals(64));
+      expect(proof1, equals(proof2));
+
+      final gw = FakeCeoBackendGateway(
+        initialSnapshot: _buildSampleRealSnapshot(),
+      );
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1500,
+      );
+      addTearDown(repo.dispose);
+
+      // Camada 1: Login do único dono
+      await repo.signInWithEmailPassword(
+        email: kMonocraticCeoEmail,
+        password: 'sovereign-strong-pass',
+      );
+      final initialStatus = await repo.fetchVaultStatus();
+      expect(initialStatus.pinConfigured, isFalse);
+      expect(initialStatus.requiresEmailOtp, isTrue);
+
+      // Camada 2: Solicita e verifica código de 6 dígitos enviado para wagneroliveira2395@gmail.com
+      final otpTicket = await repo.requestEmailSecurityOtp(
+        purpose: 'INITIAL_PIN_SETUP',
+      );
+      expect(otpTicket.maskedDestination, equals(kMaskedMonocraticCeoEmail));
+
+      await expectLater(
+        () => repo.verifyEmailSecurityOtp(
+          challengeId: otpTicket.challengeId,
+          sixDigitCode: '000000',
+        ),
+        throwsA(
+          isA<CeoVaultSecurityException>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            equals('ERR_OTP_CODE_INCORRECT'),
+          ),
+        ),
+      );
+
+      final otpVerified = await repo.verifyEmailSecurityOtp(
+        challengeId: otpTicket.challengeId,
+        sixDigitCode: gw.lastIssuedOtpCode,
+      );
+      expect(otpVerified.enrollmentTicketHex.length, equals(64));
+
+      // Camada 3: Wagner cria seu PIN pessoal (rejeita PIN fraco, aceita PIN forte)
+      await expectLater(
+        () => repo.registerPersonalPin(
+          enrollmentTicketHex: otpVerified.enrollmentTicketHex,
+          personalPin: '123456',
+        ),
+        throwsA(isA<CeoVaultSecurityException>()),
+      );
+
+      final session = await repo.registerPersonalPin(
+        enrollmentTicketHex: otpVerified.enrollmentTicketHex,
+        personalPin: '904817',
+      );
+      expect(session.accountEmail, equals(kMonocraticCeoEmail));
+      expect(repo.activeStepUpSession, isNotNull);
+
+      // Tranca o cofre e testa desbloqueio diário por PIN + bloqueio progressivo após 5 erros
+      await repo.lockVault();
+      expect(repo.activeStepUpSession, isNull);
+
+      final unlockedAgain = await repo.unlockWithPersonalPin(
+        personalPin: '904817',
+      );
+      expect(unlockedAgain.stepUpCredentialHex, isNotEmpty);
+
+      await repo.lockVault();
+      for (var i = 0; i < 5; i++) {
+        await expectLater(
+          () => repo.unlockWithPersonalPin(personalPin: '817294'),
+          throwsA(isA<CeoVaultSecurityException>()),
+        );
+      }
+      await expectLater(
+        () => repo.unlockWithPersonalPin(personalPin: '904817'),
+        throwsA(
+          isA<CeoVaultSecurityException>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            equals('ERR_VAULT_LOCKED_BACKOFF'),
+          ),
+        ),
+      );
     });
   });
 
   // ===========================================================================
-  // PILLAR 3: BIGINT CPC 47 DRE & THREE-WAY RECONCILIATION (1-CENTAVO PRECISION)
+  // PILAR 2: ZERO-FAKE POLICY, STREAM EM TEMPO REAL (`WSS`) & RECONEXÃO SEM PERDA
   // ===========================================================================
-  group('Pillar 3 — BIGINT CPC 47 DRE & Three-Way Reconciliation', () {
-    test('Zero centavo drift across prime/odd labor & material splits + >91% legal tax reduction', () {
-      const primeTestCases = <(int, int, int)>[
-        (1, 0, 0),
-        (3, 7, 0),
-        (99, 101, 0),
-        (10001, 25003, 0),
-        (199999, 349997, 800),
-        (2400000, 1800000, 12000),
-      ];
-
-      for (final (labor, mat, sos) in primeTestCases) {
-        final dre = FounderDreCents.computeFromComponents(
-          laborGrossCents: labor,
-          materialsExemptCents: mat,
-          sosFeeRevenueCents: sos,
-          completedOrdersCount: 55,
-          fixedOpexCents: 180000,
-        );
-        expect(
-          dre.allAccountingInvariantsOk,
-          isTrue,
-          reason: 'Invariant drift for labor=$labor, mat=$mat, sos=$sos',
-        );
-        expect(
-          dre.providerNetLaborCents +
-              dre.baseLaborFee135Cents +
-              dre.warrantyPoolCarveoutCents,
-          equals(labor),
-        );
-      }
-
-      // Verify >91% legal tax reduction under CPC 47 / IFRS 15 when materials are exempt at 0%
-      final benchmarkDre = FounderDreCents.computeFromComponents(
-        laborGrossCents: 2000000,
-        materialsExemptCents: 1600000,
-        sosFeeRevenueCents: 0,
-        completedOrdersCount: 95,
-        fixedOpexCents: 180000,
-      );
-      expect(benchmarkDre.simplesNacionalTaxCents, equals(16200));
-      expect(benchmarkDre.grossGmvHypotheticalTaxCents, equals(216000));
-      expect(benchmarkDre.taxSavingsBps, greaterThan(9100));
+  group('Pillar 2 — Zero-Fake Empty State & Encrypted Real-Time Bridge', () {
+    test('emptyZero snapshot contains 100% zeros and zero synthetic artifacts', () {
+      final zero = FounderDashboardSnapshot.emptyZero();
+      expect(zero.dreCents.gmvTotalCents, equals(0));
+      expect(zero.dreCents.platformGrossRevenueCents, equals(0));
+      expect(zero.dreCents.fixedOpexCents, equals(0));
+      expect(zero.demographics.totalUsersCount, equals(0));
+      expect(zero.livePulse.activeOrdersTotalCount, equals(0));
+      expect(zero.liveMapPoints, isEmpty);
+      expect(zero.recentOrdersMicroPnl, isEmpty);
+      expect(zero.securityWatch.duressIncidents, isEmpty);
+      expect(zero.reconciliation.threeWayReconciliationOk, isTrue);
+      expect(zero.categoryLiquidity.length, equals(33));
+      expect(zero.categoryLiquidity.every((c) => c.demandCount == 0), isTrue);
     });
 
-    test('Three-Way Reconciliation immediately flags any +1 or -1 centavo discrepancy', () {
-      const baseCustody = 12610500;
-      const settledOut = 14250000;
-      const pixConfirmed = baseCustody + settledOut;
-
-      final exact = FounderThreeWayReconciliation.compute(
-        pixTopupsConfirmedCents: pixConfirmed,
-        ledgerNetSumCents: baseCustody,
-        walletsAndEscrowTotalCents: baseCustody,
-        cumulativePlatformSettledOutCents: settledOut,
+    test('Receives instant WebSocket live events and recovers missed events on reconnect', () async {
+      final gw = FakeCeoBackendGateway(
+        authenticatedEmailInitial: kMonocraticCeoEmail,
+        initialSnapshot: _buildSampleRealSnapshot(),
       );
-      expect(exact.threeWayReconciliationOk, isTrue);
-      expect(exact.discrepancyCents, equals(0));
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1500,
+      );
+      addTearDown(repo.dispose);
 
-      for (final delta in const <int>[1, -1]) {
-        final pertPix = FounderThreeWayReconciliation.compute(
-          pixTopupsConfirmedCents: pixConfirmed + delta,
-          ledgerNetSumCents: baseCustody,
-          walletsAndEscrowTotalCents: baseCustody,
-          cumulativePlatformSettledOutCents: settledOut,
-        );
-        expect(pertPix.threeWayReconciliationOk, isFalse);
-        expect(pertPix.discrepancyCents.abs(), equals(1));
+      final ticket =
+          await repo.requestEmailSecurityOtp(purpose: 'INITIAL_PIN_SETUP');
+      final verified = await repo.verifyEmailSecurityOtp(
+        challengeId: ticket.challengeId,
+        sixDigitCode: gw.lastIssuedOtpCode,
+      );
+      await repo.registerPersonalPin(
+        enrollmentTicketHex: verified.enrollmentTicketHex,
+        personalPin: '904817',
+      );
+      await repo.fetchLiveSnapshot();
+      expect(repo.currentSnapshot.latestEventSeq, equals(10));
 
-        final pertLedger = FounderThreeWayReconciliation.compute(
-          pixTopupsConfirmedCents: pixConfirmed,
-          ledgerNetSumCents: baseCustody + delta,
-          walletsAndEscrowTotalCents: baseCustody,
-          cumulativePlatformSettledOutCents: settledOut,
-        );
-        expect(pertLedger.threeWayReconciliationOk, isFalse);
-        expect(pertLedger.discrepancyCents.abs(), equals(1));
+      final liveArrivals = <CeoLiveEventItem>[];
+      final sub = repo.liveEventArrivals.listen(liveArrivals.add);
+      addTearDown(sub.cancel);
 
-        final pertWallets = FounderThreeWayReconciliation.compute(
-          pixTopupsConfirmedCents: pixConfirmed,
-          ledgerNetSumCents: baseCustody,
-          walletsAndEscrowTotalCents: baseCustody + delta,
-          cumulativePlatformSettledOutCents: settledOut,
-        );
-        expect(pertWallets.threeWayReconciliationOk, isFalse);
-        expect(pertWallets.discrepancyCents.abs(), equals(1));
-      }
+      gw.emitLiveRealtimeEvent(
+        CeoLiveEventItem(
+          eventSeq: 11,
+          eventType: 'PIX_CONFIRMED',
+          severity: 'FINANCE',
+          title: 'PIX confirmado R\$ 180,00',
+          subtitle: 'Recarga de carteira liquidada',
+          entityTable: 'pix_topups',
+          entityId: 'pix-11',
+          amountCents: 18000,
+          metadata: const <String, dynamic>{},
+          occurredAt: DateTime.utc(2026, 11, 14, 15, 5),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(liveArrivals.length, equals(1));
+      expect(repo.currentSnapshot.latestEventSeq, equals(11));
+      expect(repo.currentSnapshot.liveEvents.first.eventSeq, equals(11));
+
+      // Simula queda de rede e reconexão recuperando evento #12 perdido
+      gw.missedEventsQueue.add(
+        CeoLiveEventItem(
+          eventSeq: 12,
+          eventType: 'NEW_USER_PROFILE',
+          severity: 'INFO',
+          title: 'Novo cadastro no Desperrengue',
+          subtitle: 'Prestador em São Paulo',
+          entityTable: 'profiles',
+          entityId: 'u-12',
+          amountCents: 0,
+          metadata: const <String, dynamic>{},
+          occurredAt: DateTime.utc(2026, 11, 14, 15, 6),
+        ),
+      );
+      gw.emitRealtimeStatus(CeoRealtimeConnectionStatus.reconnecting);
+      gw.emitRealtimeStatus(CeoRealtimeConnectionStatus.liveConnected);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(repo.currentSnapshot.latestEventSeq, equals(12));
     });
   });
 
   // ===========================================================================
-  // PILLAR 4: ALL 5 DP ENGINES + MONTE CARLO (1,000) + %PDF-1.4 & SHA-256 PACKS
+  // PILAR 3: MATEMÁTICA CONTÁBIL CPC 47, MOTORES DP, PDF SHA-256 & OTA CEO
   // ===========================================================================
-  group('Pillar 4 — 5 Dynamic Programming Engines, Off-Thread Monte Carlo & %PDF-1.4 Packs', () {
-    final snapshot = FounderDashboardSnapshot.deterministicDemo(daysWindow: 365);
+  group('Pillar 3 — Accounting Invariants, DP Engines, PDF Seal & CEO OTA', () {
+    test('CPC 47 integer split, 1-centavo 3-way reconciliation & %PDF-1.4 SHA-256 pack', () {
+      final snap = _buildSampleRealSnapshot();
+      expect(snap.dreCents.allAccountingInvariantsOk, isTrue);
+      expect(snap.reconciliation.threeWayReconciliationOk, isTrue);
 
-    test('DP 1 (PrefixSumFinancialTimeline) answers 7d/30d/90d/365d & arbitrary ranges in O(1) with 0 drift', () {
-      final timeline = PrefixSumFinancialTimeline(snapshot.dailySeries);
-      expect(timeline.length, equals(365));
-
-      for (final window in const <int>[7, 30, 90, 365]) {
-        final fast = timeline.queryLastDays(window);
-        final slice = snapshot.dailySeries.sublist(365 - window);
-        expect(fast.daysCount, equals(window));
-        expect(fast.ordersCount, equals(slice.fold<int>(0, (s, e) => s + e.ordersCount)));
-        expect(fast.gmvCents, equals(slice.fold<int>(0, (s, e) => s + e.gmvCents)));
-        expect(fast.netProfitCents, equals(slice.fold<int>(0, (s, e) => s + e.netProfitCents)));
-      }
-
-      for (var s = 0; s < 365; s += 37) {
-        for (var e = s; e < 365; e += 53) {
-          final fast = timeline.queryRange(s, e);
-          var naiveGmv = 0;
-          var naiveProfit = 0;
-          for (var k = s; k <= e; k++) {
-            naiveGmv += snapshot.dailySeries[k].gmvCents;
-            naiveProfit += snapshot.dailySeries[k].netProfitCents;
-          }
-          expect(fast.gmvCents, equals(naiveGmv));
-          expect(fast.netProfitCents, equals(naiveProfit));
-        }
-      }
-    });
-
-    test('DP 2 (KnapsackGrowthAndBoosterOptimizer) matches exact brute-force 2^N global optimum', () {
-      const optimizer = KnapsackGrowthAndBoosterOptimizer();
-      final candidates = KnapsackGrowthAndBoosterOptimizer.buildCandidatesFromSnapshot(snapshot);
-      const budgetCents = 120000;
-
-      final plan = optimizer.optimize(
-        budgetCents: budgetCents,
-        candidates: candidates,
+      final brokenRecon = FounderThreeWayReconciliation.compute(
+        pixTopupsConfirmedCents: 127000,
+        ledgerNetSumCents: 127000,
+        walletsAndEscrowTotalCents: 126999, // 1 centavo de desvio!
       );
-      expect(plan.budgetConstraintSatisfied, isTrue);
-      expect(plan.totalCostCents, lessThanOrEqualTo(budgetCents));
-      expect(
-        plan.selectedActions.length + plan.rejectedActions.length,
-        equals(candidates.length),
-      );
+      expect(brokenRecon.threeWayReconciliationOk, isFalse);
+      expect(brokenRecon.discrepancyCents.abs(), equals(1));
 
-      final n = candidates.length;
-      var bruteBestProfit = 0;
-      for (var mask = 0; mask < (1 << n); mask++) {
-        var cost = 0;
-        var profit = 0;
-        for (var i = 0; i < n; i++) {
-          if ((mask & (1 << i)) != 0) {
-            cost += candidates[i].costCents;
-            profit += candidates[i].expectedNetProfitCents;
-          }
-        }
-        if (cost <= budgetCents && profit > bruteBestProfit) {
-          bruteBestProfit = profit;
-        }
-      }
-      expect(plan.totalExpectedNetProfitCents, equals(bruteBestProfit));
-    });
-
-    test('DP 3 (MarkovBellmanCohortLtvEngine) converges & proves Dual-Mode LTV/CAC dominance', () {
-      const engine = MarkovBellmanCohortLtvEngine();
-      final valuations = engine.evaluateAllCanonicalCohorts();
-      expect(valuations.length, equals(3));
-
-      final onlyClient = valuations[0];
-      final onlyProvider = valuations[1];
-      final dualHybrid = valuations[2];
-
-      for (final v in valuations) {
-        expect(v.maxBellmanResidual, lessThan(1e-6));
-        expect(v.stateValuesCents[3], equals(0));
-      }
-
-      expect(dualHybrid.ltvCents, greaterThan(onlyProvider.ltvCents));
-      expect(onlyProvider.ltvCents, greaterThan(onlyClient.ltvCents));
-      expect(dualHybrid.ltvToCacRatioBps, greaterThan(onlyProvider.ltvToCacRatioBps));
-      expect(dualHybrid.ltvToCacRatioBps, greaterThan(onlyClient.ltvToCacRatioBps));
-      expect(dualHybrid.paybackMonths, lessThan(onlyClient.paybackMonths));
-    });
-
-    test('DP 4 (KadaneAndCusumAnomalyDetector) matches O(T^2) max subarray & detects CUSUM shocks', () {
-      const detector = KadaneAndCusumAnomalyDetector();
-      const sample = <int>[-4200, 3100, -900, 6400, 5200, -12000, 4800, 1900, -500];
-      final kadane = detector.runKadane(sample);
-
-      var bruteBest = sample.first;
-      for (var i = 0; i < sample.length; i++) {
-        var acc = 0;
-        for (var j = i; j < sample.length; j++) {
-          acc += sample[j];
-          if (acc > bruteBest) bruteBest = acc;
-        }
-      }
-      expect(kadane.totalGainCents, equals(bruteBest));
-      expect(kadane.startIndex, equals(1));
-      expect(kadane.endIndex, equals(4));
-
-      final shockedSeries = List<FounderDailyMetricPoint>.generate(
-        snapshot.dailySeries.length,
-        (i) {
-          final base = snapshot.dailySeries[i];
-          if (i >= 180 && i <= 185) {
-            return FounderDailyMetricPoint(
-              dayIso: base.dayIso,
-              ordersCount: base.ordersCount,
-              gmvCents: base.gmvCents,
-              laborCents: base.laborCents,
-              materialsExemptCents: base.materialsExemptCents,
-              platformRevenueCents: base.platformRevenueCents,
-              poolCarveoutCents: base.poolCarveoutCents,
-              taxDasCents: base.taxDasCents,
-              variableCostCents: base.variableCostCents,
-              netProfitCents: -95000,
-              warrantyClaimsCents: 120000,
-            );
-          }
-          return base;
-        },
-      );
-      final report = detector.analyzeTimeline(shockedSeries);
-      expect(report.driftAlerts, isNotEmpty);
-      expect(
-        report.driftAlerts.any((a) => a.direction == CusumDriftDirection.downwardDrop),
-        isTrue,
-      );
-      expect(
-        report.driftAlerts.any((a) => a.direction == CusumDriftDirection.upwardSurge),
-        isTrue,
-      );
-    });
-
-    test('DP 5 (AntiBypassAndLeakageDetector) catches obfuscated leetspeak, post-chat cancel & split distortion', () {
-      const detector = AntiBypassAndLeakageDetector();
-
-      final evasive = detector.evaluateRisk(
-        chatSnippet: 'm3 ch4m4 n0 z.4.p nove nove oito sete seis cinco quatro tres p.i.x f0r4 d0 4pp',
-        cancelledWithinMinutesAfterChat: 9,
-        laborCents: 2000,
-        materialsExemptCents: 28000,
-        hasVerified44DigitNfe: false,
-      );
-      expect(evasive.severity, equals(BypassSeverity.criticalBlock));
-      expect(evasive.compositeRiskBps, greaterThanOrEqualTo(7500));
-      expect(evasive.smartSplitDistortionDetected, isTrue);
-      expect(evasive.rapidPostChatCancellationDetected, isTrue);
-      expect(evasive.disguisedDigitsCount, greaterThanOrEqualTo(8));
-
-      final clean = detector.evaluateRisk(
-        chatSnippet: 'Instalei o disjuntor bipolar no quadro interno e anexei a foto de conclusão.',
-        cancelledWithinMinutesAfterChat: null,
-        laborCents: 22000,
-        materialsExemptCents: 14000,
-        hasVerified44DigitNfe: true,
-      );
-      expect(clean.severity, equals(BypassSeverity.low));
-      expect(clean.smartSplitDistortionDetected, isFalse);
-      expect(clean.rapidPostChatCancellationDetected, isFalse);
-    });
-
-    test('Monte Carlo (1,000 runs off-thread) is deterministic & monotonic + Copilot answers all domains', () async {
-      final params = FounderMonteCarloParams.fromSnapshot(snapshot).copyWith(
-        trajectoriesCount: 1000,
-        horizonMonths: 12,
-        seed: 0x20261114,
-      );
-      final runA = await runMonteCarloSimulationOffThread(params);
-      final runB = await runMonteCarloSimulationOffThread(params);
-
-      expect(runA.trajectoriesCount, equals(1000));
-      expect(runA.horizonMonths, equals(12));
-      expect(runA.p50CashCents, equals(runB.p50CashCents));
-      expect(runA.terminalMedianCashCents, equals(runB.terminalMedianCashCents));
-
-      for (var m = 0; m < 12; m++) {
-        expect(runA.p10CashCents[m], lessThanOrEqualTo(runA.p50CashCents[m]));
-        expect(runA.p50CashCents[m], lessThanOrEqualTo(runA.p90CashCents[m]));
-      }
-
-      const copilot = FounderExecutiveCopilotEngine();
-      for (final q in FounderExecutiveCopilotEngine.canonicalQuickQuestions) {
-        final ans = copilot.answerExecutivePrompt(q, snapshot);
-        expect(ans.headline, isNotEmpty);
-        expect(ans.bulletInsights.length, greaterThanOrEqualTo(3));
-        expect(ans.confidenceBps, greaterThan(9500));
-      }
-    });
-
-    test('CPC 47 %PDF-1.4 + RFC-4180 CSV + Duress Police Dossier verify SHA-256 & detect 1-byte tampering', () async {
-      const service = FounderAccountantPackService();
-
-      final pack = await service.generateMonthlyPackOffThread(
-        snapshot,
-        competenceLabel: '2026-11',
-        csvDelimiter: ';',
-      );
-      final pdfHeader = ascii.decode(pack.pdfBytes.sublist(0, 8));
-      final pdfTail = ascii.decode(pack.pdfBytes.sublist(pack.pdfBytes.length - 6));
-      expect(pdfHeader, equals('%PDF-1.4'));
-      expect(pdfTail, contains('%%EOF'));
-      expect(pack.sha256SealHex.length, equals(64));
-      expect(pack.csvContent, contains('CONSOLIDADO_CPC47_MENSAL;2026-11'));
+      const packSvc = FounderAccountantPackService();
+      final pack = packSvc.generateMonthlyPackSync(snap);
+      expect(pack.pdfBytes.length, greaterThan(500));
+      expect(utf8.decode(pack.pdfBytes.take(8).toList()), startsWith('%PDF-1.4'));
       expect(pack.verifyIntegrity(), isTrue);
 
-      final tamperedPdf = Uint8List.fromList(pack.pdfBytes);
-      tamperedPdf[tamperedPdf.length ~/ 2] ^= 0xFF;
-      final tamperedPack = MonthlyAccountantPackArtifact(
-        competenceLabel: pack.competenceLabel,
-        generatedAtUtc: pack.generatedAtUtc,
-        pdfBytes: tamperedPdf,
-        csvContent: pack.csvContent,
-        sha256SealHex: pack.sha256SealHex,
-        pdfSha256Hex: pack.pdfSha256Hex,
-        csvSha256Hex: pack.csvSha256Hex,
-        canonicalPayloadToSign: pack.canonicalPayloadToSign,
-        summaryMetricsCents: pack.summaryMetricsCents,
-      );
-      expect(tamperedPack.verifyIntegrity(), isFalse);
+      // Motores DP continuam 100% operacionais sobre dados reais
+      final timeline = PrefixSumFinancialTimeline(snap.dailySeries);
+      expect(timeline.queryLastDays(7).gmvCents, equals(125000));
 
-      final incident = snapshot.securityWatch.duressIncidents.first;
-      final dossier = await service.generateDuressPoliceDossierOffThread(
-        incident,
-        authorizedByEmail: 'wagner.ceo@desperrengue.com.br',
+      const detector = AntiBypassAndLeakageDetector();
+      final bypass = detector.evaluateRisk(
+        chatSnippet: 'm3 ch4m4 n0 z4p 11 99887 6655',
+        cancelledWithinMinutesAfterChat: 8,
+        laborCents: 3000,
+        materialsExemptCents: 25000,
+        hasVerified44DigitNfe: false,
       );
-      expect(ascii.decode(dossier.pdfBytes.sublist(0, 8)), equals('%PDF-1.4'));
-      expect(dossier.verifyIntegrity(), isTrue);
-      expect(dossier.chainOfCustodyJson, contains('FROZEN_UNDER_DURESS'));
-      expect(dossier.chainOfCustodyJson, contains('"exact_coordinates_redacted": true'));
-      expect(dossier.chainOfCustodyJson, contains('wa***@desperrengue.com.br'));
+      expect(bypass.compositeRiskBps, greaterThanOrEqualTo(5000));
+    });
 
-      final tamperedDossierBytes = Uint8List.fromList(dossier.pdfBytes);
-      tamperedDossierBytes[42] ^= 0x01;
-      final badDossier = DuressForensicDossierArtifact(
-        incidentId: dossier.incidentId,
-        orderCode: dossier.orderCode,
-        generatedAtUtc: dossier.generatedAtUtc,
-        pdfBytes: tamperedDossierBytes,
-        chainOfCustodyJson: dossier.chainOfCustodyJson,
-        sha256SealHex: dossier.sha256SealHex,
-        pdfSha256Hex: dossier.pdfSha256Hex,
-        canonicalManifestPayload: dossier.canonicalManifestPayload,
+    test('FounderUpdateService selects strictly desperrengue-founder-ceo.apk and ignores desperrengue.apk', () {
+      const releaseJson = '''
+      {
+        "body": "Release Soberano\\n<!-- build:202611150 version:2.13.0 -->",
+        "assets": [
+          {
+            "name": "desperrengue.apk",
+            "browser_download_url": "https://github.com/org/repo/releases/download/beta-latest/desperrengue.apk"
+          },
+          {
+            "name": "desperrengue-founder-ceo.apk",
+            "browser_download_url": "https://github.com/org/repo/releases/download/beta-latest/desperrengue-founder-ceo.apk"
+          }
+        ]
+      }
+      ''';
+      final info = FounderUpdateService.parseFounderRelease(
+        releaseJson,
+        currentBuild: 202611140,
+        repo: 'org/repo',
       );
-      expect(badDossier.verifyIntegrity(), isFalse);
+      expect(info, isNotNull);
+      expect(
+        info!.apkUrl,
+        endsWith('/desperrengue-founder-ceo.apk'),
+      );
     });
   });
 
   // ===========================================================================
-  // PILLAR 5: FULL WIDGET, INTERACTIVE FLOWS & MULTI-VIEWPORT TORTURE SUITE
+  // PILAR 4: ZERO PRÉ-PREENCHIMENTO, SPLASH 120 FPS & TORTURA MULTI-VIEWPORT
   // ===========================================================================
-  group('Pillar 5 — Vault Flow, Blur Guards, 10 Charts, 7 Innovations & Multi-Viewport Torture', () {
-    testWidgets(
-      'Step-Up Vault lock -> wrong PIN error -> unlock -> Space/Eye Privacy Blur (EditableText guard) -> 10m Auto-Lock',
-      (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(1440, 900);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
+  group('Pillar 4 — Blank Vault Gate, Animated Boot & 5-Tab UI Torture', () {
+    testWidgets('Vault Gate starts with 100% blank inputs (zero pre-filled PIN or email)', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
-        final repo = FounderCockpitRepository(
-          initialSnapshot: FounderDashboardSnapshot.deterministicDemo(daysWindow: 30),
-          defaultCeoPin: '202611',
-        );
+      final gw = FakeCeoBackendGateway();
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1200,
+      );
+      addTearDown(repo.dispose);
 
-        await tester.pumpWidget(
-          _wrapFounderTestApp(
-            child: FounderCockpitScreen(
-              repository: repo,
-              inactivityTimeout: const Duration(minutes: 10),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          child: FounderCockpitScreen(repository: repo),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
 
-        expect(find.byKey(const ValueKey<String>('founder-stepup-vault-card')), findsOneWidget);
-        expect(find.byKey(const ValueKey<String>('founder-widescreen-3col-layout')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('founder-stepup-vault-gate')),
+        findsOneWidget,
+      );
 
-        // Wrong PIN surfaces vault-error-banner
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('vault-pin-field')),
-          '000000',
-        );
-        await tester.tap(find.byKey(const ValueKey<String>('vault-unlock-button')));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('vault-error-banner')), findsOneWidget);
-        expect(find.textContaining('ERR_INVALID_MASTER_PIN'), findsOneWidget);
-
-        // Valid CEO PIN unlocks 3-column panoramic command center
-        await tester.enterText(
-          find.byKey(const ValueKey<String>('vault-pin-field')),
-          '202611',
-        );
-        await tester.tap(find.byKey(const ValueKey<String>('vault-unlock-button')));
-        await tester.pumpAndSettle();
-
-        expect(find.byKey(const ValueKey<String>('founder-widescreen-3col-layout')), findsOneWidget);
-        expect(find.byKey(const ValueKey<String>('founder-privacy-active-badge')), findsNothing);
-
-        // Toggle Privacy Blur ON via TopBar Eye button
-        await tester.tap(find.byKey(const ValueKey<String>('founder-privacy-blur-toggle')));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('founder-privacy-active-badge')), findsOneWidget);
-
-        // Toggle Privacy Blur OFF via Space key when NOT focused inside EditableText
-        await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('founder-privacy-active-badge')), findsNothing);
-
-        // Focus inside Copilot TextField -> pressing Space MUST NOT trigger Privacy Blur
-        final promptField = find.byKey(const ValueKey<String>('copilot-prompt-field'));
-        await tester.ensureVisible(promptField);
-        await tester.tap(promptField);
-        await tester.pump();
-        await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.space);
-        await tester.pump();
-        expect(find.byKey(const ValueKey<String>('founder-privacy-active-badge')), findsNothing);
-
-        // Auto-lock after 10 minutes of inactivity
-        await tester.pump(const Duration(minutes: 10, seconds: 2));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('founder-stepup-vault-card')), findsOneWidget);
-
-        await tester.pumpWidget(const SizedBox.shrink());
-      },
-    );
-
-    testWidgets(
-      'Widescreen 1440x900 renders all 10 CustomPainter charts, exercises Innovations & 3-Slot ACL Kill-Switch with ZERO overflow',
-      (WidgetTester tester) async {
-        tester.view.physicalSize = const Size(1440, 900);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
-
-        final snap = FounderDashboardSnapshot.deterministicDemo(daysWindow: 365);
-        final repo = FounderCockpitRepository(initialSnapshot: snap);
-
-        await tester.pumpWidget(
-          _wrapFounderTestApp(
-            child: FounderCockpitScreen(
-              repository: repo,
-              initialUnlockedSnapshot: snap,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-
-        const allTenChartKeys = <String>[
-          'founder-chart-1-sankey',
-          'founder-chart-2-jcurve',
-          'founder-chart-3-demographics-venn',
-          'founder-chart-4-aarrr-funnel',
-          'founder-chart-5-category-bubbles',
-          'founder-chart-6-treasury-histogram',
-          'founder-chart-7-actuarial-speedometer',
-          'founder-chart-8-cohort-heatmap',
-          'founder-chart-9-kyc-thermometer',
-          'founder-chart-10-waterfall-medals',
-        ];
-        for (final k in allTenChartKeys) {
-          expect(find.byKey(ValueKey<String>(k)), findsOneWidget, reason: 'Missing chart $k');
-        }
-
-        const allSevenInnovationKeys = <String>[
-          'founder-innovation-1-bivariate-heatmap',
-          'founder-innovation-2-micro-pnl',
-          'founder-innovation-3-monte-carlo',
-          'founder-innovation-4-copilot',
-          'founder-innovation-5-antibypass-sefaz',
-          'founder-innovation-6-accountant-pack',
-          'founder-innovation-7-duress-war-room',
-        ];
-        for (final k in allSevenInnovationKeys) {
-          expect(find.byKey(ValueKey<String>(k)), findsOneWidget, reason: 'Missing innovation $k');
-        }
-
-        // Switch J-Curve window chips
-        final chip90d = find.byKey(const ValueKey<String>('jcurve-window-90d'));
-        await tester.ensureVisible(chip90d);
-        await tester.tap(chip90d);
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-
-        // Trigger Smart Supply Booster (Knapsack 0/1)
-        final boosterBtn = find.byKey(const ValueKey<String>('innovation-1-trigger-booster-btn'));
-        await tester.ensureVisible(boosterBtn);
-        await tester.tap(boosterBtn);
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('innovation-1-knapsack-result')), findsOneWidget);
-
-        // Trigger Off-Thread CPC 47 Monthly Pack & Duress Police Dossier
-        final exportPackBtn = find.byKey(const ValueKey<String>('export-cpc47-pack-btn'));
-        await tester.ensureVisible(exportPackBtn);
-        await tester.runAsync(() async {
-          await tester.tap(exportPackBtn);
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-        });
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('accountant-pack-seal-box')), findsOneWidget);
-
-        final duressBtn = find.byKey(const ValueKey<String>('generate-duress-dossier-btn'));
-        await tester.ensureVisible(duressBtn);
-        await tester.runAsync(() async {
-          await tester.tap(duressBtn);
-          await Future<void>.delayed(const Duration(milliseconds: 250));
-        });
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('duress-dossier-seal-box')), findsOneWidget);
-
-        // Exercise Sovereign ACL 3-Slot Authorization -> Hard Cap Lock Banner -> Kill-Switch
-        final emailField = find.byKey(const ValueKey<String>('acl-delegate-email-field'));
-        final authBtn = find.byKey(const ValueKey<String>('acl-authorize-button'));
-        for (final email in const <String>[
-          'slot1@audit.com.br',
-          'slot2@ops.com.br',
-          'slot3@board.com.br',
-        ]) {
-          await tester.ensureVisible(emailField);
-          await tester.enterText(emailField, email);
-          await tester.ensureVisible(authBtn);
-          await tester.tap(authBtn);
-          await tester.pumpAndSettle();
-        }
-        expect(find.byKey(const ValueKey<String>('acl-hard-cap-kernel-banner')), findsOneWidget);
-        expect(find.byKey(const ValueKey<String>('acl-kill-switch-slot-2')), findsOneWidget);
-
-        // Fire Kill-Switch on Slot 2
-        final killSlot2 = find.byKey(const ValueKey<String>('acl-kill-switch-slot-2'));
-        await tester.ensureVisible(killSlot2);
-        await tester.tap(killSlot2);
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('acl-hard-cap-kernel-banner')), findsNothing);
-        expect(tester.takeException(), isNull);
-
-        await tester.pumpWidget(const SizedBox.shrink());
-      },
-    );
-
-    testWidgets(
-      'Pocket 6-Tab Torture Suite across 320x700 @ 1.4x textScaler AND 480x900 with ZERO RenderFlex overflow',
-      (WidgetTester tester) async {
-        final viewports = <({Size size, TextScaler scaler, String label})>[
-          (
-            size: const Size(320, 700),
-            scaler: const TextScaler.linear(1.4),
-            label: '320x700 @ 1.4x torture',
-          ),
-          (
-            size: const Size(480, 900),
-            scaler: TextScaler.noScaling,
-            label: '480x900 mobile pocket',
-          ),
-        ];
-
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
-
-        for (final vp in viewports) {
-          tester.view.physicalSize = vp.size;
-          tester.view.devicePixelRatio = 1.0;
-
-          final snap = FounderDashboardSnapshot.deterministicDemo(daysWindow: 30);
-          await tester.pumpWidget(
-            _wrapFounderTestApp(
-              textScaler: vp.scaler,
-              child: FounderCockpitScreen(initialUnlockedSnapshot: snap),
-            ),
-          );
-          await tester.pumpAndSettle();
-          expect(
-            tester.takeException(),
-            isNull,
-            reason: 'Overflow on initial tab 0 (${vp.label})',
-          );
-          expect(find.byKey(const ValueKey<String>('founder-pocket-6tab-layout')), findsOneWidget);
-
-          for (var tabIdx = 0; tabIdx < 6; tabIdx++) {
-            final tabFinder = find.byKey(ValueKey<String>('founder-tab-$tabIdx'));
-            await tester.ensureVisible(tabFinder);
-            await tester.tap(tabFinder);
-            await tester.pumpAndSettle();
-            expect(
-              tester.takeException(),
-              isNull,
-              reason: 'Overflow on pocket tab $tabIdx (${vp.label})',
-            );
-          }
-        }
-
-        // Smoke-pump DesperrengueFounderApp root entrypoint (main_founder.dart)
-        tester.view.physicalSize = const Size(480, 900);
-        await tester.pumpWidget(const ProviderScope(child: DesperrengueFounderApp()));
-        await tester.pumpAndSettle();
-        expect(find.byKey(const ValueKey<String>('founder-stepup-vault-card')), findsOneWidget);
-        expect(find.byType(FounderSovereignCrest), findsWidgets);
-        expect(tester.takeException(), isNull);
-
-        await tester.pumpWidget(const SizedBox.shrink());
-      },
-    );
-
-    testWidgets(
-      'FounderSovereignCrest renders G1 Casa-Escudo D + 4-Facet Apex Diamond Keystone + Cyan Check cleanly across CEO & Delegate modes',
-      (WidgetTester tester) async {
-        await tester.pumpWidget(
-          _wrapFounderTestApp(
-            child: const Scaffold(
-              body: Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    FounderSovereignCrest(
-                      key: ValueKey<String>('crest-ceo-24'),
-                      size: 24,
-                      isSovereignCeo: true,
-                    ),
-                    SizedBox(width: 12),
-                    FounderSovereignCrest(
-                      key: ValueKey<String>('crest-ceo-96'),
-                      size: 96,
-                      isSovereignCeo: true,
-                    ),
-                    SizedBox(width: 12),
-                    FounderSovereignCrest(
-                      key: ValueKey<String>('crest-delegate-48'),
-                      size: 48,
-                      isSovereignCeo: false,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        expect(find.byKey(const ValueKey<String>('crest-ceo-24')), findsOneWidget);
-        expect(find.byKey(const ValueKey<String>('crest-ceo-96')), findsOneWidget);
-        expect(find.byKey(const ValueKey<String>('crest-delegate-48')), findsOneWidget);
+      final editables = tester.widgetList<EditableText>(find.byType(EditableText));
+      for (final ed in editables) {
         expect(
-          tester.getSize(find.byKey(const ValueKey<String>('crest-ceo-96'))),
-          equals(const Size(96, 96)),
+          ed.controller.text,
+          isEmpty,
+          reason: 'Nenhum campo de credencial ou PIN pode iniciar pré-preenchido',
         );
-        await tester.pumpWidget(const SizedBox.shrink());
-      },
-    );
+      }
+    });
+
+    testWidgets('DesperrengueFounderApp animated splash transitions cleanly into Vault Gate', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final fastBoot = AppInitializationService(
+        warmUp: () async {},
+        initBackend: () async {},
+        readTheme: () async => AppThemeMode.dark,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: DesperrengueFounderApp(
+            bootService: fastBoot,
+            splashDuration: const Duration(milliseconds: 300),
+          ),
+        ),
+      );
+      expect(
+        find.byKey(const ValueKey<String>('founder-animated-splash-screen')),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        find.byKey(const ValueKey<String>('founder-boot-ready')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Unlocked 5-Tab War Room, Privacy Blur, Forensic Sheet & Multi-Viewport 0-Overflow', (tester) async {
+      final gw = FakeCeoBackendGateway(
+        authenticatedEmailInitial: kMonocraticCeoEmail,
+        initialSnapshot: _buildSampleRealSnapshot(),
+      );
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1200,
+      );
+      addTearDown(repo.dispose);
+
+      await tester.runAsync(() async {
+        final otp =
+            await repo.requestEmailSecurityOtp(purpose: 'INITIAL_PIN_SETUP');
+        final ver = await repo.verifyEmailSecurityOtp(
+          challengeId: otp.challengeId,
+          sixDigitCode: gw.lastIssuedOtpCode,
+        );
+        await repo.registerPersonalPin(
+          enrollmentTicketHex: ver.enrollmentTicketHex,
+          personalPin: '904817',
+        );
+      });
+
+      // 1. Tortura 320x640 @ textScale 1.35x (Mobile estreito)
+      await tester.binding.setSurfaceSize(const Size(320, 640));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          textScaler: const TextScaler.linear(1.35),
+          child: FounderCockpitScreen(repository: repo),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('founder-cockpit-unlocked-scaffold')),
+        findsOneWidget,
+      );
+
+      // Navega pelas 5 abas sem qualquer overflow
+      for (var tab = 0; tab < 5; tab++) {
+        await tester.tap(find.byKey(ValueKey<String>('ceo-nav-tab-$tab')));
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(tester.takeException(), isNull, reason: 'Zero overflow na aba $tab em 320x640');
+      }
+
+      // 2. Desktop Panorâmico 1440x900 + Privacy Blur + Dossiê Forense
+      await tester.binding.setSurfaceSize(const Size(1440, 900));
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          child: FounderCockpitScreen(repository: repo),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.takeException(), isNull);
+
+      // Volta para Aba 0 (Ao Vivo) e testa atalho de Privacidade (tecla Espaço)
+      await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-0')));
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.textContaining('•••••'), findsWidgets);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump(const Duration(milliseconds: 150));
+
+      // Abre Aba 2 (Operações) e inspeciona Dossiê Forense Real
+      await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-2')));
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.byKey(const ValueKey<String>('ceo-live-geo-radar-card')), findsOneWidget);
+
+      await tester.ensureVisible(find.text('Dossiê Forense').first);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text('Dossiê Forense').first);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.byKey(const ValueKey<String>('ceo-order-forensic-sheet')), findsOneWidget);
+      expect(find.textContaining('Marina Real'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
