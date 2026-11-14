@@ -84,6 +84,11 @@ class FounderCockpitRepository {
         );
         if (raw is Map) {
           final map = Map<String, dynamic>.from(raw);
+          if (map['ok'] == false) {
+            throw StateError(
+              (map['error_code'] ?? 'ERR_INVALID_MASTER_PIN').toString(),
+            );
+          }
           final session = FounderStepUpSession(
             stepUpCredentialHex:
                 (map['stepup_token'] ?? '').toString(),
@@ -106,6 +111,8 @@ class FounderCockpitRepository {
           _activeSessions[session.stepUpCredentialHex] = session;
           return session;
         }
+      } on StateError {
+        rethrow;
       } catch (_) {
         // Fallback determinístico caso o banco de testes não esteja ativo na sessão.
       }
