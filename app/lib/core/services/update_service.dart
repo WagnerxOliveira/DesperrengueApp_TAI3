@@ -88,6 +88,31 @@ class UpdateService {
     return host == 'github.com' || host.endsWith('.githubusercontent.com');
   }
 
+  /// Seleciona determinísticamente o APK público de atualização OTA.
+  ///
+  /// Como `'desperrengue-founder-ceo.apk'` (`'-'` ASCII 45) ordena lexicograficamente
+  /// **antes** de `'desperrengue.apk'` (`'.'` ASCII 46), uma busca ingênua por
+  /// `.endsWith('.apk')` entregaria o binário exclusivo do CEO aos usuários públicos.
+  /// Regra em 3 camadas:
+  /// 1. Prefere correspondência exata `'desperrengue.apk'` (case-insensitive);
+  /// 2. Fallback para qualquer `.apk` cujo nome NÃO contenha `'founder'`;
+  /// 3. Jamais seleciona artefatos com `'founder'` no nome ou na URL.
+  static Map<dynamic, dynamic> _selectPublicApkAsset(Iterable<Map<dynamic, dynamic>> assets) {
+    for (final a in assets) {
+      final name = '${a['name'] ?? ''}'.trim();
+      if (name.toLowerCase() == 'desperrengue.apk') {
+        return a;
+      }
+    }
+    for (final a in assets) {
+      final lowerName = '${a['name'] ?? ''}'.trim().toLowerCase();
+      if (lowerName.endsWith('.apk') && !lowerName.contains('founder')) {
+        return a;
+      }
+    }
+    return const {};
+  }
+
   /// Lê o JSON do release. Formato do texto (gerado pela CI):
   /// ```
   /// build: 29712345
@@ -106,9 +131,9 @@ class UpdateService {
       if (build == null) return null;
       final version = RegExp(r'^version:\s*([\w.\-+]+)', multiLine: true).firstMatch(text)?.group(1) ?? '';
       final assets = (json['assets'] as List?)?.whereType<Map>() ?? const <Map>[];
-      final apk = assets.cast<Map>().firstWhere((a) => '${a['name']}'.endsWith('.apk'), orElse: () => const {});
+      final apk = _selectPublicApkAsset(assets);
       final url = apk['browser_download_url'] as String?;
-      if (url == null || !isTrustedDownloadUrl(url)) return null;
+      if (url == null || !isTrustedDownloadUrl(url) || url.toLowerCase().contains('founder')) return null;
       final notes = RegExp(r'## Novidades\s*\n([\s\S]*?)(?:\n---|$)').firstMatch(text)?.group(1)?.trim() ?? '';
       return UpdateInfo(build: build, version: version, apkUrl: url, sizeBytes: (apk['size'] as num?)?.toInt(), notes: notes);
     } catch (_) {

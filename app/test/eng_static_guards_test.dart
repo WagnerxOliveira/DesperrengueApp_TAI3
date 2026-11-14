@@ -12,6 +12,28 @@ List<File> _dartFiles(String dir) => Directory(dir)
 
 String _rel(File f) => f.path.replaceAll('\\', '/');
 
+bool _isFounderOnlyLibFile(String relPath) {
+  final normalized = relPath.startsWith('./') ? relPath.substring(2) : relPath;
+  return normalized == 'lib/main_founder.dart' ||
+      normalized.endsWith('/lib/main_founder.dart') ||
+      normalized.startsWith('lib/features/founder/') ||
+      normalized.contains('/lib/features/founder/') ||
+      normalized.startsWith('lib/core/analytics/founder_') ||
+      normalized.contains('/lib/core/analytics/founder_');
+}
+
+File _repoFile(String repoRelativePath) {
+  if (repoRelativePath.startsWith('app/')) {
+    final fromInsideApp = File(repoRelativePath.substring(4));
+    if (fromInsideApp.existsSync()) return fromInsideApp;
+  }
+  final fromParent = File('../$repoRelativePath');
+  if (fromParent.existsSync()) return fromParent;
+  final fromRoot = File(repoRelativePath);
+  if (fromRoot.existsSync()) return fromRoot;
+  throw StateError('Arquivo obrigatório não encontrado: $repoRelativePath (cwd: ${Directory.current.path})');
+}
+
 void main() {
   final libFiles = _dartFiles('lib');
 
@@ -69,5 +91,80 @@ void main() {
       }
     }
     expect(offenders, isEmpty, reason: 'log com dado sensível: $offenders');
+  });
+
+  test('zero footprint do Founder Cockpit nos arquivos públicos de lib/ (isolamento matemático)', () {
+    final directiveLeak = RegExp(
+      r'''^\s*(?:import|export|part)\s+['"](?:[^'"]*/)?(?:main_founder\.dart|founder/|founder_[a-z0-9_]+\.dart)''',
+      multiLine: true,
+    );
+    final symbolOrPathLeak = RegExp(
+      r'main_founder\.dart|features/founder/|core/analytics/founder_|\bFounder(?:Cockpit|Sovereign|DpOptimization|AccountantPack)\w*\b',
+    );
+    final offenders = <String>[];
+    final publicFiles = libFiles.where((f) => !_isFounderOnlyLibFile(_rel(f))).toList();
+    expect(publicFiles, isNotEmpty, reason: 'deve escanear a árvore pública em lib/');
+
+    for (final f in publicFiles) {
+      final rel = _rel(f);
+      final text = f.readAsStringSync();
+      if (directiveLeak.hasMatch(text)) {
+        offenders.add('$rel (import/export/part founder)');
+        continue;
+      }
+      final lines = f.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final trimmed = lines[i].trimLeft();
+        if (trimmed.startsWith('//')) continue;
+        if (symbolOrPathLeak.hasMatch(trimmed)) {
+          offenders.add('$rel:${i + 1}');
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'APK público jamais pode importar, exportar ou referenciar módulos Founder: $offenders',
+    );
+  });
+
+  test('isolamento Dual-APK preservado em build.gradle.kts, AndroidManifest.xml e beta-release.yml', () {
+    final gradle = _repoFile('app/android/app/build.gradle.kts').readAsStringSync();
+    expect(gradle, contains('applicationId = "br.com.desperrengue.app"'));
+    expect(gradle, contains('project.hasProperty("founderApp")'));
+    expect(gradle, contains('project.hasProperty("dart-defines")'));
+    expect(gradle, contains('FOUNDER_APP=true'));
+    expect(gradle, contains('applicationIdSuffix = ".founder"'));
+    expect(gradle, contains('manifestPlaceholders["appLabel"] = "Desperrengue CEO"'));
+    expect(gradle, contains('manifestPlaceholders["appLabel"] = "Desperrengue"'));
+    expect(gradle, contains('manifestPlaceholders["authScheme"] = "br.com.desperrengue.app.founder"'));
+    expect(gradle, contains('manifestPlaceholders["authScheme"] = "br.com.desperrengue.app"'));
+    expect(gradle, contains('manifestPlaceholders["onboardingScheme"] = "desperrengue-founder"'));
+    expect(gradle, contains('manifestPlaceholders["onboardingScheme"] = "desperrengue"'));
+
+    final manifest = _repoFile('app/android/app/src/main/AndroidManifest.xml').readAsStringSync();
+    expect(manifest, contains('android:label="\${appLabel}"'));
+    expect(manifest, contains('android:scheme="\${authScheme}"'));
+    expect(manifest, contains('android:scheme="\${onboardingScheme}"'));
+    expect(manifest.contains('android:label="Desperrengue"'), isFalse);
+
+    final workflow = _repoFile('.github/workflows/beta-release.yml').readAsStringSync();
+    expect(workflow, contains('--target=lib/main.dart'));
+    expect(workflow, contains('--target=lib/main_founder.dart'));
+    expect(workflow, contains('--obfuscate'));
+    expect(workflow, contains('--split-debug-info=build/founder-symbols'));
+    expect(workflow, contains('-PfounderApp=true'));
+    expect(workflow, contains('--dart-define=FOUNDER_APP=true'));
+    expect(workflow, contains('FOUNDER_SHA256='));
+    expect(workflow, contains('"\$RUNNER_TEMP/desperrengue.apk"'));
+    expect(workflow, contains('"\$RUNNER_TEMP/desperrengue-founder-ceo.apk"'));
+
+    final releaseCreateMatch = RegExp(
+      r'gh release create beta-latest[\s\S]*?--notes-file',
+    ).firstMatch(workflow);
+    expect(releaseCreateMatch, isNotNull, reason: 'gh release create beta-latest deve existir no workflow');
+    final releaseCmd = releaseCreateMatch!.group(0)!;
+    expect(releaseCmd, contains('"\$RUNNER_TEMP/desperrengue.apk"'));
+    expect(releaseCmd, contains('"\$RUNNER_TEMP/desperrengue-founder-ceo.apk"'));
   });
 }
