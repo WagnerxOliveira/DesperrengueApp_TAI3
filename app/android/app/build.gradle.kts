@@ -91,6 +91,18 @@ android {
             }
         }
     }
+
+    // Isolamento determinístico de recursos Dual-APK (Ícone Soberano Obsidian/24k + Splash):
+    // Quando `isFounderBuild == true`, os buildTypes (`debug`, `profile`, `release`) sobrepõem
+    // `src/founder/res` sobre `src/main/res` (zero duplicatas de sourceSet e zero bytes extras
+    // em `desperrengue.apk` quando `isFounderBuild == false`).
+    if (isFounderBuild) {
+        sourceSets
+            .matching { it.name in setOf("debug", "profile", "release") }
+            .configureEach {
+                res.srcDirs("src/$name/res", "src/founder/res")
+            }
+    }
 }
 
 kotlin {

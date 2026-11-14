@@ -16,8 +16,19 @@ flowchart LR
     V2 --> V3["v2.7.0<br/>Garantia 3 Camadas, Smart Split,<br/>Grafo Zero-Linkage & Big-O"]:::v
     V3 --> V4["v2.8.0 — v2.8.6<br/>Câmera Frontal Ao Vivo, Scanner ID-1,<br/>KYC Zero-Trust Argon + Carbon & VIO"]:::v
     V4 --> V5["v2.9.0 — v2.11.1<br/>Temporal Geo-Privacy Lock (HMAC-SHA256),<br/>Mapa Full-Screen 100%, Imagens 0ms & NFC-e Real"]:::v
-    V5 --> V6["v2.12.0 (Atual)<br/>Founder Sovereign Cockpit & War Room,<br/>Dual-APK Zero-Trust, CPC 47 BIGINT & 5 DPs"]:::cur
+    V5 --> V6["v2.12.0 — v2.12.1 (Atual)<br/>Founder Sovereign Cockpit, Ícone Obsidian/Ouro 24k,<br/>Dual-APK Zero-Trust, CPC 47 BIGINT & 5 DPs"]:::cur
 ```
+
+---
+
+## [v2.12.1+202611142] — 2026-11-14 — Identidade Semiótica Soberana `Desperrengue CEO` (Ícone Adaptativo Obsidian & Ouro 24k + Keystone Diamante + Splash `#07090D`) e Overlay Determinístico `sourceSets` no Gradle
+
+### Adicionado & Endurecido (Semiótica Executiva `< 50 ms`, Android 12–16 Adaptive/Monochrome Icons e Isolamento de Recursos AGP)
+* **Ícone Adaptativo, Silhueta Monocromática Android 13–16, Splash Nativa `#07090D` e Brasão Vetorial 120 FPS Exclusivos do `Desperrengue CEO` ([`generate_founder_ceo_icons.py`](../scripts/generate_founder_ceo_icons.py), [`desperrengue_ceo_logo.svg`](brand/desperrengue_ceo_logo.svg), [`desperrengue_public_vs_ceo_showcase.png`](brand/desperrengue_public_vs_ceo_showcase.png) & [`founder_animations_and_shaders.dart`](../app/lib/features/founder/presentation/founder_animations_and_shaders.dart), SHA `5959581`):**
+  * Rasterização analítica por campos de distância assinada (`SDF`) com *supersampling* `4×` (`2048×2048` / `1728×1728` $\to$ `LANCZOS`) preservando $100\%$ da geometria $G^1$-contínua da **"Casa-Escudo D"** (`dHousePath`) elevada à edição executiva: fundo **Obsidian Carbon-Onyx Velvet** (`#05070B` $\to$ `#0B0E15` $\to$ `#2A1F0D`) com halo horológico *guilloché* concêntrico contido em $r = 0,298 \le 0,31$ da grade `108dp` (zero corte em máscaras *squircle*, círculo ou gota), monograma em **Ouro Imperial 24k** (`#FFFBEB` $\to$ `#FDE047` $\to$ `#F59E0B` $\to$ `#D97706`), **Keystone Diamante Soberano de 4 Facetas** coroando a cumeeira (`cx = 0.490, cy = -0.094`, garantindo distinção morfológica imediata mesmo sob *Themed/Monochrome Icons* do Android 13–16) e check central em **Ciano-Platina Luminoso** (`#0891B2` $\to$ `#ECFEFF`).
+  * Paridade integral dos **45 recursos Android** em `app/android/app/src/founder/res/**` (`mipmap-*`, `mipmap-anydpi-v26`, `drawable-*`, `drawable-night-*`, `values*` com `windowSplashScreenBackground = #07090D`) e sincronização exata de `FounderSovereignCrest` (`CustomPainter` + `RepaintBoundary` a $120\text{ FPS}$) no Cofre Step-Up e na barra superior do Cockpit.
+* **Overlay Determinístico de `sourceSets` no Android Gradle Plugin e Guardas Estáticas Binárias ([`build.gradle.kts`](../app/android/app/build.gradle.kts), [`eng_static_guards_test.dart`](../app/test/eng_static_guards_test.dart), [`founder_executive_cockpit_test.dart`](../app/test/founder_executive_cockpit_test.dart) & [`ADR-0023`](adr/0023-founder-sovereign-cockpit-dual-apk.md)):**
+  * Configuração condicional `if (isFounderBuild)` aplicando `res.srcDirs("src/$name/res", "src/founder/res")` exclusivamente nos *buildTypes* (`debug`, `profile`, `release`), sobrepondo `src/main/res` sem `Duplicate resources` no `desperrengue-founder-ceo.apk` e mantendo **`0` bytes extras** e $100\%$ dos ícones originais (`#0F172A`) intocados no `desperrengue.apk` público.
 
 ---
 

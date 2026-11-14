@@ -167,4 +167,66 @@ void main() {
     expect(releaseCmd, contains('"\$RUNNER_TEMP/desperrengue.apk"'));
     expect(releaseCmd, contains('"\$RUNNER_TEMP/desperrengue-founder-ceo.apk"'));
   });
+
+  test('isolamento do ícone e splash exclusivos Desperrengue CEO (src/founder/res vs src/main/res)', () {
+    final gradle = _repoFile('app/android/app/build.gradle.kts').readAsStringSync();
+    final gradleCodeOnly = gradle
+        .split('\n')
+        .where((line) => !line.trimLeft().startsWith('//'))
+        .join('\n');
+    final founderOverlayBlock = RegExp(
+      r'if\s*\(\s*isFounderBuild\s*\)\s*\{\s*sourceSets[\s\S]*?res\.srcDirs\("src/\$name/res",\s*"src/founder/res"\)',
+    ).firstMatch(gradleCodeOnly);
+    expect(
+      founderOverlayBlock,
+      isNotNull,
+      reason: 'src/founder/res deve ser ativado estritamente dentro de `if (isFounderBuild)`',
+    );
+    expect(
+      'src/founder/res'.allMatches(gradleCodeOnly).length,
+      equals(1),
+      reason: 'src/founder/res não pode vazar fora do bloco condicional isFounderBuild',
+    );
+    expect(
+      gradleCodeOnly.contains('getByName("main").res.srcDirs'),
+      isFalse,
+      reason: 'main sourceSet nunca deve misturar src/founder/res (evita Duplicate resources e vazamento público)',
+    );
+
+    const binaryPairs = <String>[
+      'mipmap-mdpi/ic_launcher.png',
+      'mipmap-hdpi/ic_launcher.png',
+      'mipmap-xhdpi/ic_launcher.png',
+      'mipmap-xxhdpi/ic_launcher.png',
+      'mipmap-xxxhdpi/ic_launcher.png',
+      'drawable-xxxhdpi/ic_launcher_background.png',
+      'drawable-xxxhdpi/ic_launcher_foreground.png',
+      'drawable-xxxhdpi/ic_launcher_monochrome.png',
+      'drawable-xxxhdpi/android12splash.png',
+    ];
+
+    for (final relRes in binaryPairs) {
+      final publicFile = _repoFile('app/android/app/src/main/res/$relRes');
+      final founderFile = _repoFile('app/android/app/src/founder/res/$relRes');
+      final publicBytes = publicFile.readAsBytesSync();
+      final founderBytes = founderFile.readAsBytesSync();
+      expect(publicBytes, isNotEmpty, reason: 'recurso público vazio: $relRes');
+      expect(founderBytes, isNotEmpty, reason: 'recurso CEO vazio: $relRes');
+      expect(
+        founderBytes,
+        isNot(equals(publicBytes)),
+        reason: 'recurso CEO $relRes deve divergir byte-a-byte do ícone/splash público',
+      );
+    }
+
+    final publicColors = _repoFile('app/android/app/src/main/res/values/colors.xml').readAsStringSync();
+    final founderColors = _repoFile('app/android/app/src/founder/res/values/colors.xml').readAsStringSync();
+    expect(publicColors, contains('#0F172A'));
+    expect(founderColors, contains('#07090D'));
+
+    final publicV31 = _repoFile('app/android/app/src/main/res/values-v31/styles.xml').readAsStringSync();
+    final founderV31 = _repoFile('app/android/app/src/founder/res/values-v31/styles.xml').readAsStringSync();
+    expect(publicV31, contains('#0F172A'));
+    expect(founderV31, contains('#07090D'));
+  });
 }

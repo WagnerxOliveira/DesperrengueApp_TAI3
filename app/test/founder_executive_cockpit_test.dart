@@ -919,8 +919,55 @@ void main() {
         await tester.pumpWidget(const ProviderScope(child: DesperrengueFounderApp()));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey<String>('founder-stepup-vault-card')), findsOneWidget);
+        expect(find.byType(FounderSovereignCrest), findsWidgets);
         expect(tester.takeException(), isNull);
 
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+
+    testWidgets(
+      'FounderSovereignCrest renders G1 Casa-Escudo D + 4-Facet Apex Diamond Keystone + Cyan Check cleanly across CEO & Delegate modes',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          _wrapFounderTestApp(
+            child: const Scaffold(
+              body: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    FounderSovereignCrest(
+                      key: ValueKey<String>('crest-ceo-24'),
+                      size: 24,
+                      isSovereignCeo: true,
+                    ),
+                    SizedBox(width: 12),
+                    FounderSovereignCrest(
+                      key: ValueKey<String>('crest-ceo-96'),
+                      size: 96,
+                      isSovereignCeo: true,
+                    ),
+                    SizedBox(width: 12),
+                    FounderSovereignCrest(
+                      key: ValueKey<String>('crest-delegate-48'),
+                      size: 48,
+                      isSovereignCeo: false,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const ValueKey<String>('crest-ceo-24')), findsOneWidget);
+        expect(find.byKey(const ValueKey<String>('crest-ceo-96')), findsOneWidget);
+        expect(find.byKey(const ValueKey<String>('crest-delegate-48')), findsOneWidget);
+        expect(
+          tester.getSize(find.byKey(const ValueKey<String>('crest-ceo-96'))),
+          equals(const Size(96, 96)),
+        );
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );
