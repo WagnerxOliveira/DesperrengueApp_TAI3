@@ -183,6 +183,42 @@ function renderLatexTokenToHtml(expr) {
   return s;
 }
 
+function injectWbrInTextSegment(textSegment) {
+  // Zero-character soft wrap opportunity after '/', '_' before [A-Za-z0-9] and after '.', ',' before [A-Za-z].
+  // Never breaks versions (v2.11.0), thousands/decimals (10.000, R$ 2.500,00) or HTML entities (&amp;, &#8477;).
+  return textSegment.replace(/([/_])(?=[A-Za-z0-9])|([.,])(?=[A-Za-z])/g, '$&<wbr>');
+}
+
+function injectWbrInsideInnerHtml(innerHtml) {
+  return innerHtml
+    .split(/(<[^>]+>)/g)
+    .map((part) => (part.startsWith('<') ? part : injectWbrInTextSegment(part)))
+    .join('');
+}
+
+function injectSoftWrapInInlineCodeAndMono(html) {
+  // Protect <svg> and <pre> so vector diagrams and preformatted Gherkin/code blocks are never touched
+  const svgAndPreBlocks = [];
+  let masked = html.replace(/<(svg|pre)\b[\s\S]*?<\/\1>/gi, (m) => {
+    const idx = svgAndPreBlocks.length;
+    svgAndPreBlocks.push(m);
+    return `@@SVG_PRE_BLOCK_${idx}@@`;
+  });
+
+  masked = masked.replace(/<code(\b[^>]*)>([\s\S]*?)<\/code>/gi, (_, attrs, inner) => {
+    return `<code${attrs}>${injectWbrInsideInnerHtml(inner)}</code>`;
+  });
+
+  masked = masked.replace(
+    /<span(\b[^>]*\bclass=["'][^"']*\bmono\b[^"']*["'][^>]*)>([\s\S]*?)<\/span>/gi,
+    (_, attrs, inner) => {
+      return `<span${attrs}>${injectWbrInsideInnerHtml(inner)}</span>`;
+    }
+  );
+
+  return masked.replace(/@@SVG_PRE_BLOCK_(\d+)@@/g, (_, idx) => svgAndPreBlocks[Number(idx)]);
+}
+
 function sanitizeAllMathAndEditorial(rawHtml) {
   let out = normalizeEscapedLatex(rawHtml);
 
@@ -216,6 +252,9 @@ function sanitizeAllMathAndEditorial(rawHtml) {
   // 4. Prevent any accidental 'pts' abbreviation from colliding with rubric checks
   out = out.replace(/\b(\d+(?:[.,]\d+)?)\s*pts\b/gi, '$1 pontos');
   out = out.replace(/Total\s+de\s+pontos\s*:/gi, 'Somatório de ponderação:');
+
+  // 5. Inject zero-character <wbr> soft break opportunities inside inline <code> and .mono (outside <svg>/<pre>)
+  out = injectSoftWrapInInlineCodeAndMono(out);
   return out;
 }
 
@@ -258,11 +297,16 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
     html, body {
       margin: 0;
       padding: 0;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: clip;
       font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
-      font-size: 9.2pt;
-      line-height: 1.44;
-      color: #0F172A;
+      font-size: 9.35pt;
+      line-height: 1.54;
+      color: #1E293B;
       background: #FFFFFF;
+      font-kerning: normal;
+      text-rendering: optimizeLegibility;
     }
 
     /* ISOLAMENTO INCONDICIONAL DE PÁGINA POR CAPÍTULO E SEÇÃO PRELIMINAR */
@@ -271,6 +315,8 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       break-before: page !important;
       page-break-before: always !important;
       display: block;
+      width: 100%;
+      max-width: 100%;
       border-top: 0.1px solid transparent;
       margin-top: 0 !important;
       padding-top: 0 !important;
@@ -280,15 +326,15 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       break-before: page !important;
     }
 
-    /* CAPA EXECUTIVA E CIENTÍFICA (PÁGINA 1 FULL-BLEED VIA NAMED PAGE cover_sheet) */
+    /* CAPA EXECUTIVA E CIENTÍFICA (PÁGINA 1 FULL-BLEED 1:1 ESCALA NATIVA 297mm) */
     .cover-page {
       page: cover_sheet;
       width: 100%;
-      height: 445.5mm;
+      height: 297mm;
       overflow: hidden;
       background: radial-gradient(circle at 48% 30%, #1A2E52 0%, #0F172A 68%, #060B16 100%);
       color: #F8FAFC;
-      padding: 15mm 16mm 14mm 16mm;
+      padding: 14mm 16mm 13mm 16mm;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -301,10 +347,11 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 20px;
       border-bottom: 1px solid rgba(148, 163, 184, 0.28);
       padding-bottom: 8px;
-      font-size: 7.4pt;
-      letter-spacing: 0.6px;
+      font-size: 6.4pt;
+      letter-spacing: 0.45px;
       color: #94A3B8;
       font-weight: 700;
     }
@@ -313,16 +360,24 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
     }
     .cover-badge-right {
       color: #FF8A2B;
+      text-align: right;
     }
     .cover-hero {
       text-align: center;
-      margin: 6px 0;
+      margin: 4px 0;
     }
     .cover-logo-wrap {
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+    }
+    .cover-logo-wrap svg {
+      width: 120px;
+      height: 120px;
+      max-width: 120px;
+      display: block;
+      margin: 0 auto;
     }
     .cover-pre-title {
-      font-size: 8.8pt;
+      font-size: 8.6pt;
       letter-spacing: 1.8px;
       font-weight: 800;
       color: #38BDF8;
@@ -330,50 +385,51 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       margin-bottom: 6px;
     }
     .cover-title {
-      font-size: 20pt;
+      font-size: 19pt;
       font-weight: 900;
       letter-spacing: -0.4px;
-      margin: 0 0 10px 0;
+      margin: 0 0 9px 0;
       color: #FFFFFF;
     }
     .cover-subtitle {
-      font-size: 9.6pt;
-      line-height: 1.48;
+      font-size: 9.4pt;
+      line-height: 1.46;
       color: #CBD5E1;
       max-width: 96%;
-      margin: 0 auto 16px auto;
+      margin: 0 auto 14px auto;
     }
     .cover-pillars-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
+      gap: 9px;
       text-align: left;
-      margin-top: 10px;
+      margin-top: 8px;
     }
     .cover-pillar {
       background: rgba(15, 23, 42, 0.82);
       border: 1px solid rgba(56, 189, 248, 0.34);
       border-left: 4px solid #FF6D00;
       border-radius: 8px;
-      padding: 9px 11px;
+      padding: 8.5px 10.5px;
+      min-width: 0;
     }
     .cp-num {
-      font-size: 11.4pt;
+      font-size: 11.2pt;
       font-weight: 800;
       color: #FFFFFF;
       margin-bottom: 3px;
     }
     .cp-lbl {
-      font-size: 7.8pt;
+      font-size: 7.75pt;
       color: #94A3B8;
-      line-height: 1.32;
+      line-height: 1.34;
     }
     .cover-meta-box {
       background: rgba(2, 6, 23, 0.78);
       border: 1px solid rgba(148, 163, 184, 0.28);
       border-radius: 10px;
-      padding: 11px 14px;
-      font-size: 7.9pt;
+      padding: 10px 13px;
+      font-size: 7.8pt;
       color: #CBD5E1;
     }
     .cover-meta-row {
@@ -385,18 +441,6 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
     }
     .cover-meta-row:last-child {
       border-bottom: none;
-    }
-    .cover-meta-box code {
-      background: rgba(56, 189, 248, 0.15);
-      color: #7DD3FC;
-      padding: 1px 4px;
-      border-radius: 4px;
-      border: none;
-    }
-    .cover-page .mono {
-      background: rgba(56, 189, 248, 0.15);
-      color: #7DD3FC;
-      border: 1px solid rgba(56, 189, 248, 0.28);
     }
     .cover-meta-row > div:nth-child(2) {
       white-space: nowrap;
@@ -410,7 +454,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       padding: 12px 16px;
       border-radius: 9px;
       border-left: 6px solid #FF6D00;
-      margin: 0 0 10px 0 !important;
+      margin: 0 0 11px 0 !important;
       break-inside: avoid;
       page-break-inside: avoid;
       page-break-after: avoid;
@@ -425,11 +469,13 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       margin-bottom: 2px;
       text-transform: uppercase;
     }
-    .section-header-banner h2, .section-header-banner h3 {
+    .section-header-banner h2,
+    .section-header-banner h3 {
       margin: 0 0 3px 0;
-      font-size: 13pt;
+      font-size: 12.8pt;
       color: #FFFFFF;
       border: none;
+      background: transparent;
       padding: 0;
       letter-spacing: -0.2px;
     }
@@ -438,6 +484,8 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       font-size: 8.3pt;
       color: #CBD5E1;
       text-align: left;
+      hyphens: none !important;
+      -webkit-hyphens: none !important;
     }
 
     .chapter-banner {
@@ -447,7 +495,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       color: #FFFFFF;
       border-radius: 10px;
       overflow: hidden;
-      margin: 0 0 12px 0 !important;
+      margin: 0 0 13px 0 !important;
       border: 1px solid #1E3A8A;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -458,7 +506,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #FF6D00;
       color: #FFFFFF;
       font-weight: 900;
-      font-size: 9.5pt;
+      font-size: 9.4pt;
       letter-spacing: 1px;
       padding: 12px 14px;
       display: flex;
@@ -470,12 +518,17 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
     .cb-body {
       padding: 10px 16px;
       flex: 1;
+      min-width: 0;
     }
-    .cb-body h2, .cb-body h1 {
+    .cb-body h2,
+    .cb-body h1 {
       margin: 0 0 3px 0;
-      font-size: 12.2pt;
+      font-size: 12pt;
       font-weight: 800;
       color: #FFFFFF;
+      border: none;
+      background: transparent;
+      padding: 0;
       letter-spacing: -0.2px;
     }
     .cb-body p {
@@ -483,23 +536,40 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       font-size: 8.2pt;
       color: #CBD5E1;
       text-align: left;
+      hyphens: none !important;
+      -webkit-hyphens: none !important;
     }
 
+    /* HIERARQUIA TIPOGRÁFICA EDITORIAL SÊNIOR */
+    h1, h2, h3, h4, h5,
+    code, pre, .mono,
+    .math-inline, .math-display,
+    th,
+    .badge, .badge-ok, .badge-must, .badge-plan, .badge-should,
+    .badge-high, .badge-med, .badge-could, .badge-low, .badge-wont,
+    .toc-container {
+      hyphens: none !important;
+      -webkit-hyphens: none !important;
+    }
     h2 {
       font-size: 11.8pt;
       font-weight: 800;
       color: #0F172A;
-      margin: 12px 0 6px 0;
+      margin: 13px 0 6.5px 0;
+      letter-spacing: -0.15px;
       page-break-after: avoid;
       break-after: avoid;
     }
     h3 {
-      font-size: 10.2pt;
+      font-size: 10.1pt;
       font-weight: 800;
       color: #0F172A;
-      margin: 10px 0 5px 0;
-      padding-bottom: 3px;
-      border-bottom: 2px solid #E2E8F0;
+      margin: 11px 0 5.5px 0;
+      padding: 3.5px 8px;
+      border-left: 3.5px solid #1E3A8A;
+      border-bottom: 1.5px solid #E2E8F0;
+      background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 100%);
+      border-radius: 0 4px 4px 0;
       page-break-after: avoid;
       break-after: avoid;
     }
@@ -507,7 +577,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       font-size: 9.3pt;
       font-weight: 800;
       color: #1E3A8A;
-      margin: 8px 0 4px 0;
+      margin: 9px 0 4px 0;
       page-break-after: avoid;
       break-after: avoid;
     }
@@ -520,47 +590,79 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       break-after: avoid;
     }
     p {
-      margin: 0 0 6.5px 0;
+      margin: 0 0 7.5px 0;
       text-align: justify;
+      hyphens: auto;
+      -webkit-hyphens: auto;
+      orphans: 3;
+      widows: 3;
     }
     ul, ol {
-      margin: 0 0 7.5px 0;
-      padding-left: 18px;
+      margin: 0 0 8.5px 0;
+      padding-left: 19px;
     }
     li {
-      margin-bottom: 3px;
-      text-align: justify;
+      margin-bottom: 4px;
+      line-height: 1.50;
+      text-align: left;
+      hyphens: auto;
+      -webkit-hyphens: auto;
     }
+
+    /* HARMONIZAÇÃO DE <code> E .mono EM FUNDOS CLAROS VS. ESCUROS */
     code, .mono {
       font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
-      font-size: 8.0pt;
+      font-size: 0.88em;
       background: #F1F5F9;
       color: #0F172A;
-      padding: 1px 4px;
-      border-radius: 4px;
-      border: 1px solid #E2E8F0;
+      padding: 0.5px 3.5px;
+      border-radius: 3px;
+      border: 1px solid #CBD5E1;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
     }
+    .data-table tr:nth-child(even) td code,
+    .data-table tr:nth-child(even) td .mono {
+      background: #FFFFFF;
+    }
+    .chapter-banner code, .chapter-banner .mono,
+    .section-header-banner code, .section-header-banner .mono,
+    .doc-closing-box code, .doc-closing-box .mono,
+    .cover-page code, .cover-page .mono,
+    table th code, table th .mono,
+    .data-table th code, .data-table th .mono,
+    .lean-canvas-table th code, .lean-canvas-table th .mono {
+      background: rgba(56, 189, 248, 0.16);
+      color: #E0F2FE;
+      border: 1px solid rgba(125, 211, 252, 0.32);
+      padding: 0.5px 4px;
+      border-radius: 3px;
+      font-size: 0.90em;
+    }
+
     pre, .code-block {
       font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
       font-size: 7.7pt;
-      line-height: 1.38;
+      line-height: 1.44;
       background: #0F172A;
       color: #E2E8F0;
-      padding: 8px 11px;
+      padding: 8.5px 12px;
       border-radius: 7px;
       border-left: 4px solid #38BDF8;
-      margin: 6px 0 9px 0;
+      margin: 6.5px 0 9.5px 0;
       white-space: pre-wrap;
-      word-break: break-word;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: normal;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     pre code, .code-block code {
-      background: transparent;
-      color: inherit;
-      border: none;
-      padding: 0;
-      font-size: inherit;
+      background: transparent !important;
+      color: inherit !important;
+      border: none !important;
+      padding: 0 !important;
+      font-size: inherit !important;
     }
 
     /* GHERKIN / BDD BOXES */
@@ -569,9 +671,9 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       border: 1px solid #CBD5E1;
       border-left: 4px solid #10B981;
       border-radius: 7px;
-      padding: 8px 12px;
-      margin: 6px 0 9px 0;
-      font-size: 8.2pt;
+      padding: 8.5px 12px;
+      margin: 6.5px 0 9.5px 0;
+      font-size: 8.25pt;
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -579,11 +681,15 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #0F172A;
       color: #E2E8F0;
       margin: 5px 0 0 0;
-      padding: 7px 10px;
+      padding: 7.5px 10.5px;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      line-height: 1.44;
     }
     .gherkin-title {
       font-weight: 800;
-      font-size: 8.8pt;
+      font-size: 8.85pt;
       color: #065F46;
       margin-bottom: 4px;
     }
@@ -603,7 +709,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       border: 1px solid #CBD5E1;
       border-left: 4px solid #0F172A;
       border-radius: 6px;
-      padding: 7px 10px;
+      padding: 7.5px 10.5px;
     }
     .toc-chapter-row {
       display: flex;
@@ -632,14 +738,16 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       border-radius: 4px;
       text-decoration: none;
       white-space: nowrap;
+      flex-shrink: 0;
     }
     .toc-item {
       display: flex;
       align-items: baseline;
-      font-size: 7.8pt;
+      font-size: 7.85pt;
       color: #0F172A;
       padding: 2px 0 1px 0;
       margin-top: 2px;
+      min-width: 0;
       page-break-inside: avoid;
       break-inside: avoid;
     }
@@ -650,9 +758,10 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
     .toc-sub-item {
       display: flex;
       align-items: baseline;
-      font-size: 7.35pt;
+      font-size: 7.4pt;
       color: #334155;
       padding: 1px 0 1px 12px;
+      min-width: 0;
       page-break-inside: avoid;
       break-inside: avoid;
     }
@@ -670,18 +779,22 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       font-family: 'Cascadia Code', 'Consolas', monospace;
       font-variant-numeric: tabular-nums;
       font-weight: 700;
-      font-size: 7.3pt;
+      font-size: 7.35pt;
       color: #1E3A8A !important;
       text-decoration: none;
       white-space: nowrap;
+      flex-shrink: 0;
     }
 
-    /* TABELAS (SUPORTE A TABELAS LONGAS COM REPETIÇÃO DE THEAD) */
+    /* TABELAS (LAYOUT FIXO ESTRITO PARA ZERO TRANSBORDAMENTO HORIZONTAL) */
     table, .data-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
-      margin: 6px 0 10px 0;
+      margin: 6.5px 0 10.5px 0;
       font-size: 8.0pt;
+      line-height: 1.40;
     }
     thead {
       display: table-header-group;
@@ -694,14 +807,24 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       color: #FFFFFF;
       font-weight: 700;
       text-align: left;
-      padding: 5px 7px;
+      padding: 5px 6.5px;
       border: 1px solid #1E293B;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: normal;
+      min-width: 0;
     }
     .data-table td, table td {
-      padding: 4.5px 7px;
+      padding: 4.5px 6.5px;
       border: 1px solid #CBD5E1;
       vertical-align: top;
       text-align: left;
+      hyphens: auto;
+      -webkit-hyphens: auto;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      word-break: normal;
+      min-width: 0;
     }
     .data-table tr:nth-child(even) td {
       background: #F8FAFC;
@@ -711,79 +834,157 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       page-break-inside: avoid;
     }
     .compact-table {
-      font-size: 7.65pt;
+      font-size: 7.7pt;
     }
     .compact-table td, .compact-table th {
-      padding: 4px 6px;
+      padding: 4px 5.5px;
+    }
+
+    /* CALIBRAÇÃO AUTOMÁTICA PARA TABELAS DENSAS (7+ E 9+ COLUNAS), MIGRAÇÕES SQL E MATRIZ DRE (15 COLUNAS) */
+    table:has(th:nth-child(7)) {
+      font-size: 7.45pt;
+      line-height: 1.35;
+    }
+    table:has(th:nth-child(7)) th,
+    table:has(th:nth-child(7)) td {
+      padding: 4px 4.5px;
+    }
+    table:has(th:nth-child(9)):not(.dre-matrix-table) {
+      font-size: 6.9pt;
+      line-height: 1.32;
+    }
+    table:has(th:nth-child(9)):not(.dre-matrix-table) th,
+    table:has(th:nth-child(9)):not(.dre-matrix-table) td {
+      padding: 3.5px 3px;
+    }
+    table th:first-child[width="5%"] {
+      width: 6% !important;
+      text-align: center;
+      padding-left: 3px;
+      padding-right: 3px;
+    }
+    table:has(th:first-child[width="5%"]) th:nth-child(4) {
+      width: 36% !important;
+    }
+    table:has(th:first-child[width="5%"]) td:first-child {
+      text-align: center;
+      white-space: nowrap;
+      padding-left: 2.5px;
+      padding-right: 2.5px;
+    }
+    table:has(th:first-child[width="5%"]) td:first-child code {
+      padding: 0.5px 2.5px;
+    }
+    .dre-matrix-table {
+      font-size: 5.9pt !important;
+      line-height: 1.32 !important;
+      font-variant-numeric: tabular-nums;
+    }
+    .dre-matrix-table th,
+    .dre-matrix-table td {
+      padding: 3.2px 1.5px !important;
+      hyphens: none !important;
+      -webkit-hyphens: none !important;
+    }
+    .dre-matrix-table th:not(:first-child),
+    .dre-matrix-table td:not(:first-child) {
+      text-align: right !important;
+      white-space: nowrap;
     }
 
     /* LEAN CANVAS / BMC TABLE */
     .lean-canvas-table {
       width: 100%;
+      max-width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
-      margin: 6px 0 10px 0;
-      font-size: 7.65pt;
+      margin: 6.5px 0 10.5px 0;
+      font-size: 7.7pt;
       break-inside: avoid;
     }
     .lean-canvas-table th {
       background: #0F172A;
       color: #38BDF8;
-      padding: 5px 7px;
+      padding: 5px 6.5px;
       border: 1.5px solid #1E293B;
       text-align: left;
       font-size: 7.8pt;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      min-width: 0;
     }
     .lean-canvas-table td {
-      padding: 5px 7px;
+      padding: 5px 6.5px;
       border: 1.5px solid #94A3B8;
       vertical-align: top;
       background: #F8FAFC;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
+      min-width: 0;
     }
 
     /* CARDS E BOXES */
     .cards-2col, .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin: 6px 0 9px 0;
+      gap: 8.5px;
+      margin: 6.5px 0 9.5px 0;
+      width: 100%;
     }
     .cards-3col, .grid-3 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 8px;
-      margin: 6px 0 9px 0;
+      margin: 6.5px 0 9.5px 0;
+      width: 100%;
     }
     .cards-4col, .grid-4 {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 7px;
-      margin: 6px 0 9px 0;
+      margin: 6.5px 0 9.5px 0;
+      width: 100%;
+    }
+    .cards-2col > *, .grid-2 > *,
+    .cards-3col > *, .grid-3 > *,
+    .cards-4col > *, .grid-4 > * {
+      min-width: 0;
     }
     .info-card {
       background: #F8FAFC;
       border: 1px solid #CBD5E1;
       border-top: 3px solid #0F172A;
       border-radius: 7px;
-      padding: 8px 10px;
+      padding: 8.5px 10.5px;
+      min-width: 0;
       break-inside: avoid;
       page-break-inside: avoid;
     }
-    .ic-title, .info-card h4 {
+    .ic-title, .info-card h4, .info-card h3 {
       font-weight: 800;
-      font-size: 8.6pt;
+      font-size: 8.65pt;
       color: #0F172A;
       margin: 0 0 4px 0;
+      padding: 0;
+      border: none;
+      background: transparent;
     }
     .info-card p, .info-card ul, .info-card ol {
       margin: 0;
-      font-size: 7.85pt;
+      font-size: 7.9pt;
       color: #334155;
       text-align: left;
+      hyphens: auto;
+      -webkit-hyphens: auto;
     }
 
-    /* DIAGRAMAS VETORIAIS SVG */
+    /* DIAGRAMAS VETORIAIS SVG (MOLDURA EDITORIAL REFINADA E ESCALA 100% CONTIDA) */
     .svg-diagram-box, .figure-box {
-      margin: 8px 0 11px 0;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      padding: 8px 10px 6px 10px;
+      margin: 8.5px 0 11.5px 0;
       text-align: center;
       break-inside: avoid;
       page-break-inside: avoid;
@@ -794,13 +995,23 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       display: block;
       margin: 0 auto;
     }
+    .svg-diagram-box svg,
+    .figure-box svg {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 0 auto;
+    }
     .svg-caption, .figure-caption, figcaption {
-      font-size: 7.75pt;
+      font-size: 7.8pt;
       font-style: italic;
       color: #475569;
       text-align: center;
-      margin-top: 4px;
-      padding: 0 8px;
+      margin-top: 6px;
+      padding: 5px 8px 0 8px;
+      border-top: 1px dashed #E2E8F0;
+      line-height: 1.42;
     }
 
     /* FÓRMULAS MATEMÁTICAS */
@@ -809,11 +1020,13 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       border: 1px solid #CBD5E1;
       border-left: 4px solid #1E3A8A;
       border-radius: 6px;
-      padding: 6px 11px;
-      margin: 6px 0 8px 0;
+      padding: 6.5px 11.5px;
+      margin: 6.5px 0 8.5px 0;
       font-family: 'Cambria Math', 'Times New Roman', serif;
-      font-size: 8.9pt;
+      font-size: 9.0pt;
       color: #0F172A;
+      overflow-wrap: break-word;
+      word-wrap: break-word;
       break-inside: avoid;
       page-break-inside: avoid;
     }
@@ -824,7 +1037,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
     }
     .formula-label {
       font-family: 'Segoe UI', sans-serif;
-      font-size: 8.0pt;
+      font-size: 8.05pt;
       font-weight: 800;
       color: #1E3A8A;
       margin-bottom: 3px;
@@ -834,15 +1047,18 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       padding-left: 15px;
     }
     .tight-list li {
-      margin-bottom: 1.5px;
+      margin-bottom: 2px;
+      text-align: left;
+      hyphens: auto;
+      -webkit-hyphens: auto;
     }
     .callout-warning {
       background: #FFFBEB;
       border: 1px solid #FCD34D;
       border-left: 4px solid #D97706;
       border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 8.0pt;
+      padding: 6.5px 10.5px;
+      font-size: 8.05pt;
       color: #92400E;
     }
     .math-inline {
@@ -860,7 +1076,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #DCFCE7;
       color: #166534;
       font-weight: 800;
-      font-size: 7.0pt;
+      font-size: 6.95pt;
       padding: 1.5px 5px;
       border-radius: 4px;
       border: 1px solid #86EFAC;
@@ -870,7 +1086,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #DBEAFE;
       color: #1E40AF;
       font-weight: 800;
-      font-size: 7.0pt;
+      font-size: 6.95pt;
       padding: 1.5px 5px;
       border-radius: 4px;
       border: 1px solid #93C5FD;
@@ -880,7 +1096,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #FEE2E2;
       color: #991B1B;
       font-weight: 800;
-      font-size: 7.0pt;
+      font-size: 6.95pt;
       padding: 1.5px 5px;
       border-radius: 4px;
       border: 1px solid #FCA5A5;
@@ -890,7 +1106,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #FEF3C7;
       color: #92400E;
       font-weight: 800;
-      font-size: 7.0pt;
+      font-size: 6.95pt;
       padding: 1.5px 5px;
       border-radius: 4px;
       border: 1px solid #FCD34D;
@@ -900,7 +1116,7 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       background: #F1F5F9;
       color: #475569;
       font-weight: 800;
-      font-size: 7.0pt;
+      font-size: 6.95pt;
       padding: 1.5px 5px;
       border-radius: 4px;
       border: 1px solid #CBD5E1;
@@ -913,13 +1129,13 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       border: 1px solid #CBD5E1;
       border-left: 5px solid #FF6D00;
       border-radius: 8px;
-      padding: 8px 12px;
-      margin: 6px 0 9px 0;
+      padding: 8.5px 12.5px;
+      margin: 6.5px 0 9.5px 0;
       break-inside: avoid;
       page-break-inside: avoid;
     }
     .ib-header {
-      font-size: 9.0pt;
+      font-size: 9.05pt;
       font-weight: 800;
       color: #0F172A;
       margin-bottom: 4px;
@@ -927,16 +1143,19 @@ function buildMasterHtmlDocument(resolvedCoverAndTocHtml) {
       padding-bottom: 3px;
     }
     .innovation-box p {
-      font-size: 8.15pt;
+      font-size: 8.2pt;
       margin-bottom: 4px;
     }
     .innovation-box ul, .innovation-box ol {
       margin: 0;
       padding-left: 17px;
-      font-size: 8.0pt;
+      font-size: 8.05pt;
     }
     .innovation-box li {
-      margin-bottom: 2px;
+      margin-bottom: 2.5px;
+      text-align: left;
+      hyphens: auto;
+      -webkit-hyphens: auto;
     }
 
     .doc-closing-box {
@@ -1187,8 +1406,8 @@ async function main() {
     `[Pass 1] PDF base renderizado (${totalPages} páginas, ${destMap.size} âncoras /Dests mapeadas).`
   );
 
-  // PASS 2 (and optional Pass 3 if any page shifted): Inject real 2-digit page numbers into TOC
-  for (let pass = 2; pass <= 3; pass++) {
+  // MULTI-PASS (up to Pass 4): Inject real page numbers into TOC until fixed-point convergence (shifted === 0)
+  for (let pass = 2; pass <= 4; pass++) {
     const missingAnchors = [];
     const resolvedCoverAndToc = coverAndTocHtml.replace(
       /\{\{PG:([a-zA-Z0-9_-]+)\}\}/g,
@@ -1243,7 +1462,7 @@ async function main() {
 
   const stat = fs.statSync(pdfDocsPath);
   console.log('HTML auditável salvo em os.tmpdir():', tempHtmlPath);
-  console.log('PDF Enciclopédico v2.11.0 (Running Headers/Footers + TOC Paginado) gerado em:', pdfDocsPath);
+  console.log('PDF Enciclopédico v2.11.0 (Escala Nativa 1.0x + Running Headers/Footers + TOC Paginado) gerado em:', pdfDocsPath);
   console.log('Cópia espelho sincronizada em:', pdfRootPath, '| Tamanho (bytes):', stat.size, '| Páginas:', totalPages);
 }
 

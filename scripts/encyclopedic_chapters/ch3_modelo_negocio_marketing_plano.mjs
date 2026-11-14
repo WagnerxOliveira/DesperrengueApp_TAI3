@@ -796,24 +796,24 @@ ${svgPrototipacaoLeanCiclo}
   Mesmo sob essas premissas ultraconservadoras, a operação atinge o <strong>Break-Even Operacional no Mês 3 (<code>40 OS</code>, geração líquida <code>+R$ 104,16</code>)</strong>, recupera integralmente o capital semente no <strong>Mês 6 (saldo acumulado <code>R$ 2.979,22 &gt; R$ 2.500,00</code>)</strong>, absorve sem endividamento a expansão da estrutura operacional no <code>M7</code> (inclusão de verba dedicada de ferramentas KYC/suporte e ajuda de custo de equipe, elevando o OPEX de <code>R$ 800</code> para <code>R$ 3.150–R$ 3.950/mês</code>) e encerra o 12º mês com <strong><code>1.445 OS</code> concluídas, <code>GMV</code> de <code>R$ 260.100,00</code>, Receita Bruta da Plataforma de <code>R$ 35.316,00</code>, Resultado Líquido / Geração de Caixa de <code>+R$ 3.105,54</code> e Saldo Final em Caixa de <code>R$ 5.605,54</code> (<code>ROI = +124,22%</code> no Ano 1)</strong>.
 </p>
 
-<table class="data-table compact-table" style="font-size: 8.8px;">
+<table class="data-table compact-table dre-matrix-table">
   <thead>
     <tr>
-      <th width="19%">Rubrica DRE / Fluxo (R$)</th>
-      <th>M0</th>
-      <th>M1</th>
-      <th>M2</th>
-      <th>M3 (BE)</th>
-      <th>M4</th>
-      <th>M5</th>
-      <th>M6</th>
-      <th>M7</th>
-      <th>M8</th>
-      <th>M9</th>
-      <th>M10</th>
-      <th>M11</th>
-      <th>M12</th>
-      <th>ANO 1</th>
+      <th width="14.0%">Rubrica DRE / Fluxo (R$)</th>
+      <th width="5.6%">M0</th>
+      <th width="6.2%">M1</th>
+      <th width="5.6%">M2</th>
+      <th width="6.1%">M3 (BE)</th>
+      <th width="5.6%">M4</th>
+      <th width="5.6%">M5</th>
+      <th width="5.7%">M6</th>
+      <th width="6.2%">M7</th>
+      <th width="6.2%">M8</th>
+      <th width="6.2%">M9</th>
+      <th width="6.2%">M10</th>
+      <th width="6.2%">M11</th>
+      <th width="6.2%">M12</th>
+      <th width="8.4%">ANO 1</th>
     </tr>
   </thead>
   <tbody>

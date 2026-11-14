@@ -370,13 +370,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -437,13 +437,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -513,13 +513,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -580,13 +580,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -638,13 +638,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -696,13 +696,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -754,13 +754,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -794,13 +794,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -861,13 +861,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -910,13 +910,13 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
 <table class="data-table compact-table">
   <thead>
     <tr>
-      <th width="7%">ID</th>
-      <th width="14%">Nome</th>
-      <th width="11%">Módulo</th>
-      <th width="28%">Descrição Formal Monossêmica</th>
-      <th width="19%">Pré-condições / Pós-condições</th>
+      <th width="6.5%">ID</th>
+      <th width="13.5%">Nome</th>
+      <th width="10.5%">Módulo</th>
+      <th width="27.5%">Descrição Formal Monossêmica</th>
+      <th width="18.5%">Pré-condições / Pós-condições</th>
       <th width="7%">Prior.</th>
-      <th width="14%">Implementação Real</th>
+      <th width="16.5%">Implementação Real</th>
     </tr>
   </thead>
   <tbody>
@@ -1856,8 +1856,8 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
   Cenário: Escalonamento de sinistro da Camada 1 para Camada 3 com cobertura mutualista sem deadlock
     Dado que uma ordem concluída há menos de 90 dias apresentou reincidência técnica documentada com foto forense
     Quando o chamado na Camada 1 supera 48 horas sem resolução pelo executor e o laudo pericial na Camada 2 confirma o vício
-    Então a rotina "trigger_layer3_rework" ([SEC-06]) adquire locks na ordem estrita "R1 (jobs) < R2 (job_mediations) < R3 (escrow_maturation_entries) < R4 (profiles)"
-    E debita o "warranty_pool_ledger" preservando o invariante "running_balance_cents >= 0" para custear novo profissional qualificado.</code></pre>
+    Então a rotina "trigger_layer3_rework" ([SEC-06]) adquire locks na ordem estrita "R1 (jobs) &lt; R2 (job_mediations) &lt; R3 (escrow_maturation_entries) &lt; R4 (profiles)"
+    E debita o "warranty_pool_ledger" preservando o invariante "running_balance_cents &gt;= 0" para custear novo profissional qualificado.</code></pre>
 </div>
 
 <!-- US-08 & US-09: EP-07 -->
@@ -1867,7 +1867,7 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
   <pre><code>Funcionalidade: Pipeline KYC Zero-Trust em 6 Estágios (Tier-0 Isolate + Argon + VIO/SERPRO + Carbon + WORM)
   Cenário: Verificação documental completa com paridade tripla de CPF e arquivamento WORM AES-256-GCM
     Dado que a captura documental aprovou nitidez Laplaciana no Tier-0 ("Isolate.run" a custo R$ 0,00)
-    Quando o endpoint "POST /v1/kyc/verify-full" valida o token Anti-Swap HMAC (TTL <= 180s), extrai campos via Argon High (temperature = 0.0)
+    Quando o endpoint "POST /v1/kyc/verify-full" valida o token Anti-Swap HMAC (TTL &lt;= 180s), extrai campos via Argon High (temperature = 0.0)
     E verifica a assinatura CMS/PKCS#7 ICP-Brasil do QR Code VIO, a igualdade "qr_cpf == ocr_cpf == typed_cpf" e a biometria SERPRO mTLS 1.3
     Então o "CarbonFraudOrchestrator" emite veredito acompanhado dos Top-3 fatores SHAP sem jargão técnico
     E cifra as evidências no cofre WORM "KWV2" (HKDF-SHA256 + AES-256-GCM) notificando o banco via "kyc-carbon-webhook".</code></pre>
@@ -1906,7 +1906,7 @@ export const ch4Html = String.raw`<section class="chapter-section" id="cap-4">
     Dado que o imóvel possui ordens concluídas com registros técnicos e notas fiscais vinculadas
     Quando o morador solicita "Exportar Passaporte do Imóvel"
     Então o "DesperrengueOfficialPdfService" compila em "Isolate.run" um documento "%PDF-1.4" estruturado conforme a ABNT NBR 5674 e a Lei 8.245/91
-    E estampa código verificador "DSP-PASS-*" com hash SHA-256 mantendo a UI estável a 120 FPS (<= 8,33 ms/frame).</code></pre>
+    E estampa código verificador "DSP-PASS-*" com hash SHA-256 mantendo a UI estável a 120 FPS (&lt;= 8,33 ms/frame).</code></pre>
 </div>
 
 <!-- US-12: EP-10 -->

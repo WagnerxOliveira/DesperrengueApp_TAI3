@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -181,9 +182,8 @@ async function inspectPdfStructureAndText(pdfBytes) {
       streams.push(contentsObj);
     }
 
-    const decodedStreams = streams.map((s) =>
-      decodeContentStreamText(inflatePdfStream(s, PDFRawStream), fontCMaps)
-    );
+    const rawStreams = streams.map((s) => inflatePdfStream(s, PDFRawStream));
+    const decodedStreams = rawStreams.map((s) => decodeContentStreamText(s, fontCMaps));
     const bodyText =
       decodedStreams.length > 1
         ? decodedStreams.slice(0, -1).join(' ').replace(/\s+/g, ' ').trim()
@@ -191,12 +191,14 @@ async function inspectPdfStructureAndText(pdfBytes) {
     const stampText =
       decodedStreams.length > 1 ? decodedStreams[decodedStreams.length - 1].trim() : '';
     const fullText = decodedStreams.join(' ').replace(/\s+/g, ' ').trim();
+    const rawBodyStream = rawStreams.length > 1 ? rawStreams[1] : (rawStreams[0] ?? '');
 
     const { width, height } = page.getSize();
     pageData.push({
       pageNum: idx + 1,
       width,
       height,
+      rawBodyStream,
       bodyText,
       stampText,
       fullText,
@@ -348,10 +350,10 @@ async function runSuite() {
   });
 
   await test('PROVA MATEMATICA (c): Cabecalho corrente e rodape editorial ("Pagina X de Y") presentes em todas as paginas internas 2..N sem colisao horizontal', async () => {
-    // Verify Named Page cover_sheet full-bleed CSS rule prevents Blink shrink-to-fit on Page 1
+    // Verify Named Page cover_sheet full-bleed CSS rule at 1.0x native scale (297mm)
     assert.ok(html.includes('@page cover_sheet'), 'CSS deve declarar @page cover_sheet { margin: 0mm }');
     assert.ok(html.includes('page: cover_sheet'), '.cover-page deve referenciar page: cover_sheet');
-    assert.ok(html.includes('height: 445.5mm'), '.cover-page deve compensar kPrintingMaximumShrinkFactor (297mm * 1.5 = 445.5mm)');
+    assert.ok(html.includes('height: 297mm'), '.cover-page deve usar height: 297mm em escala nativa 1.0x');
 
     // Page 1 (Cover) must NOT have running header/footer stamped
     assert.equal(
@@ -507,6 +509,86 @@ async function runSuite() {
     const missingClasses = [...usedClasses].filter((cls) => !styleBlock.includes(`.${cls}`));
     assert.deepEqual(missingClasses, [], `Classes CSS sem definicao em <style>: ${missingClasses.join(', ')}`);
     console.log(`    -> Total de classes CSS verificadas e estilizadas: ${usedClasses.size}`);
+  });
+
+  await test('PROVA MATEMATICA (d): Escala nativa 1.0x real (CTM 3.125 sem shrink-to-fit, documentElement.scrollWidth <= clientWidth e 0 tabelas transbordando)', () => {
+    // 1. Check PDF CTM scale factor on internal pages (3.125 = 300dpi/96dpi = exact 1.0x scale; 2.0833335 = 0.67x shrink-to-fit)
+    for (let p = 2; p <= totalPages; p++) {
+      const raw = pageData[p - 1].rawBodyStream;
+      assert.ok(
+        !raw.includes('2.083333'),
+        `Shrink-to-fit de 1.5x (CTM 2.0833335) detectado na pagina ${p} do PDF!`
+      );
+      assert.ok(
+        raw.includes('3.125 0 0 3.125'),
+        `Escala nativa 1.0x (CTM 3.125 0 0 3.125) ausente na pagina ${p} do PDF`
+      );
+    }
+
+    // 2. Check live Chromium DOM layout at A4 printable width (182mm = 688px at 96dpi)
+    const chromeCandidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    ];
+    const browserExe = chromeCandidates.find((p) => fs.existsSync(p));
+    assert.ok(browserExe, 'Navegador Chromium/Edge necessario para auditoria DOM');
+
+    const probeScript = `
+<style>::-webkit-scrollbar { display: none; }</style>
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  const docScrollWidth = document.documentElement.scrollWidth;
+  const docClientWidth = document.documentElement.clientWidth;
+  const tables = [...document.querySelectorAll('table')];
+  const overflowingTables = [];
+  tables.forEach((t, idx) => {
+    if (t.scrollWidth > t.clientWidth + 1) {
+      overflowingTables.push({ idx: idx + 1, scrollWidth: t.scrollWidth, clientWidth: t.clientWidth });
+    }
+  });
+  document.body.setAttribute('data-layout-audit', JSON.stringify({
+    docScrollWidth,
+    docClientWidth,
+    totalTables: tables.length,
+    overflowingTables
+  }));
+});
+</script>`;
+    const probeHtmlPath = path.join(os.tmpdir(), 'Tratado_Layout_Probe_v2.11.0.html');
+    fs.writeFileSync(
+      probeHtmlPath,
+      html.replace('</body>', `${probeScript}\n</body>`),
+      'utf8'
+    );
+
+    const domDump = execFileSync(
+      browserExe,
+      [
+        '--headless',
+        '--disable-gpu',
+        '--window-size=688,1050',
+        '--dump-dom',
+        'file:///' + probeHtmlPath.replace(/\\/g, '/'),
+      ],
+      { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }
+    );
+    if (fs.existsSync(probeHtmlPath)) fs.unlinkSync(probeHtmlPath);
+
+    const attrMatch = domDump.match(/data-layout-audit="([^"]+)"/);
+    assert.ok(attrMatch, 'Atributo data-layout-audit nao encontrado no dump DOM do Chromium');
+    const auditJson = JSON.parse(attrMatch[1].replace(/&quot;/g, '"'));
+    assert.ok(
+      auditJson.docScrollWidth <= auditJson.docClientWidth + 1,
+      `Transbordamento horizontal no documento: scrollWidth=${auditJson.docScrollWidth}px > clientWidth=${auditJson.docClientWidth}px`
+    );
+    assert.deepEqual(
+      auditJson.overflowingTables,
+      [],
+      `Tabelas transbordando a largura util (688px): ${JSON.stringify(auditJson.overflowingTables)}`
+    );
+    console.log(
+      `    -> Escala nativa 1.0x (CTM 3.125) confirmada nas ${totalPages} paginas | DOM scrollWidth=${auditJson.docScrollWidth}px <= clientWidth=${auditJson.docClientWidth}px | 0/${auditJson.totalTables} tabelas transbordando!`
+    );
   });
 
   console.log(`\nSUCESSO ABSOLUTO: ${passed}/${passed} assercoes editoriais, estruturais e provas matematicas pagina a pagina aprovadas!`);
