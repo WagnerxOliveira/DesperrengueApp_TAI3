@@ -535,27 +535,49 @@ async function authenticateBearerCeoOwner(req: Request): Promise<
 
 // -----------------------------------------------------------------------------
 // Templates Exclusivos de E-mail (Obsidian & Ouro 24k — 100% Isolados do Marketplace)
+// Anti-Threading Gmail (`X-Entity-Ref-ID`) + Idempotência Resend + Layout Single-Line
 // -----------------------------------------------------------------------------
-async function sendStrictCeoEmail(subject: string, html: string): Promise<boolean> {
+function deriveChallengeRef(challengeId: unknown): string {
+  const raw = typeof challengeId === "string" ? challengeId.replace(/-/g, "").trim() : "";
+  return raw.length >= 4 ? raw.slice(0, 4).toUpperCase() : "CEO1";
+}
+
+async function sendStrictCeoEmail(
+  subject: string,
+  html: string,
+  options?: { text?: string; entityRefId?: string },
+): Promise<boolean> {
   if (!RESEND_API_KEY) return false;
+  const entityRef = options?.entityRefId && options.entityRefId.trim().length > 0
+    ? options.entityRefId.trim()
+    : crypto.randomUUID();
+  const payload: Record<string, unknown> = {
+    from: EMAIL_FROM,
+    to: CEO_EMAIL_RECIPIENTS,
+    subject,
+    html,
+    headers: {
+      "X-Entity-Ref-ID": entityRef,
+    },
+  };
+  if (options?.text && options.text.trim().length > 0) {
+    payload.text = options.text.trim();
+  }
   const resp = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Idempotency-Key": entityRef,
     },
-    body: JSON.stringify({
-      from: EMAIL_FROM,
-      to: CEO_EMAIL_RECIPIENTS,
-      subject,
-      html,
-    }),
+    body: JSON.stringify(payload),
   });
   return resp.ok;
 }
 
 function buildSixDigitOtpEmailHtml(params: {
   otpCode: string;
+  challengeRef: string;
   badgeText: string;
   headline: string;
   subtitle: string;
@@ -564,8 +586,8 @@ function buildSixDigitOtpEmailHtml(params: {
   deviceHashPrefix: string;
   timestampSp: string;
 }): string {
-  const codeLeft = escapeHtml(params.otpCode.slice(0, 3));
-  const codeRight = escapeHtml(params.otpCode.slice(3, 6));
+  const contiguousSixDigits = escapeHtml(params.otpCode.replace(/\D/g, "").slice(0, 6));
+  const safeRef = escapeHtml(params.challengeRef.toUpperCase());
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -573,50 +595,48 @@ function buildSixDigitOtpEmailHtml(params: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(params.headline)}</title>
 </head>
-<body style="margin:0;padding:24px 12px;background:#05070B;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#F8FAFC;">
-  <div style="max-width:540px;margin:0 auto;background:#0C111B;border:1px solid #2A3446;border-radius:20px;overflow:hidden;">
-    <div style="padding:28px 24px 20px;background:linear-gradient(135deg,#090D16 0%,#161F30 100%);border-bottom:1px solid rgba(245,158,11,0.34);text-align:center;">
-      <div style="display:inline-block;padding:5px 14px;border-radius:999px;background:rgba(245,158,11,0.15);border:1px solid rgba(253,224,71,0.48);color:#FDE047;font-size:11px;font-weight:800;letter-spacing:1.7px;text-transform:uppercase;">
+<body style="margin:0;padding:18px 10px;background:#05070B;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#F8FAFC;">
+  <div style="max-width:520px;margin:0 auto;background:#0C111B;border:1px solid #2A3446;border-radius:20px;overflow:hidden;">
+    <div style="padding:24px 20px 18px;background:linear-gradient(135deg,#090D16 0%,#161F30 100%);border-bottom:1px solid rgba(245,158,11,0.34);text-align:center;">
+      <div style="display:inline-block;padding:5px 12px;border-radius:999px;background:rgba(245,158,11,0.15);border:1px solid rgba(253,224,71,0.48);color:#FDE047;font-size:10px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;">
         ${escapeHtml(params.badgeText)}
       </div>
-      <h1 style="margin:14px 0 4px;font-size:22px;font-weight:800;color:#FFFFFF;letter-spacing:-0.3px;">
+      <h1 style="margin:12px 0 4px;font-size:20px;line-height:1.3;font-weight:800;color:#FFFFFF;letter-spacing:-0.2px;">
         ${escapeHtml(params.headline)}
       </h1>
-      <p style="margin:0;font-size:13px;color:#94A3B8;">
+      <p style="margin:0;font-size:12.5px;color:#94A3B8;">
         ${escapeHtml(params.subtitle)}
       </p>
     </div>
-    <div style="padding:28px 24px;">
-      <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#CBD5E1;">
+    <div style="padding:22px 18px;">
+      <p style="margin:0 0 16px;font-size:13.5px;line-height:1.55;color:#CBD5E1;">
         Olá, <strong style="color:#FFFFFF;">Wagner</strong>. ${escapeHtml(params.instruction)}
       </p>
-      <div style="margin:22px 0;padding:22px 16px;background:#06090F;border:1px solid rgba(253,224,71,0.45);border-radius:16px;text-align:center;">
-        <div style="font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:38px;font-weight:800;letter-spacing:8px;color:#FDE047;">
-          ${codeLeft}&nbsp;${codeRight}
+      <div style="margin:18px 0;padding:18px 12px;background:#06090F;border:1.5px solid rgba(253,224,71,0.52);border-radius:16px;text-align:center;">
+        <div style="margin-bottom:8px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:11px;font-weight:800;letter-spacing:1.2px;color:#67E8F9;text-transform:uppercase;">
+          PROTOCOLO #${safeRef}
         </div>
-        <div style="margin-top:10px;font-size:12px;color:#94A3B8;">
-          Validade estrita de <strong style="color:#E2E8F0;">5 minutos</strong> · Uso único · Canal exclusivo Desperrengue CEO
+        <div style="display:inline-block;white-space:nowrap;word-break:keep-all;font-family:'SFMono-Regular',Consolas,'Roboto Mono','Liberation Mono',Menlo,monospace;font-size:32px;line-height:1.2;font-weight:800;letter-spacing:6px;padding-left:6px;color:#FDE047;user-select:all;-webkit-user-select:all;">${contiguousSixDigits}</div>
+        <div style="margin-top:10px;font-size:11.5px;line-height:1.45;color:#94A3B8;">
+          Validade de <strong style="color:#E2E8F0;">dez minutos</strong> · Uso único · Canal exclusivo CEO
         </div>
       </div>
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:18px 0;background:#101725;border-radius:12px;border:1px solid #1E293B;">
-        <tr>
-          <td style="padding:11px 16px;font-size:12px;color:#94A3B8;border-bottom:1px solid #1E293B;">Aparelho autorizado</td>
-          <td style="padding:11px 16px;font-size:12px;color:#F1F5F9;font-weight:600;text-align:right;border-bottom:1px solid #1E293B;">${escapeHtml(params.deviceLabel)}</td>
-        </tr>
-        <tr>
-          <td style="padding:11px 16px;font-size:12px;color:#94A3B8;border-bottom:1px solid #1E293B;">Assinatura Hardware SHA-256</td>
-          <td style="padding:11px 16px;font-family:monospace;font-size:12px;color:#67E8F9;text-align:right;border-bottom:1px solid #1E293B;">${escapeHtml(params.deviceHashPrefix.toUpperCase())}…</td>
-        </tr>
-        <tr>
-          <td style="padding:11px 16px;font-size:12px;color:#94A3B8;">Horário (Brasília)</td>
-          <td style="padding:11px 16px;font-size:12px;color:#E2E8F0;text-align:right;">${escapeHtml(params.timestampSp)}</td>
-        </tr>
-      </table>
-      <p style="margin:16px 0 0;font-size:12px;line-height:1.55;color:#94A3B8;">
-        <strong style="color:#F87171;">Blindagem Monocrática:</strong> Este canal é 100% isolado do aplicativo público do Marketplace e pertence exclusivamente a <strong style="color:#E2E8F0;">wagneroliveira2395@gmail.com</strong>.
+      <div style="margin:16px 0;padding:14px 16px;background:#101725;border-radius:12px;border:1px solid #1E293B;">
+        <div style="margin-bottom:8px;font-size:12px;line-height:1.45;color:#94A3B8;">
+          Aparelho autorizado: <strong style="color:#F1F5F9;">${escapeHtml(params.deviceLabel)}</strong>
+        </div>
+        <div style="margin-bottom:8px;font-size:12px;line-height:1.45;color:#94A3B8;">
+          Assinatura Hardware: <span style="font-family:monospace;color:#67E8F9;">${escapeHtml(params.deviceHashPrefix.toUpperCase())}…</span>
+        </div>
+        <div style="font-size:12px;line-height:1.45;color:#94A3B8;">
+          Emissão (Brasília): <strong style="color:#E2E8F0;">${escapeHtml(params.timestampSp)}</strong>
+        </div>
+      </div>
+      <p style="margin:14px 0 0;font-size:11.5px;line-height:1.55;color:#94A3B8;">
+        <strong style="color:#F87171;">Blindagem Monocrática:</strong> Canal isolado do aplicativo público do Marketplace e restrito exclusivamente a <strong style="color:#E2E8F0;">wagneroliveira2395@gmail.com</strong>.
       </p>
     </div>
-    <div style="padding:14px 24px;background:#070A10;border-top:1px solid #1E293B;text-align:center;font-size:11px;color:#64748B;">
+    <div style="padding:12px 18px;background:#070A10;border-top:1px solid #1E293B;text-align:center;font-size:11px;color:#64748B;">
       Autoridade Soberana Criptográfica · Desperrengue CEO (AES-256 + Split-Pepper)
     </div>
   </div>
@@ -981,27 +1001,33 @@ Deno.serve(async (req: Request) => {
 
     const issueJson = issueData as Record<string, unknown>;
     if (issueJson.ok !== true) {
-      const code = String(issueJson.error_code ?? "ERR_OTP_REQUEST_DENIED");
-      const status = code === "ERR_OTP_COOLDOWN_ACTIVE" ? 429 : 409;
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse(issueJson, status);
+      return jsonResponse(issueJson, 200);
     }
+
+    const challengeRef = String(issueJson.challenge_ref ?? deriveChallengeRef(issueJson.challenge_id));
+    const entityRefId = String(issueJson.challenge_id ?? crypto.randomUUID());
 
     const html = buildSixDigitOtpEmailHtml({
       otpCode,
+      challengeRef,
       badgeText: "DESPERRENGUE CEO · PRIMEIRO ACESSO SOBERANO",
       headline: "Código para Criar Sua Senha Mestra CEO",
       subtitle: "Autorização exclusiva de inicialização do Cofre Soberano",
       instruction:
-        "Digite os 6 dígitos abaixo no aplicativo Desperrengue CEO para habilitar a criação da sua Senha Mestra Forte de Administrador:",
+        "Digite ou cole o código único abaixo no aplicativo Desperrengue CEO para criar sua Senha Mestra Forte de Administrador:",
       deviceLabel,
       deviceHashPrefix: deviceHash.slice(0, 12),
       timestampSp: formatSaoPauloTimestamp(),
     });
 
     const delivered = await sendStrictCeoEmail(
-      `[Desperrengue CEO] Código de Primeiro Acesso: ${otpCode.slice(0, 3)} ${otpCode.slice(3, 6)}`,
+      `[Desperrengue CEO] Código ${otpCode} · Primeiro Acesso (#${challengeRef})`,
       html,
+      {
+        text: `Desperrengue CEO (Protocolo #${challengeRef}) — Seu código exclusivo de Primeiro Acesso é: ${otpCode}. Validade: dez minutos.`,
+        entityRefId,
+      },
     );
 
     await enforceTimingFloorWithJitter(startedAt, 420);
@@ -1013,6 +1039,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       challenge_id: issueJson.challenge_id,
+      challenge_ref: challengeRef,
+      issued_at: issueJson.issued_at ?? new Date().toISOString(),
       masked_destination: MASKED_CEO_EMAIL,
       expires_at: issueJson.expires_at,
       next_cooldown_seconds: issueJson.next_cooldown_seconds ?? 30,
@@ -1028,7 +1056,7 @@ Deno.serve(async (req: Request) => {
 
     if (!/^[0-9a-fA-F-]{36}$/.test(challengeId) || !/^[0-9]{6}$/.test(otpCode)) {
       await enforceTimingFloorWithJitter(startedAt, 380);
-      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 200);
     }
 
     const ownerUid = await ensureCanonicalCeoAuthUser();
@@ -1046,11 +1074,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const verifyJson = verifyData as Record<string, unknown>;
-    return jsonResponse(verifyJson, verifyJson.ok === true ? 200 : 400);
+    return jsonResponse(verifyJson, 200);
   }
 
   // ---------------------------------------------------------------------------
-  // 4. `set_initial_password` — Política Forte (HTTP 422) + AES-256 + Sessão In-App
+  // 4. `set_initial_password` — Política Forte + AES-256 + Sessão In-App
   // ---------------------------------------------------------------------------
   if (action === "set_initial_password") {
     const enrollmentTicket = typeof body.enrollment_ticket === "string"
@@ -1074,19 +1102,19 @@ Deno.serve(async (req: Request) => {
           message:
             "A Senha Mestra deve conter entre 12 e 64 caracteres, letras maiúsculas, minúsculas, números, símbolos especiais, alta entropia e nenhum nome ou sequência previsível.",
         },
-        422,
+        200,
       );
     }
 
     if (!/^[0-9a-f]{64}$/.test(enrollmentTicket)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED" }, 200);
     }
 
     const derivedCk = await deriveClientKeyFromPassword(rawPassword);
     if (providedCk.length > 0 && !constantTimeEqualsAscii(derivedCk, providedCk)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_KDF_INTEGRITY_MISMATCH" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_KDF_INTEGRITY_MISMATCH" }, 200);
     }
 
     const edgeKeyHex = await blindClientKeyWithEdgePepper(derivedCk);
@@ -1108,7 +1136,7 @@ Deno.serve(async (req: Request) => {
     const saveJson = saveData as Record<string, unknown>;
     if (saveJson.ok !== true) {
       await enforceTimingFloorWithJitter(startedAt, 420);
-      return jsonResponse(saveJson, 400);
+      return jsonResponse(saveJson, 200);
     }
 
     let jwtSession;
@@ -1163,7 +1191,7 @@ Deno.serve(async (req: Request) => {
     }
     if (!/^[0-9a-f]{64}$/.test(clientKeyHex)) {
       await enforceTimingFloorWithJitter(startedAt, 420);
-      return jsonResponse({ ok: false, error_code: "ERR_INVALID_MASTER_PASSWORD" }, 401);
+      return jsonResponse({ ok: false, error_code: "ERR_INVALID_MASTER_PASSWORD" }, 200);
     }
 
     if (!RESEND_API_KEY) {
@@ -1205,27 +1233,33 @@ Deno.serve(async (req: Request) => {
         await sendStrictCeoEmail("[Desperrengue CEO] Alerta de Bloqueio Automático do Cofre", alertHtml);
       }
 
-      const code = String(step1Json.error_code ?? "ERR_INVALID_MASTER_PASSWORD");
-      const status = code === "ERR_VAULT_LOCKED_BACKOFF" || code === "ERR_OTP_COOLDOWN_ACTIVE" ? 429 : 401;
       await enforceTimingFloorWithJitter(startedAt, 440);
-      return jsonResponse(step1Json, status);
+      return jsonResponse(step1Json, 200);
     }
+
+    const challengeRef = String(step1Json.challenge_ref ?? deriveChallengeRef(step1Json.challenge_id));
+    const entityRefId = String(step1Json.challenge_id ?? crypto.randomUUID());
 
     const html = buildSixDigitOtpEmailHtml({
       otpCode,
+      challengeRef,
       badgeText: "DESPERRENGUE CEO · VALIDAÇÃO DE ENTRADA 2FA",
-      headline: "Código de 6 Dígitos para Abrir o Cofre CEO",
-      subtitle: "2º Fator Criptográfico Obrigatório (Senha Mestra já validada)",
+      headline: "Código para Abrir o Cofre Soberano CEO",
+      subtitle: "Segundo fator criptográfico obrigatório (Senha Mestra já validada)",
       instruction:
-        "Sua Senha Mestra foi verificada com sucesso. Digite agora os 6 dígitos abaixo no Desperrengue CEO para concluir sua entrada:",
+        "Sua Senha Mestra foi verificada com sucesso. Digite ou cole o código único abaixo no Desperrengue CEO para concluir sua entrada:",
       deviceLabel,
       deviceHashPrefix: deviceHash.slice(0, 12),
       timestampSp: formatSaoPauloTimestamp(),
     });
 
     const delivered = await sendStrictCeoEmail(
-      `[Desperrengue CEO] Código de Acesso: ${otpCode.slice(0, 3)} ${otpCode.slice(3, 6)}`,
+      `[Desperrengue CEO] Código ${otpCode} · Entrada Segura (#${challengeRef})`,
       html,
+      {
+        text: `Desperrengue CEO (Protocolo #${challengeRef}) — Seu código exclusivo de entrada 2FA é: ${otpCode}. Validade: dez minutos.`,
+        entityRefId,
+      },
     );
 
     await enforceTimingFloorWithJitter(startedAt, 440);
@@ -1237,6 +1271,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       challenge_id: step1Json.challenge_id,
+      challenge_ref: challengeRef,
+      issued_at: step1Json.issued_at ?? new Date().toISOString(),
       masked_destination: MASKED_CEO_EMAIL,
       expires_at: step1Json.expires_at,
       next_cooldown_seconds: step1Json.next_cooldown_seconds ?? 30,
@@ -1252,7 +1288,7 @@ Deno.serve(async (req: Request) => {
       : "";
     if (!/^[0-9a-fA-F-]{36}$/.test(prevChallengeId)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 200);
     }
 
     if (!RESEND_API_KEY) {
@@ -1267,7 +1303,7 @@ Deno.serve(async (req: Request) => {
       p_previous_challenge_id: prevChallengeId,
       p_device_hash: deviceHash,
       p_ip_hash: ipHash,
-      p_new_otp_code: otpCode,
+      p_otp_code: otpCode,
     });
 
     if (resendErr || !resendData) {
@@ -1277,26 +1313,32 @@ Deno.serve(async (req: Request) => {
 
     const resendJson = resendData as Record<string, unknown>;
     if (resendJson.ok !== true) {
-      const code = String(resendJson.error_code ?? "ERR_OTP_REQUEST_DENIED");
-      const status = code === "ERR_OTP_COOLDOWN_ACTIVE" ? 429 : 400;
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse(resendJson, status);
+      return jsonResponse(resendJson, 200);
     }
+
+    const challengeRef = String(resendJson.challenge_ref ?? deriveChallengeRef(resendJson.challenge_id));
+    const entityRefId = String(resendJson.challenge_id ?? crypto.randomUUID());
 
     const html = buildSixDigitOtpEmailHtml({
       otpCode,
+      challengeRef,
       badgeText: "DESPERRENGUE CEO · NOVO CÓDIGO DE ENTRADA",
-      headline: "Novo Código de 6 Dígitos Gerado",
-      subtitle: "O código anterior foi invalidado imediatamente",
-      instruction: "Digite os 6 dígitos abaixo no Desperrengue CEO para concluir sua entrada:",
+      headline: "Novo Código Gerado para Abrir o Cofre CEO",
+      subtitle: "Utilize este e-mail mais recente para concluir sua entrada",
+      instruction: "Digite ou cole o código único abaixo no Desperrengue CEO para concluir sua entrada:",
       deviceLabel,
       deviceHashPrefix: deviceHash.slice(0, 12),
       timestampSp: formatSaoPauloTimestamp(),
     });
 
     const delivered = await sendStrictCeoEmail(
-      `[Desperrengue CEO] Novo Código de Acesso: ${otpCode.slice(0, 3)} ${otpCode.slice(3, 6)}`,
+      `[Desperrengue CEO] Código ${otpCode} · Novo Envio (#${challengeRef})`,
       html,
+      {
+        text: `Desperrengue CEO (Protocolo #${challengeRef}) — Seu novo código exclusivo de entrada é: ${otpCode}. Validade: dez minutos.`,
+        entityRefId,
+      },
     );
 
     await enforceTimingFloorWithJitter(startedAt, 420);
@@ -1308,6 +1350,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       challenge_id: resendJson.challenge_id,
+      challenge_ref: challengeRef,
+      issued_at: resendJson.issued_at ?? new Date().toISOString(),
       masked_destination: MASKED_CEO_EMAIL,
       expires_at: resendJson.expires_at,
       next_cooldown_seconds: resendJson.next_cooldown_seconds ?? 60,
@@ -1323,7 +1367,7 @@ Deno.serve(async (req: Request) => {
 
     if (!/^[0-9a-fA-F-]{36}$/.test(challengeId) || !/^[0-9]{6}$/.test(otpCode)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 200);
     }
 
     const ownerUid = await ensureCanonicalCeoAuthUser();
@@ -1343,7 +1387,7 @@ Deno.serve(async (req: Request) => {
     const completeJson = completeData as Record<string, unknown>;
     if (completeJson.ok !== true) {
       await enforceTimingFloorWithJitter(startedAt, 420);
-      return jsonResponse(completeJson, 401);
+      return jsonResponse(completeJson, 200);
     }
 
     let jwtSession;
@@ -1428,27 +1472,33 @@ Deno.serve(async (req: Request) => {
 
     const reqJson = reqData as Record<string, unknown>;
     if (reqJson.ok !== true) {
-      const code = String(reqJson.error_code ?? "ERR_OTP_REQUEST_DENIED");
-      const status = code === "ERR_OTP_COOLDOWN_ACTIVE" ? 429 : 401;
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse(reqJson, status);
+      return jsonResponse(reqJson, 200);
     }
+
+    const challengeRef = String(reqJson.challenge_ref ?? deriveChallengeRef(reqJson.challenge_id));
+    const entityRefId = String(reqJson.challenge_id ?? crypto.randomUUID());
 
     const html = buildSixDigitOtpEmailHtml({
       otpCode,
+      challengeRef,
       badgeText: "PERFIL CEO · ETAPA 1 DE 2 · AUTORIZAÇÃO DE TROCA",
       headline: "Código para Liberar Troca da Senha Mestra",
       subtitle: "Solicitado dentro do Perfil Soberano no Desperrengue CEO",
       instruction:
-        "Digite os 6 dígitos abaixo no Perfil CEO do aplicativo para autorizar e receber o link exclusivo de criação da nova senha:",
+        "Digite ou cole o código único abaixo no Perfil CEO do aplicativo para autorizar e receber o link exclusivo de criação da nova senha:",
       deviceLabel,
       deviceHashPrefix: deviceHash.slice(0, 12),
       timestampSp: formatSaoPauloTimestamp(),
     });
 
     const delivered = await sendStrictCeoEmail(
-      `[Desperrengue CEO] Código para Alterar Senha: ${otpCode.slice(0, 3)} ${otpCode.slice(3, 6)}`,
+      `[Desperrengue CEO] Código ${otpCode} · Alterar Senha (#${challengeRef})`,
       html,
+      {
+        text: `Desperrengue CEO (Protocolo #${challengeRef}) — Código para autorizar alteração da Senha Mestra: ${otpCode}. Validade: dez minutos.`,
+        entityRefId,
+      },
     );
 
     await enforceTimingFloorWithJitter(startedAt, 420);
@@ -1460,6 +1510,8 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({
       ok: true,
       challenge_id: reqJson.challenge_id,
+      challenge_ref: challengeRef,
+      issued_at: reqJson.issued_at ?? new Date().toISOString(),
       masked_destination: MASKED_CEO_EMAIL,
       expires_at: reqJson.expires_at,
       next_cooldown_seconds: reqJson.next_cooldown_seconds ?? 30,
@@ -1487,7 +1539,7 @@ Deno.serve(async (req: Request) => {
 
     if (!/^[0-9a-fA-F-]{36}$/.test(challengeId) || !/^[0-9]{6}$/.test(otpCode)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_INVALID_OTP_INPUT" }, 200);
     }
 
     const rawGrantHex = generateCsprngHex(32);
@@ -1512,7 +1564,7 @@ Deno.serve(async (req: Request) => {
     const verifyJson = verifyData as Record<string, unknown>;
     if (verifyJson.ok !== true) {
       await enforceTimingFloorWithJitter(startedAt, 420);
-      return jsonResponse(verifyJson, 400);
+      return jsonResponse(verifyJson, 200);
     }
 
     const linkId = String(verifyJson.link_id);
@@ -1527,8 +1579,12 @@ Deno.serve(async (req: Request) => {
     });
 
     const delivered = await sendStrictCeoEmail(
-      "[Desperrengue CEO] Troca de Senha Liberada — Toque para Abrir no Aplicativo",
+      `[Desperrengue CEO] Troca de Senha Liberada — Abrir no App (#${deriveChallengeRef(linkId)})`,
       emailHtml,
+      {
+        text: `Desperrengue CEO — Autorização única de redefinição da Senha Mestra liberada. Abra no aplicativo: ${bridgeUrl}`,
+        entityRefId: linkId,
+      },
     );
 
     await enforceTimingFloorWithJitter(startedAt, 440);
@@ -1577,7 +1633,7 @@ Deno.serve(async (req: Request) => {
 
     if (!/^[0-9a-fA-F-]{36}$/.test(linkId) || !/^[0-9a-f]{64}$/.test(grantToken)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_RESET_LINK_INVALID" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_RESET_LINK_INVALID" }, 200);
     }
 
     const policy = evaluateCeoStrongPassword(newPassword);
@@ -1593,14 +1649,14 @@ Deno.serve(async (req: Request) => {
           message:
             "A nova Senha Mestra deve atender 100% aos requisitos de complexidade, entropia e comprimento (12 a 64 caracteres).",
         },
-        422,
+        200,
       );
     }
 
     const derivedCk = await deriveClientKeyFromPassword(newPassword);
     if (providedCk.length > 0 && !constantTimeEqualsAscii(derivedCk, providedCk)) {
       await enforceTimingFloorWithJitter(startedAt, 400);
-      return jsonResponse({ ok: false, error_code: "ERR_KDF_INTEGRITY_MISMATCH" }, 400);
+      return jsonResponse({ ok: false, error_code: "ERR_KDF_INTEGRITY_MISMATCH" }, 200);
     }
 
     const newEdgeKeyHex = await blindClientKeyWithEdgePepper(derivedCk);
@@ -1625,10 +1681,8 @@ Deno.serve(async (req: Request) => {
 
     const commitJson = commitData as Record<string, unknown>;
     if (commitJson.ok !== true) {
-      const code = String(commitJson.error_code ?? "ERR_PASSWORD_ROTATION_DENIED");
-      const status = code === "ERR_PASSWORD_REUSE_FORBIDDEN" ? 422 : 400;
       await enforceTimingFloorWithJitter(startedAt, 440);
-      return jsonResponse(commitJson, status);
+      return jsonResponse(commitJson, 200);
     }
 
     // Revogação global de todos os refresh/access tokens GoTrue do titular para exigir novo login completo
@@ -1647,7 +1701,14 @@ Deno.serve(async (req: Request) => {
         timestampSp: formatSaoPauloTimestamp(),
         deviceLabel,
       });
-      await sendStrictCeoEmail("[Desperrengue CEO] Confirmação de Alteração da Senha Mestra", confirmHtml);
+      await sendStrictCeoEmail(
+        "[Desperrengue CEO] Confirmação de Alteração da Senha Mestra",
+        confirmHtml,
+        {
+          text: "Desperrengue CEO — Sua Senha Mestra de Administrador foi alterada com sucesso e todas as sessões anteriores foram encerradas.",
+          entityRefId: crypto.randomUUID(),
+        },
+      );
     }
 
     await enforceTimingFloorWithJitter(startedAt, 440);

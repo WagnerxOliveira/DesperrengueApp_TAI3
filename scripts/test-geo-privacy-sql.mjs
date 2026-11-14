@@ -802,6 +802,32 @@ check('16. Cofre Soberano v2.14.0 (`20261115000000` + `ceo_master_password_and_r
   assert.ok(pwAssertions >= 20, `Esperado >= 20 asserções em ceo_master_password_and_reset_smoke.sql (encontradas: ${pwAssertions})`);
 });
 
+check('17. Hardening OTP v2.14.1 (`20261115010000` + `ceo-vault-authority`): Janela 2x Same-Device, TTL 10m, Anti-Threading `X-Entity-Ref-ID`, Single-Line `nowrap` e Diagnóstico `ERR_OTP_SUPERSEDED_BY_NEWER_EMAIL`', () => {
+  const migOtpPath = path.join(MIGRATIONS_DIR, '20261115010000_ceo_otp_hardening_and_verification_fix.sql');
+  const edgeFnPath = path.join(MIGRATIONS_DIR, '..', 'functions', 'ceo-vault-authority', 'index.ts');
+  assert.ok(fs.existsSync(migOtpPath), 'Migration 20261115010000_ceo_otp_hardening_and_verification_fix.sql obrigatória');
+  assert.ok(fs.existsSync(edgeFnPath), 'Edge Function ceo-vault-authority/index.ts obrigatória');
+
+  const migOtp = fs.readFileSync(migOtpPath, 'utf8');
+  const edgeFn = fs.readFileSync(edgeFnPath, 'utf8');
+  const strippedOtp = lexSql(migOtp, '20261115010000_ceo_otp_hardening_and_verification_fix.sql');
+
+  assert.match(strippedOtp, /^\s*begin\s*;/i, '20261115010000 deve abrir com begin;');
+  assert.match(strippedOtp, /commit\s*;\s*$/i, '20261115010000 deve encerrar com commit;');
+  assert.doesNotMatch(strippedOtp, /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i);
+
+  assert.match(migOtp, /create\s+or\s+replace\s+function\s+private\.ceo_challenge_ref_code/i);
+  assert.match(migOtp, /create\s+or\s+replace\s+function\s+private\.ceo_issue_otp_challenge_internal/i);
+  assert.match(migOtp, /create\s+or\s+replace\s+function\s+private\.ceo_verify_and_consume_otp_challenge/i);
+  assert.match(migOtp, /ERR_OTP_SUPERSEDED_BY_NEWER_EMAIL/);
+  assert.match(migOtp, /interval\s+'10 minutes'/i);
+
+  assert.match(edgeFn, /X-Entity-Ref-ID/);
+  assert.match(edgeFn, /white-space:\s*nowrap/i);
+  assert.match(edgeFn, /PROTOCOLO #/);
+  assert.doesNotMatch(edgeFn, /otpCode\.slice\(0,\s*3\)[\s\S]{0,40}&nbsp;/, 'Proibido separar OTP com &nbsp; que causa quebra mobile 686 41\\n5');
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {

@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/analytics/founder_dashboard_models.dart';
 import '../data/founder_cockpit_repository.dart';
+import '../domain/ceo_smart_otp_formatter.dart';
 import '../domain/ceo_strong_password_policy.dart';
 import '../domain/founder_deep_link_policy.dart';
 import 'founder_animations_and_shaders.dart';
@@ -62,6 +63,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   final TextEditingController _confirmPasswordController =
       TextEditingController();
   final TextEditingController _otpController = TextEditingController();
+  final FocusNode _otpFocusNode = FocusNode();
 
   Timer? _countdownTimer;
 
@@ -130,6 +132,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     _wipePasswordBuffers(triggerRebuild: false);
     _emailController.clear();
     _otpController.clear();
+    _otpFocusNode.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -197,6 +200,28 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
       }
 
       _applyLockedUntil(gate.lockedUntilUtc);
+
+      final expectedPurpose = gate.passwordConfigured
+          ? 'LOGIN_2FA'
+          : 'INITIAL_PASSWORD_SETUP';
+      final restoredTicket = await widget.repository.loadValidPendingOtpTicket(
+        expectedPurpose: expectedPurpose,
+      );
+      if (!mounted) return;
+
+      if (restoredTicket != null) {
+        setState(() {
+          _busy = false;
+          _activeOtpTicket = restoredTicket;
+          _infoBanner =
+              'Código ativo restaurado (Protocolo #${restoredTicket.challengeRef}). Digite ou cole os 6 dígitos enviados para $kMonocraticCeoEmail.';
+          _stage = gate.passwordConfigured
+              ? CeoSovereignAuthStage.stageDailyLoginVerifyOtp
+              : CeoSovereignAuthStage.stageBootstrapVerifyOtp;
+        });
+        return;
+      }
+
       setState(() {
         _busy = false;
         _stage = gate.passwordConfigured
@@ -223,9 +248,12 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   // CERIMÔNIA DE PRIMEIRO ACESSO (CRIAÇÃO INICIAL DA SENHA MESTRA FORTE)
   // ---------------------------------------------------------------------------
 
-  Future<void> _handleBootstrapSendOtp() async {
+  Future<void> _handleBootstrapSendOtp({bool isResend = false}) async {
     if (_busy || _otpCooldownRemainingSec > 0) return;
-    final typedEmail = _emailController.text.trim().toLowerCase();
+    final rawTyped = _emailController.text.trim().toLowerCase();
+    final typedEmail = (isResend && rawTyped.isEmpty)
+        ? kMonocraticCeoEmail
+        : rawTyped;
     if (typedEmail.isEmpty) {
       setState(() {
         _errorBanner =
@@ -252,6 +280,9 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _activeOtpTicket = ticket;
         _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
         _remainingOtpAttempts = null;
+        _infoBanner = isResend
+            ? 'Novo código enviado (Protocolo #${ticket.challengeRef}). Utilize o e-mail mais recente enviado para $kMonocraticCeoEmail.'
+            : 'Código enviado (Protocolo #${ticket.challengeRef}). Confira sua caixa de entrada em $kMonocraticCeoEmail.';
         _stage = CeoSovereignAuthStage.stageBootstrapVerifyOtp;
       });
     } on CeoVaultSecurityException catch (e) {
@@ -282,7 +313,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
   Future<void> _handleBootstrapVerifyOtp() async {
     final ticket = _activeOtpTicket;
-    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    final digits =
+        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
     if (_busy || ticket == null) return;
     if (digits.length != 6) {
       setState(() {
@@ -309,6 +341,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
       _wipePasswordBuffers(triggerRebuild: false);
       setState(() {
         _busy = false;
+        _activeOtpTicket = null;
         _enrollmentTicketHex = enrollmentTicket;
         _infoBanner =
             'Identidade confirmada! Crie agora sua Senha Mestra Forte de Administrador CEO.';
@@ -420,7 +453,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
         _remainingOtpAttempts = null;
         _infoBanner =
-            'Senha Mestra validada! Enviamos um código exclusivo de 6 dígitos para $kMonocraticCeoEmail.';
+            'Senha Mestra validada! Enviamos o código (Protocolo #${ticket.challengeRef}) para $kMonocraticCeoEmail.';
         _stage = CeoSovereignAuthStage.stageDailyLoginVerifyOtp;
       });
     } on CeoVaultSecurityException catch (e) {
@@ -471,7 +504,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _activeOtpTicket = fresh;
         _otpCooldownRemainingSec = fresh.nextCooldownSeconds;
         _infoBanner =
-            'Novo código de 6 dígitos enviado para $kMonocraticCeoEmail.';
+            'Novo código enviado (Protocolo #${fresh.challengeRef}). Utilize o e-mail mais recente em $kMonocraticCeoEmail.';
       });
     } on CeoVaultSecurityException catch (e) {
       if (!mounted) return;
@@ -493,7 +526,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
   Future<void> _handleDailyLoginVerifyOtp() async {
     final ticket = _activeOtpTicket;
-    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    final digits =
+        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
     if (_busy || ticket == null) return;
     if (digits.length != 6) {
       setState(() {
@@ -516,6 +550,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         sixDigitCode: digits,
       );
       if (!mounted) return;
+      _activeOtpTicket = null;
       await widget.onVaultUnlocked(session);
     } on CeoVaultSecurityException catch (e) {
       if (!mounted) return;
@@ -601,7 +636,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   void _appendOtpDigitFromPad(int digit) {
-    final current = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    final current =
+        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
     if (current.length >= 6 || _busy) return;
     HapticFeedback.selectionClick();
     final next = '$current$digit';
@@ -611,13 +647,39 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   void _backspaceOtpFromPad() {
-    final current = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    final current =
+        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
     if (current.isEmpty || _busy) return;
     HapticFeedback.selectionClick();
     final next = current.substring(0, current.length - 1);
     _otpController.text = next;
     _otpController.selection = TextSelection.collapsed(offset: next.length);
     setState(() {});
+  }
+
+  Future<void> _handlePasteOtpFromClipboard() async {
+    if (_busy) return;
+    try {
+      final clip = await Clipboard.getData(Clipboard.kTextPlain);
+      final raw = clip?.text ?? '';
+      final extracted = CeoSmartOtpExtractor.extractSixDigitClusterOrNull(raw) ??
+          CeoSmartOtpExtractor.extractBestSixDigits(raw);
+      if (!mounted) return;
+      if (extracted.isEmpty) {
+        setState(() {
+          _errorBanner =
+              'Nenhum código numérico encontrado na área de transferência.';
+        });
+        return;
+      }
+      HapticFeedback.lightImpact();
+      _otpController.text = extracted;
+      _otpController.selection =
+          TextSelection.collapsed(offset: extracted.length);
+      setState(() {
+        _errorBanner = null;
+      });
+    } catch (_) {}
   }
 
   // ---------------------------------------------------------------------------
@@ -792,17 +854,19 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           badgeLabel: 'PRIMEIRO ACESSO · ETAPA 1 DE 2',
           headline: 'Valide os 6 Dígitos do Seu E-mail',
           subtitle:
-              'Enviamos um código exclusivo de 6 dígitos para $kMonocraticCeoEmail. Digite-o abaixo para liberar a criação da sua Senha Mestra Forte:',
+              'Enviamos um código exclusivo de 6 dígitos para $kMonocraticCeoEmail. Digite ou cole os 6 dígitos abaixo para liberar a criação da sua Senha Mestra Forte:',
           submitButtonKey: const ValueKey<String>(
             'ceo-bootstrap-verify-otp-btn',
           ),
           submitLabel: 'Confirmar Código e Criar Senha Mestra',
           onSubmit: _handleBootstrapVerifyOtp,
-          onResend: _handleBootstrapSendOtp,
+          onResend: () => _handleBootstrapSendOtp(isResend: true),
           onBack: () {
             _otpController.clear();
+            unawaited(widget.repository.clearPendingOtpTicket());
             setState(() {
               _errorBanner = null;
+              _activeOtpTicket = null;
               _stage = CeoSovereignAuthStage.stageBootstrapRequestEmail;
             });
           },
@@ -835,7 +899,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           badgeLabel: 'VERIFICAÇÃO 2FA DE ENTRADA · ETAPA 2 DE 2',
           headline: 'Código de 6 Dígitos Enviado ao Seu E-mail',
           subtitle:
-              'Sua Senha Mestra foi provada! Digite agora os 6 dígitos enviados exclusivamente para $kMonocraticCeoEmail para abrir a Sala de Guerra:',
+              'Sua Senha Mestra foi provada! Digite ou cole agora os 6 dígitos enviados exclusivamente para $kMonocraticCeoEmail para abrir a Sala de Guerra:',
           submitButtonKey: const ValueKey<String>('ceo-login-verify-otp-btn'),
           submitLabel: 'Validar 6 Dígitos e Abrir Desperrengue CEO',
           onSubmit: _handleDailyLoginVerifyOtp,
@@ -843,6 +907,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           onBack: () {
             _otpController.clear();
             _wipePasswordBuffers(triggerRebuild: false);
+            unawaited(widget.repository.clearPendingOtpTicket());
             setState(() {
               _errorBanner = null;
               _activeOtpTicket = null;
@@ -909,7 +974,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           key: const ValueKey<String>('ceo-bootstrap-send-otp-btn'),
           onPressed: (_busy || _otpCooldownRemainingSec > 0)
               ? null
-              : _handleBootstrapSendOtp,
+              : () => _handleBootstrapSendOtp(),
           style: FilledButton.styleFrom(
             backgroundColor: FounderSovereignTokens.imperialGold,
             foregroundColor: const Color(0xFF0B0F17),
@@ -1197,7 +1262,10 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     required VoidCallback onResend,
     required VoidCallback onBack,
   }) {
-    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    final digits =
+        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
+    final activeRef = _activeOtpTicket?.challengeRef;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -1220,6 +1288,69 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             height: 1.45,
           ),
         ),
+        const SizedBox(height: 10),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 6,
+          children: <Widget>[
+            if (activeRef != null && activeRef.isNotEmpty)
+              Container(
+                key: const ValueKey<String>('ceo-otp-protocol-ref-badge'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: FounderSovereignTokens.solvencyEmerald
+                      .withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: FounderSovereignTokens.solvencyEmerald
+                        .withValues(alpha: 0.45),
+                  ),
+                ),
+                child: Text(
+                  'PROTOCOLO #$activeRef · VÁLIDO POR 10 MIN',
+                  style: FounderSovereignTokens.monoMetric(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                    color: FounderSovereignTokens.solvencyEmerald,
+                  ),
+                ),
+              ),
+            OutlinedButton.icon(
+              key: const ValueKey<String>('ceo-otp-paste-btn'),
+              onPressed: _busy ? null : _handlePasteOtpFromClipboard,
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                side: BorderSide(
+                  color: FounderSovereignTokens.imperialGold
+                      .withValues(alpha: 0.55),
+                ),
+              ),
+              icon: const Icon(
+                Icons.content_paste_go_rounded,
+                size: 15,
+                color: FounderSovereignTokens.imperialGoldBright,
+              ),
+              label: const Text(
+                'Colar código',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
+              ),
+            ),
+          ],
+        ),
         if (_remainingOtpAttempts != null) ...<Widget>[
           const SizedBox(height: 6),
           Text(
@@ -1231,20 +1362,24 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             ),
           ),
         ],
-        const SizedBox(height: 14),
-        _SixDigitOpticalDisplay(digits: digits),
+        const SizedBox(height: 12),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _otpFocusNode.requestFocus(),
+          child: _SixDigitOpticalDisplay(digits: digits),
+        ),
         const SizedBox(height: 10),
         TextField(
           key: const ValueKey<String>('ceo-otp-code-input'),
           controller: _otpController,
+          focusNode: _otpFocusNode,
           keyboardType: TextInputType.number,
-          maxLength: 6,
+          autofillHints: const <String>[AutofillHints.oneTimeCode],
           autocorrect: false,
           enableSuggestions: false,
           enableIMEPersonalizedLearning: false,
-          inputFormatters: <TextInputFormatter>[
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(6),
+          inputFormatters: const <TextInputFormatter>[
+            CeoSmartSixDigitOtpInputFormatter(),
           ],
           style: FounderSovereignTokens.monoMetric(
             fontSize: 16,
@@ -1264,16 +1399,15 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           ),
           onChanged: (_) => setState(() {}),
           onSubmitted: (_) {
-            if (digits.length == 6) onSubmit();
+            if (!_busy &&
+                CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text)
+                        .length ==
+                    6) {
+              onSubmit();
+            }
           },
         ),
-        const SizedBox(height: 10),
-        _CompactNumericPad(
-          enabled: !_busy,
-          onDigit: _appendOtpDigitFromPad,
-          onBackspace: _backspaceOtpFromPad,
-        ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         FilledButton.icon(
           key: submitButtonKey,
           onPressed: (_busy || digits.length != 6) ? null : onSubmit,
@@ -1298,7 +1432,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Wrap(
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -1320,6 +1454,12 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        _CompactNumericPad(
+          enabled: !_busy,
+          onDigit: _appendOtpDigitFromPad,
+          onBackspace: _backspaceOtpFromPad,
         ),
       ],
     );

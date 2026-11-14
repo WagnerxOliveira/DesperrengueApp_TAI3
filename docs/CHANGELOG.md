@@ -18,8 +18,21 @@ flowchart LR
     V4 --> V5["v2.9.0 — v2.11.1<br/>Temporal Geo-Privacy Lock (HMAC-SHA256),<br/>Mapa Full-Screen 100%, Imagens 0ms & NFC-e Real"]:::v
     V5 --> V6["v2.12.0 — v2.12.1<br/>Founder Sovereign Cockpit, Ícone Obsidian/Ouro 24k,<br/>Dual-APK Zero-Trust, CPC 47 BIGINT & 5 DPs"]:::v
     V6 --> V7["v2.13.0 — v2.13.1<br/>Cofre Monocrático, Ponte Realtime<br/>100% Real & Auto-Update Direto CEO"]:::v
-    V7 --> V8["v2.14.0 (Atual)<br/>Cofre Senha Mestra Forte AES-256,<br/>2FA 6d Isolado & Deep-Link Efêmero"]:::cur
+    V7 --> V8["v2.14.0 — v2.14.1 (Atual)<br/>Cofre Senha Mestra Forte AES-256,<br/>2FA 6d Anti-Race NIST & Deep-Link"]:::cur
 ```
+
+---
+
+## [v2.14.1+202611146] — 2026-11-14 — Correção Forense Definitiva de Validação OTP de 6 Dígitos (`NIST SP 800-63B`), Anti-Threading `X-Entity-Ref-ID`, Janela Same-Device 2x e Extrator Inteligente de Colagem Mobile
+
+### Corrigido & Endurecido (Autópsia Forense em Produção + UX Fintech AAL3 no `Desperrengue CEO`)
+* **Janela Controlada de 2 Desafios Ativos no Mesmo Dispositivo (`TTL = 10 min`), Consumo Atômico Anti-Replay e Diagnóstico `ERR_OTP_SUPERSEDED_BY_NEWER_EMAIL` ([`20261115010000_ceo_otp_hardening_and_verification_fix.sql`](../supabase/migrations/20261115010000_ceo_otp_hardening_and_verification_fix.sql)):**
+  * Eliminação da condição de corrida entre entrega assíncrona de e-mail mobile e botão de reenvio: preserva no máximo `2` desafios não consumidos dentro de `10 minutos` vinculados ao exato mesmo `device_fingerprint_sha256` (`SHA-256` em tempo constante), incrementando `attempts` simultaneamente nos ativos (mantendo o teto rígido global de `5` tentativas) e revogando instantaneamente todos os demais no milissegundo em que um código válido é consumido.
+  * Protocolo visual determinístico `#XXXX` (`private.ceo_challenge_ref_code`) exibido simultaneamente no e-mail e na tela do aplicativo, somado ao erro tipado `ERR_OTP_SUPERSEDED_BY_NEWER_EMAIL` caso o titular informe um código pertencente a um envio antigo já substituído.
+* **E-mail OTP em Linha Única Inquebrável (`white-space: nowrap`) e Anti-Agrupamento no Gmail via `X-Entity-Ref-ID` ([`ceo-vault-authority/index.ts`](../supabase/functions/ceo-vault-authority/index.ts)):**
+  * Erradicação da quebra visual mobile `686 41\n5` causada por `&nbsp;` em `42px` no Gmail Android, adotando `6` dígitos contíguos em linha única (`32px`, `letter-spacing: 6px`, `white-space: nowrap`), cabeçalho `X-Entity-Ref-ID` único por desafio (impedindo que o Gmail oculte códigos novos dentro de *threads* colapsadas) e respostas de validação estruturadas em `HTTP 200` JSON.
+* **Extrator e Formatador Inteligente de Colagem (`CeoSmartOtpExtractor`), Persistência de Ticket e Espelho Determinístico de Dispositivo ([`ceo_smart_otp_formatter.dart`](../app/lib/features/founder/domain/ceo_smart_otp_formatter.dart), [`founder_cockpit_repository.dart`](../app/lib/features/founder/data/founder_cockpit_repository.dart), [`founder_auth_and_vault_gate.dart`](../app/lib/features/founder/presentation/founder_auth_and_vault_gate.dart), [`founder_ceo_profile_sheet.dart`](../app/lib/features/founder/presentation/founder_ceo_profile_sheet.dart) & [`ceo_smart_otp_formatter_test.dart`](../app/test/features/founder/ceo_smart_otp_formatter_test.dart)):**
+  * Remoção de `maxLength: 6` bruto nos `TextField`s de OTP (que fazia o IME Android/Samsung truncar `"686\u00A0415"` em `"686\u00A041"` antes da higienização), substituído por `CeoSmartSixDigitOtpInputFormatter` + botão de 1 toque **`Colar código`**, restauração automática do `CeoOtpChallengeTicket` ao alternar entre o Gmail e o `Desperrengue CEO` e espelhamento resiliente da semente do `device_fingerprint_sha256`.
 
 ---
 

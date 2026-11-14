@@ -20,10 +20,12 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/analytics/founder_dashboard_models.dart';
 import '../../../core/utils/off_thread.dart';
+import '../domain/ceo_smart_otp_formatter.dart';
 import '../domain/ceo_strong_password_policy.dart';
 
 /// Sessão autenticada de Step-Up Zero-Trust do Cofre Monocrático CEO.
@@ -120,19 +122,62 @@ class CeoProfileSecurityStatus {
 
 /// Resposta da solicitação do código exclusivo de 6 dígitos enviado a `wagneroliveira2395@gmail.com`.
 class CeoOtpChallengeTicket {
-  const CeoOtpChallengeTicket({
+  CeoOtpChallengeTicket({
     required this.challengeId,
     required this.maskedDestination,
     required this.expiresAtUtc,
     required this.nextCooldownSeconds,
     required this.purpose,
-  });
+    String? challengeRef,
+    DateTime? issuedAtUtc,
+  })  : challengeRef = (challengeRef != null && challengeRef.trim().isNotEmpty)
+            ? challengeRef.trim().toUpperCase()
+            : deriveRefFromChallengeId(challengeId),
+        issuedAtUtc = (issuedAtUtc ?? DateTime.now().toUtc()).toUtc();
 
   final String challengeId;
+  final String challengeRef;
+  final DateTime issuedAtUtc;
   final String maskedDestination;
   final DateTime expiresAtUtc;
   final int nextCooldownSeconds;
   final String purpose;
+
+  bool isExpiredAt(DateTime nowUtc) => !expiresAtUtc.isAfter(nowUtc.toUtc());
+
+  static String deriveRefFromChallengeId(String rawId) {
+    final hex = rawId.replaceAll('-', '').trim().toUpperCase();
+    return hex.length >= 4 ? hex.substring(0, 4) : '0000';
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'challenge_id': challengeId,
+        'challenge_ref': challengeRef,
+        'issued_at': issuedAtUtc.toIso8601String(),
+        'masked_destination': maskedDestination,
+        'expires_at': expiresAtUtc.toIso8601String(),
+        'next_cooldown_seconds': nextCooldownSeconds,
+        'purpose': purpose,
+      };
+
+  factory CeoOtpChallengeTicket.fromJson(Map<String, dynamic> json) {
+    final cid = (json['challenge_id'] ?? '').toString().trim();
+    return CeoOtpChallengeTicket(
+      challengeId: cid,
+      challengeRef: (json['challenge_ref'] ?? '').toString(),
+      issuedAtUtc:
+          DateTime.tryParse((json['issued_at'] ?? '').toString())?.toUtc(),
+      maskedDestination:
+          (json['masked_destination'] ?? kMonocraticCeoEmail).toString(),
+      expiresAtUtc:
+          DateTime.tryParse((json['expires_at'] ?? '').toString())?.toUtc() ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      nextCooldownSeconds: (json['next_cooldown_seconds'] is num)
+          ? (json['next_cooldown_seconds'] as num).round()
+          : 30,
+      purpose: (json['purpose'] ?? '').toString(),
+    );
+  }
 }
 
 /// Exceção tipada e estruturada do Cofre Monocrático CEO.
@@ -144,6 +189,7 @@ class CeoVaultSecurityException implements Exception {
     this.failedAttempts,
     this.lockedUntilUtc,
     this.retryAfterSeconds,
+    this.latestChallengeRef,
     this.failedPolicyRules = const <String>[],
   });
 
@@ -153,6 +199,7 @@ class CeoVaultSecurityException implements Exception {
   final int? failedAttempts;
   final DateTime? lockedUntilUtc;
   final int? retryAfterSeconds;
+  final String? latestChallengeRef;
   final List<String> failedPolicyRules;
 
   @override
@@ -417,6 +464,28 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
     } catch (_) {}
   }
 
+  static Map<String, dynamic>? _tryDecodeMapPayload(dynamic payload) {
+    if (payload is Map) {
+      return Map<String, dynamic>.from(payload);
+    }
+    if (payload is List<int> && payload.isNotEmpty) {
+      try {
+        final str = utf8.decode(payload, allowMalformed: true).trim();
+        if (str.isNotEmpty) {
+          final decoded = jsonDecode(str);
+          if (decoded is Map) return Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+    }
+    if (payload is String && payload.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(payload);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
+  }
+
   @override
   Future<Map<String, dynamic>> invokeVaultAuthority(
     Map<String, dynamic> body,
@@ -426,26 +495,15 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
         'ceo-vault-authority',
         body: body,
       );
-      final data = res.data;
-      if (data is Map) {
-        return Map<String, dynamic>.from(data);
-      }
-      if (data is String && data.trim().isNotEmpty) {
-        final decoded = jsonDecode(data);
-        if (decoded is Map) return Map<String, dynamic>.from(decoded);
-      }
-      return const <String, dynamic>{'ok': false};
+      final parsed = _tryDecodeMapPayload(res.data);
+      if (parsed != null) return parsed;
+      return const <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_OTP_VERIFICATION_FAILED',
+      };
     } on FunctionException catch (e) {
-      final details = e.details;
-      if (details is Map) {
-        return Map<String, dynamic>.from(details);
-      }
-      if (details is String && details.trim().isNotEmpty) {
-        try {
-          final decoded = jsonDecode(details);
-          if (decoded is Map) return Map<String, dynamic>.from(decoded);
-        } catch (_) {}
-      }
+      final parsedDetails = _tryDecodeMapPayload(e.details);
+      if (parsedDetails != null) return parsedDetails;
       return <String, dynamic>{
         'ok': false,
         'error_code': 'ERR_EDGE_HTTP_${e.status}',
@@ -518,8 +576,13 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
   }
 }
 
-String _translateSecurityError(String rawCodeOrMessage) {
+String _translateSecurityError(
+  String rawCodeOrMessage, {
+  String? latestChallengeRef,
+}) {
   final msg = rawCodeOrMessage.trim();
+  final cleanRef = (latestChallengeRef ?? '').trim().toUpperCase();
+
   if (msg.contains('ERR_MONOCRATIC_OWNER_ONLY')) {
     return 'Acesso bloqueado: o aplicativo Desperrengue CEO é restrito exclusivamente ao titular soberano ($kMonocraticCeoEmail).';
   }
@@ -553,14 +616,32 @@ String _translateSecurityError(String rawCodeOrMessage) {
   if (msg.contains('ERR_OTP_COOLDOWN_ACTIVE')) {
     return 'Aguarde o intervalo de proteção antes de solicitar um novo código de 6 dígitos.';
   }
-  if (msg.contains('ERR_OTP_CODE_INCORRECT')) {
-    return 'Código de 6 dígitos incorreto. Confira o último e-mail enviado para $kMonocraticCeoEmail.';
+  if (msg.contains('ERR_OTP_SUPERSEDED_BY_NEWER_EMAIL')) {
+    final refSuffix = cleanRef.isNotEmpty ? ' (Protocolo #$cleanRef)' : '';
+    return 'Você informou o código de um e-mail anterior já substituído. Abra o e-mail mais recente$refSuffix enviado para $kMonocraticCeoEmail.';
   }
-  if (msg.contains('ERR_OTP_MAX_ATTEMPTS_EXCEEDED') ||
-      msg.contains('ERR_OTP_EXPIRED') ||
-      msg.contains('ERR_OTP_ALREADY_USED') ||
-      msg.contains('ERR_OTP_CHALLENGE_NOT_FOUND')) {
-    return 'Este código de 6 dígitos expirou ou já foi utilizado. Solicite um novo código seguro.';
+  if (msg.contains('ERR_OTP_CODE_INCORRECT')) {
+    final refSuffix = cleanRef.isNotEmpty ? ' (Protocolo #$cleanRef)' : '';
+    return 'Código de 6 dígitos incorreto. Confira o código do e-mail$refSuffix enviado para $kMonocraticCeoEmail.';
+  }
+  if (msg.contains('ERR_OTP_DEVICE_MISMATCH')) {
+    return 'Este código foi solicitado em outra sessão ou instância. Toque em "Reenviar código" para gerar um novo neste aparelho.';
+  }
+  if (msg.contains('ERR_OTP_MAX_ATTEMPTS_EXCEEDED')) {
+    return 'Limite de 5 tentativas atingido para este código. Toque em "Reenviar código" para receber um novo.';
+  }
+  if (msg.contains('ERR_OTP_EXPIRED')) {
+    return 'Este código de 6 dígitos expirou (validade de 10 minutos). Toque em "Reenviar código" para receber um novo.';
+  }
+  if (msg.contains('ERR_OTP_ALREADY_USED')) {
+    return 'Este código de 6 dígitos já foi utilizado ou substituído. Solicite um novo código seguro.';
+  }
+  if (msg.contains('ERR_OTP_CHALLENGE_NOT_FOUND')) {
+    return 'Desafio de verificação expirado ou não localizado. Toque em "Reenviar código" para receber um novo código.';
+  }
+  if (msg.contains('ERR_OTP_VERIFICATION_FAILED') ||
+      msg.contains('ERR_EDGE_HTTP_')) {
+    return 'Falha momentânea de comunicação ao validar os 6 dígitos. Confira sua conexão e tente novamente.';
   }
   if (msg.contains('ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED')) {
     return 'A autorização temporária expirou (10 min). Solicite um novo código de 6 dígitos.';
@@ -590,6 +671,10 @@ class FounderCockpitRepository {
 
   static const String _deviceSeedStorageKey =
       'dsp_ceo_sovereign_device_seed_v1';
+  static const String _deviceSeedMirrorPrefsKey =
+      'dsp_ceo_sovereign_device_seed_mirror_v1';
+  static const String _pendingOtpTicketPrefsKey =
+      'dsp_ceo_pending_otp_ticket_v1';
 
   final CeoBackendGateway _gateway;
   final FlutterSecureStorage _secureStorage;
@@ -654,28 +739,95 @@ class FounderCockpitRepository {
   }
 
   /// Gera e persiste uma semente CSPRNG de 256 bits no Keystore/Keychain seguro do aparelho,
-  /// retornando apenas seu digest `SHA-256` (`CHAR(64)` hexadecimal).
+  /// com espelho resiliente local para impedir mutação de fingerprint durante troca de apps
+  /// (ex.: alternância rápida entre Desperrengue CEO e Gmail no Android One UI).
   Future<String> getOrCreateDeviceHashHex() async {
     if (_cachedDeviceHashHex != null) return _cachedDeviceHashHex!;
+
+    String? seed;
     try {
-      var seed = await _secureStorage.read(key: _deviceSeedStorageKey);
-      if (seed == null || seed.length < 32) {
-        final rng = math.Random.secure();
-        final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
-        seed = base64UrlEncode(bytes);
-        await _secureStorage.write(key: _deviceSeedStorageKey, value: seed);
-      }
-      _cachedDeviceHashHex = sha256
-          .convert(utf8.encode('DSP_CEO_DEVICE_FP_V1:$seed'))
-          .toString()
-          .toLowerCase();
-      return _cachedDeviceHashHex!;
-    } catch (_) {
+      seed = await _secureStorage.read(key: _deviceSeedStorageKey);
+    } catch (_) {}
+
+    if (seed == null || seed.length < 32) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final mirrored = prefs.getString(_deviceSeedMirrorPrefsKey);
+        if (mirrored != null && mirrored.length >= 32) {
+          seed = mirrored;
+          try {
+            await _secureStorage.write(key: _deviceSeedStorageKey, value: seed);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    if (seed == null || seed.length < 32) {
       final rng = math.Random.secure();
       final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
-      _cachedDeviceHashHex = sha256.convert(bytes).toString().toLowerCase();
-      return _cachedDeviceHashHex!;
+      seed = base64UrlEncode(bytes);
+      try {
+        await _secureStorage.write(key: _deviceSeedStorageKey, value: seed);
+      } catch (_) {}
     }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString(_deviceSeedMirrorPrefsKey) != seed) {
+        await prefs.setString(_deviceSeedMirrorPrefsKey, seed);
+      }
+    } catch (_) {}
+
+    _cachedDeviceHashHex = sha256
+        .convert(utf8.encode('DSP_CEO_DEVICE_FP_V1:$seed'))
+        .toString()
+        .toLowerCase();
+    return _cachedDeviceHashHex!;
+  }
+
+  /// Persiste temporariamente o ticket de OTP pendente (apenas metadados públicos,
+  /// zero segredo) para sobreviver à recriação de Activity do Android ao abrir o Gmail.
+  Future<void> savePendingOtpTicket(CeoOtpChallengeTicket ticket) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _pendingOtpTicketPrefsKey,
+        jsonEncode(ticket.toJson()),
+      );
+    } catch (_) {}
+  }
+
+  /// Restaura o ticket de OTP pendente se pertencer à finalidade esperada e ainda
+  /// estiver dentro da janela de validade de 10 minutos.
+  Future<CeoOtpChallengeTicket?> loadValidPendingOtpTicket({
+    required String expectedPurpose,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_pendingOtpTicketPrefsKey);
+      if (raw == null || raw.trim().isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final ticket = CeoOtpChallengeTicket.fromJson(
+        Map<String, dynamic>.from(decoded),
+      );
+      if (ticket.challengeId.length < 32 ||
+          ticket.purpose != expectedPurpose ||
+          ticket.isExpiredAt(DateTime.now().toUtc())) {
+        await prefs.remove(_pendingOtpTicketPrefsKey);
+        return null;
+      }
+      return ticket;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> clearPendingOtpTicket() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_pendingOtpTicketPrefsKey);
+    } catch (_) {}
   }
 
   /// Verifica se um e-mail informado pertence exclusivamente ao único dono.
@@ -704,10 +856,13 @@ class FounderCockpitRepository {
     String fallbackCode = 'ERR_VAULT_OPERATION_DENIED',
   }) {
     final code = (res['error_code'] ?? fallbackCode).toString();
+    final latestRefRaw = (res['latest_challenge_ref'] ?? '').toString().trim();
+    final latestRef =
+        latestRefRaw.isNotEmpty ? latestRefRaw.toUpperCase() : null;
     final msg = (res['message'] is String &&
             (res['message'] as String).trim().isNotEmpty)
         ? (res['message'] as String).trim()
-        : _translateSecurityError(code);
+        : _translateSecurityError(code, latestChallengeRef: latestRef);
     final remAttempts = (res['remaining_attempts'] is num)
         ? (res['remaining_attempts'] as num).round()
         : null;
@@ -732,6 +887,7 @@ class FounderCockpitRepository {
       failedAttempts: failedAttempts,
       lockedUntilUtc: lockedUntil,
       retryAfterSeconds: retrySec,
+      latestChallengeRef: latestRef,
       failedPolicyRules: failedRules,
     );
   }
@@ -794,14 +950,16 @@ class FounderCockpitRepository {
       throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_REQUEST_DENIED');
     }
 
-    return _parseOtpTicket(res, purpose: 'INITIAL_PASSWORD_SETUP');
+    final ticket = _parseOtpTicket(res, purpose: 'INITIAL_PASSWORD_SETUP');
+    await savePendingOtpTicket(ticket);
+    return ticket;
   }
 
   Future<String> verifyInitialBootstrapOtp({
     required String challengeId,
     required String sixDigitCode,
   }) async {
-    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
+    final cleanDigits = CeoSmartOtpExtractor.extractBestSixDigits(sixDigitCode);
     if (cleanDigits.length != 6) {
       throw const CeoVaultSecurityException(
         errorCode: 'ERR_INVALID_OTP_INPUT',
@@ -820,7 +978,10 @@ class FounderCockpitRepository {
     });
 
     if (res['ok'] != true) {
-      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_CODE_INCORRECT');
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_OTP_VERIFICATION_FAILED',
+      );
     }
 
     final ticket = (res['enrollment_ticket'] ?? '').toString().trim();
@@ -830,6 +991,7 @@ class FounderCockpitRepository {
         userMessagePt: 'Ticket criptográfico inválido. Solicite um novo código.',
       );
     }
+    await clearPendingOtpTicket();
     return ticket;
   }
 
@@ -922,7 +1084,9 @@ class FounderCockpitRepository {
       );
     }
 
-    return _parseOtpTicket(res, purpose: 'LOGIN_2FA');
+    final ticket = _parseOtpTicket(res, purpose: 'LOGIN_2FA');
+    await savePendingOtpTicket(ticket);
+    return ticket;
   }
 
   Future<CeoOtpChallengeTicket> resendLoginTwoFactorOtp({
@@ -940,14 +1104,16 @@ class FounderCockpitRepository {
       throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_REQUEST_DENIED');
     }
 
-    return _parseOtpTicket(res, purpose: 'LOGIN_2FA');
+    final ticket = _parseOtpTicket(res, purpose: 'LOGIN_2FA');
+    await savePendingOtpTicket(ticket);
+    return ticket;
   }
 
   Future<FounderStepUpSession> completeLoginTwoFactor({
     required String challengeId,
     required String sixDigitCode,
   }) async {
-    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
+    final cleanDigits = CeoSmartOtpExtractor.extractBestSixDigits(sixDigitCode);
     if (cleanDigits.length != 6) {
       throw const CeoVaultSecurityException(
         errorCode: 'ERR_INVALID_OTP_INPUT',
@@ -966,9 +1132,13 @@ class FounderCockpitRepository {
     });
 
     if (res['ok'] != true) {
-      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_CODE_INCORRECT');
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_OTP_VERIFICATION_FAILED',
+      );
     }
 
+    await clearPendingOtpTicket();
     return _hydrateSessionFromAuthorityResponse(res, devHash);
   }
 
@@ -1019,7 +1189,7 @@ class FounderCockpitRepository {
     required String sixDigitCode,
   }) async {
     final session = _requireActiveSession();
-    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
+    final cleanDigits = CeoSmartOtpExtractor.extractBestSixDigits(sixDigitCode);
     if (cleanDigits.length != 6) {
       throw const CeoVaultSecurityException(
         errorCode: 'ERR_INVALID_OTP_INPUT',
@@ -1038,7 +1208,10 @@ class FounderCockpitRepository {
     });
 
     if (res['ok'] != true) {
-      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_CODE_INCORRECT');
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_OTP_VERIFICATION_FAILED',
+      );
     }
 
     return DateTime.tryParse((res['expires_at'] ?? '').toString())?.toUtc() ??
@@ -1094,14 +1267,20 @@ class FounderCockpitRepository {
     Map<String, dynamic> res, {
     required String purpose,
   }) {
+    final cid = (res['challenge_id'] ?? '').toString().trim();
     return CeoOtpChallengeTicket(
-      challengeId: (res['challenge_id'] ?? '').toString(),
+      challengeId: cid,
+      challengeRef: (res['challenge_ref'] ?? '').toString(),
+      issuedAtUtc: DateTime.tryParse(
+            (res['issued_at'] ?? '').toString(),
+          )?.toUtc() ??
+          DateTime.now().toUtc(),
       maskedDestination:
           (res['masked_destination'] ?? kMonocraticCeoEmail).toString(),
       expiresAtUtc: DateTime.tryParse(
             (res['expires_at'] ?? '').toString(),
           )?.toUtc() ??
-          DateTime.now().toUtc().add(const Duration(minutes: 5)),
+          DateTime.now().toUtc().add(const Duration(minutes: 10)),
       nextCooldownSeconds: (res['next_cooldown_seconds'] is num)
           ? (res['next_cooldown_seconds'] as num).round()
           : 30,
@@ -1351,6 +1530,7 @@ class FounderCockpitRepository {
   /// Tranca o Cofre e encerra completamente qualquer token local.
   Future<void> signOutAndLock() async {
     await lockVault();
+    await clearPendingOtpTicket();
     _snapshot = FounderDashboardSnapshot.emptyZero();
     await _gateway.signOut();
   }

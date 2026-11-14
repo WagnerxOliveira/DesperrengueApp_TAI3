@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/analytics/founder_dashboard_models.dart';
 import '../data/founder_cockpit_repository.dart';
+import '../domain/ceo_smart_otp_formatter.dart';
 import 'founder_animations_and_shaders.dart';
 
 enum _ProfilePasswordChangeStep {
@@ -243,9 +244,28 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
     }
   }
 
+  Future<void> _pasteOtpFromClipboard() async {
+    if (_busy) return;
+    try {
+      final clip = await Clipboard.getData(Clipboard.kTextPlain);
+      final raw = clip?.text ?? '';
+      final extracted = CeoSmartOtpExtractor.extractSixDigitClusterOrNull(raw) ??
+          CeoSmartOtpExtractor.extractBestSixDigits(raw);
+      if (!mounted || extracted.isEmpty) return;
+      HapticFeedback.lightImpact();
+      _otpController.text = extracted;
+      _otpController.selection =
+          TextSelection.collapsed(offset: extracted.length);
+      setState(() {
+        _errorMessage = null;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _verifyOtpAndSendSecondEmailLink() async {
     final ticket = _activeOtpTicket;
-    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    final digits =
+        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
     if (_busy || ticket == null) return;
     if (digits.length != 6) {
       setState(() {
@@ -443,17 +463,50 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(
-                    'ETAPA 1 DE 2 · CÓDIGO DE 6 DÍGITOS ENVIADO',
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: FounderSovereignTokens.imperialGoldBright,
-                    ),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    alignment: WrapAlignment.spaceBetween,
+                    children: <Widget>[
+                      Text(
+                        _activeOtpTicket != null
+                            ? 'ETAPA 1 DE 2 · PROTOCOLO #${_activeOtpTicket!.challengeRef} (10 MIN)'
+                            : 'ETAPA 1 DE 2 · CÓDIGO DE 6 DÍGITOS ENVIADO',
+                        style: FounderSovereignTokens.monoMetric(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: FounderSovereignTokens.imperialGoldBright,
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _busy ? null : _pasteOtpFromClipboard,
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.content_paste_go_rounded,
+                          size: 14,
+                          color: FounderSovereignTokens.imperialGoldBright,
+                        ),
+                        label: const Text(
+                          'Colar código',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: FounderSovereignTokens.imperialGoldBright,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Enviamos um código exclusivo de 6 dígitos para wagneroliveira2395@gmail.com. Digite-o abaixo para autorizar o envio do link seguro de troca de senha:',
+                    'Enviamos um código exclusivo de 6 dígitos para wagneroliveira2395@gmail.com. Digite ou cole os 6 dígitos abaixo para autorizar o envio do link seguro de troca de senha:',
                     style: TextStyle(
                       color: FounderSovereignTokens.primaryInk,
                       fontSize: 12.5,
@@ -465,13 +518,12 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                     key: const ValueKey<String>('ceo-profile-otp-input'),
                     controller: _otpController,
                     keyboardType: TextInputType.number,
-                    maxLength: 6,
+                    autofillHints: const <String>[AutofillHints.oneTimeCode],
                     autocorrect: false,
                     enableSuggestions: false,
                     enableIMEPersonalizedLearning: false,
-                    inputFormatters: <TextInputFormatter>[
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(6),
+                    inputFormatters: const <TextInputFormatter>[
+                      CeoSmartSixDigitOtpInputFormatter(),
                     ],
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 22,
@@ -500,9 +552,9 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                           'ceo-profile-otp-verify-btn',
                         ),
                         onPressed: (_busy ||
-                                _otpController.text
-                                        .replaceAll(RegExp(r'\D'), '')
-                                        .length !=
+                                CeoSmartOtpExtractor.extractBestSixDigits(
+                                      _otpController.text,
+                                    ).length !=
                                     6)
                             ? null
                             : _verifyOtpAndSendSecondEmailLink,

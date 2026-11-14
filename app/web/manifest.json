@@ -1,7 +1,7 @@
 {
     "name": "Desperrengue",
     "short_name": "Desperrengue",
-    "version": "2.14.0+202611145",
+    "version": "2.14.1+202611146",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0F172A",
