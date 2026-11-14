@@ -7,6 +7,25 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <!-- Deep-Link Soberano Exclusivo de Redefinição de Senha Mestra CEO:
+                 Acionado pelo 2º e-mail enviado para wagneroliveira2395@gmail.com
+                 via Intent Android fixado ao pacote br.com.desperrengue.app.founder.
+                 100% isolado do APK público desperrengue.apk. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="desperrengue-founder"
+                    android:host="vault"
+                    android:pathPrefix="/reset-password" />
+            </intent-filter>
+        </activity>
+
         <provider
             android:name="br.com.desperrengue.app.FounderOtaFileProvider"
             android:authorities="${applicationId}.ota.provider"

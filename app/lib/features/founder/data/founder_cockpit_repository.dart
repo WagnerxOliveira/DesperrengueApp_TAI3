@@ -1,15 +1,15 @@
-/// Camada de Dados, Criptografia Cliente (`PBKDF2-HMAC-SHA256`), Ponte `FLAG_SECURE`
-/// e Coordenador WebSocket em Tempo Real (`WSS TLS 1.3`) do `Desperrengue CEO`.
+/// Camada de Dados, Criptografia Cliente (`PBKDF2-HMAC-SHA256` 210.000 rodadas),
+/// Ponte `FLAG_SECURE`, Autoridade Isolada `ceo-vault-authority` e Coordenador
+/// WebSocket em Tempo Real (`WSS TLS 1.3`) do `Desperrengue CEO`.
 ///
 /// Regras arquiteturais inegociáveis:
-/// - Zero dados falsos (`Zero-Fake Policy`): sem `deterministicDemo`, sem PIN pré-preenchido,
-///   sem e-mail pré-preenchido e sem fallback silencioso para dados fictícios.
-/// - Exclusividade Monocrática: único titular aceito é `wagneroliveira2395@gmail.com`.
-///   Qualquer outra sessão dispara `INTRUSION_CANARY` na cadeia WORM `SHA-256` e faz
-///   `signOut()` imediato.
-/// - Prova Criptográfica de PIN: `PBKDF2-HMAC-SHA256` com `120.000` iterações em worker
-///   assíncrono via [runOffMainThread], seguida de `10.000` rodadas `HMAC-SHA256` com
-///   pepper de 512 bits + salt CSPRNG de 256 bits no PostgreSQL (`CHAR(64)` `SHA-256`).
+/// - **Zero Cross-App Redirect**: proibido `signInWithOAuth` / `OAuthProvider` / navegador
+///   externo. Toda sessão JWT do titular único é emitida no servidor (`ceo-vault-authority`)
+///   e hidratada in-app via `setSession`.
+/// - **Zero dados falsos (`Zero-Fake Policy`)**: zero valores pré-preenchidos e zero mocks.
+/// - **Exclusividade Monocrática**: único titular aceito é `wagneroliveira2395@gmail.com`.
+/// - **Custódia Dividida + AES-256**: `PBKDF2-HMAC-SHA256` (`210.000` rodadas) fora da UI
+///   thread + zeroização de RAM -> `CEO_VAULT_EDGE_PEPPER` -> `HMAC-SHA512 x 25.000` + `AES-256`.
 library;
 
 import 'dart:async';
@@ -24,6 +24,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/analytics/founder_dashboard_models.dart';
 import '../../../core/utils/off_thread.dart';
+import '../domain/ceo_strong_password_policy.dart';
 
 /// Sessão autenticada de Step-Up Zero-Trust do Cofre Monocrático CEO.
 class FounderStepUpSession {
@@ -33,6 +34,7 @@ class FounderStepUpSession {
     required this.accountEmail,
     required this.deviceHashHex,
     required this.expiresAtUtc,
+    this.passwordVersion = 1,
   });
 
   final String stepUpCredentialHex;
@@ -40,11 +42,83 @@ class FounderStepUpSession {
   final String accountEmail;
   final String deviceHashHex;
   final DateTime expiresAtUtc;
+  final int passwordVersion;
 
   bool isExpiredAt(DateTime nowUtc) => !expiresAtUtc.isAfter(nowUtc.toUtc());
 }
 
-/// Resposta da solicitação do código de 6 dígitos enviado a `wagneroliveira2395@gmail.com`.
+/// Estado pré-autenticação retornado por `inspect_gate` (sem disparar e-mail).
+class CeoGateInspectionResult {
+  const CeoGateInspectionResult({
+    required this.ownerEmail,
+    required this.passwordConfigured,
+    required this.passwordVersion,
+    this.passwordUpdatedAtUtc,
+    this.lockedUntilUtc,
+  });
+
+  final String ownerEmail;
+  final bool passwordConfigured;
+  final int passwordVersion;
+  final DateTime? passwordUpdatedAtUtc;
+  final DateTime? lockedUntilUtc;
+
+  bool isLockedAt(DateTime nowUtc) =>
+      lockedUntilUtc != null && lockedUntilUtc!.isAfter(nowUtc.toUtc());
+}
+
+/// Telemetria criptográfica exibida no Perfil Soberano do CEO.
+class CeoProfileSecurityStatus {
+  const CeoProfileSecurityStatus({
+    required this.ownerEmail,
+    required this.passwordConfigured,
+    required this.passwordVersion,
+    required this.kdfSpec,
+    required this.activeSessionsCount,
+    required this.protectedHistoryDepth,
+    required this.deviceHashPrefix,
+    this.passwordUpdatedAtUtc,
+    this.lastLoginAtUtc,
+  });
+
+  final String ownerEmail;
+  final bool passwordConfigured;
+  final int passwordVersion;
+  final String kdfSpec;
+  final int activeSessionsCount;
+  final int protectedHistoryDepth;
+  final String deviceHashPrefix;
+  final DateTime? passwordUpdatedAtUtc;
+  final DateTime? lastLoginAtUtc;
+
+  factory CeoProfileSecurityStatus.fromJson(Map<String, dynamic> json) {
+    return CeoProfileSecurityStatus(
+      ownerEmail: (json['owner_email'] ?? kMonocraticCeoEmail).toString(),
+      passwordConfigured: json['password_configured'] != false,
+      passwordVersion: (json['password_version'] is num)
+          ? (json['password_version'] as num).round()
+          : 1,
+      kdfSpec: (json['kdf_spec'] ??
+              'edge:pbkdf2-sha256:210000+hmac-sha256|db:hmac-sha512:25000+pgp-aes256')
+          .toString(),
+      activeSessionsCount: (json['active_sessions_count'] is num)
+          ? (json['active_sessions_count'] as num).round()
+          : 1,
+      protectedHistoryDepth: (json['protected_history_depth'] is num)
+          ? (json['protected_history_depth'] as num).round()
+          : 1,
+      deviceHashPrefix: (json['device_hash_prefix'] ?? '').toString(),
+      passwordUpdatedAtUtc: DateTime.tryParse(
+        (json['password_updated_at'] ?? '').toString(),
+      )?.toUtc(),
+      lastLoginAtUtc: DateTime.tryParse(
+        (json['last_login_at'] ?? '').toString(),
+      )?.toUtc(),
+    );
+  }
+}
+
+/// Resposta da solicitação do código exclusivo de 6 dígitos enviado a `wagneroliveira2395@gmail.com`.
 class CeoOtpChallengeTicket {
   const CeoOtpChallengeTicket({
     required this.challengeId,
@@ -61,21 +135,6 @@ class CeoOtpChallengeTicket {
   final String purpose;
 }
 
-/// Resultado da verificação em tempo constante do código de 6 dígitos.
-class CeoOtpVerificationResult {
-  const CeoOtpVerificationResult({
-    required this.purpose,
-    required this.pinAlreadyConfigured,
-    required this.enrollmentTicketHex,
-    required this.ticketExpiresAtUtc,
-  });
-
-  final String purpose;
-  final bool pinAlreadyConfigured;
-  final String enrollmentTicketHex;
-  final DateTime ticketExpiresAtUtc;
-}
-
 /// Exceção tipada e estruturada do Cofre Monocrático CEO.
 class CeoVaultSecurityException implements Exception {
   const CeoVaultSecurityException({
@@ -85,6 +144,7 @@ class CeoVaultSecurityException implements Exception {
     this.failedAttempts,
     this.lockedUntilUtc,
     this.retryAfterSeconds,
+    this.failedPolicyRules = const <String>[],
   });
 
   final String errorCode;
@@ -93,6 +153,7 @@ class CeoVaultSecurityException implements Exception {
   final int? failedAttempts;
   final DateTime? lockedUntilUtc;
   final int? retryAfterSeconds;
+  final List<String> failedPolicyRules;
 
   @override
   String toString() => '$errorCode: $userMessagePt';
@@ -172,62 +233,32 @@ class CeoScreenSecurityBridge {
   }
 }
 
-/// Motor Criptográfico Cliente (`PBKDF2-HMAC-SHA256` RFC 8018 + Validador de Entropia).
-class CeoPinCryptoEngine {
-  const CeoPinCryptoEngine._();
+/// Motor Criptográfico Cliente (`PBKDF2-HMAC-SHA256` RFC 8018 §5.2 — 210.000 rodadas)
+/// compatível bit a bit com `WebCrypto.subtle.deriveBits('PBKDF2')` na Edge Function.
+class CeoMasterPasswordCryptoEngine {
+  const CeoMasterPasswordCryptoEngine._();
 
-  static const int defaultIterations = 120000;
-  static const String _domainSalt =
-      'DESPERRENGUE_CEO_PIN_V1:$kMonocraticCeoEmail';
+  static const int defaultIterations = 210000;
+  static const String domainSalt =
+      'DESPERRENGUE_CEO_MASTER_PW_V2:$kMonocraticCeoEmail';
 
-  /// Valida a força do PIN pessoal do CEO (6 a 8 dígitos numéricos, bloqueando sequências
-  /// ascendentes/descendentes, todos os dígitos repetidos e padrões triviais).
-  /// Retorna `null` quando aprovado ou a mensagem de rejeição em `pt-BR`.
-  static String? validatePinStrength(String candidate) {
-    final clean = candidate.trim();
-    if (!RegExp(r'^\d{6,8}$').hasMatch(clean)) {
-      return 'Seu PIN pessoal deve conter de 6 a 8 dígitos numéricos.';
+  static String _bytesToLowerHex(Uint8List bytes) {
+    final sb = StringBuffer();
+    for (var i = 0; i < bytes.length; i++) {
+      sb.write(bytes[i].toRadixString(16).padLeft(2, '0'));
     }
-
-    // Bloqueia todos os dígitos iguais (000000, 111111, ..., 999999)
-    final uniqueDigits = clean.split('').toSet();
-    if (uniqueDigits.length <= 2) {
-      return 'Por segurança extrema, escolha um PIN com pelo menos 3 algarismos distintos.';
-    }
-
-    // Bloqueia sequências aritméticas contínuas (123456, 654321, 234567, 012345...)
-    var allAsc = true;
-    var allDesc = true;
-    for (var i = 1; i < clean.length; i++) {
-      final diff = clean.codeUnitAt(i) - clean.codeUnitAt(i - 1);
-      if (diff != 1) allAsc = false;
-      if (diff != -1) allDesc = false;
-    }
-    if (allAsc || allDesc) {
-      return 'Sequências numéricas consecutivas (ex.: 123456 ou 654321) são bloqueadas.';
-    }
-
-    // Bloqueia repetição de bloco (ex.: 123123, 121212)
-    if (clean.length == 6) {
-      if (clean.substring(0, 3) == clean.substring(3, 6) ||
-          (clean.substring(0, 2) == clean.substring(2, 4) &&
-              clean.substring(2, 4) == clean.substring(4, 6))) {
-        return 'Evite blocos repetidos previsíveis ao criar seu PIN soberano.';
-      }
-    }
-
-    return null;
+    return sb.toString();
   }
 
-  /// Deriva em memória um bloco de 32 bytes (`CHAR(64)` hexadecimal `SHA-256`) via
-  /// `PBKDF2-HMAC-SHA256` (`dkLen = 32`, `blockIndex = 1`) e zera buffers temporários.
-  static String deriveClientPinProofSync(
-    String rawPin, {
+  /// Deriva `CK` (`CHAR(64)` hexadecimal, 256 bits) via `PBKDF2-HMAC-SHA256`
+  /// e sobrescreve todos os buffers temporários de RAM com zeros antes de retornar.
+  static String deriveClientKeySync(
+    String rawPassword, {
     int iterations = defaultIterations,
   }) {
-    final rounds = iterations.clamp(1000, 500000);
-    final keyBytes = Uint8List.fromList(utf8.encode(rawPin.trim()));
-    final saltBytes = utf8.encode(_domainSalt);
+    final rounds = iterations.clamp(1000, 600000);
+    final pwBytes = Uint8List.fromList(utf8.encode(rawPassword));
+    final saltBytes = Uint8List.fromList(utf8.encode(domainSalt));
     final block1Input = Uint8List(saltBytes.length + 4);
     block1Input.setRange(0, saltBytes.length, saltBytes);
     block1Input[saltBytes.length] = 0;
@@ -235,37 +266,42 @@ class CeoPinCryptoEngine {
     block1Input[saltBytes.length + 2] = 0;
     block1Input[saltBytes.length + 3] = 1;
 
+    final t = Uint8List(32);
+    var u = Uint8List(32);
+
     try {
-      final hmac = Hmac(sha256, keyBytes);
-      var u = Uint8List.fromList(hmac.convert(block1Input).bytes);
-      final t = Uint8List.fromList(u);
+      final hmac = Hmac(sha256, pwBytes);
+      final first = hmac.convert(block1Input).bytes;
+      for (var j = 0; j < 32; j++) {
+        u[j] = first[j];
+        t[j] = first[j];
+      }
 
       for (var i = 1; i < rounds; i++) {
-        u = Uint8List.fromList(hmac.convert(u).bytes);
+        final next = hmac.convert(u).bytes;
         for (var j = 0; j < 32; j++) {
-          t[j] ^= u[j];
+          u[j] = next[j];
+          t[j] ^= next[j];
         }
       }
 
-      // Digest final SHA-256 canônico em lowercase hex (64 caracteres)
-      final finalDigest = sha256.convert(t).toString().toLowerCase();
+      return _bytesToLowerHex(t);
+    } finally {
+      pwBytes.fillRange(0, pwBytes.length, 0);
+      saltBytes.fillRange(0, saltBytes.length, 0);
+      block1Input.fillRange(0, block1Input.length, 0);
       t.fillRange(0, t.length, 0);
       u.fillRange(0, u.length, 0);
-      return finalDigest;
-    } finally {
-      keyBytes.fillRange(0, keyBytes.length, 0);
-      block1Input.fillRange(0, block1Input.length, 0);
     }
   }
 
-  /// Executa a derivação `PBKDF2-HMAC-SHA256` fora da UI thread para manter 120 FPS.
-  static Future<String> deriveClientPinProofOffThread(
-    String rawPin, {
+  /// Executa `PBKDF2-HMAC-SHA256` fora da UI thread para preservar animações a 120 FPS.
+  static Future<String> deriveClientKeyOffThread(
+    String rawPassword, {
     int iterations = defaultIterations,
   }) {
-    final clean = rawPin.trim();
     return runOffMainThread(
-      () => deriveClientPinProofSync(clean, iterations: iterations),
+      () => deriveClientKeySync(rawPassword, iterations: iterations),
     );
   }
 }
@@ -278,24 +314,16 @@ enum CeoRealtimeConnectionStatus {
   reconnecting,
 }
 
-/// Contrato de transporte injetável para produção (Supabase Real) e testes determinísticos.
+/// Contrato de transporte injetável para produção (`SupabaseCeoBackendGateway`) e suítes Red-Team.
 abstract class CeoBackendGateway {
   String? get currentUserEmail;
   String? get currentUserId;
   Stream<String?> get authEmailChanges;
 
-  Future<void> signInWithEmailPassword({
-    required String email,
-    required String password,
-  });
-
-  Future<void> signInWithGoogleOAuth();
-
-  Future<void> sendPrimaryEmailSignInOtp({required String email});
-
-  Future<void> verifyPrimaryEmailSignInOtp({
-    required String email,
-    required String token,
+  /// Hidrata in-app a sessão JWT emitida por `ceo-vault-authority` sem abrir navegador externo.
+  Future<void> hydrateSovereignSession({
+    required String accessToken,
+    required String refreshToken,
   });
 
   Future<void> signOut();
@@ -305,15 +333,13 @@ abstract class CeoBackendGateway {
     required Map<String, dynamic> meta,
   });
 
-  Future<Map<String, dynamic>> invokeEdgeAuth(Map<String, dynamic> body);
+  Future<Map<String, dynamic>> invokeVaultAuthority(Map<String, dynamic> body);
 
   Future<Map<String, dynamic>> callRpc(
     String functionName,
     Map<String, dynamic> params,
   );
 
-  /// Conecta ao canal privado `ceo:war-room:live` (`private: true`) e invoca
-  /// [onLiveEvent] a cada evento `ceo_live_event` transmitido pelo PostgreSQL.
   Future<void Function()> subscribeWarRoomLive({
     required void Function(CeoLiveEventItem event) onLiveEvent,
     required void Function(CeoRealtimeConnectionStatus status) onStatusChanged,
@@ -358,53 +384,13 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
   }
 
   @override
-  Future<void> signInWithEmailPassword({
-    required String email,
-    required String password,
+  Future<void> hydrateSovereignSession({
+    required String accessToken,
+    required String refreshToken,
   }) async {
-    await _client.auth.signInWithPassword(
-      email: email.trim().toLowerCase(),
-      password: password,
-    );
-  }
-
-  @override
-  Future<void> signInWithGoogleOAuth() async {
-    final launched = await _client.auth.signInWithOAuth(
-      OAuthProvider.google,
-      authScreenLaunchMode: LaunchMode.platformDefault,
-      redirectTo: 'br.com.desperrengue.app.founder://login-callback',
-      queryParams: const <String, String>{
-        'prompt': 'select_account',
-        'login_hint': kMonocraticCeoEmail,
-      },
-    );
-    if (!launched) {
-      throw const CeoVaultSecurityException(
-        errorCode: 'ERR_OAUTH_LAUNCH_FAILED',
-        userMessagePt:
-            'Não foi possível abrir o autenticador seguro do Google neste dispositivo.',
-      );
-    }
-  }
-
-  @override
-  Future<void> sendPrimaryEmailSignInOtp({required String email}) async {
-    await _client.auth.signInWithOtp(
-      email: email.trim().toLowerCase(),
-      shouldCreateUser: false,
-    );
-  }
-
-  @override
-  Future<void> verifyPrimaryEmailSignInOtp({
-    required String email,
-    required String token,
-  }) async {
-    await _client.auth.verifyOTP(
-      type: OtpType.email,
-      email: email.trim().toLowerCase(),
-      token: token.trim(),
+    await _client.auth.setSession(
+      refreshToken,
+      accessToken: accessToken,
     );
   }
 
@@ -432,10 +418,12 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
   }
 
   @override
-  Future<Map<String, dynamic>> invokeEdgeAuth(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> invokeVaultAuthority(
+    Map<String, dynamic> body,
+  ) async {
     try {
       final res = await _client.functions.invoke(
-        'ceo-sovereign-auth',
+        'ceo-vault-authority',
         body: body,
       );
       final data = res.data;
@@ -499,7 +487,6 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
         .onBroadcast(
           event: 'ceo_live_event',
           callback: (payload) {
-            // Supabase Realtime broadcast pode aninhar em `payload['payload']` ou entregar direto
             final inner = payload['payload'];
             final eventMap = inner is Map
                 ? Map<String, dynamic>.from(inner)
@@ -534,38 +521,56 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
 String _translateSecurityError(String rawCodeOrMessage) {
   final msg = rawCodeOrMessage.trim();
   if (msg.contains('ERR_MONOCRATIC_OWNER_ONLY')) {
-    return 'Acesso bloqueado: este aplicativo é de titularidade exclusiva do CEO ($kMonocraticCeoEmail).';
+    return 'Acesso bloqueado: o aplicativo Desperrengue CEO é restrito exclusivamente ao titular soberano ($kMonocraticCeoEmail).';
   }
-  if (msg.contains('ERR_UNAUTHENTICATED')) {
-    return 'Sua sessão primária expirou. Autentique novamente sua conta soberana.';
+  if (msg.contains('ERR_UNAUTHENTICATED') ||
+      msg.contains('ERR_MISSING_BEARER_TOKEN') ||
+      msg.contains('ERR_INVALID_OR_EXPIRED_JWT')) {
+    return 'Sua sessão soberana expirou. Valide sua Senha Mestra e o código de 6 dígitos para entrar.';
   }
-  if (msg.contains('ERR_STEPUP_SESSION_EXPIRED_OR_INVALID')) {
-    return 'Sessão de alta segurança expirada por inatividade. Digite seu PIN pessoal para continuar.';
+  if (msg.contains('ERR_STEPUP_SESSION_EXPIRED_OR_REVOKED') ||
+      msg.contains('ERR_STEPUP_SESSION_EXPIRED_OR_INVALID')) {
+    return 'Sessão do Cofre encerrada ou rotacionada. Faça login com sua Senha Mestra e código de 6 dígitos.';
   }
-  if (msg.contains('ERR_PIN_NOT_CONFIGURED')) {
-    return 'Seu PIN pessoal ainda não foi configurado. Valide o código de 6 dígitos enviado ao seu e-mail.';
+  if (msg.contains('ERR_MASTER_PASSWORD_NOT_CONFIGURED')) {
+    return 'Sua Senha Mestra ainda não foi criada. Conclua a cerimônia de primeiro acesso.';
   }
-  if (msg.contains('ERR_UNTRUSTED_DEVICE_OTP_REQUIRED')) {
-    return 'Novo dispositivo detectado. Valide o código de 6 dígitos enviado ao seu e-mail para vinculá-lo.';
+  if (msg.contains('ERR_VAULT_ALREADY_SEALED')) {
+    return 'Sua Senha Mestra já está ativa no Cofre Soberano. Utilize a tela de entrada com senha.';
+  }
+  if (msg.contains('ERR_INVALID_MASTER_PASSWORD')) {
+    return 'Senha Mestra incorreta. Verifique maiúsculas, minúsculas, números e símbolos informados.';
   }
   if (msg.contains('ERR_VAULT_LOCKED_BACKOFF')) {
-    return 'Cofre temporariamente bloqueado após tentativas incorretas de PIN. Aguarde o temporizador.';
+    return 'Cofre temporariamente bloqueado após tentativas consecutivas incorretas. Aguarde o temporizador de segurança.';
   }
-  if (msg.contains('ERR_INVALID_PERSONAL_PIN')) {
-    return 'PIN pessoal incorreto. Verifique os dígitos informados.';
+  if (msg.contains('ERR_WEAK_PASSWORD_POLICY')) {
+    return 'A senha precisa ter entre 12 e 64 caracteres, incluindo letra maiúscula, minúscula, número, símbolo especial e alta entropia.';
+  }
+  if (msg.contains('ERR_PASSWORD_REUSE_FORBIDDEN')) {
+    return 'Por segurança extrema, escolha uma Senha Mestra inédita (diferente da senha atual e das últimas 5 senhas).';
   }
   if (msg.contains('ERR_OTP_COOLDOWN_ACTIVE')) {
-    return 'Aguarde o intervalo de segurança antes de solicitar um novo código de 6 dígitos.';
+    return 'Aguarde o intervalo de proteção antes de solicitar um novo código de 6 dígitos.';
   }
   if (msg.contains('ERR_OTP_CODE_INCORRECT')) {
     return 'Código de 6 dígitos incorreto. Confira o último e-mail enviado para $kMonocraticCeoEmail.';
   }
   if (msg.contains('ERR_OTP_MAX_ATTEMPTS_EXCEEDED') ||
-      msg.contains('ERR_OTP_CHALLENGE_EXPIRED')) {
-    return 'Este código de 6 dígitos expirou. Solicite o envio de um novo código seguro.';
+      msg.contains('ERR_OTP_EXPIRED') ||
+      msg.contains('ERR_OTP_ALREADY_USED') ||
+      msg.contains('ERR_OTP_CHALLENGE_NOT_FOUND')) {
+    return 'Este código de 6 dígitos expirou ou já foi utilizado. Solicite um novo código seguro.';
   }
   if (msg.contains('ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED')) {
-    return 'O ticket criptográfico de criação de PIN expirou (5 min). Solicite um novo código de 6 dígitos.';
+    return 'A autorização temporária expirou (10 min). Solicite um novo código de 6 dígitos.';
+  }
+  if (msg.contains('ERR_RESET_LINK_DEVICE_MISMATCH')) {
+    return 'Link bloqueado: a redefinição só pode ser concluída no mesmo aparelho onde você solicitou a troca no Perfil CEO.';
+  }
+  if (msg.contains('ERR_RESET_LINK_EXPIRED_OR_USED') ||
+      msg.contains('ERR_RESET_LINK_INVALID')) {
+    return 'Este link único de redefinição expirou (10 min) ou já foi utilizado. Solicite um novo código em Perfil CEO.';
   }
   if (msg.contains('ERR_EMAIL_DELIVERY_FAILED')) {
     return 'Falha momentânea ao entregar o e-mail de segurança. Tente novamente em instantes.';
@@ -578,7 +583,7 @@ class FounderCockpitRepository {
   FounderCockpitRepository({
     CeoBackendGateway? gateway,
     FlutterSecureStorage? secureStorage,
-    this.pbkdf2Iterations = CeoPinCryptoEngine.defaultIterations,
+    this.pbkdf2Iterations = CeoMasterPasswordCryptoEngine.defaultIterations,
     this.deviceLabelOverride,
   })  : _gateway = gateway ?? SupabaseCeoBackendGateway(),
         _secureStorage = secureStorage ?? const FlutterSecureStorage();
@@ -666,7 +671,6 @@ class FounderCockpitRepository {
           .toLowerCase();
       return _cachedDeviceHashHex!;
     } catch (_) {
-      // Ambiente headless de teste sem plugin nativo registrado
       final rng = math.Random.secure();
       final bytes = List<int>.generate(32, (_) => rng.nextInt(256));
       _cachedDeviceHashHex = sha256.convert(bytes).toString().toLowerCase();
@@ -674,12 +678,7 @@ class FounderCockpitRepository {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // CAMADA 1: AUTENTICAÇÃO PRIMÁRIA ESTRITA (`wagneroliveira2395@gmail.com`)
-  // ---------------------------------------------------------------------------
-
-  /// Verifica se um e-mail digitado ou retornado por OAuth pertence ao único dono.
-  /// Se não pertencer, registra canário WORM e encerra imediatamente qualquer sessão!
+  /// Verifica se um e-mail informado pertence exclusivamente ao único dono.
   Future<void> enforceMonocraticEmailOrReject(String attemptedEmail) async {
     final normalized = attemptedEmail.trim().toLowerCase();
     if (normalized == kMonocraticCeoEmail) return;
@@ -696,149 +695,409 @@ class FounderCockpitRepository {
     throw const CeoVaultSecurityException(
       errorCode: 'ERR_MONOCRATIC_OWNER_ONLY_42501',
       userMessagePt:
-          'Acesso negado e auditado: o aplicativo Desperrengue CEO é restrito exclusivamente ao titular soberano.',
+          'Acesso negado e auditado: somente o e-mail soberano wagneroliveira2395@gmail.com possui acesso ao Desperrengue CEO.',
     );
   }
 
-  Future<void> signInWithEmailPassword({
-    required String email,
-    required String password,
-  }) async {
-    final cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail.isEmpty || password.isEmpty) {
-      throw const CeoVaultSecurityException(
-        errorCode: 'ERR_EMPTY_CREDENTIALS',
-        userMessagePt: 'Informe seu e-mail soberano e sua senha de acesso.',
-      );
-    }
-    if (cleanEmail != kMonocraticCeoEmail) {
-      await enforceMonocraticEmailOrReject(cleanEmail);
-    }
-    try {
-      await _gateway.signInWithEmailPassword(
-        email: cleanEmail,
-        password: password,
-      );
-    } on AuthException catch (e) {
-      throw CeoVaultSecurityException(
-        errorCode: 'ERR_SUPABASE_AUTH',
-        userMessagePt: e.message,
-      );
-    }
-    final activeEmail = _gateway.currentUserEmail ?? '';
-    await enforceMonocraticEmailOrReject(activeEmail);
-  }
+  CeoVaultSecurityException _exceptionFromEdgeMap(
+    Map<String, dynamic> res, {
+    String fallbackCode = 'ERR_VAULT_OPERATION_DENIED',
+  }) {
+    final code = (res['error_code'] ?? fallbackCode).toString();
+    final msg = (res['message'] is String &&
+            (res['message'] as String).trim().isNotEmpty)
+        ? (res['message'] as String).trim()
+        : _translateSecurityError(code);
+    final remAttempts = (res['remaining_attempts'] is num)
+        ? (res['remaining_attempts'] as num).round()
+        : null;
+    final failedAttempts = (res['failed_attempts'] is num)
+        ? (res['failed_attempts'] as num).round()
+        : null;
+    final retrySec = (res['retry_after_seconds'] is num)
+        ? (res['retry_after_seconds'] as num).round()
+        : null;
+    final lockedUntil = DateTime.tryParse(
+      (res['locked_until'] ?? '').toString(),
+    )?.toUtc();
+    final rawRules = res['failed_rules'];
+    final failedRules = rawRules is List
+        ? List<String>.unmodifiable(rawRules.map((e) => e.toString()))
+        : const <String>[];
 
-  Future<void> signInWithGoogleOAuth() async {
-    await _gateway.signInWithGoogleOAuth();
-  }
-
-  Future<void> sendPrimaryEmailSignInOtp({required String email}) async {
-    final cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail != kMonocraticCeoEmail) {
-      await enforceMonocraticEmailOrReject(cleanEmail);
-    }
-    try {
-      await _gateway.sendPrimaryEmailSignInOtp(email: cleanEmail);
-    } on AuthException catch (e) {
-      throw CeoVaultSecurityException(
-        errorCode: 'ERR_SUPABASE_AUTH_OTP',
-        userMessagePt: e.message,
-      );
-    }
-  }
-
-  Future<void> verifyPrimaryEmailSignInOtp({
-    required String email,
-    required String code,
-  }) async {
-    final cleanEmail = email.trim().toLowerCase();
-    if (cleanEmail != kMonocraticCeoEmail) {
-      await enforceMonocraticEmailOrReject(cleanEmail);
-    }
-    try {
-      await _gateway.verifyPrimaryEmailSignInOtp(
-        email: cleanEmail,
-        token: code.trim(),
-      );
-    } on AuthException catch (e) {
-      throw CeoVaultSecurityException(
-        errorCode: 'ERR_SUPABASE_AUTH_OTP_INVALID',
-        userMessagePt: e.message,
-      );
-    }
-    final activeEmail = _gateway.currentUserEmail ?? '';
-    await enforceMonocraticEmailOrReject(activeEmail);
-  }
-
-  /// Consulta no PostgreSQL se o PIN `SHA-256` já foi criado por Wagner e se este
-  /// aparelho já está vinculado criptograficamente (`ceo_vault_status`).
-  Future<CeoVaultStatus> fetchVaultStatus() async {
-    final activeEmail = _gateway.currentUserEmail;
-    if (activeEmail == null || activeEmail.isEmpty) {
-      throw const CeoVaultSecurityException(
-        errorCode: 'ERR_UNAUTHENTICATED_28000',
-        userMessagePt: 'Autentique sua conta soberana para acessar o Cofre CEO.',
-      );
-    }
-    await enforceMonocraticEmailOrReject(activeEmail);
-
-    final devHash = await getOrCreateDeviceHashHex();
-    final json = await _gateway.callRpc(
-      'ceo_vault_status',
-      <String, dynamic>{'p_device_hash': devHash},
+    return CeoVaultSecurityException(
+      errorCode: code,
+      userMessagePt: msg,
+      remainingAttempts: remAttempts,
+      failedAttempts: failedAttempts,
+      lockedUntilUtc: lockedUntil,
+      retryAfterSeconds: retrySec,
+      failedPolicyRules: failedRules,
     );
-    final status = CeoVaultStatus.fromJson(json);
-    if (!status.ok) {
-      final code = status.errorCode ?? 'ERR_MONOCRATIC_OWNER_ONLY_42501';
-      if (code.contains('MONOCRATIC_OWNER')) {
-        await signOutAndLock();
-      }
-      throw CeoVaultSecurityException(
-        errorCode: code,
-        userMessagePt: _translateSecurityError(code),
-      );
-    }
-    return status;
   }
 
   // ---------------------------------------------------------------------------
-  // CAMADA 2: CÓDIGO DE 6 DÍGITOS EXCLUSIVO NO E-MAIL `wagneroliveira2395@gmail.com`
+  // 1. INSPEÇÃO SOBERANA & CERIMÔNIA DE PRIMEIRO ACESSO (CRIAÇÃO DE SENHA MESTRA)
   // ---------------------------------------------------------------------------
 
-  Future<CeoOtpChallengeTicket> requestEmailSecurityOtp({
-    required String purpose,
+  Future<CeoGateInspectionResult> inspectSovereignGate({
+    String email = kMonocraticCeoEmail,
   }) async {
-    final activeEmail = _gateway.currentUserEmail ?? '';
-    await enforceMonocraticEmailOrReject(activeEmail);
-
+    final cleanEmail = email.trim().toLowerCase();
     final devHash = await getOrCreateDeviceHashHex();
-    final res = await _gateway.invokeEdgeAuth(<String, dynamic>{
-      'action': 'request_otp',
-      'purpose': purpose,
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'inspect_gate',
+      'email': cleanEmail,
       'device_hash': devHash,
       'device_label': defaultDeviceLabel,
     });
 
     if (res['ok'] != true) {
-      final code = (res['error_code'] ?? 'ERR_OTP_REQUEST_DENIED').toString();
-      final retrySec = (res['retry_after_seconds'] is num)
-          ? (res['retry_after_seconds'] as num).round()
-          : null;
-      throw CeoVaultSecurityException(
-        errorCode: code,
-        userMessagePt: (res['message'] is String &&
-                (res['message'] as String).trim().isNotEmpty)
-            ? (res['message'] as String).trim()
-            : _translateSecurityError(code),
-        retryAfterSeconds: retrySec,
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_MONOCRATIC_OWNER_ONLY_42501',
       );
     }
 
+    return CeoGateInspectionResult(
+      ownerEmail: (res['owner_email'] ?? kMonocraticCeoEmail).toString(),
+      passwordConfigured: res['password_configured'] == true,
+      passwordVersion: (res['password_version'] is num)
+          ? (res['password_version'] as num).round()
+          : 0,
+      passwordUpdatedAtUtc: DateTime.tryParse(
+        (res['password_updated_at'] ?? '').toString(),
+      )?.toUtc(),
+      lockedUntilUtc: DateTime.tryParse(
+        (res['locked_until'] ?? '').toString(),
+      )?.toUtc(),
+    );
+  }
+
+  Future<CeoOtpChallengeTicket> requestInitialBootstrapOtp({
+    required String email,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail != kMonocraticCeoEmail) {
+      await enforceMonocraticEmailOrReject(cleanEmail);
+    }
+
+    final devHash = await getOrCreateDeviceHashHex();
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'request_initial_bootstrap_otp',
+      'email': cleanEmail,
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_REQUEST_DENIED');
+    }
+
+    return _parseOtpTicket(res, purpose: 'INITIAL_PASSWORD_SETUP');
+  }
+
+  Future<String> verifyInitialBootstrapOtp({
+    required String challengeId,
+    required String sixDigitCode,
+  }) async {
+    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
+    if (cleanDigits.length != 6) {
+      throw const CeoVaultSecurityException(
+        errorCode: 'ERR_INVALID_OTP_INPUT',
+        userMessagePt:
+            'Digite exatamente os 6 dígitos enviados para wagneroliveira2395@gmail.com.',
+      );
+    }
+
+    final devHash = await getOrCreateDeviceHashHex();
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'verify_initial_bootstrap_otp',
+      'challenge_id': challengeId.trim(),
+      'otp_code': cleanDigits,
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_CODE_INCORRECT');
+    }
+
+    final ticket = (res['enrollment_ticket'] ?? '').toString().trim();
+    if (ticket.length != 64) {
+      throw const CeoVaultSecurityException(
+        errorCode: 'ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED',
+        userMessagePt: 'Ticket criptográfico inválido. Solicite um novo código.',
+      );
+    }
+    return ticket;
+  }
+
+  Future<FounderStepUpSession> createInitialMasterPassword({
+    required String enrollmentTicketHex,
+    required String masterPassword,
+  }) async {
+    final evaluation = CeoStrongPasswordPolicy.evaluate(masterPassword);
+    if (!evaluation.isApproved) {
+      throw CeoVaultSecurityException(
+        errorCode: 'ERR_WEAK_PASSWORD_POLICY',
+        userMessagePt: evaluation.primaryRejectionMessagePt ??
+            'A Senha Mestra não atende aos requisitos de segurança.',
+        failedPolicyRules: evaluation.failedRuleCodes,
+      );
+    }
+
+    final devHash = await getOrCreateDeviceHashHex();
+    final clientKeyHex =
+        await CeoMasterPasswordCryptoEngine.deriveClientKeyOffThread(
+      masterPassword,
+      iterations: pbkdf2Iterations,
+    );
+
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'set_initial_password',
+      'enrollment_ticket': enrollmentTicketHex.trim().toLowerCase(),
+      'password': masterPassword,
+      if (pbkdf2Iterations == CeoMasterPasswordCryptoEngine.defaultIterations)
+        'client_key_hex': clientKeyHex,
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_VAULT_SEAL_FAILED',
+      );
+    }
+
+    return _hydrateSessionFromAuthorityResponse(res, devHash);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 2. LOGIN DIÁRIO 2FA (SENHA MESTRA FORTE + CÓDIGO DE 6 DÍGITOS NO E-MAIL)
+  // ---------------------------------------------------------------------------
+
+  Future<CeoOtpChallengeTicket> verifyMasterPasswordAndRequestLoginOtp({
+    required String email,
+    required String masterPassword,
+  }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail.isEmpty || masterPassword.isEmpty) {
+      throw const CeoVaultSecurityException(
+        errorCode: 'ERR_EMPTY_CREDENTIALS',
+        userMessagePt:
+            'Informe seu e-mail soberano e sua Senha Mestra de Administrador CEO.',
+      );
+    }
+    if (cleanEmail != kMonocraticCeoEmail) {
+      await enforceMonocraticEmailOrReject(cleanEmail);
+    }
+    if (masterPassword.runes.length > CeoStrongPasswordPolicy.maxLength) {
+      throw const CeoVaultSecurityException(
+        errorCode: 'ERR_INVALID_MASTER_PASSWORD',
+        userMessagePt: 'A Senha Mestra respeita o limite máximo de 64 caracteres.',
+      );
+    }
+
+    final devHash = await getOrCreateDeviceHashHex();
+    final clientKeyHex =
+        await CeoMasterPasswordCryptoEngine.deriveClientKeyOffThread(
+      masterPassword,
+      iterations: pbkdf2Iterations,
+    );
+
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'verify_password_and_send_login_otp',
+      'email': cleanEmail,
+      'client_key_hex': clientKeyHex,
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_INVALID_MASTER_PASSWORD',
+      );
+    }
+
+    return _parseOtpTicket(res, purpose: 'LOGIN_2FA');
+  }
+
+  Future<CeoOtpChallengeTicket> resendLoginTwoFactorOtp({
+    required String previousChallengeId,
+  }) async {
+    final devHash = await getOrCreateDeviceHashHex();
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'resend_login_otp',
+      'previous_challenge_id': previousChallengeId.trim(),
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_REQUEST_DENIED');
+    }
+
+    return _parseOtpTicket(res, purpose: 'LOGIN_2FA');
+  }
+
+  Future<FounderStepUpSession> completeLoginTwoFactor({
+    required String challengeId,
+    required String sixDigitCode,
+  }) async {
+    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
+    if (cleanDigits.length != 6) {
+      throw const CeoVaultSecurityException(
+        errorCode: 'ERR_INVALID_OTP_INPUT',
+        userMessagePt:
+            'Digite exatamente os 6 dígitos enviados para wagneroliveira2395@gmail.com.',
+      );
+    }
+
+    final devHash = await getOrCreateDeviceHashHex();
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'complete_login_2fa',
+      'challenge_id': challengeId.trim(),
+      'otp_code': cleanDigits,
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_CODE_INCORRECT');
+    }
+
+    return _hydrateSessionFromAuthorityResponse(res, devHash);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 3. PERFIL SOBERANO CEO & ROTAÇÃO EM 2 E-MAILS + DEEP-LINK EFÊMERO
+  // ---------------------------------------------------------------------------
+
+  Future<CeoProfileSecurityStatus> fetchProfileSecurityStatus() async {
+    final session = _requireActiveSession();
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'get_ceo_profile_security_status',
+      'stepup_token': session.stepUpCredentialHex,
+      'device_hash': session.deviceHashHex,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_STEPUP_SESSION_EXPIRED_OR_REVOKED',
+      );
+    }
+
+    return CeoProfileSecurityStatus.fromJson(res);
+  }
+
+  /// Dispara o E-mail #1 com o código de 6 dígitos para `wagneroliveira2395@gmail.com`.
+  Future<CeoOtpChallengeTicket> requestProfilePasswordChangeOtp() async {
+    final session = _requireActiveSession();
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'request_password_change_otp',
+      'stepup_token': session.stepUpCredentialHex,
+      'device_hash': session.deviceHashHex,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_REQUEST_DENIED');
+    }
+
+    return _parseOtpTicket(res, purpose: 'PROFILE_PASSWORD_CHANGE_AUTH');
+  }
+
+  /// Valida os 6 dígitos do E-mail #1 e dispara imediatamente o E-mail #2 com o
+  /// botão clicável de abertura direta no `Desperrengue CEO`.
+  Future<DateTime> verifyProfileOtpAndDispatchResetLink({
+    required String challengeId,
+    required String sixDigitCode,
+  }) async {
+    final session = _requireActiveSession();
+    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
+    if (cleanDigits.length != 6) {
+      throw const CeoVaultSecurityException(
+        errorCode: 'ERR_INVALID_OTP_INPUT',
+        userMessagePt:
+            'Digite exatamente os 6 dígitos enviados para wagneroliveira2395@gmail.com.',
+      );
+    }
+
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'verify_password_change_otp_and_dispatch_link',
+      'stepup_token': session.stepUpCredentialHex,
+      'device_hash': session.deviceHashHex,
+      'device_label': defaultDeviceLabel,
+      'challenge_id': challengeId.trim(),
+      'otp_code': cleanDigits,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(res, fallbackCode: 'ERR_OTP_CODE_INCORRECT');
+    }
+
+    return DateTime.tryParse((res['expires_at'] ?? '').toString())?.toUtc() ??
+        DateTime.now().toUtc().add(const Duration(minutes: 10));
+  }
+
+  /// Conclui a redefinição da Senha Mestra aberta via Deep-Link do E-mail #2,
+  /// recifra no Cofre AES-256 e encerra 100% das sessões para exigir novo login completo.
+  Future<void> commitPasswordResetFromDeepLink({
+    required String linkId,
+    required String grantTokenHex,
+    required String newMasterPassword,
+  }) async {
+    final evaluation = CeoStrongPasswordPolicy.evaluate(newMasterPassword);
+    if (!evaluation.isApproved) {
+      throw CeoVaultSecurityException(
+        errorCode: 'ERR_WEAK_PASSWORD_POLICY',
+        userMessagePt: evaluation.primaryRejectionMessagePt ??
+            'A nova Senha Mestra não atende aos requisitos de segurança.',
+        failedPolicyRules: evaluation.failedRuleCodes,
+      );
+    }
+
+    final devHash = await getOrCreateDeviceHashHex();
+    final clientKeyHex =
+        await CeoMasterPasswordCryptoEngine.deriveClientKeyOffThread(
+      newMasterPassword,
+      iterations: pbkdf2Iterations,
+    );
+
+    final res = await _gateway.invokeVaultAuthority(<String, dynamic>{
+      'action': 'commit_password_reset_from_link',
+      'link_id': linkId.trim().toLowerCase(),
+      'grant_token': grantTokenHex.trim().toLowerCase(),
+      'password': newMasterPassword,
+      if (pbkdf2Iterations == CeoMasterPasswordCryptoEngine.defaultIterations)
+        'client_key_hex': clientKeyHex,
+      'device_hash': devHash,
+      'device_label': defaultDeviceLabel,
+    });
+
+    if (res['ok'] != true) {
+      throw _exceptionFromEdgeMap(
+        res,
+        fallbackCode: 'ERR_PASSWORD_ROTATION_DENIED',
+      );
+    }
+
+    await signOutAndLock();
+  }
+
+  CeoOtpChallengeTicket _parseOtpTicket(
+    Map<String, dynamic> res, {
+    required String purpose,
+  }) {
     return CeoOtpChallengeTicket(
       challengeId: (res['challenge_id'] ?? '').toString(),
       maskedDestination:
-          (res['masked_destination'] ?? kMaskedMonocraticCeoEmail).toString(),
+          (res['masked_destination'] ?? kMonocraticCeoEmail).toString(),
       expiresAtUtc: DateTime.tryParse(
             (res['expires_at'] ?? '').toString(),
           )?.toUtc() ??
@@ -850,159 +1109,38 @@ class FounderCockpitRepository {
     );
   }
 
-  Future<CeoOtpVerificationResult> verifyEmailSecurityOtp({
-    required String challengeId,
-    required String sixDigitCode,
-  }) async {
-    final cleanDigits = sixDigitCode.replaceAll(RegExp(r'\D'), '');
-    if (cleanDigits.length != 6) {
-      throw const CeoVaultSecurityException(
-        errorCode: 'ERR_INVALID_OTP_INPUT',
-        userMessagePt:
-            'Digite exatamente os 6 dígitos enviados para o seu e-mail.',
-      );
-    }
-
-    final devHash = await getOrCreateDeviceHashHex();
-    final res = await _gateway.invokeEdgeAuth(<String, dynamic>{
-      'action': 'verify_otp',
-      'challenge_id': challengeId,
-      'otp_code': cleanDigits,
-      'device_hash': devHash,
-      'device_label': defaultDeviceLabel,
-    });
-
-    if (res['ok'] != true) {
-      final code = (res['error_code'] ?? 'ERR_OTP_CODE_INCORRECT').toString();
-      final rem = (res['remaining_attempts'] is num)
-          ? (res['remaining_attempts'] as num).round()
-          : null;
-      throw CeoVaultSecurityException(
-        errorCode: code,
-        userMessagePt: _translateSecurityError(code),
-        remainingAttempts: rem,
-      );
-    }
-
-    return CeoOtpVerificationResult(
-      purpose: (res['purpose'] ?? 'INITIAL_PIN_SETUP').toString(),
-      pinAlreadyConfigured: res['pin_configured'] == true,
-      enrollmentTicketHex: (res['enrollment_ticket'] ?? '').toString(),
-      ticketExpiresAtUtc: DateTime.tryParse(
-            (res['ticket_expires_at'] ?? '').toString(),
-          )?.toUtc() ??
-          DateTime.now().toUtc().add(const Duration(minutes: 5)),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // CAMADA 3: CRIAÇÃO E DESBLOQUEIO DO PIN PESSOAL (`SHA-256`)
-  // ---------------------------------------------------------------------------
-
-  /// Cria ou redefine o PIN pessoal escolhido por Wagner após validação do código de 6 dígitos.
-  Future<FounderStepUpSession> registerPersonalPin({
-    required String enrollmentTicketHex,
-    required String personalPin,
-  }) async {
-    final weakness = CeoPinCryptoEngine.validatePinStrength(personalPin);
-    if (weakness != null) {
-      throw CeoVaultSecurityException(
-        errorCode: 'ERR_WEAK_PERSONAL_PIN',
-        userMessagePt: weakness,
-      );
-    }
-
-    final devHash = await getOrCreateDeviceHashHex();
-    final proofHex = await CeoPinCryptoEngine.deriveClientPinProofOffThread(
-      personalPin,
-      iterations: pbkdf2Iterations,
-    );
-
-    final res = await _gateway.callRpc(
-      'ceo_register_personal_pin',
-      <String, dynamic>{
-        'p_enrollment_ticket': enrollmentTicketHex.trim().toLowerCase(),
-        'p_client_pin_proof': proofHex,
-        'p_device_hash': devHash,
-        'p_device_label': defaultDeviceLabel,
-      },
-    );
-
-    if (res['ok'] != true) {
-      final code =
-          (res['error_code'] ?? 'ERR_ENROLLMENT_TICKET_INVALID_OR_EXPIRED')
-              .toString();
-      throw CeoVaultSecurityException(
-        errorCode: code,
-        userMessagePt: _translateSecurityError(code),
-      );
-    }
-
-    return _activateStepUpSessionFromRpc(res, devHash);
-  }
-
-  /// Desbloqueia o Cofre Soberano validando o PIN pessoal de Wagner em tempo constante `SHA-256`.
-  Future<FounderStepUpSession> unlockWithPersonalPin({
-    required String personalPin,
-  }) async {
-    final clean = personalPin.trim();
-    if (!RegExp(r'^\d{6,8}$').hasMatch(clean)) {
-      throw const CeoVaultSecurityException(
-        errorCode: 'ERR_INVALID_PERSONAL_PIN',
-        userMessagePt: 'Digite os 6 dígitos do seu PIN pessoal.',
-      );
-    }
-
-    final devHash = await getOrCreateDeviceHashHex();
-    final proofHex = await CeoPinCryptoEngine.deriveClientPinProofOffThread(
-      clean,
-      iterations: pbkdf2Iterations,
-    );
-
-    final res = await _gateway.callRpc(
-      'ceo_unlock_sovereign_vault',
-      <String, dynamic>{
-        'p_client_pin_proof': proofHex,
-        'p_device_hash': devHash,
-        'p_device_label': defaultDeviceLabel,
-      },
-    );
-
-    if (res['ok'] != true) {
-      final code = (res['error_code'] ?? 'ERR_INVALID_PERSONAL_PIN').toString();
-      final failed = (res['failed_attempts'] is num)
-          ? (res['failed_attempts'] as num).round()
-          : null;
-      final lockedUntil = DateTime.tryParse(
-        (res['locked_until'] ?? '').toString(),
-      )?.toUtc();
-      throw CeoVaultSecurityException(
-        errorCode: code,
-        userMessagePt: _translateSecurityError(code),
-        failedAttempts: failed,
-        lockedUntilUtc: lockedUntil,
-      );
-    }
-
-    return _activateStepUpSessionFromRpc(res, devHash);
-  }
-
-  Future<FounderStepUpSession> _activateStepUpSessionFromRpc(
-    Map<String, dynamic> rpcRes,
+  Future<FounderStepUpSession> _hydrateSessionFromAuthorityResponse(
+    Map<String, dynamic> res,
     String devHash,
   ) async {
-    final token = (rpcRes['stepup_token'] ?? '').toString().trim();
+    final accessToken = (res['access_token'] ?? '').toString().trim();
+    final refreshToken = (res['refresh_token'] ?? '').toString().trim();
+    if (accessToken.isNotEmpty && refreshToken.isNotEmpty) {
+      await _gateway.hydrateSovereignSession(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
+    }
+
+    final activeEmail = _gateway.currentUserEmail ?? kMonocraticCeoEmail;
+    await enforceMonocraticEmailOrReject(activeEmail);
+
+    final stepupToken = (res['stepup_token'] ?? '').toString().trim();
     final expiresAt = DateTime.tryParse(
-          (rpcRes['expires_at'] ?? '').toString(),
+          (res['stepup_expires_at'] ?? res['expires_at'] ?? '').toString(),
         )?.toUtc() ??
         DateTime.now().toUtc().add(const Duration(minutes: 15));
+    final pwVersion = (res['password_version'] is num)
+        ? (res['password_version'] as num).round()
+        : 1;
 
     final session = FounderStepUpSession(
-      stepUpCredentialHex: token,
+      stepUpCredentialHex: stepupToken,
       userId: _gateway.currentUserId ?? '',
       accountEmail: kMonocraticCeoEmail,
       deviceHashHex: devHash,
       expiresAtUtc: expiresAt,
+      passwordVersion: pwVersion,
     );
     _activeStepUpSession = session;
     await _startRealtimeBridgeAndHeartbeat();
@@ -1010,7 +1148,7 @@ class FounderCockpitRepository {
   }
 
   // ---------------------------------------------------------------------------
-  // SNAPSHOT 100% REAL + STREAM DE TEMPO REAL (`ceo:war-room:live`) + FORENSE
+  // 4. SNAPSHOT 100% REAL + STREAM DE TEMPO REAL (`ceo:war-room:live`) + FORENSE
   // ---------------------------------------------------------------------------
 
   Future<FounderDashboardSnapshot> fetchLiveSnapshot({
@@ -1020,7 +1158,8 @@ class FounderCockpitRepository {
     if (session == null) {
       throw const CeoVaultSecurityException(
         errorCode: 'ERR_VAULT_LOCKED',
-        userMessagePt: 'Desbloqueie seu Cofre Soberano com seu PIN pessoal.',
+        userMessagePt:
+            'Valide sua Senha Mestra e o código de 6 dígitos para abrir o Cofre Soberano.',
       );
     }
 
@@ -1041,7 +1180,6 @@ class FounderCockpitRepository {
     return _snapshot;
   }
 
-  /// Recupera qualquer evento emitido enquanto o celular esteve sem rede (`event_seq > afterSeq`).
   Future<List<CeoLiveEventItem>> catchUpMissedLiveEvents() async {
     final session = _activeStepUpSession;
     if (session == null) return const <CeoLiveEventItem>[];
@@ -1187,6 +1325,7 @@ class FounderCockpitRepository {
             accountEmail: session.accountEmail,
             deviceHashHex: session.deviceHashHex,
             expiresAtUtc: nextExp,
+            passwordVersion: session.passwordVersion,
           );
         }
       }
@@ -1194,7 +1333,7 @@ class FounderCockpitRepository {
   }
 
   /// Tranca o Cofre Soberano (revoga o `stepup_token` no PostgreSQL, desliga o WebSocket
-  /// privado e limpa a sessão em memória, mantendo o login primário do dono para rápido PIN).
+  /// privado e limpa a sessão em memória para exigir Senha Mestra + 6 dígitos ao reentrar).
   Future<void> lockVault() async {
     final prev = _activeStepUpSession;
     _activeStepUpSession = null;
@@ -1209,7 +1348,7 @@ class FounderCockpitRepository {
     }
   }
 
-  /// Tranca o Cofre e encerra completamente a sessão primária OAuth/Auth no aparelho.
+  /// Tranca o Cofre e encerra completamente qualquer token local.
   Future<void> signOutAndLock() async {
     await lockVault();
     _snapshot = FounderDashboardSnapshot.emptyZero();
@@ -1221,7 +1360,8 @@ class FounderCockpitRepository {
     if (s == null) {
       throw const CeoVaultSecurityException(
         errorCode: 'ERR_VAULT_LOCKED',
-        userMessagePt: 'Cofre trancado. Digite seu PIN pessoal para continuar.',
+        userMessagePt:
+            'Cofre trancado. Valide sua Senha Mestra e o código de 6 dígitos para continuar.',
       );
     }
     return s;

@@ -299,11 +299,68 @@ void main() {
     expect(founderManifest, contains('android.permission.REQUEST_INSTALL_PACKAGES'));
     expect(founderManifest, contains('br.com.desperrengue.app.FounderOtaFileProvider'));
     expect(founderManifest, contains('android:exported="false"'));
+    expect(founderManifest, contains('android:scheme="desperrengue-founder"'));
+    expect(founderManifest, contains('android:host="vault"'));
+    expect(founderManifest, contains('android:pathPrefix="/reset-password"'));
+    expect(
+      manifest.contains('android:host="vault"'),
+      isFalse,
+      reason: 'Deep-link de redefinição do Cofre CEO jamais pode existir no manifesto público',
+    );
 
     final gradle = _repoFile('app/android/app/build.gradle.kts').readAsStringSync();
     expect(gradle, contains('manifest.srcFile("src/founder/AndroidManifest.xml")'));
 
     final workflow = _repoFile('.github/workflows/beta-release.yml').readAsStringSync();
     expect(workflow, contains('--dart-define=BETA_UPDATES=true'));
+  });
+
+  test('Cofre Soberano v2.14+: zero OAuth cross-app para Marketplace, teto físico de 64 chars e política de senha forte', () {
+    final forbiddenFounderOAuth = <RegExp>[
+      RegExp(r'\bsignInWithOAuth\b'),
+      RegExp(r'\bOAuthProvider\b'),
+      RegExp(r'\bsignInWithGoogleOAuth\b'),
+      RegExp(r'Autenticar Conta Google Soberana'),
+      RegExp(r'br\.com\.desperrengue\.app://'),
+      RegExp(r'br\.com\.desperrengue\.app\.founder://login-callback'),
+    ];
+
+    final offenders = <String>[];
+    for (final f in libFiles) {
+      final rel = _rel(f);
+      if (!_isFounderOnlyLibFile(rel)) continue;
+      final lines = f.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final line = lines[i].trimLeft();
+        if (line.startsWith('//') || line.startsWith('///')) continue;
+        for (final pat in forbiddenFounderOAuth) {
+          if (pat.hasMatch(line)) {
+            offenders.add('$rel:${i + 1} (${pat.pattern})');
+          }
+        }
+      }
+    }
+    expect(
+      offenders,
+      isEmpty,
+      reason: 'Módulos Founder jamais podem invocar OAuth externo ou redirecionar ao Marketplace: $offenders',
+    );
+
+    final gateSource = _repoFile(
+      'app/lib/features/founder/presentation/founder_auth_and_vault_gate.dart',
+    ).readAsStringSync();
+    expect(
+      gateSource,
+      contains('LengthLimitingTextInputFormatter(CeoStrongPasswordPolicy.maxLength)'),
+    );
+    expect(gateSource, contains('maxLength: CeoStrongPasswordPolicy.maxLength'));
+    expect(gateSource, contains('CeoStrongPasswordPolicy.evaluate'));
+
+    final mainFounderSource = _repoFile('app/lib/main_founder.dart').readAsStringSync();
+    expect(
+      mainFounderSource,
+      contains('detectSessionInUri: false'),
+      reason: 'main_founder.dart deve desativar captura OAuth global de URI',
+    );
   });
 }

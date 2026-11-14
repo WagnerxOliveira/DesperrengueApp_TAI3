@@ -769,6 +769,39 @@ check('15. Cofre Monocrático Desperrengue CEO (`20261114180000` + `ceo_monocrat
   assert.ok(ceoAssertions >= 12, `Esperado >= 12 asserções em ceo_monocratic_vault_and_realtime_smoke.sql (encontradas: ${ceoAssertions})`);
 });
 
+check('16. Cofre Soberano v2.14.0 (`20261115000000` + `ceo_master_password_and_reset_smoke.sql`): Senha Mestra Forte Split-Pepper + HMAC-SHA512 x 25k + AES-256, 2FA 6d Anti-Inbox-Bombing, Histórico 5 senhas e Deep-Link Efêmero Device-Bound', () => {
+  const migPwPath = path.join(MIGRATIONS_DIR, '20261115000000_ceo_master_password_vault_and_reset_ceremony.sql');
+  const testPwPath = path.join(TESTS_DIR, 'ceo_master_password_and_reset_smoke.sql');
+  assert.ok(fs.existsSync(migPwPath), 'Migration 20261115000000_ceo_master_password_vault_and_reset_ceremony.sql obrigatória');
+  assert.ok(fs.existsSync(testPwPath), 'Suíte ceo_master_password_and_reset_smoke.sql obrigatória');
+
+  const migPw = fs.readFileSync(migPwPath, 'utf8');
+  const testPw = fs.readFileSync(testPwPath, 'utf8');
+  const strippedPw = lexSql(migPw, '20261115000000_ceo_master_password_vault_and_reset_ceremony.sql');
+  const strippedTestPw = lexSql(testPw, 'ceo_master_password_and_reset_smoke.sql');
+
+  assert.match(strippedPw, /^\s*begin\s*;/i, '20261115000000 deve abrir com begin;');
+  assert.match(strippedPw, /commit\s*;\s*$/i, '20261115000000 deve encerrar com commit;');
+  assert.match(strippedTestPw, /^\s*begin\s*;/i, 'ceo_master_password_and_reset_smoke.sql deve abrir com begin;');
+  assert.match(strippedTestPw, /rollback\s*;\s*$/i, 'ceo_master_password_and_reset_smoke.sql deve encerrar com rollback;');
+
+  // Nenhum GRANT para anon/public e todas as RPCs ceo_edge_* restritas a service_role
+  assert.doesNotMatch(strippedPw, /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i);
+  assert.match(migPw, /drop\s+function\s+if\s+exists\s+public\.ceo_register_personal_pin/i);
+  assert.match(migPw, /drop\s+function\s+if\s+exists\s+public\.ceo_unlock_sovereign_vault/i);
+  assert.match(migPw, /pgp_sym_encrypt_bytea/i);
+  assert.match(migPw, /cipher-algo=aes256,\s*compress-algo=0/i);
+  assert.match(migPw, /for\s+i\s+in\s+1\.\.25000\s+loop/i);
+  assert.match(migPw, /create\s+table\s+if\s+not\s+exists\s+private\.ceo_password_history/i);
+  assert.match(migPw, /create\s+table\s+if\s+not\s+exists\s+private\.ceo_security_challenges/i);
+  assert.match(migPw, /create\s+table\s+if\s+not\s+exists\s+private\.ceo_password_reset_links/i);
+  assert.match(migPw, /create\s+or\s+replace\s+function\s+public\.ceo_edge_inspect_reset_link_bridge/i);
+  assert.match(migPw, /create\s+or\s+replace\s+function\s+public\.ceo_edge_commit_password_reset_from_link/i);
+
+  const pwAssertions = (testPw.match(/perform\s+pg_temp\.t\s*\(/gi) ?? []).length;
+  assert.ok(pwAssertions >= 20, `Esperado >= 20 asserções em ceo_master_password_and_reset_smoke.sql (encontradas: ${pwAssertions})`);
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {

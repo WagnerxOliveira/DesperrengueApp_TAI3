@@ -1,43 +1,52 @@
+/// Barreira Soberana de Identidade Monocrática, Criação de Senha Mestra Forte,
+/// Login 2FA em 2 Etapas (Senha Mestra AES-256 + Código de 6 Dígitos no E-mail)
+/// e Redefinição Segura via Deep-Link Efêmero do `Desperrengue CEO`.
+///
+/// Regras de Segurança Extrema:
+/// - **Zero Cross-App OAuth**: nenhum botão abre navegador externo ou `signInWithOAuth`,
+///   eliminando 100% qualquer possibilidade de redirecionamento ao APK do Marketplace.
+/// - **Zero campos pré-preenchidos**: todos os controladores iniciam 100% vazios (`''`).
+/// - **Teto Físico Estrito de 64 Caracteres + Política Matemática de Senha Forte**:
+///   `12 <= len <= 64`, `LengthLimitingTextInputFormatter(64)`, maiúscula, minúscula,
+///   número, símbolo especial, entropia de Shannon >= 60 bits e bloqueio de nomes/sequências.
+/// - **Exclusividade Monocrática**: apenas `wagneroliveira2395@gmail.com` é aceito.
+library;
+
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/analytics/founder_dashboard_models.dart';
 import '../data/founder_cockpit_repository.dart';
+import '../domain/ceo_strong_password_policy.dart';
+import '../domain/founder_deep_link_policy.dart';
 import 'founder_animations_and_shaders.dart';
 
-enum _VaultGateStage {
-  checkingStatus,
-  primaryAuth,
-  emailOtpChallenge,
-  pinCreate,
-  pinConfirm,
-  pinUnlock,
+enum CeoSovereignAuthStage {
+  stageInspectingSovereignState,
+  stageBootstrapRequestEmail,
+  stageBootstrapVerifyOtp,
+  stageBootstrapCreateMasterPassword,
+  stageDailyLoginCredentials,
+  stageDailyLoginVerifyOtp,
+  stagePasswordResetFromDeepLink,
 }
 
-/// Barreira Criptográfica Monocrática em 3 Camadas do `Desperrengue CEO`.
-///
-/// Regras de Segurança Extrema:
-/// - **Zero campos pré-preenchidos**: todos os controladores e células de dígitos
-///   iniciam 100% vazios (`''`) e são zerados ao ir para segundo plano ou desmontar.
-/// - **Exclusividade absoluta**: somente `wagneroliveira2395@gmail.com` avança.
-/// - **Teclado Vetorial Tátil Próprio (`SovereignPinPad`)**: os dígitos do PIN jamais
-///   trafegam por teclados IME de terceiros, contando ainda com embaralhamento CSPRNG
-///   opcional contra observação lateral (*anti-shoulder-surfing*).
 class FounderAuthAndVaultGate extends StatefulWidget {
   const FounderAuthAndVaultGate({
     super.key,
     required this.repository,
     required this.onVaultUnlocked,
-    this.initialPinResetFlow = false,
+    this.pendingResetGrant,
+    this.onResetGrantConsumed,
     this.lockReasonBanner,
   });
 
   final FounderCockpitRepository repository;
   final Future<void> Function(FounderStepUpSession session) onVaultUnlocked;
-  final bool initialPinResetFlow;
+  final FounderResetLinkGrant? pendingResetGrant;
+  final VoidCallback? onResetGrantConsumed;
   final String? lockReasonBanner;
 
   @override
@@ -47,30 +56,23 @@ class FounderAuthAndVaultGate extends StatefulWidget {
 
 class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     with WidgetsBindingObserver {
-  // Controladores 100% vazios por design (jamais pré-preenchidos!)
+  // Todos os controladores iniciam estritamente vazios (Zero pre-filled fields!)
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _primaryOtpController = TextEditingController();
-  final FocusNode _keyboardFocusNode = FocusNode();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  final TextEditingController _otpController = TextEditingController();
 
-  StreamSubscription<String?>? _authSub;
   Timer? _countdownTimer;
 
-  _VaultGateStage _stage = _VaultGateStage.checkingStatus;
+  CeoSovereignAuthStage _stage =
+      CeoSovereignAuthStage.stageInspectingSovereignState;
   bool _busy = false;
-  bool _obscurePassword = true;
-  bool _usePasswordlessPrimaryAuth = false;
-  bool _primaryOtpSent = false;
-  bool _scrambleKeypad = false;
-  List<int> _keypadDigits = const <int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+  bool _obscurePrimaryPassword = true;
+  bool _obscureConfirmPassword = true;
 
-  String _otpPurpose = 'INITIAL_PIN_SETUP';
   CeoOtpChallengeTicket? _activeOtpTicket;
   String? _enrollmentTicketHex;
-
-  String _otpBuffer = '';
-  String _pinDraftFirst = '';
-  String _pinBuffer = '';
 
   int _otpCooldownRemainingSec = 0;
   DateTime? _vaultLockedUntilUtc;
@@ -85,69 +87,62 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _infoBanner = widget.lockReasonBanner;
-    _authSub = widget.repository.authEmailChanges.listen((email) {
-      if (!mounted) return;
-      if (email != null && email.isNotEmpty && _stage == _VaultGateStage.primaryAuth) {
-        unawaited(_evaluateAuthAndVaultState());
-      }
-    });
-    unawaited(_evaluateAuthAndVaultState());
+    _ensureCountdownTicker();
+
+    if (widget.pendingResetGrant != null) {
+      _stage = CeoSovereignAuthStage.stagePasswordResetFromDeepLink;
+    } else {
+      unawaited(_inspectInitialSovereignState());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant FounderAuthAndVaultGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final nextGrant = widget.pendingResetGrant;
+    if (nextGrant != null &&
+        nextGrant.linkId != oldWidget.pendingResetGrant?.linkId) {
+      _wipePasswordBuffers(triggerRebuild: false);
+      _otpController.clear();
+      setState(() {
+        _errorBanner = null;
+        _infoBanner =
+            'Link exclusivo de troca validado! Crie abaixo sua nova Senha Mestra Forte.';
+        _stage = CeoSovereignAuthStage.stagePasswordResetFromDeepLink;
+      });
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      _wipeSensitiveBuffers();
+      // Limpa imediatamente qualquer senha digitada na RAM ao sair da tela,
+      // preservando apenas o challengeId caso Wagner esteja abrindo o Gmail para ler os 6 dígitos!
+      _wipePasswordBuffers();
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _authSub?.cancel();
     _countdownTimer?.cancel();
-    _wipeSensitiveBuffers(triggerRebuild: false);
+    _wipePasswordBuffers(triggerRebuild: false);
+    _emailController.clear();
+    _otpController.clear();
     _emailController.dispose();
     _passwordController.dispose();
-    _primaryOtpController.dispose();
-    _keyboardFocusNode.dispose();
+    _confirmPasswordController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
-  void _wipeSensitiveBuffers({bool triggerRebuild = true}) {
+  void _wipePasswordBuffers({bool triggerRebuild = true}) {
     _passwordController.clear();
-    _primaryOtpController.clear();
-    _otpBuffer = '';
-    _pinDraftFirst = '';
-    _pinBuffer = '';
+    _confirmPasswordController.clear();
     if (triggerRebuild && mounted) {
       setState(() {});
     }
-  }
-
-  void _toggleScrambleKeypad() {
-    HapticFeedback.selectionClick();
-    setState(() {
-      _scrambleKeypad = !_scrambleKeypad;
-      _reshuffleDigitsIfNeeded();
-    });
-  }
-
-  void _reshuffleDigitsIfNeeded() {
-    if (!_scrambleKeypad) {
-      _keypadDigits = const <int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
-      return;
-    }
-    final rng = math.Random.secure();
-    final list = <int>[0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    for (var i = list.length - 1; i > 0; i--) {
-      final j = rng.nextInt(i + 1);
-      final tmp = list[i];
-      list[i] = list[j];
-      list[j] = tmp;
-    }
-    _keypadDigits = List<int>.unmodifiable(list);
   }
 
   void _ensureCountdownTicker() {
@@ -174,553 +169,516 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     });
   }
 
-  Future<void> _evaluateAuthAndVaultState() async {
+  void _applyLockedUntil(DateTime? utc) {
+    if (utc == null) return;
+    final rem = utc.difference(DateTime.now().toUtc()).inSeconds;
+    if (rem > 0) {
+      _vaultLockedUntilUtc = utc;
+      _vaultLockRemainingSec = rem;
+    }
+  }
+
+  Future<void> _inspectInitialSovereignState() async {
     if (!mounted) return;
     setState(() {
       _busy = true;
       _errorBanner = null;
     });
 
-    final email = widget.repository.authenticatedEmail;
-    if (email == null || email.isEmpty) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _stage = _VaultGateStage.primaryAuth;
-      });
-      return;
-    }
-
     try {
-      final status = await widget.repository.fetchVaultStatus();
+      final gate = await widget.repository.inspectSovereignGate();
       if (!mounted) return;
-
-      if (status.lockedUntil != null &&
-          status.lockedUntil!.isAfter(DateTime.now().toUtc())) {
-        _vaultLockedUntilUtc = status.lockedUntil;
-        _vaultLockRemainingSec = status.lockedUntil!
-            .difference(DateTime.now().toUtc())
-            .inSeconds
-            .clamp(1, 86400);
-        _ensureCountdownTicker();
-      }
-
-      if (widget.initialPinResetFlow) {
-        _enterOtpChallengeStage('PIN_RESET', autoSend: false);
-        return;
-      }
-
-      if (status.requiresEmailOtp) {
-        _enterOtpChallengeStage(status.requiredOtpPurpose, autoSend: false);
-        return;
-      }
-
-      setState(() {
-        _busy = false;
-        _pinBuffer = '';
-        _reshuffleDigitsIfNeeded();
-        _stage = _VaultGateStage.pinUnlock;
-      });
-      _keyboardFocusNode.requestFocus();
-    } on CeoVaultSecurityException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner = e.userMessagePt;
-        _stage = _VaultGateStage.primaryAuth;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner =
-            'Não foi possível validar o estado do Cofre Soberano. Verifique sua conexão.';
-        _stage = _VaultGateStage.primaryAuth;
-      });
-    }
-  }
-
-  void _enterOtpChallengeStage(String purpose, {required bool autoSend}) {
-    setState(() {
-      _busy = false;
-      _otpPurpose = purpose;
-      _activeOtpTicket = null;
-      _otpBuffer = '';
-      _remainingOtpAttempts = null;
-      _errorBanner = null;
-      _infoBanner = null;
-      _reshuffleDigitsIfNeeded();
-      _stage = _VaultGateStage.emailOtpChallenge;
-    });
-    _keyboardFocusNode.requestFocus();
-    if (autoSend) {
-      unawaited(_sendSixDigitSecurityCode());
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // AÇÕES DA CAMADA 1 (IDENTIDADE PRIMÁRIA)
-  // ---------------------------------------------------------------------------
-
-  Future<void> _submitEmailPasswordLogin() async {
-    if (_busy) return;
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-    setState(() {
-      _busy = true;
-      _errorBanner = null;
-      _infoBanner = null;
-    });
-    try {
-      HapticFeedback.selectionClick();
-      await widget.repository.signInWithEmailPassword(
-        email: email,
-        password: password,
-      );
-      _passwordController.clear();
-      await _evaluateAuthAndVaultState();
-    } on CeoVaultSecurityException catch (e) {
-      _passwordController.clear();
-      if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      setState(() {
-        _busy = false;
-        _errorBanner = e.userMessagePt;
-      });
-    } catch (_) {
-      _passwordController.clear();
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner = 'Falha ao autenticar credenciais primárias.';
-      });
-    }
-  }
-
-  Future<void> _submitGoogleOAuth() async {
-    if (_busy) return;
-    setState(() {
-      _busy = true;
-      _errorBanner = null;
-      _infoBanner = null;
-    });
-    try {
-      HapticFeedback.selectionClick();
-      await widget.repository.signInWithGoogleOAuth();
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _infoBanner =
-            'Conclua a seleção da conta soberana no Google para retornar ao Cofre CEO.';
-      });
-    } on CeoVaultSecurityException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner = e.userMessagePt;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner = 'Não foi possível iniciar a autenticação Google.';
-      });
-    }
-  }
-
-  Future<void> _sendPasswordlessPrimaryCode() async {
-    if (_busy) return;
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      setState(() {
-        _errorBanner = 'Digite seu e-mail soberano para receber o código.';
-      });
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _errorBanner = null;
-    });
-    try {
-      await widget.repository.sendPrimaryEmailSignInOtp(email: email);
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _primaryOtpSent = true;
-        _infoBanner =
-            'Código de sessão enviado para $kMaskedMonocraticCeoEmail.';
-      });
-    } on CeoVaultSecurityException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner = e.userMessagePt;
-      });
-    }
-  }
-
-  Future<void> _verifyPasswordlessPrimaryCode() async {
-    if (_busy) return;
-    final email = _emailController.text.trim();
-    final code = _primaryOtpController.text.trim();
-    if (code.length < 6) {
-      setState(() {
-        _errorBanner = 'Informe o código recebido no e-mail.';
-      });
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _errorBanner = null;
-    });
-    try {
-      await widget.repository.verifyPrimaryEmailSignInOtp(
-        email: email,
-        code: code,
-      );
-      _primaryOtpController.clear();
-      await _evaluateAuthAndVaultState();
-    } on CeoVaultSecurityException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner = e.userMessagePt;
-      });
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // AÇÕES DA CAMADA 2 (CÓDIGO DE 6 DÍGITOS EXCLUSIVO `ceo-sovereign-auth`)
-  // ---------------------------------------------------------------------------
-
-  Future<void> _sendSixDigitSecurityCode() async {
-    if (_busy || _otpCooldownRemainingSec > 0) return;
-    setState(() {
-      _busy = true;
-      _errorBanner = null;
-      _infoBanner = null;
-    });
-    try {
-      HapticFeedback.selectionClick();
-      final ticket = await widget.repository.requestEmailSecurityOtp(
-        purpose: _otpPurpose,
-      );
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _activeOtpTicket = ticket;
-        _otpBuffer = '';
-        _remainingOtpAttempts = 5;
-        _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
-        _infoBanner =
-            'Código de 6 dígitos enviado exclusivamente para ${ticket.maskedDestination}.';
-      });
-      _ensureCountdownTicker();
-      _keyboardFocusNode.requestFocus();
-    } on CeoVaultSecurityException catch (e) {
-      if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      setState(() {
-        _busy = false;
-        _errorBanner = e.userMessagePt;
-        if (e.retryAfterSeconds != null && e.retryAfterSeconds! > 0) {
-          _otpCooldownRemainingSec = e.retryAfterSeconds!;
-          _ensureCountdownTicker();
-        }
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errorBanner =
-            'Erro de rede ao solicitar o código de 6 dígitos. Tente novamente.';
-      });
-    }
-  }
-
-  Future<void> _pasteOtpFromClipboard() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final raw = data?.text ?? '';
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
-    if (digits.length >= 6) {
-      HapticFeedback.selectionClick();
-      setState(() {
-        _otpBuffer = digits.substring(0, 6);
-        _errorBanner = null;
-      });
-      if (_activeOtpTicket != null) {
-        await _verifySixDigitSecurityCode();
-      }
-    }
-  }
-
-  Future<void> _verifySixDigitSecurityCode() async {
-    if (_busy) return;
-    final ticket = _activeOtpTicket;
-    if (ticket == null) {
-      setState(() {
-        _errorBanner =
-            'Toque primeiro em "Enviar Código de 6 Dígitos" para receber seu código no e-mail.';
-      });
-      return;
-    }
-    if (_otpBuffer.length != 6) return;
-
-    setState(() {
-      _busy = true;
-      _errorBanner = null;
-    });
-    try {
-      final result = await widget.repository.verifyEmailSecurityOtp(
-        challengeId: ticket.challengeId,
-        sixDigitCode: _otpBuffer,
-      );
-      if (!mounted) return;
-      HapticFeedback.mediumImpact();
-      _otpBuffer = '';
-
-      if (result.purpose == 'NEW_DEVICE_BIND' && result.pinAlreadyConfigured) {
+      if (widget.pendingResetGrant != null) {
         setState(() {
           _busy = false;
-          _pinBuffer = '';
-          _infoBanner =
-              'Dispositivo vinculado com sucesso! Digite seu PIN pessoal para abrir o Cofre.';
-          _reshuffleDigitsIfNeeded();
-          _stage = _VaultGateStage.pinUnlock;
+          _stage = CeoSovereignAuthStage.stagePasswordResetFromDeepLink;
         });
         return;
       }
 
+      _applyLockedUntil(gate.lockedUntilUtc);
       setState(() {
         _busy = false;
-        _enrollmentTicketHex = result.enrollmentTicketHex;
-        _pinDraftFirst = '';
-        _pinBuffer = '';
-        _infoBanner =
-            'Identidade confirmada por código de 6 dígitos. Crie agora seu PIN pessoal.';
-        _reshuffleDigitsIfNeeded();
-        _stage = _VaultGateStage.pinCreate;
+        _stage = gate.passwordConfigured
+            ? CeoSovereignAuthStage.stageDailyLoginCredentials
+            : CeoSovereignAuthStage.stageBootstrapRequestEmail;
       });
     } on CeoVaultSecurityException catch (e) {
       if (!mounted) return;
-      HapticFeedback.heavyImpact();
       setState(() {
         _busy = false;
-        _otpBuffer = '';
+        _errorBanner = e.userMessagePt;
+        _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // CERIMÔNIA DE PRIMEIRO ACESSO (CRIAÇÃO INICIAL DA SENHA MESTRA FORTE)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _handleBootstrapSendOtp() async {
+    if (_busy || _otpCooldownRemainingSec > 0) return;
+    final typedEmail = _emailController.text.trim().toLowerCase();
+    if (typedEmail.isEmpty) {
+      setState(() {
+        _errorBanner =
+            'Digite seu e-mail soberano ($kMonocraticCeoEmail) para receber o código de 6 dígitos.';
+      });
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _busy = true;
+      _errorBanner = null;
+      _infoBanner = null;
+    });
+
+    try {
+      final ticket = await widget.repository.requestInitialBootstrapOtp(
+        email: typedEmail,
+      );
+      if (!mounted) return;
+      _otpController.clear();
+      setState(() {
+        _busy = false;
+        _activeOtpTicket = ticket;
+        _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
+        _remainingOtpAttempts = null;
+        _stage = CeoSovereignAuthStage.stageBootstrapVerifyOtp;
+      });
+    } on CeoVaultSecurityException catch (e) {
+      if (!mounted) return;
+      if (e.errorCode == 'ERR_VAULT_ALREADY_SEALED') {
+        setState(() {
+          _busy = false;
+          _infoBanner = e.userMessagePt;
+          _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
+        });
+        return;
+      }
+      if (e.retryAfterSeconds != null) {
+        _otpCooldownRemainingSec = e.retryAfterSeconds!;
+      }
+      setState(() {
+        _busy = false;
+        _errorBanner = e.userMessagePt;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.toString();
+      });
+    }
+  }
+
+  Future<void> _handleBootstrapVerifyOtp() async {
+    final ticket = _activeOtpTicket;
+    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    if (_busy || ticket == null) return;
+    if (digits.length != 6) {
+      setState(() {
+        _errorBanner =
+            'Informe exatamente os 6 dígitos enviados para $kMonocraticCeoEmail.';
+      });
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _busy = true;
+      _errorBanner = null;
+    });
+    _otpController.clear();
+
+    try {
+      final enrollmentTicket =
+          await widget.repository.verifyInitialBootstrapOtp(
+        challengeId: ticket.challengeId,
+        sixDigitCode: digits,
+      );
+      if (!mounted) return;
+      _wipePasswordBuffers(triggerRebuild: false);
+      setState(() {
+        _busy = false;
+        _enrollmentTicketHex = enrollmentTicket;
+        _infoBanner =
+            'Identidade confirmada! Crie agora sua Senha Mestra Forte de Administrador CEO.';
+        _stage = CeoSovereignAuthStage.stageBootstrapCreateMasterPassword;
+      });
+    } on CeoVaultSecurityException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
         _remainingOtpAttempts = e.remainingAttempts;
         _errorBanner = e.userMessagePt;
       });
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // AÇÕES DA CAMADA 3 (CRIAÇÃO, CONFIRMAÇÃO E DESBLOQUEIO DO PIN `SHA-256`)
-  // ---------------------------------------------------------------------------
-
-  void _onDigitPressed(int digit) {
-    if (_busy) return;
-    if (_stage == _VaultGateStage.pinUnlock && _vaultLockRemainingSec > 0) {
-      return;
-    }
-    HapticFeedback.lightImpact();
-
-    if (_stage == _VaultGateStage.emailOtpChallenge) {
-      if (_otpBuffer.length >= 6) return;
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _otpBuffer = '$_otpBuffer$digit';
-        _errorBanner = null;
-      });
-      if (_otpBuffer.length == 6 && _activeOtpTicket != null) {
-        unawaited(_verifySixDigitSecurityCode());
-      }
-      return;
-    }
-
-    if (_stage == _VaultGateStage.pinCreate ||
-        _stage == _VaultGateStage.pinConfirm ||
-        _stage == _VaultGateStage.pinUnlock) {
-      if (_pinBuffer.length >= 6) return;
-      setState(() {
-        _pinBuffer = '$_pinBuffer$digit';
-        _errorBanner = null;
-      });
-      if (_pinBuffer.length == 6) {
-        if (_stage == _VaultGateStage.pinCreate) {
-          _advanceFromPinCreateToConfirm();
-        } else if (_stage == _VaultGateStage.pinConfirm) {
-          unawaited(_submitNewPersonalPin());
-        } else if (_stage == _VaultGateStage.pinUnlock) {
-          unawaited(_submitUnlockPersonalPin());
-        }
-      }
-    }
-  }
-
-  void _onBackspacePressed() {
-    if (_busy) return;
-    HapticFeedback.selectionClick();
-    if (_stage == _VaultGateStage.emailOtpChallenge && _otpBuffer.isNotEmpty) {
-      setState(() {
-        _otpBuffer = _otpBuffer.substring(0, _otpBuffer.length - 1);
-      });
-    } else if (_pinBuffer.isNotEmpty) {
-      setState(() {
-        _pinBuffer = _pinBuffer.substring(0, _pinBuffer.length - 1);
+        _busy = false;
+        _errorBanner = e.toString();
       });
     }
   }
 
-  void _advanceFromPinCreateToConfirm() {
-    final weakness = CeoPinCryptoEngine.validatePinStrength(_pinBuffer);
-    if (weakness != null) {
-      HapticFeedback.heavyImpact();
+  Future<void> _handleCreateInitialMasterPassword() async {
+    final ticketHex = _enrollmentTicketHex;
+    final pw = _passwordController.text;
+    final confirm = _confirmPasswordController.text;
+    if (_busy || ticketHex == null) return;
+
+    final evaluation = CeoStrongPasswordPolicy.evaluate(pw);
+    if (!evaluation.isApproved) {
       setState(() {
-        _pinBuffer = '';
-        _errorBanner = weakness;
+        _errorBanner = evaluation.primaryRejectionMessagePt;
       });
       return;
     }
+    if (pw != confirm) {
+      setState(() {
+        _errorBanner =
+            'A confirmação da Senha Mestra precisa ser idêntica à senha criada.';
+      });
+      return;
+    }
+
+    HapticFeedback.heavyImpact();
+    _wipePasswordBuffers(triggerRebuild: false);
     setState(() {
-      _pinDraftFirst = _pinBuffer;
-      _pinBuffer = '';
+      _busy = true;
+      _errorBanner = null;
+    });
+
+    try {
+      final session = await widget.repository.createInitialMasterPassword(
+        enrollmentTicketHex: ticketHex,
+        masterPassword: pw,
+      );
+      if (!mounted) return;
+      _enrollmentTicketHex = null;
+      await widget.onVaultUnlocked(session);
+    } on CeoVaultSecurityException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.userMessagePt;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.toString();
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // LOGIN DIÁRIO EM 2 ETAPAS (SENHA MESTRA FORTE + CÓDIGO DE 6 DÍGITOS NO E-MAIL)
+  // ---------------------------------------------------------------------------
+
+  Future<void> _handleDailyLoginStep1() async {
+    if (_busy || _vaultLockRemainingSec > 0) return;
+    final typedEmail = _emailController.text.trim().toLowerCase();
+    final typedPassword = _passwordController.text;
+
+    if (typedEmail.isEmpty || typedPassword.isEmpty) {
+      setState(() {
+        _errorBanner =
+            'Digite seu e-mail soberano ($kMonocraticCeoEmail) e sua Senha Mestra CEO.';
+      });
+      return;
+    }
+
+    HapticFeedback.mediumImpact();
+    _wipePasswordBuffers(triggerRebuild: false);
+    setState(() {
+      _busy = true;
       _errorBanner = null;
       _infoBanner = null;
-      _reshuffleDigitsIfNeeded();
-      _stage = _VaultGateStage.pinConfirm;
     });
+
+    try {
+      final ticket =
+          await widget.repository.verifyMasterPasswordAndRequestLoginOtp(
+        email: typedEmail,
+        masterPassword: typedPassword,
+      );
+      if (!mounted) return;
+      _otpController.clear();
+      setState(() {
+        _busy = false;
+        _activeOtpTicket = ticket;
+        _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
+        _remainingOtpAttempts = null;
+        _infoBanner =
+            'Senha Mestra validada! Enviamos um código exclusivo de 6 dígitos para $kMonocraticCeoEmail.';
+        _stage = CeoSovereignAuthStage.stageDailyLoginVerifyOtp;
+      });
+    } on CeoVaultSecurityException catch (e) {
+      if (!mounted) return;
+      if (e.errorCode == 'ERR_MASTER_PASSWORD_NOT_CONFIGURED') {
+        setState(() {
+          _busy = false;
+          _infoBanner =
+              'Você ainda não possui Senha Mestra cadastrada. Valide seu e-mail para criá-la agora.';
+          _stage = CeoSovereignAuthStage.stageBootstrapRequestEmail;
+        });
+        return;
+      }
+      _applyLockedUntil(e.lockedUntilUtc);
+      if (e.retryAfterSeconds != null) {
+        _otpCooldownRemainingSec = e.retryAfterSeconds!;
+      }
+      setState(() {
+        _busy = false;
+        _errorBanner = e.userMessagePt;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.toString();
+      });
+    }
   }
 
-  Future<void> _submitNewPersonalPin() async {
-    if (_busy) return;
-    if (_pinBuffer != _pinDraftFirst) {
-      HapticFeedback.heavyImpact();
+  Future<void> _handleResendLoginOtp() async {
+    final prev = _activeOtpTicket;
+    if (_busy || prev == null || _otpCooldownRemainingSec > 0) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _busy = true;
+      _errorBanner = null;
+    });
+
+    try {
+      final fresh = await widget.repository.resendLoginTwoFactorOtp(
+        previousChallengeId: prev.challengeId,
+      );
+      if (!mounted) return;
+      _otpController.clear();
       setState(() {
-        _pinDraftFirst = '';
-        _pinBuffer = '';
+        _busy = false;
+        _activeOtpTicket = fresh;
+        _otpCooldownRemainingSec = fresh.nextCooldownSeconds;
+        _infoBanner =
+            'Novo código de 6 dígitos enviado para $kMonocraticCeoEmail.';
+      });
+    } on CeoVaultSecurityException catch (e) {
+      if (!mounted) return;
+      if (e.retryAfterSeconds != null) {
+        _otpCooldownRemainingSec = e.retryAfterSeconds!;
+      }
+      setState(() {
+        _busy = false;
+        _errorBanner = e.userMessagePt;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.toString();
+      });
+    }
+  }
+
+  Future<void> _handleDailyLoginVerifyOtp() async {
+    final ticket = _activeOtpTicket;
+    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    if (_busy || ticket == null) return;
+    if (digits.length != 6) {
+      setState(() {
         _errorBanner =
-            'Os dois PINs digitados não coincidem. Escolha novamente seu PIN de 6 dígitos.';
-        _reshuffleDigitsIfNeeded();
-        _stage = _VaultGateStage.pinCreate;
+            'Informe exatamente os 6 dígitos enviados para $kMonocraticCeoEmail.';
       });
       return;
     }
 
-    final ticket = _enrollmentTicketHex;
-    if (ticket == null || ticket.isEmpty) {
-      _enterOtpChallengeStage(_otpPurpose, autoSend: false);
+    HapticFeedback.heavyImpact();
+    setState(() {
+      _busy = true;
+      _errorBanner = null;
+    });
+    _otpController.clear();
+
+    try {
+      final session = await widget.repository.completeLoginTwoFactor(
+        challengeId: ticket.challengeId,
+        sixDigitCode: digits,
+      );
+      if (!mounted) return;
+      await widget.onVaultUnlocked(session);
+    } on CeoVaultSecurityException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _remainingOtpAttempts = e.remainingAttempts;
+        _errorBanner = e.userMessagePt;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.toString();
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // REDEFINIÇÃO DE SENHA MESTRA VIA DEEP-LINK EFÊMERO DO 2º E-MAIL
+  // ---------------------------------------------------------------------------
+
+  Future<void> _handleCommitPasswordResetFromDeepLink() async {
+    final grant = widget.pendingResetGrant;
+    final pw = _passwordController.text;
+    final confirm = _confirmPasswordController.text;
+    if (_busy || grant == null) return;
+
+    final evaluation = CeoStrongPasswordPolicy.evaluate(pw);
+    if (!evaluation.isApproved) {
+      setState(() {
+        _errorBanner = evaluation.primaryRejectionMessagePt;
+      });
+      return;
+    }
+    if (pw != confirm) {
+      setState(() {
+        _errorBanner =
+            'A confirmação da nova Senha Mestra precisa ser idêntica à senha criada.';
+      });
       return;
     }
 
-    final chosenPin = _pinBuffer;
+    HapticFeedback.heavyImpact();
+    _wipePasswordBuffers(triggerRebuild: false);
     setState(() {
       _busy = true;
-      _pinDraftFirst = '';
-      _pinBuffer = '';
       _errorBanner = null;
     });
 
     try {
-      final session = await widget.repository.registerPersonalPin(
-        enrollmentTicketHex: ticket,
-        personalPin: chosenPin,
+      await widget.repository.commitPasswordResetFromDeepLink(
+        linkId: grant.linkId,
+        grantTokenHex: grant.grantTokenHex,
+        newMasterPassword: pw,
       );
-      _enrollmentTicketHex = null;
       if (!mounted) return;
-      HapticFeedback.mediumImpact();
-      await widget.onVaultUnlocked(session);
+      widget.onResetGrantConsumed?.call();
+      _emailController.clear();
+      _otpController.clear();
+      setState(() {
+        _busy = false;
+        _activeOtpTicket = null;
+        _infoBanner =
+            'Nova Senha Mestra gravada em AES-256! Todas as sessões anteriores foram encerradas. Valide agora sua entrada com a nova senha e o código de 6 dígitos.';
+        _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
+      });
     } on CeoVaultSecurityException catch (e) {
       if (!mounted) return;
-      HapticFeedback.heavyImpact();
+      if (e.errorCode.contains('RESET_LINK')) {
+        widget.onResetGrantConsumed?.call();
+      }
       setState(() {
         _busy = false;
         _errorBanner = e.userMessagePt;
-        _stage = _VaultGateStage.pinCreate;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errorBanner = e.toString();
       });
     }
   }
 
-  Future<void> _submitUnlockPersonalPin() async {
-    if (_busy || _vaultLockRemainingSec > 0) return;
-    final candidatePin = _pinBuffer;
-    setState(() {
-      _busy = true;
-      _pinBuffer = '';
-      _errorBanner = null;
-    });
-
-    try {
-      final session = await widget.repository.unlockWithPersonalPin(
-        personalPin: candidatePin,
-      );
-      if (!mounted) return;
-      HapticFeedback.mediumImpact();
-      await widget.onVaultUnlocked(session);
-    } on CeoVaultSecurityException catch (e) {
-      if (!mounted) return;
-      HapticFeedback.heavyImpact();
-      setState(() {
-        _busy = false;
-        _reshuffleDigitsIfNeeded();
-        _errorBanner = e.userMessagePt;
-        if (e.lockedUntilUtc != null) {
-          _vaultLockedUntilUtc = e.lockedUntilUtc;
-          _vaultLockRemainingSec = e.lockedUntilUtc!
-              .difference(DateTime.now().toUtc())
-              .inSeconds
-              .clamp(1, 86400);
-          _ensureCountdownTicker();
-        }
-      });
-      if (e.errorCode.contains('UNTRUSTED_DEVICE') ||
-          e.errorCode.contains('PIN_NOT_CONFIGURED')) {
-        _enterOtpChallengeStage(
-          e.errorCode.contains('PIN_NOT_CONFIGURED')
-              ? 'INITIAL_PIN_SETUP'
-              : 'NEW_DEVICE_BIND',
-          autoSend: false,
-        );
-      }
-    }
+  void _appendOtpDigitFromPad(int digit) {
+    final current = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    if (current.length >= 6 || _busy) return;
+    HapticFeedback.selectionClick();
+    final next = '$current$digit';
+    _otpController.text = next;
+    _otpController.selection = TextSelection.collapsed(offset: next.length);
+    setState(() {});
   }
 
-  KeyEventResult _handleHardwareKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (_stage != _VaultGateStage.emailOtpChallenge &&
-        _stage != _VaultGateStage.pinCreate &&
-        _stage != _VaultGateStage.pinConfirm &&
-        _stage != _VaultGateStage.pinUnlock) {
-      return KeyEventResult.ignored;
-    }
-    if (event.logicalKey == LogicalKeyboardKey.backspace) {
-      _onBackspacePressed();
-      return KeyEventResult.handled;
-    }
-    final label = event.character ?? event.logicalKey.keyLabel;
-    if (label.length == 1) {
-      final code = label.codeUnitAt(0);
-      if (code >= 48 && code <= 57) {
-        _onDigitPressed(code - 48);
-        return KeyEventResult.handled;
-      }
-    }
-    return KeyEventResult.ignored;
+  void _backspaceOtpFromPad() {
+    final current = _otpController.text.replaceAll(RegExp(r'\D'), '');
+    if (current.isEmpty || _busy) return;
+    HapticFeedback.selectionClick();
+    final next = current.substring(0, current.length - 1);
+    _otpController.text = next;
+    _otpController.selection = TextSelection.collapsed(offset: next.length);
+    setState(() {});
   }
+
+  // ---------------------------------------------------------------------------
+  // CONSTRUÇÃO VISUAL OBSIDIAN & OURO 24K (ZERO OVERFLOW DE 320PX A 4K)
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      key: const ValueKey<String>('founder-stepup-vault-gate'),
+      key: const ValueKey<String>('founder-sovereign-auth-gate-scaffold'),
       backgroundColor: FounderSovereignTokens.obsidianBackground,
-      body: Focus(
-        focusNode: _keyboardFocusNode,
-        onKeyEvent: _handleHardwareKey,
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: _buildActiveStageCard(context),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 492),
+              child: FounderGlassCard(
+                padding: const EdgeInsets.all(20),
+                accentTopBarColor: FounderSovereignTokens.imperialGold,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    _buildSovereignBrandHeader(),
+                    const SizedBox(height: 16),
+                    if (_infoBanner != null) ...<Widget>[
+                      _buildBanner(
+                        message: _infoBanner!,
+                        borderColor: FounderSovereignTokens.solvencyEmerald,
+                        bgColor: FounderSovereignTokens.solvencyEmerald
+                            .withValues(alpha: 0.12),
+                        icon: Icons.verified_user_rounded,
+                        iconColor: FounderSovereignTokens.solvencyEmerald,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_errorBanner != null) ...<Widget>[
+                      _buildBanner(
+                        message: _errorBanner!,
+                        borderColor: FounderSovereignTokens.crimsonAlert,
+                        bgColor: FounderSovereignTokens.crimsonAlertSoft,
+                        icon: Icons.gpp_bad_rounded,
+                        iconColor: FounderSovereignTokens.crimsonAlert,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_vaultLockRemainingSec > 0) ...<Widget>[
+                      _buildBanner(
+                        message:
+                            'Defesa ativa: aguarde ${_vaultLockRemainingSec}s antes de tentar novamente.',
+                        borderColor: FounderSovereignTokens.warmAmber,
+                        bgColor: FounderSovereignTokens.warmAmber
+                            .withValues(alpha: 0.14),
+                        icon: Icons.timer_rounded,
+                        iconColor: FounderSovereignTokens.warmAmber,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    _buildCurrentStageContent(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -729,47 +687,73 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     );
   }
 
-  Widget _buildActiveStageCard(BuildContext context) {
-    switch (_stage) {
-      case _VaultGateStage.checkingStatus:
-        return _buildCheckingCard();
-      case _VaultGateStage.primaryAuth:
-        return _buildPrimaryAuthCard();
-      case _VaultGateStage.emailOtpChallenge:
-        return _buildEmailOtpChallengeCard();
-      case _VaultGateStage.pinCreate:
-      case _VaultGateStage.pinConfirm:
-        return _buildPinEnrollmentCard();
-      case _VaultGateStage.pinUnlock:
-        return _buildPinUnlockCard();
-    }
+  Widget _buildSovereignBrandHeader() {
+    return Row(
+      children: <Widget>[
+        const FounderSovereignCrest(size: 46),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'Desperrengue CEO',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: FounderSovereignTokens.primaryInk,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'COFRE MONOCRÁTICO · ACESSO EXCLUSIVO DO CEO',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: FounderSovereignTokens.monoMetric(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.9,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
-  Widget _buildCheckingCard() {
-    return FounderGlassCard(
-      accentTopBarColor: FounderSovereignTokens.imperialGoldBright,
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  Widget _buildBanner({
+    required String message,
+    required Color borderColor,
+    required Color bgColor,
+    required IconData icon,
+    required Color iconColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const FounderSovereignCrest(size: 56),
-          const SizedBox(height: 18),
-          const SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2.2,
-              color: FounderSovereignTokens.imperialGoldBright,
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Verificando Assinatura do Cofre Soberano…',
-            textAlign: TextAlign.center,
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: FounderSovereignTokens.mutedInk,
+          Icon(icon, size: 18, color: iconColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: FounderSovereignTokens.primaryInk,
+                fontSize: 12.5,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -777,843 +761,932 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     );
   }
 
-  Widget _buildHeaderBadge({
-    required String title,
-    required String subtitle,
-    String pillText = 'TITULARIDADE EXCLUSIVA · MONOCRÁTICA',
-  }) {
-    return Column(
-      children: <Widget>[
-        const FounderSovereignCrest(size: 54),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: FounderSovereignTokens.imperialGoldSoft,
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.65),
-            ),
+  Widget _buildCurrentStageContent() {
+    switch (_stage) {
+      case CeoSovereignAuthStage.stageInspectingSovereignState:
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28),
+          child: Column(
+            children: <Widget>[
+              const CircularProgressIndicator(
+                color: FounderSovereignTokens.imperialGoldBright,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Verificando integridade criptográfica do Cofre Soberano…',
+                textAlign: TextAlign.center,
+                style: FounderSovereignTokens.monoMetric(
+                  fontSize: 12,
+                  color: FounderSovereignTokens.mutedInk,
+                ),
+              ),
+            ],
           ),
-          child: Text(
-            pillText,
+        );
+
+      case CeoSovereignAuthStage.stageBootstrapRequestEmail:
+        return _buildBootstrapRequestEmailView();
+
+      case CeoSovereignAuthStage.stageBootstrapVerifyOtp:
+        return _buildSixDigitOtpView(
+          badgeLabel: 'PRIMEIRO ACESSO · ETAPA 1 DE 2',
+          headline: 'Valide os 6 Dígitos do Seu E-mail',
+          subtitle:
+              'Enviamos um código exclusivo de 6 dígitos para $kMonocraticCeoEmail. Digite-o abaixo para liberar a criação da sua Senha Mestra Forte:',
+          submitButtonKey: const ValueKey<String>(
+            'ceo-bootstrap-verify-otp-btn',
+          ),
+          submitLabel: 'Confirmar Código e Criar Senha Mestra',
+          onSubmit: _handleBootstrapVerifyOtp,
+          onResend: _handleBootstrapSendOtp,
+          onBack: () {
+            _otpController.clear();
+            setState(() {
+              _errorBanner = null;
+              _stage = CeoSovereignAuthStage.stageBootstrapRequestEmail;
+            });
+          },
+        );
+
+      case CeoSovereignAuthStage.stageBootstrapCreateMasterPassword:
+        return _buildCreateOrResetPasswordView(
+          badgeLabel: 'PRIMEIRO ACESSO · ETAPA 2 DE 2',
+          headline: 'Crie Sua Senha Mestra Forte CEO',
+          subtitle:
+              'Sua senha é exclusiva deste aplicativo, protegida em custódia dividida (PBKDF2 210k + HMAC-SHA512 25k + AES-256) e jamais compartilhada com o Marketplace.',
+          newPasswordFieldKey: const ValueKey<String>(
+            'ceo-create-password-input',
+          ),
+          confirmPasswordFieldKey: const ValueKey<String>(
+            'ceo-confirm-password-input',
+          ),
+          submitButtonKey: const ValueKey<String>(
+            'ceo-save-initial-password-btn',
+          ),
+          submitLabel: 'Selar Minha Senha Mestra em AES-256 & Entrar',
+          onSubmit: _handleCreateInitialMasterPassword,
+        );
+
+      case CeoSovereignAuthStage.stageDailyLoginCredentials:
+        return _buildDailyLoginCredentialsView();
+
+      case CeoSovereignAuthStage.stageDailyLoginVerifyOtp:
+        return _buildSixDigitOtpView(
+          badgeLabel: 'VERIFICAÇÃO 2FA DE ENTRADA · ETAPA 2 DE 2',
+          headline: 'Código de 6 Dígitos Enviado ao Seu E-mail',
+          subtitle:
+              'Sua Senha Mestra foi provada! Digite agora os 6 dígitos enviados exclusivamente para $kMonocraticCeoEmail para abrir a Sala de Guerra:',
+          submitButtonKey: const ValueKey<String>('ceo-login-verify-otp-btn'),
+          submitLabel: 'Validar 6 Dígitos e Abrir Desperrengue CEO',
+          onSubmit: _handleDailyLoginVerifyOtp,
+          onResend: _handleResendLoginOtp,
+          onBack: () {
+            _otpController.clear();
+            _wipePasswordBuffers(triggerRebuild: false);
+            setState(() {
+              _errorBanner = null;
+              _activeOtpTicket = null;
+              _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
+            });
+          },
+        );
+
+      case CeoSovereignAuthStage.stagePasswordResetFromDeepLink:
+        return _buildCreateOrResetPasswordView(
+          badgeLabel: 'REDEFINIÇÃO AUTORIZADA POR E-MAIL · USO ÚNICO (10 MIN)',
+          headline: 'Definir Nova Senha de Administrador CEO',
+          subtitle:
+              'Ao salvar a nova Senha Mestra Forte em AES-256, todas as sessões anteriores serão encerradas e você validará sua entrada com a senha nova + código de 6 dígitos.',
+          newPasswordFieldKey: const ValueKey<String>(
+            'ceo-reset-new-password-input',
+          ),
+          confirmPasswordFieldKey: const ValueKey<String>(
+            'ceo-reset-confirm-password-input',
+          ),
+          submitButtonKey: const ValueKey<String>(
+            'ceo-reset-commit-password-btn',
+          ),
+          submitLabel: 'Salvar Nova Senha Mestra & Ir para Login',
+          onSubmit: _handleCommitPasswordResetFromDeepLink,
+          onCancel: () {
+            _wipePasswordBuffers(triggerRebuild: false);
+            widget.onResetGrantConsumed?.call();
+            unawaited(_inspectInitialSovereignState());
+          },
+        );
+    }
+  }
+
+  Widget _buildBootstrapRequestEmailView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _StagePillBadge('PRIMEIRO ACESSO SOBERANO · SEM SENHA CADASTRADA'),
+        const SizedBox(height: 10),
+        const Text(
+          'Inicialize Sua Senha de Administrador CEO',
+          style: TextStyle(
+            color: FounderSovereignTokens.primaryInk,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Nenhuma Senha Mestra foi criada ainda neste Cofre Soberano. Confirme abaixo seu e-mail exclusivo para receber o código de 6 dígitos e criar sua própria senha forte:',
+          style: TextStyle(
+            color: FounderSovereignTokens.mutedInk,
+            fontSize: 12.5,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _buildSovereignEmailField(
+          fieldKey: const ValueKey<String>('ceo-bootstrap-email-input'),
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          key: const ValueKey<String>('ceo-bootstrap-send-otp-btn'),
+          onPressed: (_busy || _otpCooldownRemainingSec > 0)
+              ? null
+              : _handleBootstrapSendOtp,
+          style: FilledButton.styleFrom(
+            backgroundColor: FounderSovereignTokens.imperialGold,
+            foregroundColor: const Color(0xFF0B0F17),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          ),
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF0B0F17),
+                  ),
+                )
+              : const Icon(Icons.mark_email_unread_rounded, size: 18),
+          label: Text(
+            _otpCooldownRemainingSec > 0
+                ? 'Aguarde ${_otpCooldownRemainingSec}s'
+                : 'Enviar Código de 6 Dígitos para Criar Minha Senha',
             textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: _busy
+              ? null
+              : () {
+                  setState(() {
+                    _errorBanner = null;
+                    _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
+                  });
+                },
+          child: const Text(
+            'Já criei minha Senha Mestra — ir para tela de Login',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDailyLoginCredentialsView() {
+    final charCount = _passwordController.text.runes.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _StagePillBadge('ENTRADA SOBERANA EM 2 FATORES · ETAPA 1 DE 2'),
+        const SizedBox(height: 10),
+        const Text(
+          'Autenticação Exclusiva do CEO',
+          style: TextStyle(
+            color: FounderSovereignTokens.primaryInk,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Informe seu e-mail soberano e sua Senha Mestra Forte (máx. 64 caracteres). Após validar sua senha, enviaremos o código de 6 dígitos para o seu e-mail:',
+          style: TextStyle(
+            color: FounderSovereignTokens.mutedInk,
+            fontSize: 12.5,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 14),
+        _buildSovereignEmailField(
+          fieldKey: const ValueKey<String>('ceo-login-email-input'),
+        ),
+        const SizedBox(height: 12),
+        _SovereignPasswordField(
+          fieldKey: const ValueKey<String>('ceo-login-password-input'),
+          controller: _passwordController,
+          labelText: 'Senha Mestra de Administrador CEO',
+          obscureText: _obscurePrimaryPassword,
+          onToggleObscure: () => setState(
+            () => _obscurePrimaryPassword = !_obscurePrimaryPassword,
+          ),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _handleDailyLoginStep1(),
+        ),
+        const SizedBox(height: 6),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Text(
+            '$charCount / ${CeoStrongPasswordPolicy.maxLength} caracteres',
+            key: const ValueKey<String>('ceo-login-password-char-counter'),
             style: FounderSovereignTokens.monoMetric(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.1,
-              color: FounderSovereignTokens.imperialGoldBright,
+              fontSize: 11,
+              color: charCount >= CeoStrongPasswordPolicy.maxLength
+                  ? FounderSovereignTokens.imperialGoldBright
+                  : FounderSovereignTokens.mutedInk,
             ),
           ),
         ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          key: const ValueKey<String>('ceo-login-submit-btn'),
+          onPressed: (_busy || _vaultLockRemainingSec > 0)
+              ? null
+              : _handleDailyLoginStep1,
+          style: FilledButton.styleFrom(
+            backgroundColor: FounderSovereignTokens.imperialGold,
+            foregroundColor: const Color(0xFF0B0F17),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          ),
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF0B0F17),
+                  ),
+                )
+              : const Icon(Icons.shield_rounded, size: 18),
+          label: const Text(
+            'Validar Senha & Receber Código de 6 Dígitos',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreateOrResetPasswordView({
+    required String badgeLabel,
+    required String headline,
+    required String subtitle,
+    required Key newPasswordFieldKey,
+    required Key confirmPasswordFieldKey,
+    required Key submitButtonKey,
+    required String submitLabel,
+    required VoidCallback onSubmit,
+    VoidCallback? onCancel,
+  }) {
+    final pw = _passwordController.text;
+    final confirm = _confirmPasswordController.text;
+    final evaluation = CeoStrongPasswordPolicy.evaluate(pw);
+    final passwordsMatch = pw.isNotEmpty && pw == confirm;
+    final canSubmit = !_busy && evaluation.isApproved && passwordsMatch;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _StagePillBadge(badgeLabel),
         const SizedBox(height: 10),
         Text(
-          title,
-          textAlign: TextAlign.center,
-          style: FounderSovereignTokens.monoMetric(
-            fontSize: 19,
+          headline,
+          style: const TextStyle(
+            color: FounderSovereignTokens.primaryInk,
+            fontSize: 17,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 6),
         Text(
           subtitle,
-          textAlign: TextAlign.center,
           style: const TextStyle(
             color: FounderSovereignTokens.mutedInk,
             fontSize: 12.5,
             height: 1.45,
           ),
         ),
+        const SizedBox(height: 14),
+        _SovereignPasswordField(
+          fieldKey: newPasswordFieldKey,
+          controller: _passwordController,
+          labelText: 'Nova Senha Mestra (12 a 64 caracteres)',
+          obscureText: _obscurePrimaryPassword,
+          onToggleObscure: () => setState(
+            () => _obscurePrimaryPassword = !_obscurePrimaryPassword,
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                evaluation.tierLabelPt,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: evaluation.isApproved
+                      ? FounderSovereignTokens.solvencyEmerald
+                      : FounderSovereignTokens.imperialGoldBright,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${evaluation.charCount} / ${CeoStrongPasswordPolicy.maxLength}',
+              key: const ValueKey<String>('ceo-password-char-counter'),
+              style: FounderSovereignTokens.monoMetric(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: evaluation.lengthInRange
+                    ? FounderSovereignTokens.solvencyEmerald
+                    : FounderSovereignTokens.mutedInk,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            minHeight: 6,
+            value: evaluation.normalizedProgress,
+            backgroundColor: FounderSovereignTokens.obsidianSurface,
+            color: evaluation.isApproved
+                ? FounderSovereignTokens.solvencyEmerald
+                : FounderSovereignTokens.imperialGold,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _SovereignPasswordField(
+          fieldKey: confirmPasswordFieldKey,
+          controller: _confirmPasswordController,
+          labelText: 'Confirmar Senha Mestra',
+          obscureText: _obscureConfirmPassword,
+          onToggleObscure: () => setState(
+            () => _obscureConfirmPassword = !_obscureConfirmPassword,
+          ),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) {
+            if (canSubmit) onSubmit();
+          },
+        ),
+        const SizedBox(height: 12),
+        _PasswordRequirementsChecklist(
+          evaluation: evaluation,
+          passwordsMatch: passwordsMatch,
+          hasConfirmationInput: confirm.isNotEmpty,
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          key: submitButtonKey,
+          onPressed: canSubmit ? onSubmit : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: FounderSovereignTokens.imperialGold,
+            foregroundColor: const Color(0xFF0B0F17),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          ),
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF0B0F17),
+                  ),
+                )
+              : const Icon(Icons.enhanced_encryption_rounded, size: 18),
+          label: Text(
+            submitLabel,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+        ),
+        if (onCancel != null) ...<Widget>[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: _busy ? null : onCancel,
+            child: const Text('Cancelar redefinição'),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _buildBanners() {
+  Widget _buildSixDigitOtpView({
+    required String badgeLabel,
+    required String headline,
+    required String subtitle,
+    required Key submitButtonKey,
+    required String submitLabel,
+    required VoidCallback onSubmit,
+    required VoidCallback onResend,
+    required VoidCallback onBack,
+  }) {
+    final digits = _otpController.text.replaceAll(RegExp(r'\D'), '');
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (_infoBanner != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: FounderSovereignTokens.cyberCyanSoft,
+        _StagePillBadge(badgeLabel),
+        const SizedBox(height: 10),
+        Text(
+          headline,
+          style: const TextStyle(
+            color: FounderSovereignTokens.primaryInk,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: FounderSovereignTokens.mutedInk,
+            fontSize: 12.5,
+            height: 1.45,
+          ),
+        ),
+        if (_remainingOtpAttempts != null) ...<Widget>[
+          const SizedBox(height: 6),
+          Text(
+            'Tentativas restantes neste código: $_remainingOtpAttempts',
+            style: const TextStyle(
+              color: FounderSovereignTokens.warmAmber,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        _SixDigitOpticalDisplay(digits: digits),
+        const SizedBox(height: 10),
+        TextField(
+          key: const ValueKey<String>('ceo-otp-code-input'),
+          controller: _otpController,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          autocorrect: false,
+          enableSuggestions: false,
+          enableIMEPersonalizedLearning: false,
+          inputFormatters: <TextInputFormatter>[
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
+          ],
+          style: FounderSovereignTokens.monoMetric(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 4,
+            color: FounderSovereignTokens.primaryInk,
+          ),
+          decoration: InputDecoration(
+            labelText: 'Digite ou cole os 6 dígitos',
+            counterText: '',
+            isDense: true,
+            filled: true,
+            fillColor: FounderSovereignTokens.obsidianSurface,
+            border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: FounderSovereignTokens.cyberCyan.withValues(alpha: 0.55),
+            ),
+          ),
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) {
+            if (digits.length == 6) onSubmit();
+          },
+        ),
+        const SizedBox(height: 10),
+        _CompactNumericPad(
+          enabled: !_busy,
+          onDigit: _appendOtpDigitFromPad,
+          onBackspace: _backspaceOtpFromPad,
+        ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          key: submitButtonKey,
+          onPressed: (_busy || digits.length != 6) ? null : onSubmit,
+          style: FilledButton.styleFrom(
+            backgroundColor: FounderSovereignTokens.imperialGold,
+            foregroundColor: const Color(0xFF0B0F17),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          ),
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF0B0F17),
+                  ),
+                )
+              : const Icon(Icons.lock_open_rounded, size: 18),
+          label: Text(
+            submitLabel,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          children: <Widget>[
+            TextButton(
+              onPressed: _busy ? null : onBack,
+              child: const Text('Voltar'),
+            ),
+            TextButton(
+              key: const ValueKey<String>('ceo-otp-resend-btn'),
+              onPressed:
+                  (_busy || _otpCooldownRemainingSec > 0) ? null : onResend,
+              child: Text(
+                _otpCooldownRemainingSec > 0
+                    ? 'Reenviar em ${_otpCooldownRemainingSec}s'
+                    : 'Reenviar código de 6 dígitos',
               ),
             ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSovereignEmailField({required Key fieldKey}) {
+    return TextField(
+      key: fieldKey,
+      controller: _emailController,
+      keyboardType: TextInputType.emailAddress,
+      maxLength: 120,
+      autocorrect: false,
+      enableSuggestions: false,
+      enableIMEPersonalizedLearning: false,
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.deny(RegExp(r'\s')),
+        LengthLimitingTextInputFormatter(120),
+      ],
+      style: FounderSovereignTokens.monoMetric(
+        fontSize: 13.5,
+        color: FounderSovereignTokens.primaryInk,
+      ),
+      decoration: InputDecoration(
+        labelText: 'E-mail Soberano do CEO',
+        hintText: 'Digite seu e-mail autorizado',
+        counterText: '',
+        prefixIcon: const Icon(
+          Icons.alternate_email_rounded,
+          size: 18,
+          color: FounderSovereignTokens.imperialGoldBright,
+        ),
+        filled: true,
+        fillColor: FounderSovereignTokens.obsidianSurface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      onChanged: (_) => setState(() {}),
+    );
+  }
+}
+
+class _StagePillBadge extends StatelessWidget {
+  const _StagePillBadge(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.48),
+          ),
+        ),
+        child: Text(
+          text,
+          style: FounderSovereignTokens.monoMetric(
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.7,
+            color: FounderSovereignTokens.imperialGoldBright,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SovereignPasswordField extends StatelessWidget {
+  const _SovereignPasswordField({
+    required this.fieldKey,
+    required this.controller,
+    required this.labelText,
+    required this.obscureText,
+    required this.onToggleObscure,
+    required this.onChanged,
+    this.onSubmitted,
+  });
+
+  final Key fieldKey;
+  final TextEditingController controller;
+  final String labelText;
+  final bool obscureText;
+  final VoidCallback onToggleObscure;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      key: fieldKey,
+      controller: controller,
+      obscureText: obscureText,
+      maxLength: CeoStrongPasswordPolicy.maxLength,
+      maxLengthEnforcement: MaxLengthEnforcement.enforced,
+      autocorrect: false,
+      enableSuggestions: false,
+      enableIMEPersonalizedLearning: false,
+      smartDashesType: SmartDashesType.disabled,
+      smartQuotesType: SmartQuotesType.disabled,
+      keyboardType: TextInputType.visiblePassword,
+      contextMenuBuilder: obscureText
+          ? (_, _) => const SizedBox.shrink()
+          : (ctx, editableState) =>
+              AdaptiveTextSelectionToolbar.editableText(
+                editableTextState: editableState,
+              ),
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.deny(RegExp(r'[\s\x00-\x1F\x7F]')),
+        LengthLimitingTextInputFormatter(CeoStrongPasswordPolicy.maxLength),
+      ],
+      style: FounderSovereignTokens.monoMetric(
+        fontSize: 14,
+        color: FounderSovereignTokens.primaryInk,
+      ),
+      decoration: InputDecoration(
+        labelText: labelText,
+        counterText: '',
+        prefixIcon: const Icon(
+          Icons.key_rounded,
+          size: 18,
+          color: FounderSovereignTokens.imperialGoldBright,
+        ),
+        suffixIcon: IconButton(
+          tooltip: obscureText ? 'Revelar caracteres' : 'Ocultar caracteres',
+          onPressed: onToggleObscure,
+          icon: Icon(
+            obscureText
+                ? Icons.visibility_off_rounded
+                : Icons.visibility_rounded,
+            size: 18,
+            color: FounderSovereignTokens.mutedInk,
+          ),
+        ),
+        filled: true,
+        fillColor: FounderSovereignTokens.obsidianSurface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+    );
+  }
+}
+
+class _PasswordRequirementsChecklist extends StatelessWidget {
+  const _PasswordRequirementsChecklist({
+    required this.evaluation,
+    required this.passwordsMatch,
+    required this.hasConfirmationInput,
+  });
+
+  final CeoPasswordEvaluation evaluation;
+  final bool passwordsMatch;
+  final bool hasConfirmationInput;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: FounderSovereignTokens.obsidianSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: FounderSovereignTokens.crispBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _RuleRow(
+            satisfied: evaluation.lengthInRange,
+            label: 'Entre 12 e 64 caracteres (teto rígido de 64)',
+          ),
+          _RuleRow(
+            satisfied: evaluation.hasUppercase,
+            label: 'Pelo menos 1 letra maiúscula (A–Z)',
+          ),
+          _RuleRow(
+            satisfied: evaluation.hasLowercase,
+            label: 'Pelo menos 1 letra minúscula (a–z)',
+          ),
+          _RuleRow(
+            satisfied: evaluation.hasDigit,
+            label: 'Pelo menos 1 número (0–9)',
+          ),
+          _RuleRow(
+            satisfied: evaluation.hasSpecialSymbol,
+            label: 'Pelo menos 1 caractere especial (!@#\$%&*-_+=?)',
+          ),
+          _RuleRow(
+            satisfied: evaluation.antiPatternApproved &&
+                evaluation.charCount >= CeoStrongPasswordPolicy.minLength,
+            label: 'Alta entropia (≥ 60 bits), sem nomes ou sequências',
+          ),
+          _RuleRow(
+            satisfied: passwordsMatch,
+            label: hasConfirmationInput && !passwordsMatch
+                ? 'Confirmação divergente da senha digitada'
+                : 'Confirmação idêntica à Senha Mestra',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleRow extends StatelessWidget {
+  const _RuleRow({required this.satisfied, required this.label});
+
+  final bool satisfied;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            satisfied
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            size: 15,
+            color: satisfied
+                ? FounderSovereignTokens.solvencyEmerald
+                : FounderSovereignTokens.mutedInk,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
             child: Text(
-              _infoBanner!,
-              style: const TextStyle(
-                color: FounderSovereignTokens.primaryInk,
-                fontSize: 12,
-                height: 1.35,
+              label,
+              style: TextStyle(
+                color: satisfied
+                    ? FounderSovereignTokens.primaryInk
+                    : FounderSovereignTokens.mutedInk,
+                fontSize: 11.5,
+                fontWeight: satisfied ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
           ),
         ],
-        if (_errorBanner != null) ...<Widget>[
-          const SizedBox(height: 12),
-          Container(
-            key: const ValueKey<String>('vault-error-banner'),
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: FounderSovereignTokens.crimsonAlertSoft,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: FounderSovereignTokens.crimsonAlert),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Padding(
-                  padding: EdgeInsets.only(top: 1),
-                  child: Icon(
-                    Icons.gpp_bad_rounded,
-                    size: 16,
-                    color: FounderSovereignTokens.crimsonAlert,
-                  ),
+      ),
+    );
+  }
+}
+
+class _SixDigitOpticalDisplay extends StatelessWidget {
+  const _SixDigitOpticalDisplay({required this.digits});
+
+  final String digits;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: List<Widget>.generate(6, (index) {
+        final filled = index < digits.length;
+        final active = index == digits.length;
+        final char = filled ? digits[index] : '';
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(left: index == 0 ? 0 : 6),
+            child: Container(
+              height: 48,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  width: active ? 1.6 : 1.0,
+                  color: filled
+                      ? FounderSovereignTokens.solvencyEmerald
+                      : active
+                          ? FounderSovereignTokens.imperialGoldBright
+                          : FounderSovereignTokens.crispBorder,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _errorBanner!,
-                    style: const TextStyle(
-                      color: FounderSovereignTokens.crimsonAlert,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      height: 1.35,
+              ),
+              child: Text(
+                char,
+                style: FounderSovereignTokens.monoMetric(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _CompactNumericPad extends StatelessWidget {
+  const _CompactNumericPad({
+    required this.enabled,
+    required this.onDigit,
+    required this.onBackspace,
+  });
+
+  final bool enabled;
+  final ValueChanged<int> onDigit;
+  final VoidCallback onBackspace;
+
+  @override
+  Widget build(BuildContext context) {
+    const rows = <List<int?>>[
+      <int?>[1, 2, 3],
+      <int?>[4, 5, 6],
+      <int?>[7, 8, 9],
+      <int?>[null, 0, -1],
+    ];
+    return Column(
+      children: <Widget>[
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: <Widget>[
+                for (var i = 0; i < row.length; i++)
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                      child: _buildCell(row[i]),
                     ),
                   ),
-                ),
               ],
             ),
           ),
-        ],
       ],
     );
   }
 
-  Widget _buildPrimaryAuthCard() {
-    return FounderGlassCard(
-      accentTopBarColor: FounderSovereignTokens.imperialGoldBright,
-      padding: const EdgeInsets.all(22),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _buildHeaderBadge(
-            title: 'Desperrengue CEO',
-            subtitle:
-                'Autentique sua identidade soberana para iniciar a verificação criptográfica em 3 camadas.',
-          ),
-          _buildBanners(),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-            key: const ValueKey<String>('ceo-google-oauth-btn'),
-            onPressed: _busy ? null : _submitGoogleOAuth,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: FounderSovereignTokens.primaryInk,
-              backgroundColor: FounderSovereignTokens.obsidianSurface,
-              side: const BorderSide(color: FounderSovereignTokens.crispBorder),
-              minimumSize: const Size.fromHeight(48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(13),
-              ),
-            ),
-            icon: const Icon(
-              Icons.verified_user_rounded,
-              size: 18,
-              color: FounderSovereignTokens.imperialGoldBright,
-            ),
-            label: const Text(
-              'Autenticar Conta Google Soberana',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: <Widget>[
-              const Expanded(
-                child: Divider(color: FounderSovereignTokens.crispBorder),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text(
-                  'OU CREDENCIAL DIRETA',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: FounderSovereignTokens.mutedInk,
-                  ),
-                ),
-              ),
-              const Expanded(
-                child: Divider(color: FounderSovereignTokens.crispBorder),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            key: const ValueKey<String>('ceo-auth-email-input'),
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            autocorrect: false,
-            enableSuggestions: false,
-            enableIMEPersonalizedLearning: false,
-            style: const TextStyle(
-              color: FounderSovereignTokens.primaryInk,
-              fontSize: 14,
-            ),
-            decoration: InputDecoration(
-              labelText: 'E-mail Soberano do Titular',
-              hintText: 'Digite seu e-mail autorizado',
-              prefixIcon: const Icon(Icons.alternate_email_rounded, size: 18),
-              filled: true,
-              fillColor: FounderSovereignTokens.obsidianSurface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (!_usePasswordlessPrimaryAuth) ...<Widget>[
-            TextField(
-              key: const ValueKey<String>('ceo-auth-password-input'),
-              controller: _passwordController,
-              obscureText: _obscurePassword,
-              autocorrect: false,
-              enableSuggestions: false,
-              enableIMEPersonalizedLearning: false,
-              onSubmitted: (_) => _submitEmailPasswordLogin(),
-              style: const TextStyle(
-                color: FounderSovereignTokens.primaryInk,
-                fontSize: 14,
-              ),
-              decoration: InputDecoration(
-                labelText: 'Senha da Conta',
-                prefixIcon: const Icon(Icons.key_rounded, size: 18),
-                suffixIcon: IconButton(
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_rounded
-                        : Icons.visibility_off_rounded,
-                    size: 18,
-                  ),
-                ),
-                filled: true,
-                fillColor: FounderSovereignTokens.obsidianSurface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            FilledButton.icon(
-              key: const ValueKey<String>('ceo-auth-submit-btn'),
-              onPressed: _busy ? null : _submitEmailPasswordLogin,
-              style: FilledButton.styleFrom(
-                backgroundColor: FounderSovereignTokens.imperialGold,
-                foregroundColor: const Color(0xFF111827),
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(13),
-                ),
-              ),
-              icon: _busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF111827),
-                      ),
-                    )
-                  : const Icon(Icons.shield_rounded, size: 18),
-              label: const Text(
-                'Validar Identidade Soberana',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-              ),
-            ),
-          ] else ...<Widget>[
-            if (_primaryOtpSent) ...<Widget>[
-              TextField(
-                key: const ValueKey<String>('ceo-primary-otp-input'),
-                controller: _primaryOtpController,
-                keyboardType: TextInputType.number,
-                autocorrect: false,
-                enableSuggestions: false,
-                enableIMEPersonalizedLearning: false,
-                style: FounderSovereignTokens.monoMetric(fontSize: 16),
-                decoration: InputDecoration(
-                  labelText: 'Código Recebido no E-mail',
-                  prefixIcon: const Icon(Icons.mark_email_read_rounded, size: 18),
-                  filled: true,
-                  fillColor: FounderSovereignTokens.obsidianSurface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            FilledButton.icon(
-              onPressed: _busy
-                  ? null
-                  : (_primaryOtpSent
-                      ? _verifyPasswordlessPrimaryCode
-                      : _sendPasswordlessPrimaryCode),
-              style: FilledButton.styleFrom(
-                backgroundColor: FounderSovereignTokens.imperialGold,
-                foregroundColor: const Color(0xFF111827),
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(13),
-                ),
-              ),
-              icon: const Icon(Icons.mail_lock_rounded, size: 18),
-              label: Text(
-                _primaryOtpSent
-                    ? 'Confirmar Código de E-mail'
-                    : 'Enviar Código de Sessão ao E-mail',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _busy
-                ? null
-                : () {
-                    setState(() {
-                      _usePasswordlessPrimaryAuth = !_usePasswordlessPrimaryAuth;
-                      _primaryOtpSent = false;
-                      _errorBanner = null;
-                    });
-                  },
-            child: Text(
-              _usePasswordlessPrimaryAuth
-                  ? 'Voltar para entrada com senha'
-                  : 'Minha conta usa Google / Entrar com código no e-mail',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: FounderSovereignTokens.cyberCyan,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmailOtpChallengeCard() {
-    final purposeSubtitle = _otpPurpose == 'PIN_RESET'
-        ? 'Redefinição segura do seu PIN pessoal: valide o código de 6 dígitos enviado exclusivamente ao seu e-mail.'
-        : _otpPurpose == 'NEW_DEVICE_BIND'
-            ? 'Novo dispositivo detectado: valide o código de 6 dígitos enviado ao seu e-mail antes de usar seu PIN.'
-            : 'Primeiro acesso soberano: valide o código de 6 dígitos no seu e-mail para criar seu próprio PIN pessoal.';
-
-    return FounderGlassCard(
-      accentTopBarColor: FounderSovereignTokens.cyberCyan,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _buildHeaderBadge(
-            pillText: 'CAMADA 2/3 · VERIFICAÇÃO DE E-MAIL TLS',
-            title: 'Código de 6 Dígitos',
-            subtitle: purposeSubtitle,
-          ),
-          _buildBanners(),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: <Widget>[
-              FilledButton.tonalIcon(
-                key: const ValueKey<String>('ceo-send-otp-6d-btn'),
-                onPressed: (_busy || _otpCooldownRemainingSec > 0)
-                    ? null
-                    : _sendSixDigitSecurityCode,
-                style: FilledButton.styleFrom(
-                  backgroundColor: FounderSovereignTokens.imperialGoldSoft,
-                  foregroundColor: FounderSovereignTokens.imperialGoldBright,
-                  minimumSize: const Size(0, 38),
-                ),
-                icon: const Icon(Icons.forward_to_inbox_rounded, size: 16),
-                label: Text(
-                  _otpCooldownRemainingSec > 0
-                      ? 'Reenviar em ${_otpCooldownRemainingSec}s'
-                      : (_activeOtpTicket == null
-                          ? 'Enviar Código de 6 Dígitos'
-                          : 'Reenviar Novo Código'),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              OutlinedButton.icon(
-                key: const ValueKey<String>('ceo-paste-otp-btn'),
-                onPressed: _busy ? null : _pasteOtpFromClipboard,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 38),
-                  foregroundColor: FounderSovereignTokens.primaryInk,
-                  side: const BorderSide(
-                    color: FounderSovereignTokens.crispBorder,
-                  ),
-                ),
-                icon: const Icon(Icons.content_paste_rounded, size: 15),
-                label: const Text(
-                  'Colar',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-          if (_remainingOtpAttempts != null) ...<Widget>[
-            const SizedBox(height: 6),
-            Text(
-              'Tentativas restantes neste código: $_remainingOtpAttempts/5',
-              style: FounderSovereignTokens.monoMetric(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: FounderSovereignTokens.mutedInk,
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          _SixOpticalCellsDisplay(
-            keyPrefix: 'ceo-otp-cell',
-            value: _otpBuffer,
-            maskDigits: false,
-            accentColor: FounderSovereignTokens.cyberCyan,
-          ),
-          const SizedBox(height: 16),
-          _SovereignPinPad(
-            digits: _keypadDigits,
-            scrambled: _scrambleKeypad,
-            busy: _busy,
-            onDigit: _onDigitPressed,
-            onBackspace: _onBackspacePressed,
-            onToggleScramble: _toggleScrambleKeypad,
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: <Widget>[
-              if (_otpPurpose == 'PIN_RESET')
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () {
-                          setState(() {
-                            _otpBuffer = '';
-                            _errorBanner = null;
-                            _stage = _VaultGateStage.pinUnlock;
-                          });
-                        },
-                  child: const Text(
-                    'Cancelar redefinição',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                )
-              else
-                const SizedBox.shrink(),
-              TextButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () async {
-                        await widget.repository.signOutAndLock();
-                        if (!mounted) return;
-                        setState(() {
-                          _stage = _VaultGateStage.primaryAuth;
-                        });
-                      },
-                icon: const Icon(Icons.logout_rounded, size: 15),
-                label: const Text(
-                  'Encerrar sessão',
-                  style: TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPinEnrollmentCard() {
-    final isConfirm = _stage == _VaultGateStage.pinConfirm;
-    return FounderGlassCard(
-      accentTopBarColor: FounderSovereignTokens.imperialGoldBright,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _buildHeaderBadge(
-            pillText: isConfirm
-                ? 'CAMADA 3/3 · CONFIRMAÇÃO SHA-256'
-                : 'CAMADA 3/3 · CRIAÇÃO DO PIN PESSOAL',
-            title: isConfirm
-                ? 'Confirme seu PIN Pessoal'
-                : 'Crie seu PIN Pessoal',
-            subtitle: isConfirm
-                ? 'Digite novamente os mesmos 6 dígitos para selar seu PIN com criptografia SHA-256.'
-                : 'Escolha 6 dígitos exclusivos de seu conhecimento (sem sequências como 123456 ou repetições).',
-          ),
-          _buildBanners(),
-          const SizedBox(height: 18),
-          _SixOpticalCellsDisplay(
-            keyPrefix: 'ceo-pin-create-cell',
-            value: _pinBuffer,
-            maskDigits: true,
-            accentColor: FounderSovereignTokens.imperialGoldBright,
-          ),
-          const SizedBox(height: 18),
-          _SovereignPinPad(
-            digits: _keypadDigits,
-            scrambled: _scrambleKeypad,
-            busy: _busy,
-            onDigit: _onDigitPressed,
-            onBackspace: _onBackspacePressed,
-            onToggleScramble: _toggleScrambleKeypad,
-          ),
-          if (isConfirm) ...<Widget>[
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: _busy
-                  ? null
-                  : () {
-                      setState(() {
-                        _pinDraftFirst = '';
-                        _pinBuffer = '';
-                        _errorBanner = null;
-                        _stage = _VaultGateStage.pinCreate;
-                      });
-                    },
-              child: const Text(
-                'Escolher outro PIN',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPinUnlockCard() {
-    final isLocked = _vaultLockRemainingSec > 0;
-    return FounderGlassCard(
-      accentTopBarColor: isLocked
-          ? FounderSovereignTokens.crimsonAlert
-          : FounderSovereignTokens.imperialGoldBright,
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _buildHeaderBadge(
-            pillText: 'COFRE SOBERANO PROTEGIDO · SHA-256',
-            title: isLocked
-                ? 'Cofre em Bloqueio Cautelar'
-                : 'Digite seu PIN Pessoal',
-            subtitle: isLocked
-                ? 'Aguarde ${_vaultLockRemainingSec}s para uma nova tentativa ou redefina via código de 6 dígitos no e-mail.'
-                : 'Acesso exclusivo de Wagner ($kMaskedMonocraticCeoEmail). Nenhum dígito vem preenchido.',
-          ),
-          _buildBanners(),
-          const SizedBox(height: 18),
-          _SixOpticalCellsDisplay(
-            keyPrefix: 'ceo-pin-unlock-cell',
-            value: _pinBuffer,
-            maskDigits: true,
-            accentColor: isLocked
-                ? FounderSovereignTokens.crimsonAlert
-                : FounderSovereignTokens.imperialGoldBright,
-          ),
-          const SizedBox(height: 18),
-          _SovereignPinPad(
-            digits: _keypadDigits,
-            scrambled: _scrambleKeypad,
-            busy: _busy || isLocked,
-            onDigit: _onDigitPressed,
-            onBackspace: _onBackspacePressed,
-            onToggleScramble: _toggleScrambleKeypad,
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            alignment: WrapAlignment.spaceBetween,
-            children: <Widget>[
-              TextButton.icon(
-                key: const ValueKey<String>('ceo-reset-pin-btn'),
-                onPressed: _busy
-                    ? null
-                    : () => _enterOtpChallengeStage('PIN_RESET', autoSend: false),
-                icon: const Icon(Icons.lock_reset_rounded, size: 16),
-                label: const Text(
-                  'Redefinir PIN (6 dígitos e-mail)',
-                  style: TextStyle(fontSize: 11.5),
-                ),
-              ),
-              TextButton.icon(
-                key: const ValueKey<String>('ceo-signout-btn'),
-                onPressed: _busy
-                    ? null
-                    : () async {
-                        await widget.repository.signOutAndLock();
-                        if (!mounted) return;
-                        setState(() {
-                          _stage = _VaultGateStage.primaryAuth;
-                        });
-                      },
-                icon: const Icon(Icons.logout_rounded, size: 15),
-                label: const Text(
-                  'Sair',
-                  style: TextStyle(fontSize: 11.5),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SixOpticalCellsDisplay extends StatelessWidget {
-  const _SixOpticalCellsDisplay({
-    required this.keyPrefix,
-    required this.value,
-    required this.maskDigits,
-    required this.accentColor,
-  });
-
-  final String keyPrefix;
-  final String value;
-  final bool maskDigits;
-  final Color accentColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cellWidth =
-            ((constraints.maxWidth - 5 * 8) / 6).clamp(36.0, 50.0);
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List<Widget>.generate(6, (index) {
-            final hasChar = index < value.length;
-            final isFocusedCell = index == value.length;
-            return Container(
-              key: ValueKey<String>('$keyPrefix-$index'),
-              width: cellWidth,
-              height: 50,
-              margin: EdgeInsets.only(right: index < 5 ? 8 : 0),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: hasChar
-                    ? accentColor.withValues(alpha: 0.14)
-                    : FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: hasChar
-                      ? accentColor
-                      : isFocusedCell
-                          ? accentColor.withValues(alpha: 0.55)
-                          : FounderSovereignTokens.crispBorder,
-                  width: hasChar || isFocusedCell ? 1.5 : 1.0,
-                ),
-              ),
-              child: hasChar
-                  ? (maskDigits
-                      ? Container(
-                          width: 12,
-                          height: 12,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: accentColor,
-                          ),
-                        )
-                      : Text(
-                          value[index],
-                          style: FounderSovereignTokens.monoMetric(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                            color: accentColor,
-                          ),
-                        ))
-                  : const SizedBox.shrink(),
-            );
-          }),
-        );
-      },
-    );
-  }
-}
-
-/// Teclado vetorial tátil isolado do sistema operacional (proteção contra IME Keyloggers
-/// e embaralhamento CSPRNG opcional contra observação de ombro).
-class _SovereignPinPad extends StatelessWidget {
-  const _SovereignPinPad({
-    required this.digits,
-    required this.scrambled,
-    required this.busy,
-    required this.onDigit,
-    required this.onBackspace,
-    required this.onToggleScramble,
-  });
-
-  final List<int> digits;
-  final bool scrambled;
-  final bool busy;
-  final void Function(int digit) onDigit;
-  final VoidCallback onBackspace;
-  final VoidCallback onToggleScramble;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget buildDigitButton(int d) {
-      return Expanded(
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Material(
-            color: FounderSovereignTokens.obsidianSurface,
-            borderRadius: BorderRadius.circular(14),
-            child: InkWell(
-              key: ValueKey<String>('sovereign-pad-digit-$d'),
-              borderRadius: BorderRadius.circular(14),
-              onTap: busy ? null : () => onDigit(d),
-              child: Container(
-                height: 52,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: FounderSovereignTokens.crispBorder),
-                ),
-                child: Text(
-                  '$d',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: busy
-                        ? FounderSovereignTokens.mutedInk
-                        : FounderSovereignTokens.primaryInk,
-                  ),
-                ),
-              ),
-            ),
-          ),
+  Widget _buildCell(int? value) {
+    if (value == null) return const SizedBox(height: 40);
+    if (value == -1) {
+      return OutlinedButton(
+        key: const ValueKey<String>('ceo-otp-backspace-btn'),
+        onPressed: enabled ? onBackspace : null,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 40),
+          padding: EdgeInsets.zero,
         ),
+        child: const Icon(Icons.backspace_outlined, size: 17),
       );
     }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            buildDigitButton(digits[0]),
-            buildDigitButton(digits[1]),
-            buildDigitButton(digits[2]),
-          ],
+    return OutlinedButton(
+      key: ValueKey<String>('ceo-otp-digit-$value'),
+      onPressed: enabled ? () => onDigit(value) : null,
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 40),
+        padding: EdgeInsets.zero,
+      ),
+      child: Text(
+        '$value',
+        style: FounderSovereignTokens.monoMetric(
+          fontSize: 16,
+          fontWeight: FontWeight.w800,
+          color: FounderSovereignTokens.primaryInk,
         ),
-        Row(
-          children: <Widget>[
-            buildDigitButton(digits[3]),
-            buildDigitButton(digits[4]),
-            buildDigitButton(digits[5]),
-          ],
-        ),
-        Row(
-          children: <Widget>[
-            buildDigitButton(digits[6]),
-            buildDigitButton(digits[7]),
-            buildDigitButton(digits[8]),
-          ],
-        ),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Material(
-                  color: scrambled
-                      ? FounderSovereignTokens.imperialGoldSoft
-                      : FounderSovereignTokens.obsidianSurface,
-                  borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    key: const ValueKey<String>('sovereign-pad-scramble-btn'),
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: busy ? null : onToggleScramble,
-                    child: Container(
-                      height: 52,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: scrambled
-                              ? FounderSovereignTokens.imperialGold
-                              : FounderSovereignTokens.crispBorder,
-                        ),
-                      ),
-                      child: Tooltip(
-                        message: 'Embaralhar posição dos dígitos',
-                        child: Icon(
-                          Icons.shuffle_rounded,
-                          size: 20,
-                          color: scrambled
-                              ? FounderSovereignTokens.imperialGoldBright
-                              : FounderSovereignTokens.mutedInk,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            buildDigitButton(digits[9]),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Material(
-                  color: FounderSovereignTokens.obsidianSurface,
-                  borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    key: const ValueKey<String>('sovereign-pad-backspace-btn'),
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: busy ? null : onBackspace,
-                    child: Container(
-                      height: 52,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: FounderSovereignTokens.crispBorder,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.backspace_outlined,
-                        size: 20,
-                        color: FounderSovereignTokens.mutedInk,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }

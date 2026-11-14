@@ -7,9 +7,12 @@ import 'package:flutter/services.dart';
 import '../../../core/analytics/founder_dashboard_models.dart';
 import '../../../core/utils/money.dart';
 import '../data/founder_cockpit_repository.dart';
+import '../domain/founder_deep_link_policy.dart';
 import 'founder_animations_and_shaders.dart';
 import 'founder_auth_and_vault_gate.dart';
+import 'founder_ceo_profile_sheet.dart';
 import 'founder_charts_painters.dart';
+import 'founder_deep_link_coordinator.dart';
 import 'founder_innovations_widgets.dart';
 import 'founder_live_sheets_and_radar.dart';
 import 'founder_update_gate.dart';
@@ -40,7 +43,7 @@ const List<_NavTabSpec> _kFiveTabs = <_NavTabSpec>[
   _NavTabSpec('Caixa', Icons.account_balance_rounded),
   _NavTabSpec('Operações', Icons.explore_rounded),
   _NavTabSpec('Usuários', Icons.groups_rounded),
-  _NavTabSpec('Cofre', Icons.shield_rounded),
+  _NavTabSpec('Perfil', Icons.shield_rounded),
 ];
 
 String _formatShortBrt(DateTime? utc) {
@@ -66,6 +69,7 @@ class FounderCockpitScreen extends StatefulWidget {
     super.key,
     this.repository,
     this.updateService,
+    this.deepLinkCoordinator,
     this.screenSecurityBridge = const CeoScreenSecurityBridge(),
     this.inactivityLockTimeout = const Duration(minutes: 10),
     this.backgroundLockTimeout = const Duration(minutes: 5),
@@ -73,6 +77,7 @@ class FounderCockpitScreen extends StatefulWidget {
 
   final FounderCockpitRepository? repository;
   final FounderUpdateService? updateService;
+  final FounderDeepLinkCoordinator? deepLinkCoordinator;
   final CeoScreenSecurityBridge screenSecurityBridge;
   final Duration inactivityLockTimeout;
   final Duration backgroundLockTimeout;
@@ -85,6 +90,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     with WidgetsBindingObserver {
   late final FounderCockpitRepository _repo;
   late final bool _ownsRepo;
+  late final FounderDeepLinkCoordinator _deepLinks;
+  late final bool _ownsDeepLinks;
 
   StreamSubscription<FounderDashboardSnapshot>? _snapshotSub;
   StreamSubscription<CeoLiveEventItem>? _liveEventSub;
@@ -94,6 +101,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   DateTime? _pausedAtUtc;
 
   FounderStepUpSession? _session;
+  FounderResetLinkGrant? _pendingResetGrant;
   FounderDashboardSnapshot _snapshot = FounderDashboardSnapshot.emptyZero();
 
   int _selectedTabIndex = 0;
@@ -102,7 +110,6 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   bool _showAll33Categories = false;
   bool _privacyBlurActive = false;
   bool _loadingSnapshot = false;
-  bool _pinResetFlowRequested = false;
   String? _lockReasonBanner;
   String? _snapshotErrorBanner;
   CeoLiveEventItem? _transientLiveBanner;
@@ -118,8 +125,13 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     WidgetsBinding.instance.addObserver(this);
     _ownsRepo = widget.repository == null;
     _repo = widget.repository ?? FounderCockpitRepository();
+    _ownsDeepLinks = widget.deepLinkCoordinator == null;
+    _deepLinks = widget.deepLinkCoordinator ?? FounderDeepLinkCoordinator();
     _session = _repo.activeStepUpSession;
     _snapshot = _repo.currentSnapshot;
+
+    _deepLinks.pendingResetGrant.addListener(_onDeepLinkResetGrantChanged);
+    unawaited(_deepLinks.start());
 
     _snapshotSub = _repo.snapshotChanges.listen((next) {
       if (!mounted) return;
@@ -147,10 +159,30 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     }
   }
 
+  void _onDeepLinkResetGrantChanged() {
+    final grant = _deepLinks.pendingResetGrant.value;
+    if (!mounted || grant == null) return;
+    _inactivityTimer?.cancel();
+    // Fecha qualquer modal aberto (ex.: FounderCeoProfileSheet) e entra direto
+    // na tela segura de criação da Nova Senha Mestra Forte!
+    Navigator.maybeOf(context)?.popUntil((route) => route.isFirst);
+    unawaited(_repo.lockVault());
+    setState(() {
+      _session = null;
+      _pendingResetGrant = grant;
+      _lockReasonBanner = null;
+      _transientLiveBanner = null;
+    });
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     HardwareKeyboard.instance.removeHandler(_handleGlobalKeyEvent);
+    _deepLinks.pendingResetGrant.removeListener(_onDeepLinkResetGrantChanged);
+    if (_ownsDeepLinks) {
+      _deepLinks.dispose();
+    }
     _snapshotSub?.cancel();
     _liveEventSub?.cancel();
     _inactivityTimer?.cancel();
@@ -222,13 +254,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     });
   }
 
-  Future<void> _lockVaultWithReason(String? reason, {bool pinReset = false}) async {
+  Future<void> _lockVaultWithReason(String? reason) async {
     _inactivityTimer?.cancel();
     await _repo.lockVault();
     if (!mounted) return;
     setState(() {
       _session = null;
-      _pinResetFlowRequested = pinReset;
       _lockReasonBanner = reason;
       _transientLiveBanner = null;
     });
@@ -238,7 +269,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     if (!mounted) return;
     setState(() {
       _session = unlockedSession;
-      _pinResetFlowRequested = false;
+      _pendingResetGrant = null;
       _lockReasonBanner = null;
       _loadingSnapshot = true;
     });
@@ -377,11 +408,15 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   Widget build(BuildContext context) {
     if (_session == null) {
       return FounderAuthAndVaultGate(
-        key: ValueKey<String>(
-          'ceo-vault-gate-${_pinResetFlowRequested ? "reset" : "normal"}',
-        ),
+        key: const ValueKey<String>('ceo-vault-gate'),
         repository: _repo,
-        initialPinResetFlow: _pinResetFlowRequested,
+        pendingResetGrant: _pendingResetGrant,
+        onResetGrantConsumed: () {
+          _deepLinks.clearPendingGrant();
+          if (mounted) {
+            setState(() => _pendingResetGrant = null);
+          }
+        },
         lockReasonBanner: _lockReasonBanner,
         onVaultUnlocked: _onVaultUnlocked,
       );
@@ -722,8 +757,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               IconButton(
                 key: const ValueKey<String>('ceo-privacy-blur-toggle-btn'),
                 visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: const EdgeInsets.all(5),
                 tooltip: _privacyBlurActive
                     ? 'Mostrar valores (Espaço)'
                     : 'Ocultar valores em público (Espaço)',
@@ -735,7 +770,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   _privacyBlurActive
                       ? Icons.visibility_off_rounded
                       : Icons.visibility_rounded,
-                  size: 19,
+                  size: 18,
                   color: _privacyBlurActive
                       ? FounderSovereignTokens.imperialGoldBright
                       : FounderSovereignTokens.mutedInk,
@@ -744,14 +779,14 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               IconButton(
                 key: const ValueKey<String>('ceo-manual-refresh-btn'),
                 visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: const EdgeInsets.all(5),
                 tooltip: 'Sincronizar banco real agora',
                 onPressed: _loadingSnapshot ? null : () => _refreshLiveSnapshot(),
                 icon: _loadingSnapshot
                     ? const SizedBox(
-                        width: 16,
-                        height: 16,
+                        width: 15,
+                        height: 15,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: FounderSovereignTokens.imperialGoldBright,
@@ -759,22 +794,51 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                       )
                     : const Icon(
                         Icons.sync_rounded,
-                        size: 19,
+                        size: 18,
                         color: FounderSovereignTokens.mutedInk,
                       ),
               ),
               IconButton(
+                key: const ValueKey<String>('ceo-header-profile-btn'),
+                visualDensity: VisualDensity.compact,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: const EdgeInsets.all(5),
+                tooltip: 'Perfil Soberano do CEO (Alterar Senha)',
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  FounderCeoProfileSheet.show(
+                    context,
+                    repository: _repo,
+                    vaultMetadata: _snapshot.vaultMetadata,
+                    onSignOutComplete: () async {
+                      await _repo.signOutAndLock();
+                      if (!mounted) return;
+                      setState(() {
+                        _session = null;
+                        _lockReasonBanner =
+                            'Sessão soberana encerrada com segurança.';
+                      });
+                    },
+                  );
+                },
+                icon: const Icon(
+                  Icons.manage_accounts_rounded,
+                  size: 19,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
+              ),
+              IconButton(
                 key: const ValueKey<String>('ceo-lock-vault-btn'),
                 visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
-                padding: const EdgeInsets.all(6),
-                tooltip: 'Trancar Cofre Soberano (exige PIN)',
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                padding: const EdgeInsets.all(5),
+                tooltip: 'Trancar Cofre Soberano (exige Senha Mestra + 2FA)',
                 onPressed: () => _lockVaultWithReason(
                   'Cofre trancado manualmente pelo titular.',
                 ),
                 icon: const Icon(
                   Icons.lock_rounded,
-                  size: 19,
+                  size: 18,
                   color: FounderSovereignTokens.imperialGoldBright,
                 ),
               ),
@@ -2259,7 +2323,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   }
 
   // ===========================================================================
-  // ABA 4: 🔐 COFRE (MONOCRÁTICO + PIN SHA-256 + FLAG_SECURE + OTA + WORM)
+  // ABA 4: 🔐 PERFIL & COFRE (MONOCRÁTICO + SENHA MESTRA AES-256 + OTA + WORM)
   // ===========================================================================
 
   List<Widget> _buildTab4CofreSeguranca(Animation<double> anim) {
@@ -2270,108 +2334,53 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       StaggeredRevealItem(
         animation: anim,
         stageIndex: 0,
-        child: FounderGlassCard(
+        child: FounderCeoProfileCard(
           key: const ValueKey<String>('ceo-monocratic-passport-card'),
-          accentTopBarColor: FounderSovereignTokens.imperialGold,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          repository: _repo,
+          vaultMetadata: vm,
+          onSignOutComplete: () async {
+            await _repo.signOutAndLock();
+            if (!mounted) return;
+            setState(() {
+              _session = null;
+              _lockReasonBanner =
+                  'Sessão soberana encerrada com segurança.';
+            });
+          },
+        ),
+      ),
+      const SizedBox(height: 12),
+      StaggeredRevealItem(
+        animation: anim,
+        stageIndex: 1,
+        child: FounderGlassCard(
+          key: const ValueKey<String>('ceo-security-posture-badges-card'),
+          accentTopBarColor: FounderSovereignTokens.solvencyEmerald,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  const FounderSovereignCrest(size: 42),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Passaporte Soberano Monocrático',
-                          style: FounderSovereignTokens.monoMetric(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          vm.ownerEmail,
-                          style: FounderSovereignTokens.monoMetric(
-                            fontSize: 12.5,
-                            color: FounderSovereignTokens.imperialGoldBright,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              const _MiniStatBadge(
+                'Delegados Autorizados',
+                '0 (Proibido)',
+                FounderSovereignTokens.solvencyEmerald,
               ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: <Widget>[
-                  const _MiniStatBadge(
-                    'Delegados Autorizados',
-                    '0 (Proibido)',
-                    FounderSovereignTokens.solvencyEmerald,
-                  ),
-                  _MiniStatBadge(
-                    'Algoritmo PIN',
-                    vm.pinAlgoVersion,
-                    FounderSovereignTokens.cyberCyan,
-                  ),
-                  _MiniStatBadge(
-                    'Vazamento Geo-Privacidade',
-                    '${sw.geoPrivacyLeakBps} bps (0,00%)',
-                    FounderSovereignTokens.solvencyEmerald,
-                  ),
-                  _MiniStatBadge(
-                    'Cadeia WORM SHA-256',
-                    sw.auditChainIntact ? 'ÍNTEGRA' : 'ALERTA',
-                    sw.auditChainIntact
-                        ? FounderSovereignTokens.solvencyEmerald
-                        : FounderSovereignTokens.crimsonAlert,
-                  ),
-                ],
+              _MiniStatBadge(
+                'Algoritmo Cofre',
+                vm.pinAlgoVersion,
+                FounderSovereignTokens.cyberCyan,
               ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: <Widget>[
-                  FilledButton.icon(
-                    key: const ValueKey<String>('ceo-reset-personal-pin-btn'),
-                    onPressed: () => _lockVaultWithReason(
-                      'Valide o código de 6 dígitos enviado para $kMonocraticCeoEmail para cadastrar seu novo PIN.',
-                      pinReset: true,
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: FounderSovereignTokens.imperialGold,
-                      foregroundColor: const Color(0xFF111827),
-                    ),
-                    icon: const Icon(Icons.password_rounded, size: 16),
-                    label: const Text(
-                      'Redefinir Meu PIN Pessoal (E-mail 6 Dígitos)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  OutlinedButton.icon(
-                    key: const ValueKey<String>('ceo-signout-primary-btn'),
-                    onPressed: () async {
-                      await _repo.signOutAndLock();
-                      if (!mounted) return;
-                      setState(() {
-                        _session = null;
-                        _lockReasonBanner =
-                            'Sessão primária encerrada com segurança.';
-                      });
-                    },
-                    icon: const Icon(Icons.logout_rounded, size: 16),
-                    label: const Text('Encerrar Sessão Completa'),
-                  ),
-                ],
+              _MiniStatBadge(
+                'Vazamento Geo-Privacidade',
+                '${sw.geoPrivacyLeakBps} bps (0,00%)',
+                FounderSovereignTokens.solvencyEmerald,
+              ),
+              _MiniStatBadge(
+                'Cadeia WORM SHA-256',
+                sw.auditChainIntact ? 'ÍNTEGRA' : 'ALERTA',
+                sw.auditChainIntact
+                    ? FounderSovereignTokens.solvencyEmerald
+                    : FounderSovereignTokens.crimsonAlert,
               ),
             ],
           ),
@@ -2380,7 +2389,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       const SizedBox(height: 12),
       StaggeredRevealItem(
         animation: anim,
-        stageIndex: 1,
+        stageIndex: 2,
         child: FounderGlassCard(
           key: const ValueKey<String>('ceo-flag-secure-and-ota-card'),
           accentTopBarColor: FounderSovereignTokens.cyberCyan,

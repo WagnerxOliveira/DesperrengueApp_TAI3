@@ -161,7 +161,7 @@ site_url = "http://127.0.0.1:3000"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["https://127.0.0.1:3000", "br.com.desperrengue.app://login-callback", "br.com.desperrengue.app.founder://login-callback", "desperrengue://onboarding/ativar", "desperrengue-founder://onboarding/ativar"]
+additional_redirect_urls = ["https://127.0.0.1:3000", "br.com.desperrengue.app://login-callback", "desperrengue://onboarding/ativar", "desperrengue-founder://vault/reset-password"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -443,3 +443,9 @@ entrypoint = "./functions/pix-webhook/index.ts"
 verify_jwt = false
 import_map = "./functions/ceo-sovereign-auth/deno.json"
 entrypoint = "./functions/ceo-sovereign-auth/index.ts"
+
+[functions.ceo-vault-authority]
+# Autoridade soberana isolada de Senha Mestra Forte (Split-Pepper + AES-256), 2FA 6 digitos e ponte HTTPS -> Deep-Link do Desperrengue CEO.
+verify_jwt = false
+import_map = "./functions/ceo-vault-authority/deno.json"
+entrypoint = "./functions/ceo-vault-authority/index.ts"
