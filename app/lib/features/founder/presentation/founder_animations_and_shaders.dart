@@ -623,6 +623,17 @@ class _FounderUltraHdImageState extends State<FounderUltraHdImage> {
 }
 
 /// Brasão vetorial soberano (`CustomPainter` + `RepaintBoundary`) do Founder Cockpit.
+///
+/// Renderiza a edição executiva *Sovereign Synonym* do símbolo oficial **Desperrengue CEO**
+/// a 120 FPS:
+/// 1. Fundo **Obsidian Carbon-Onyx Velvet** (`#05070B` -> `#0C1018` -> `#1E170B`) com
+///    halo horológico guilloché concêntrico em Ouro 24k;
+/// 2. Monograma arquitetônico $G^1$-contínuo **"Casa-Escudo D"** (`dHousePath`) forjado
+///    em **Ouro Imperial 24k** (`#FFFBEB` -> `#FDE047` -> `#F59E0B` -> `#D97706`);
+/// 3. **Keystone Diamante Soberano de 4 Facetas** coroando a cumeeira a $45^\circ$
+///    (`cx = 0.490, cy = -0.094`) com espaço negativo Gestalt paralelo;
+/// 4. **Check Central de Resolução e Custódia Zero-Trust** em **Ciano-Platina Luminoso**
+///    (`#0891B2` -> `#06B6D4` -> `#67E8F9` -> `#ECFEFF`).
 class FounderSovereignCrest extends StatelessWidget {
   const FounderSovereignCrest({
     super.key,
@@ -656,89 +667,199 @@ class _FounderSovereignCrestPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2;
+    final w = size.width;
+    final h = size.height;
+    final minSide = math.min(w, h);
+    final center = Offset(w / 2, h / 2);
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(minSide * 0.02),
+      Radius.circular(minSide * 0.26),
+    );
 
-    // 1. Hexagonal outer shield
-    final shieldPath = Path();
-    for (var i = 0; i < 6; i++) {
-      final angle = -math.pi / 2 + i * (math.pi / 3);
-      final pt = Offset(
-        center.dx + radius * 0.94 * math.cos(angle),
-        center.dy + radius * 0.94 * math.sin(angle),
-      );
-      if (i == 0) {
-        shieldPath.moveTo(pt.dx, pt.dy);
-      } else {
-        shieldPath.lineTo(pt.dx, pt.dy);
-      }
-    }
-    shieldPath.close();
+    // 1. Deep Obsidian Carbon-Onyx Velvet Squircle Vault + Warm Golden Core
+    final bgPaint = Paint()
+      ..isAntiAlias = true
+      ..shader = RadialGradient(
+        center: const Alignment(-0.06, -0.08),
+        radius: 0.78,
+        colors: isSovereignCeo
+            ? const <Color>[
+                Color(0xFF241B0B),
+                Color(0xFF0C1018),
+                Color(0xFF05070B),
+              ]
+            : const <Color>[
+                Color(0xFF102830),
+                Color(0xFF0C1018),
+                Color(0xFF05070B),
+              ],
+        stops: const <double>[0.0, 0.56, 1.0],
+      ).createShader(rect);
+    canvas.drawRRect(rrect, bgPaint);
 
-    final fillPaint = Paint()
+    // Outer 24k Gold / Cyber-Emerald Bezel Border
+    final borderPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (minSide * 0.032).clamp(1.0, 2.2)
       ..shader = LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: isSovereignCeo
             ? const <Color>[
-                Color(0xFF2B2110),
-                Color(0xFF141A22),
+                Color(0xFFFDE047),
+                Color(0xFFF59E0B),
+                Color(0xFF92400E),
               ]
             : const <Color>[
-                Color(0xFF122C34),
-                Color(0xFF141A22),
+                Color(0xFF67E8F9),
+                Color(0xFF52B7C0),
+                Color(0xFF0E7490),
               ],
-      ).createShader(Offset.zero & size);
-    canvas.drawPath(shieldPath, fillPaint);
+      ).createShader(rect);
+    canvas.drawRRect(rrect, borderPaint);
 
-    final borderPaint = Paint()
+    // 2. Concentric Sovereign Horological Medallion Halo
+    final haloRadius = minSide * 0.42;
+    final haloPaint = Paint()
+      ..isAntiAlias = true
       ..style = PaintingStyle.stroke
-      ..strokeWidth = (size.width * 0.045).clamp(1.2, 2.4)
-      ..shader = (isSovereignCeo
-              ? FounderSovereignTokens.imperialGoldGradient
-              : FounderSovereignTokens.cyberEmeraldGradient)
-          .createShader(Offset.zero & size);
-    canvas.drawPath(shieldPath, borderPaint);
-
-    // 2. Inner facet ring
-    final innerRingPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0
+      ..strokeWidth = (minSide * 0.014).clamp(0.6, 1.4)
       ..color = (isSovereignCeo
               ? FounderSovereignTokens.imperialGoldBright
               : FounderSovereignTokens.cyberCyan)
-          .withValues(alpha: 0.35);
-    canvas.drawCircle(center, radius * 0.64, innerRingPaint);
+          .withValues(alpha: 0.24);
+    canvas.drawCircle(center, haloRadius, haloPaint);
 
-    // 3. Sovereign Crown / Diamond Vector Emblem in center
-    final crownPath = Path()
-      ..moveTo(center.dx - radius * 0.38, center.dy + radius * 0.22)
-      ..lineTo(center.dx - radius * 0.44, center.dy - radius * 0.16)
-      ..lineTo(center.dx - radius * 0.18, center.dy + radius * 0.02)
-      ..lineTo(center.dx, center.dy - radius * 0.34)
-      ..lineTo(center.dx + radius * 0.18, center.dy + radius * 0.02)
-      ..lineTo(center.dx + radius * 0.44, center.dy - radius * 0.16)
-      ..lineTo(center.dx + radius * 0.38, center.dy + radius * 0.22)
-      ..close();
+    // 3. Optical Safe-Zone Transformation for Casa-Escudo D + Apex Diamond Keystone
+    final boxSize = minSide * 0.58;
+    final left = center.dx - boxSize / 2;
+    final top = center.dy - boxSize / 2;
 
-    final crownPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..shader = (isSovereignCeo
-              ? FounderSovereignTokens.imperialGoldGradient
-              : FounderSovereignTokens.cyberEmeraldGradient)
-          .createShader(Offset.zero & size);
-    canvas.drawPath(crownPath, crownPaint);
+    canvas.save();
+    canvas.translate(left, top);
 
-    // 4. Top jewel dot
-    final jewelPaint = Paint()
-      ..color = isSovereignCeo
-          ? FounderSovereignTokens.imperialGoldBright
-          : FounderSovereignTokens.cyberCyan;
-    canvas.drawCircle(
-      Offset(center.dx, center.dy - radius * 0.44),
-      radius * 0.07,
-      jewelPaint,
-    );
+    double px(double nx) => (nx + 0.012) * boxSize;
+    double py(double ny) => (ny + 0.068) * boxSize;
+
+    final strokeMain = boxSize * 0.130;
+    final strokeCheck = boxSize * 0.122;
+
+    // Path A: Exact G1-Continuous Architectural "Casa-Escudo D"
+    final dHousePath = Path()
+      ..moveTo(px(0.21), py(0.595))
+      ..lineTo(px(0.21), py(0.84))
+      ..quadraticBezierTo(px(0.21), py(0.91), px(0.28), py(0.91))
+      ..lineTo(px(0.49), py(0.91))
+      ..arcToPoint(
+        Offset(px(0.7375), py(0.3125)),
+        radius: Radius.circular( boxSize * 0.35),
+        largeArc: false,
+        clockwise: false,
+      )
+      ..lineTo(px(0.555), py(0.130))
+      ..quadraticBezierTo(px(0.490), py(0.065), px(0.425), py(0.130))
+      ..lineTo(px(0.105), py(0.450));
+
+    final dPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeMain
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: isSovereignCeo
+            ? const <Color>[
+                Color(0xFFFFFBEB),
+                Color(0xFFFDE047),
+                Color(0xFFF59E0B),
+                Color(0xFFD97706),
+              ]
+            : const <Color>[
+                Color(0xFFECFEFF),
+                Color(0xFF67E8F9),
+                Color(0xFF52B7C0),
+                Color(0xFF0891B2),
+              ],
+        stops: const <double>[0.0, 0.28, 0.72, 1.0],
+      ).createShader(Offset.zero & Size.square(boxSize));
+    canvas.drawPath(dHousePath, dPaint);
+
+    // Path B: Sovereign Apex 4-Facet Diamond Keystone (Crowning the Roof Ridge)
+    final dCx = px(0.490);
+    final dCy = py(-0.094);
+    final dSpan = boxSize * 0.088;
+    final pTop = Offset(dCx, dCy - dSpan);
+    final pRight = Offset(dCx + dSpan, dCy);
+    final pBottom = Offset(dCx, dCy + dSpan);
+    final pLeft = Offset(dCx - dSpan, dCy);
+    final pMid = Offset(dCx, dCy);
+
+    void drawFacet(Offset a, Offset b, Color color) {
+      final p = Path()
+        ..moveTo(pMid.dx, pMid.dy)
+        ..lineTo(a.dx, a.dy)
+        ..lineTo(b.dx, b.dy)
+        ..close();
+      canvas.drawPath(
+        p,
+        Paint()
+          ..isAntiAlias = true
+          ..style = PaintingStyle.fill
+          ..color = color,
+      );
+    }
+
+    if (isSovereignCeo) {
+      drawFacet(pLeft, pTop, const Color(0xFFFFFBEB));
+      drawFacet(pTop, pRight, const Color(0xFFFDE047));
+      drawFacet(pBottom, pLeft, const Color(0xFFFACC15));
+      drawFacet(pRight, pBottom, const Color(0xFFD97706));
+    } else {
+      drawFacet(pLeft, pTop, const Color(0xFFECFEFF));
+      drawFacet(pTop, pRight, const Color(0xFF67E8F9));
+      drawFacet(pBottom, pLeft, const Color(0xFF3CCB8C));
+      drawFacet(pRight, pBottom, const Color(0xFF0E7490));
+    }
+
+    //Path C: Luminous Platinum-Cyan Central Resolution Checkmark
+    final checkPath = Path()
+      ..moveTo(px(0.380), py(0.555))
+      ..lineTo(px(0.470), py(0.645))
+      ..lineTo(px(0.625), py(0.455));
+
+    final checkPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeCheck
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..shader = LinearGradient(
+        begin: Alignment.bottomLeft,
+        end: Alignment.topRight,
+        colors: isSovereignCeo
+            ? const <Color>[
+                Color(0xFF0891B2),
+                Color(0xFF06B6D4),
+                Color(0xFF67E8F9),
+                Color(0xFFECFEFF),
+              ]
+            : const <Color>[
+                Color(0xFFD97706),
+                Color(0xFFF59E0B),
+                Color(0xFFFDE047),
+                Color(0xFFFFFBEB),
+              ],
+        stops: const <double>[0.0, 0.35, 0.75, 1.0],
+      ).createShader(
+        Rect.fromLTRB(px(0.35), py(0.44), px(0.65), py(0.66)),
+      );
+    canvas.drawPath(checkPath, checkPaint);
+
+    canvas.restore();
   }
 
   @override

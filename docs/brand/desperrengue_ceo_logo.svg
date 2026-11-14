@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="obsidianVelvetBg" cx="48%" cy="46%" r="72%">
+      <stop offset="0%" stop-color="#261C0C"/>
+      <stop offset="52%" stop-color="#0B0E15"/>
+      <stop offset="100%" stop-color="#05070B"/>
+    </radialGradient>
+    <linearGradient id="imperialGold24k" x1="15%" y1="5%" x2="85%" y2="95%">
+      <stop offset="0%" stop-color="#FFFBEB"/>
+      <stop offset="28%" stop-color="#FDE047"/>
+      <stop offset="72%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="horologicalBezel" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047" stop-opacity="0.34"/>
+      <stop offset="50%" stop-color="#F59E0B" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#B45309" stop-opacity="0.28"/>
+    </linearGradient>
+    <linearGradient id="platinumCyanCheck" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0891B2"/>
+      <stop offset="35%" stop-color="#06B6D4"/>
+      <stop offset="75%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#ECFEFF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 1. Deep Obsidian Carbon-Onyx Velvet Vault -->
+  <rect width="1024" height="1024" rx="224" fill="url(#obsidianVelvetBg)"/>
+
+  <!-- 2. Concentric Sovereign Horological Guilloche Medallion Halo -->
+  <circle cx="512" cy="512" r="388" fill="none" stroke="url(#horologicalBezel)" stroke-width="3.5"/>
+  <circle cx="512" cy="512" r="356" fill="none" stroke="url(#horologicalBezel)" stroke-width="1.8" stroke-dasharray="3 15.6"/>
+
+  <!-- 3. Sovereign Synonym Monogram (Optical Safe Zone 49% = 502px, shifted +34px Y) -->
+  <g transform="translate(267, 295)">
+    <!-- A. Architectural G1-Continuous "Casa-Escudo D" in 24k Brushed Imperial Gold -->
+    <path d="M 105.4 298.7 L 105.4 421.7 Q 105.4 456.8 140.6 456.8 L 246.0 456.8 A 175.7 175.7 0 0 0 370.2 156.9 L 278.6 65.3 Q 246.0 32.6 213.4 65.3 L 52.7 225.9"
+          fill="none"
+          stroke="url(#imperialGold24k)"
+          stroke-width="65.3"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+
+    <!-- B. Sovereign Apex 4-Facet Diamond Keystone (Crowning Roof Peak at cx=246.0, cy=-47.2) -->
+    <g>
+      <polygon points="246.0,-47.2 201.8,-47.2 246.0,-91.4" fill="#FFFBEB"/>
+      <polygon points="246.0,-47.2 246.0,-91.4 290.2,-47.2" fill="#FDE047"/>
+      <polygon points="246.0,-47.2 246.0,-3.0 201.8,-47.2" fill="#FACC15"/>
+      <polygon points="246.0,-47.2 290.2,-47.2 246.0,-3.0" fill="#D97706"/>
+    </g>
+
+    <!-- C. Luminous Platinum-Cyan Central Resolution & Custody Checkmark -->
+    <path d="M 190.8 278.6 L 235.9 323.8 L 313.8 228.4"
+          fill="none"
+          stroke="url(#platinumCyanCheck)"
+          stroke-width="61.2"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+  </g>
+</svg>
