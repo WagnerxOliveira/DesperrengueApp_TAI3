@@ -92,15 +92,17 @@ android {
         }
     }
 
-    // Isolamento determinístico de recursos Dual-APK (Ícone Soberano Obsidian/24k + Splash):
+    // Isolamento determinístico de recursos e manifesto Dual-APK (Ícone Soberano Obsidian/24k,
+    // Splash e Auto-Updater Nativo In-App):
     // Quando `isFounderBuild == true`, os buildTypes (`debug`, `profile`, `release`) sobrepõem
-    // `src/founder/res` sobre `src/main/res` (zero duplicatas de sourceSet e zero bytes extras
-    // em `desperrengue.apk` quando `isFounderBuild == false`).
+    // `src/founder/res` e `src/founder/AndroidManifest.xml` sobre `src/main` (zero duplicatas de
+    // sourceSet e zero permissões/bytes extras em `desperrengue.apk` quando `isFounderBuild == false`).
     if (isFounderBuild) {
         sourceSets
             .matching { it.name in setOf("debug", "profile", "release") }
             .configureEach {
                 res.srcDirs("src/$name/res", "src/founder/res")
+                manifest.srcFile("src/founder/AndroidManifest.xml")
             }
     }
 }

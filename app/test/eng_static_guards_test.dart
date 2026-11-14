@@ -278,9 +278,30 @@ void main() {
     ).readAsStringSync();
     expect(mainActivity, contains('FLAG_SECURE'));
     expect(mainActivity, contains('br.com.desperrengue.app.founder/security'));
+    expect(mainActivity, contains('br.com.desperrengue.app.founder/ota'));
+    expect(mainActivity, contains('FounderOtaFileProvider'));
+    expect(mainActivity, contains('ERR_OTA_SHA256_MISMATCH'));
 
     final manifest = _repoFile('app/android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android:roundIcon="@mipmap/ic_launcher_round"'));
+    expect(
+      manifest.contains('REQUEST_INSTALL_PACKAGES'),
+      isFalse,
+      reason: 'APK público jamais pode declarar REQUEST_INSTALL_PACKAGES (conformidade Google Play)',
+    );
+    expect(
+      manifest.contains('FounderOtaFileProvider'),
+      isFalse,
+      reason: 'Provider de auto-update CEO jamais pode existir no manifesto público',
+    );
+
+    final founderManifest = _repoFile('app/android/app/src/founder/AndroidManifest.xml').readAsStringSync();
+    expect(founderManifest, contains('android.permission.REQUEST_INSTALL_PACKAGES'));
+    expect(founderManifest, contains('br.com.desperrengue.app.FounderOtaFileProvider'));
+    expect(founderManifest, contains('android:exported="false"'));
+
+    final gradle = _repoFile('app/android/app/build.gradle.kts').readAsStringSync();
+    expect(gradle, contains('manifest.srcFile("src/founder/AndroidManifest.xml")'));
 
     final workflow = _repoFile('.github/workflows/beta-release.yml').readAsStringSync();
     expect(workflow, contains('--dart-define=BETA_UPDATES=true'));

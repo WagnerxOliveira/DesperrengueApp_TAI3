@@ -16,7 +16,9 @@ import 'features/founder/presentation/founder_update_gate.dart';
 /// - Zero código ou rota do Founder Cockpit embarcado no APK público;
 /// - Cold-start 120 FPS sem flash branco (`#07090D` nativo -> `FounderAnimatedSplashScreen`
 ///   enquanto `AppInitializationService` inicializa Supabase + Keystore em paralelo);
-/// - Auto-updater dedicado (`FounderUpdateGate`) restrito ao asset `desperrengue-founder-ceo.apk`;
+/// - Auto-updater direto no aparelho (`FounderUpdateGate` em `MaterialApp.builder`),
+///   monitorando continuamente o canal `beta-latest` via `ETag`, validando `SHA-256`
+///   e abrindo diretamente o instalador nativo do Android sem navegador;
 /// - Sem trava de `480px` em telas largas, habilitando a Sala de Guerra Panorâmica no Desktop
 ///   e o Dock de Vidro Flutuante de 5 abas no celular.
 Future<void> main() async {
@@ -28,10 +30,14 @@ class DesperrengueFounderApp extends StatefulWidget {
   const DesperrengueFounderApp({
     super.key,
     this.bootService,
+    this.updateService,
+    this.otaInstaller,
     this.splashDuration = const Duration(milliseconds: 1750),
   });
 
   final AppInitializationService? bootService;
+  final FounderUpdateService? updateService;
+  final FounderNativeOtaInstaller? otaInstaller;
   final Duration splashDuration;
 
   @override
@@ -65,12 +71,15 @@ class _DesperrengueFounderAppState extends State<DesperrengueFounderApp> {
       theme: sovereignTheme,
       darkTheme: sovereignTheme,
       themeMode: ThemeMode.dark,
+      builder: (context, child) => FounderUpdateGate(
+        service: widget.updateService,
+        installer: widget.otaInstaller,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: FounderBootGate(
         service: _service,
         splashDuration: widget.splashDuration,
-        readyChild: const FounderUpdateGate(
-          child: FounderCockpitScreen(),
-        ),
+        readyChild: const FounderCockpitScreen(),
       ),
     );
   }

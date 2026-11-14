@@ -322,29 +322,43 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       _otaStatusMessage = null;
     });
     try {
-      final svc = widget.updateService ?? FounderUpdateService();
-      final info = await svc.check(forceManualCheck: true);
+      final gateCtrl = FounderUpdateGate.maybeOf(context);
+      final FounderUpdateInfo? info;
+      if (gateCtrl != null && widget.updateService == null) {
+        info = await gateCtrl.checkNowAndPrompt(autoStartInstall: true);
+      } else {
+        final svc = widget.updateService ?? FounderUpdateService();
+        info = await svc.check(forceManualCheck: true);
+        if (info != null && mounted) {
+          final directInstaller = FounderNativeOtaInstaller();
+          try {
+            await directInstaller.downloadAndInstall(info);
+          } finally {
+            directInstaller.dispose();
+          }
+        }
+      }
       if (!mounted) return;
-      if (info == null) {
+      final resolved = info;
+      if (resolved == null) {
         setState(() {
           _checkingOta = false;
           _otaStatusMessage =
-              'Você já está executando a edição mais recente publicada no canal beta-latest.';
+              'Seu aparelho já está com a edição mais recente do Desperrengue CEO instalada.';
         });
       } else {
         setState(() {
           _checkingOta = false;
           _otaStatusMessage =
-              'Nova versão v${info.version} (build ${info.build}) localizada! Abrindo download seguro…';
+              'Nova edição v${resolved.version} (build ${resolved.build}) recebida no aparelho! Verificando SHA-256 e abrindo instalador…';
         });
-        await FounderUpdateService.launchTrustedFounderApkDownload(info.apkUrl);
       }
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _checkingOta = false;
         _otaStatusMessage =
-            'Não foi possível consultar o GitHub Releases agora. Verifique a rede.';
+            'Não foi possível consultar o canal de atualizações agora. Verifique a rede.';
       });
     }
   }
@@ -2419,8 +2433,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                     icon: const Icon(Icons.system_update_rounded, size: 16),
                     label: Text(
                       _checkingOta
-                          ? 'Consultando beta-latest…'
-                          : 'Verificar Atualização do APK CEO',
+                          ? 'Buscando atualização direta…'
+                          : 'Buscar Atualização Direta no Aparelho',
                     ),
                   ),
                 ],

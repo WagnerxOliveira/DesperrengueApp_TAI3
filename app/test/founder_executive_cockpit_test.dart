@@ -17,6 +17,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Gateway em memória 100% determinístico que simula fielmente os contratos
 /// criptográficos do PostgreSQL 17 (`20261114180000`) + Edge Function `ceo-sovereign-auth`
@@ -893,17 +896,22 @@ void main() {
       expect(bypass.compositeRiskBps, greaterThanOrEqualTo(5000));
     });
 
-    test('FounderUpdateService selects strictly desperrengue-founder-ceo.apk and ignores desperrengue.apk', () {
+    test('FounderUpdateService selects strictly desperrengue-founder-ceo.apk, parses SHA-256 + size, and caches ETag 304', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      const expectedCeoSha =
+          'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
       const releaseJson = '''
       {
-        "body": "Release Soberano\\n<!-- build:202611150 version:2.13.0 -->",
+        "body": "build: 202611150\\nversion: 2.13.1\\n## Novidades\\nfeat(ceo): atualizacao automatica direta no celular\\n\\n---\\n- SHA-256 (`desperrengue.apk`): `ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff`\\n- SHA-256 (`desperrengue-founder-ceo.apk`): `$expectedCeoSha`",
         "assets": [
           {
             "name": "desperrengue.apk",
+            "size": 54000000,
             "browser_download_url": "https://github.com/org/repo/releases/download/beta-latest/desperrengue.apk"
           },
           {
             "name": "desperrengue-founder-ceo.apk",
+            "size": 57671680,
             "browser_download_url": "https://github.com/org/repo/releases/download/beta-latest/desperrengue-founder-ceo.apk"
           }
         ]
@@ -915,10 +923,44 @@ void main() {
         repo: 'org/repo',
       );
       expect(info, isNotNull);
+      expect(info!.apkUrl, endsWith('/desperrengue-founder-ceo.apk'));
+      expect(info.version, equals('2.13.1'));
+      expect(info.sizeBytes, equals(57671680));
+      expect(info.sizeLabel, equals('55 MB'));
+      expect(info.sha256, equals(expectedCeoSha));
       expect(
-        info!.apkUrl,
-        endsWith('/desperrengue-founder-ceo.apk'),
+        info.headlineNotes,
+        contains('atualizacao automatica direta no celular'),
       );
+
+      var seenIfNoneMatch = '';
+      var callCount = 0;
+      final mockHttp = MockClient((req) async {
+        callCount++;
+        seenIfNoneMatch = req.headers['If-None-Match'] ?? '';
+        if (callCount == 1) {
+          return http.Response(
+            releaseJson,
+            200,
+            headers: <String, String>{'etag': 'W/"ceo-etag-150"'},
+          );
+        }
+        return http.Response('', 304);
+      });
+
+      final svc = FounderUpdateService(
+        client: mockHttp,
+        buildNumber: () async => 202611140,
+        repo: 'org/repo',
+      );
+      final first = await svc.check();
+      expect(first, isNotNull);
+      expect(first!.build, equals(202611150));
+
+      final second = await svc.check();
+      expect(seenIfNoneMatch, equals('W/"ceo-etag-150"'));
+      expect(second, isNotNull);
+      expect(second!.sha256, equals(expectedCeoSha));
     });
   });
 
@@ -1069,6 +1111,113 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       expect(find.byKey(const ValueKey<String>('ceo-order-forensic-sheet')), findsOneWidget);
       expect(find.textContaining('Marina Real'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('FounderUpdateGate delivers automatic floating in-app direct update with live progress & SHA-256 verification', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      const shaHex =
+          '99887766554433221100ffeeddccbbaa99887766554433221100ffeeddccbbaa';
+      const releasePayload = '''
+      {
+        "body": "build: 202611200\\nversion: 2.13.1\\n## Novidades\\nAtualização direta sem navegador\\n---\\n- SHA-256 (`desperrengue-founder-ceo.apk`): `$shaHex`",
+        "assets": [
+          {
+            "name": "desperrengue-founder-ceo.apk",
+            "size": 52428800,
+            "browser_download_url": "https://github.com/org/repo/releases/download/beta-latest/desperrengue-founder-ceo.apk"
+          }
+        ]
+      }
+      ''';
+
+      final mockClient = MockClient(
+        (_) async => http.Response(releasePayload, 200),
+      );
+      final updateSvc = FounderUpdateService(
+        client: mockClient,
+        buildNumber: () async => 202611140,
+        repo: 'org/repo',
+      );
+
+      final finishDownload = Completer<void>();
+      FounderUpdateInfo? installedInfo;
+      final fakeInstaller = FounderNativeOtaInstaller(
+        customRunner: (info, onProgress) async {
+          installedInfo = info;
+          onProgress(
+            const FounderOtaProgress(
+              phase: FounderOtaInstallPhase.downloading,
+              receivedBytes: 26214400,
+              totalBytes: 52428800,
+              progress: 0.50,
+            ),
+          );
+          await finishDownload.future;
+          onProgress(
+            const FounderOtaProgress(
+              phase: FounderOtaInstallPhase.installerLaunched,
+              receivedBytes: 52428800,
+              totalBytes: 52428800,
+              progress: 1.0,
+              verifiedSha256: shaHex,
+            ),
+          );
+        },
+      );
+      addTearDown(fakeInstaller.dispose);
+
+      final gw = FakeCeoBackendGateway();
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1200,
+      );
+      addTearDown(repo.dispose);
+
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          child: FounderUpdateGate(
+            service: updateSvc,
+            installer: fakeInstaller,
+            initialDelay: const Duration(milliseconds: 100),
+            interval: const Duration(minutes: 5),
+            child: FounderCockpitScreen(repository: repo),
+          ),
+        ),
+      );
+
+      // Após o delay inicial de 100ms, o cartão flutuante aparece automaticamente sobre a tela do Cofre!
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(
+        find.byKey(const ValueKey<String>('founder-floating-ota-card')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Versão 2.13.1'), findsOneWidget);
+      expect(find.textContaining('50 MB'), findsOneWidget);
+
+      // Toca em "Atualizar" -> faz streaming direto dentro do app com barra de progresso (sem abrir navegador!)
+      await tester.tap(find.byKey(const ValueKey<String>('founder-ota-install-btn')));
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('founder-ota-progress-bar')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('50%'), findsOneWidget);
+      expect(installedInfo?.sha256, equals(shaHex));
+
+      finishDownload.complete();
+      await tester.pump();
+
+      expect(
+        find.textContaining('Toque em "Atualizar" no Android'),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   });

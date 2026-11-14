@@ -201,6 +201,8 @@ Implementada em [`app/lib/main_founder.dart`](../../app/lib/main_founder.dart) e
 * [Exportador Contábil e Forense `%PDF-1.4` (`app/lib/core/analytics/founder_accountant_pack_service.dart`)](../../app/lib/core/analytics/founder_accountant_pack_service.dart)
 * [Tela Principal do Cockpit Soberano (`app/lib/features/founder/presentation/founder_cockpit_screen.dart`)](../../app/lib/features/founder/presentation/founder_cockpit_screen.dart)
 * [Entrypoint Exclusivo do Fundador (`app/lib/main_founder.dart`)](../../app/lib/main_founder.dart)
+* [Auto-Atualizador Direto In-App do CEO (`app/lib/features/founder/presentation/founder_update_gate.dart`)](../../app/lib/features/founder/presentation/founder_update_gate.dart)
+* [Manifesto Android Isolado do CEO (`app/android/app/src/founder/AndroidManifest.xml`)](../../app/android/app/src/founder/AndroidManifest.xml)
 * [Serviço de Atualização OTA Blindado (`app/lib/core/services/update_service.dart`)](../../app/lib/core/services/update_service.dart)
 * [Guardas Estáticas de Isolamento (`app/test/eng_static_guards_test.dart`)](../../app/test/eng_static_guards_test.dart)
 * [Suíte Executiva e Red-Team (`app/test/founder_executive_cockpit_test.dart`)](../../app/test/founder_executive_cockpit_test.dart)

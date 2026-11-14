@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Exclusivo do binário soberano Desperrengue CEO (fora da Play Store):
+         permite abrir diretamente o instalador nativo do Android após validar o
+         SHA-256 do APK baixado dentro do próprio app, sem abrir navegador externo.
+         Jamais incluído em desperrengue.apk (público). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <provider
+            android:name="br.com.desperrengue.app.FounderOtaFileProvider"
+            android:authorities="${applicationId}.ota.provider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

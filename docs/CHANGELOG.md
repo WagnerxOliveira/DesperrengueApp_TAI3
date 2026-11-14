@@ -17,8 +17,20 @@ flowchart LR
     V3 --> V4["v2.8.0 — v2.8.6<br/>Câmera Frontal Ao Vivo, Scanner ID-1,<br/>KYC Zero-Trust Argon + Carbon & VIO"]:::v
     V4 --> V5["v2.9.0 — v2.11.1<br/>Temporal Geo-Privacy Lock (HMAC-SHA256),<br/>Mapa Full-Screen 100%, Imagens 0ms & NFC-e Real"]:::v
     V5 --> V6["v2.12.0 — v2.12.1<br/>Founder Sovereign Cockpit, Ícone Obsidian/Ouro 24k,<br/>Dual-APK Zero-Trust, CPC 47 BIGINT & 5 DPs"]:::v
-    V6 --> V7["v2.13.0 (Atual)<br/>Cofre Monocrático SHA-256, OTP 6 Dígitos E-mail,<br/>Ponte Realtime 100% Real, Splash 120 FPS & FLAG_SECURE"]:::cur
+    V6 --> V7["v2.13.0 — v2.13.1 (Atual)<br/>Cofre Monocrático SHA-256, OTP 6 Dígitos,<br/>Ponte Realtime 100% Real & Auto-Update Direto CEO"]:::cur
 ```
+
+---
+
+## [v2.13.1+202611144] — 2026-11-14 — Entrega Automática Direta no Celular do `Desperrengue CEO` (`Zero-Browser In-App OTA` + Verificação `SHA-256` + `PackageInstaller` Nativo)
+
+### Adicionado & Aprimorado (Paridade Total com `UpdateGate` + Instalação Direta Sem Navegador)
+* **Portão Global Contínuo de Atualização Automática ([`founder_update_gate.dart`](../app/lib/features/founder/presentation/founder_update_gate.dart) & [`main_founder.dart`](../app/lib/main_founder.dart)):**
+  * `FounderUpdateGate` promovido para `MaterialApp.builder` em `lib/main_founder.dart`, sobrepondo qualquer tela (inclusive a tela de autenticação/PIN antes do desbloqueio e folhas modais).
+  * Monitoramento contínuo automático ativo por padrão em Android (`!kIsWeb`): `4 s` após abrir o aplicativo, a cada `60 s` em segundo plano (`Timer.periodic`) com cache `ETag` (`If-None-Match` $\to$ `304 Not Modified` com consumo zero de cota da API do GitHub) e em toda retomada ao primeiro plano (`AppLifecycleState.resumed`, *throttle* de `15 s`).
+* **Download em Streaming Nativo, Verificação Criptográfica `SHA-256` e Abertura Direta do Instalador do Sistema Android ([`MainActivity.kt`](../app/android/app/src/main/kotlin/br/com/desperrengue/app/MainActivity.kt), [`src/founder/AndroidManifest.xml`](../app/android/app/src/founder/AndroidManifest.xml) & [`build.gradle.kts`](../app/android/app/build.gradle.kts)):**
+  * Ao tocar em **"Atualizar"** no cartão flutuante *Obsidian & Sovereign Gold*, o binário `desperrengue-founder-ceo.apk` é transferido em *streaming* TLS 1.3 diretamente para o cache privado do aplicativo (`cacheDir/ota/desperrengue-founder-ceo.apk`) com barra de progresso em tempo real (`0%` a `100%`), validação estrita de redirecionamento HTTPS em domínios GitHub e conferência obrigatória do digest `SHA-256` publicado em `beta-latest` antes de acionar `FounderOtaFileProvider` + `PackageInstaller` nativo do Android (sem abrir navegador externo e com retomada automática em `onResume` caso o Android solicite permissão de fonte na primeira vez).
+  * Isolamento estrito de conformidade Play Store: `REQUEST_INSTALL_PACKAGES` e `FounderOtaFileProvider` (`exported="false"`) existem exclusivamente em `app/android/app/src/founder/AndroidManifest.xml` (injetado apenas quando `isFounderBuild == true`), mantendo `desperrengue.apk` 100% livre dessa permissão, garantido por [`eng_static_guards_test.dart`](../app/test/eng_static_guards_test.dart).
 
 ---
 
