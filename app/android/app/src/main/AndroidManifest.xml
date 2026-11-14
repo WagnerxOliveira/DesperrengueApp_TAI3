@@ -12,7 +12,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
 
     <application
-        android:label="Desperrengue"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -39,14 +39,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- 2. Configuração do Deep Link para o retorno do Supabase Auth (Existente) -->
+            <!-- 2. Configuração do Deep Link para o retorno do Supabase Auth (Isolado Público vs CEO via authScheme) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- O scheme e o host combinados formam a URI: br.com.desperrengue.app://login-callback -->
+                <!-- Público: br.com.desperrengue.app://login-callback | CEO: br.com.desperrengue.app.founder://login-callback -->
                 <data
-                    android:scheme="br.com.desperrengue.app"
+                    android:scheme="${authScheme}"
                     android:host="login-callback" />
             </intent-filter>
 
@@ -57,9 +57,9 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Escuta cliques no formato: desperrengue://onboarding/... -->
-                <data 
-                    android:scheme="desperrengue" 
+                <!-- Público: desperrengue://onboarding/... | CEO: desperrengue-founder://onboarding/... -->
+                <data
+                    android:scheme="${onboardingScheme}"
                     android:host="onboarding" />
             </intent-filter>
             <!-- ======================================================= -->
