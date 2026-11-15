@@ -17,15 +17,13 @@ bool _isRunningInWidgetTest() {
       bindingName.contains('LiveTestWidgetsFlutterBinding');
 }
 
-String _formatDateTimeBr(DateTime? utc) {
+String _formatDateBrShort(DateTime? utc) {
   if (utc == null) return '—';
   final brt = utc.toUtc().subtract(const Duration(hours: 3));
   final dd = brt.day.toString().padLeft(2, '0');
   final mm = brt.month.toString().padLeft(2, '0');
   final yyyy = brt.year.toString().padLeft(4, '0');
-  final hh = brt.hour.toString().padLeft(2, '0');
-  final min = brt.minute.toString().padLeft(2, '0');
-  return '$dd/$mm/$yyyy às $hh:$min';
+  return '$dd/$mm/$yyyy';
 }
 
 Color founderStatusColor(String status) {
@@ -50,19 +48,19 @@ Color founderStatusColor(String status) {
 String founderStatusLabelPt(String status) {
   switch (status.trim().toLowerCase()) {
     case 'open':
-      return 'Aberto';
+      return 'Aguardando orçamento';
     case 'awaiting_payment':
       return 'Aguardando PIX';
     case 'scheduled':
       return 'Agendado';
     case 'in_progress':
-      return 'Em Execução';
+      return 'Em andamento';
     case 'awaiting_approval':
-      return 'Aguardando Aprovação';
+      return 'Aguardando aprovação';
     case 'completed':
       return 'Concluído';
     case 'disputed':
-      return 'Em Mediação';
+      return 'Em disputa';
     case 'canceled':
     case 'cancelled':
       return 'Cancelado';
@@ -71,16 +69,111 @@ String founderStatusLabelPt(String status) {
   }
 }
 
+String _humanEscrowLabelPt(String raw) {
+  switch (raw.trim().toUpperCase()) {
+    case 'HELD':
+    case 'LOCKED':
+    case 'FUNDED':
+      return 'Dinheiro protegido';
+    case 'RELEASED':
+    case 'SETTLED':
+      return 'Liberado ao profissional';
+    case 'DISPUTED':
+    case 'FROZEN':
+      return 'Retido para análise';
+    case 'REFUNDED':
+      return 'Devolvido ao cliente';
+    case 'NONE':
+    case '':
+      return 'Aguardando pagamento';
+    default:
+      return 'Pagamento protegido';
+  }
+}
+
+String _humanPaymentLabelPt(String raw) {
+  switch (raw.trim().toLowerCase()) {
+    case 'paid':
+    case 'succeeded':
+    case 'approved':
+    case 'completed':
+      return 'PIX confirmado';
+    case 'pending':
+    case 'awaiting_payment':
+      return 'Aguardando PIX';
+    case 'refunded':
+      return 'Estornado';
+    case 'failed':
+    case 'canceled':
+      return 'Não concluído';
+    default:
+      return 'Em processamento';
+  }
+}
+
+String _humanKycLabelPt(String? raw) {
+  switch ((raw ?? '').trim().toUpperCase()) {
+    case 'APPROVED':
+    case 'ACTIVE':
+    case 'VERIFIED':
+      return 'Documentos aprovados';
+    case 'PENDING':
+    case 'IN_REVIEW':
+      return 'Documentos em análise';
+    case 'REJECTED':
+      return 'Documento recusado';
+    default:
+      return 'Documentos pendentes';
+  }
+}
+
+String _humanQuoteStatusPt(String? raw) {
+  switch ((raw ?? '').trim().toLowerCase()) {
+    case 'accepted':
+    case 'approved':
+      return 'Aceito';
+    case 'rejected':
+    case 'declined':
+      return 'Recusado';
+    case 'expired':
+      return 'Expirado';
+    default:
+      return 'Aguardando resposta';
+  }
+}
+
+String _humanLedgerEntryLabelPt(Map<String, dynamic> entry) {
+  final raw =
+      (entry['entry_kind'] ?? entry['kind'] ?? '').toString().toUpperCase();
+  if (raw.contains('ESCROW') || raw.contains('HOLD') || raw.contains('DEPOSIT')) {
+    return 'Valor pago pelo cliente (guardado)';
+  }
+  if (raw.contains('PROVIDER') || raw.contains('PAYOUT')) {
+    return 'Repasse para o profissional';
+  }
+  if (raw.contains('FEE') ||
+      raw.contains('TAKE_RATE') ||
+      raw.contains('PLATFORM')) {
+    return 'Comissão do Desperrengue';
+  }
+  if (raw.contains('WARRANTY') || raw.contains('POOL')) {
+    return 'Reserva de garantia (90 dias)';
+  }
+  if (raw.contains('REFUND')) {
+    return 'Devolução ao cliente';
+  }
+  return 'Movimentação financeira registrada';
+}
+
 // ============================================================================
-// 1. RADAR CARTOGRÁFICO EM TEMPO REAL (`public.job_geo` + `FlutterMap` Dark)
+// 1. MAPA DE SERVIÇOS EM TEMPO REAL (`public.job_geo` + `FlutterMap` Dark)
 // ============================================================================
 
-/// Matriz de cor escura para transformar blocos OpenStreetMap em cartografia
-/// executiva *Obsidian Slate* sem depender de chaves externas pagas.
+/// Matriz de cor escura estilo mobilidade executiva (*Velvet Slate*) para OpenStreetMap.
 const ColorFilter _kObsidianMapTileFilter = ColorFilter.matrix(<double>[
-  -0.24, -0.58, -0.14, 0, 215, // R
-  -0.22, -0.54, -0.12, 0, 224, // G
-  -0.18, -0.48, -0.10, 0, 238, // B
+  -0.22, -0.55, -0.13, 0, 206, // R
+  -0.20, -0.51, -0.12, 0, 216, // G
+  -0.16, -0.45, -0.10, 0, 232, // B
   0, 0, 0, 1, 0, // A
 ]);
 
@@ -194,7 +287,6 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
 
     return FounderGlassCard(
       key: const ValueKey<String>('ceo-live-geo-radar-card'),
-      accentTopBarColor: FounderSovereignTokens.cyberCyan,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -204,98 +296,86 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text.rich(
-                TextSpan(
-                  children: <InlineSpan>[
-                    const WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: Padding(
-                        padding: EdgeInsets.only(right: 6),
-                        child: Icon(
-                          Icons.radar_rounded,
-                          size: 18,
-                          color: FounderSovereignTokens.cyberCyan,
-                        ),
-                      ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(
+                    Icons.location_on_rounded,
+                    size: 19,
+                    color: FounderSovereignTokens.cyberCyan,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Mapa de serviços (${pts.length})',
+                      style: FounderSovereignTokens.titleStyle(fontSize: 16),
                     ),
-                    TextSpan(
-                      text:
-                          'Radar Cartográfico ao Vivo (${pts.length} pinos reais)',
-                    ),
-                  ],
-                ),
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                  ),
+                ],
               ),
               OutlinedButton.icon(
                 onPressed: _fitAllPoints,
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 32),
+                  minimumSize: const Size(0, 34),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   foregroundColor: FounderSovereignTokens.primaryInk,
                   side: const BorderSide(
                     color: FounderSovereignTokens.crispBorder,
                   ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 icon: const Icon(Icons.my_location_rounded, size: 14),
                 label: const Text(
-                  'Enquadrar',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                  'Centralizar',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: <Widget>[
                 _buildFilterChip('all', 'Todos (${widget.points.length})'),
                 const SizedBox(width: 6),
-                _buildFilterChip('execution', 'Em Execução'),
+                _buildFilterChip('execution', 'Em andamento'),
                 const SizedBox(width: 6),
                 _buildFilterChip('scheduled', 'Agendados'),
                 const SizedBox(width: 6),
-                _buildFilterChip('open', 'Abertos / PIX'),
+                _buildFilterChip('open', 'Aguardando PIX'),
                 const SizedBox(width: 6),
                 _buildFilterChip('completed', 'Concluídos'),
                 const SizedBox(width: 6),
-                _buildFilterChip('disputed', 'Mediação'),
+                _buildFilterChip('disputed', 'Em disputa'),
               ],
             ),
           ),
           const SizedBox(height: 12),
           FounderPrivacyBlurWrap(
             privacyBlurActive: widget.privacyBlurActive,
-            borderRadius: 14,
+            borderRadius: 16,
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               child: Container(
-                height: 280,
+                height: 256,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0A0E14),
-                  borderRadius: BorderRadius.circular(14),
+                  color: FounderSovereignTokens.obsidianBackground,
+                  borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: FounderSovereignTokens.crispBorder),
                 ),
                 child: Stack(
                   children: <Widget>[
-                    // Grade tática vetorial sempre presente sob os blocos
-                    const Positioned.fill(
-                      child: RepaintBoundary(
-                        child: CustomPaint(
-                          painter: _TacticalRadarGridPainter(),
-                        ),
-                      ),
-                    ),
                     FlutterMap(
                       mapController: _mapController,
                       options: MapOptions(
                         initialCenter: _computeInitialCenter(pts),
                         initialZoom: _computeInitialZoom(pts),
-                        backgroundColor: Colors.transparent,
+                        backgroundColor:
+                            FounderSovereignTokens.obsidianBackground,
                       ),
                       children: <Widget>[
                         if (useNetworkTiles)
@@ -321,7 +401,7 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
                                     HapticFeedback.selectionClick();
                                     setState(() => _selectedJobId = p.jobId);
                                   },
-                                  child: _RadarPinWidget(
+                                  child: _MapPinWidget(
                                     color: founderStatusColor(p.status),
                                     selected: selectedPoint?.jobId == p.jobId,
                                     isExact: p.isExactPin,
@@ -335,15 +415,15 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
                     if (pts.isEmpty)
                       Center(
                         child: Container(
-                          margin: const EdgeInsets.all(18),
+                          margin: const EdgeInsets.all(20),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
+                            horizontal: 18,
+                            vertical: 14,
                           ),
                           decoration: BoxDecoration(
                             color: FounderSovereignTokens.obsidianSurface
-                                .withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(12),
+                                .withValues(alpha: 0.94),
+                            borderRadius: BorderRadius.circular(14),
                             border: Border.all(
                               color: FounderSovereignTokens.crispBorder,
                             ),
@@ -352,27 +432,28 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[
                               Icon(
-                                Icons.explore_off_rounded,
-                                color: FounderSovereignTokens.cyberCyan,
+                                Icons.map_outlined,
+                                color: FounderSovereignTokens.mutedInk,
                                 size: 24,
                               ),
                               SizedBox(height: 6),
                               Text(
-                                'Nenhum pino georreferenciado neste filtro',
+                                'Nenhum serviço no mapa para este filtro',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: FounderSovereignTokens.primaryInk,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                               SizedBox(height: 4),
                               Text(
-                                'Assim que um pedido real for publicado no Desperrengue, sua coordenada aparecerá ao vivo aqui.',
+                                'Quando um cliente abrir um pedido no Desperrengue, a localização aparecerá aqui em tempo real.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: FounderSovereignTokens.mutedInk,
                                   fontSize: 11.5,
+                                  height: 1.35,
                                 ),
                               ),
                             ],
@@ -384,16 +465,16 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
                       bottom: 6,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
+                          horizontal: 8,
                           vertical: 3,
                         ),
                         decoration: BoxDecoration(
                           color: FounderSovereignTokens.obsidianBackground
-                              .withValues(alpha: 0.84),
+                              .withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
-                          '© OpenStreetMap · Visão Soberana CEO',
+                          '© OpenStreetMap',
                           style: TextStyle(
                             fontSize: 9.5,
                             color: FounderSovereignTokens.mutedInk,
@@ -407,20 +488,17 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
             ),
           ),
           if (selectedPoint != null) ...<Widget>[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: founderStatusColor(selectedPoint.status)
-                      .withValues(alpha: 0.45),
-                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: FounderSovereignTokens.crispBorder),
               ),
               child: Wrap(
                 spacing: 12,
-                runSpacing: 8,
+                runSpacing: 10,
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: <Widget>[
@@ -428,74 +506,63 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: <Widget>[
                           Text(
                             selectedPoint.orderCode,
                             style: FounderSovereignTokens.monoMetric(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: founderStatusColor(selectedPoint.status),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: FounderSovereignTokens.primaryInk,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: founderStatusColor(selectedPoint.status)
-                                  .withValues(alpha: 0.16),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              founderStatusLabelPt(selectedPoint.status),
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: founderStatusColor(selectedPoint.status),
-                              ),
-                            ),
+                          _StatusTag(
+                            label: founderStatusLabelPt(selectedPoint.status),
+                            color: founderStatusColor(selectedPoint.status),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 5),
                       Text(
                         '${selectedPoint.categoryName} · ${selectedPoint.neighborhood.isNotEmpty ? "${selectedPoint.neighborhood}, " : ""}${selectedPoint.city}',
                         style: const TextStyle(
                           color: FounderSovereignTokens.primaryInk,
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         'Cliente: ${selectedPoint.clientName}'
-                        '${selectedPoint.providerName != null ? " · Prestador: ${selectedPoint.providerName}" : ""}',
+                        '${selectedPoint.providerName != null ? " · Profissional: ${selectedPoint.providerName}" : ""}',
                         style: const TextStyle(
                           color: FounderSovereignTokens.mutedInk,
-                          fontSize: 11,
+                          fontSize: 11.5,
                         ),
                       ),
                     ],
                   ),
                   Wrap(
                     spacing: 10,
-                    runSpacing: 6,
+                    runSpacing: 8,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: <Widget>[
                       AnimatedMoneyOdometer(
                         cents: selectedPoint.amountCents,
                         privacyBlurActive: widget.privacyBlurActive,
                         style: FounderSovereignTokens.monoMetric(
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: FontWeight.w800,
                           color: FounderSovereignTokens.imperialGoldBright,
                         ),
                       ),
                       FilledButton.tonalIcon(
+                        key: const ValueKey<String>(
+                          'ceo-open-order-details-btn',
+                        ),
                         onPressed: () => widget.onInspectOrder(
                           selectedPoint!.jobId,
                           selectedPoint.orderCode,
@@ -505,18 +572,24 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
                               FounderSovereignTokens.imperialGoldSoft,
                           foregroundColor:
                               FounderSovereignTokens.imperialGoldBright,
-                          minimumSize: const Size(0, 34),
+                          minimumSize: const Size(0, 36),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
+                            horizontal: 12,
                             vertical: 6,
                           ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
-                        icon: const Icon(Icons.policy_rounded, size: 15),
+                        icon: const Icon(
+                          Icons.receipt_long_rounded,
+                          size: 15,
+                        ),
                         label: const Text(
-                          'Dossiê Forense',
+                          'Ver pedido',
                           style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
@@ -551,16 +624,16 @@ class _FounderLiveGeoRadarCardState extends State<FounderLiveGeoRadarCard> {
         color: active
             ? FounderSovereignTokens.cyberCyan
             : FounderSovereignTokens.mutedInk,
-        fontSize: 11.5,
-        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+        fontSize: 12,
+        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
       ),
       visualDensity: VisualDensity.compact,
     );
   }
 }
 
-class _RadarPinWidget extends StatelessWidget {
-  const _RadarPinWidget({
+class _MapPinWidget extends StatelessWidget {
+  const _MapPinWidget({
     required this.color,
     required this.selected,
     required this.isExact,
@@ -581,14 +654,14 @@ class _RadarPinWidget extends StatelessWidget {
           height: selected ? 30 : 24,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: color.withValues(alpha: 0.24),
+            color: color.withValues(alpha: 0.22),
             border: Border.all(
               color: color,
               width: selected ? 2.2 : 1.5,
             ),
             boxShadow: <BoxShadow>[
               BoxShadow(
-                color: color.withValues(alpha: selected ? 0.55 : 0.28),
+                color: color.withValues(alpha: selected ? 0.50 : 0.24),
                 blurRadius: selected ? 12 : 6,
               ),
             ],
@@ -608,39 +681,8 @@ class _RadarPinWidget extends StatelessWidget {
   }
 }
 
-class _TacticalRadarGridPainter extends CustomPainter {
-  const _TacticalRadarGridPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final gridPaint = Paint()
-      ..color = const Color(0xFF1A2433).withValues(alpha: 0.55)
-      ..strokeWidth = 0.8;
-
-    const step = 36.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
-    }
-
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..color = FounderSovereignTokens.cyberCyan.withValues(alpha: 0.12)
-      ..strokeWidth = 1.0;
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxR = math.min(size.width, size.height) * 0.44;
-    canvas.drawCircle(center, maxR * 0.45, ringPaint);
-    canvas.drawCircle(center, maxR * 0.85, ringPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 // ============================================================================
-// 2. DOSSIÊ FORENSE COMPLETO DE PEDIDO REAL (`ceo_inspect_order_forensics`)
+// 2. DETALHES COMPLETOS DO PEDIDO EM TEMPO REAL (`ceo_inspect_order_forensics`)
 // ============================================================================
 
 class FounderOrderForensicSheet extends StatefulWidget {
@@ -671,7 +713,7 @@ class FounderOrderForensicSheet extends StatefulWidget {
       useSafeArea: true,
       backgroundColor: FounderSovereignTokens.obsidianBackground,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => FractionallySizedBox(
         heightFactor: 0.90,
@@ -702,12 +744,13 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final codeSuffix = (widget.initialOrderCode ?? '').trim();
     return Column(
       key: const ValueKey<String>('ceo-order-forensic-sheet'),
       children: <Widget>[
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         Container(
-          width: 42,
+          width: 40,
           height: 4,
           decoration: BoxDecoration(
             color: FounderSovereignTokens.crispBorder,
@@ -715,32 +758,31 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 12, 12, 10),
+          padding: const EdgeInsets.fromLTRB(20, 14, 12, 12),
           child: Row(
             children: <Widget>[
               const Icon(
-                Icons.policy_rounded,
+                Icons.receipt_long_rounded,
                 color: FounderSovereignTokens.imperialGoldBright,
                 size: 20,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Dossiê Forense em Tempo Real ${widget.initialOrderCode ?? ""}',
+                  codeSuffix.isEmpty
+                      ? 'Detalhes do Pedido'
+                      : 'Detalhes do Pedido $codeSuffix',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: FounderSovereignTokens.titleStyle(fontSize: 17),
                 ),
               ),
               IconButton(
-                tooltip: 'Atualizar dossiê',
+                tooltip: 'Atualizar informações',
                 onPressed: _reload,
                 icon: const Icon(
                   Icons.refresh_rounded,
-                  size: 18,
+                  size: 19,
                   color: FounderSovereignTokens.mutedInk,
                 ),
               ),
@@ -783,7 +825,7 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                         const SizedBox(height: 10),
                         Text(
                           snap.error?.toString() ??
-                              'Não foi possível carregar os registros forenses deste pedido.',
+                              'Não foi possível carregar os detalhes deste pedido agora.',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: FounderSovereignTokens.primaryInk,
@@ -794,7 +836,7 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                         FilledButton.icon(
                           onPressed: _reload,
                           icon: const Icon(Icons.refresh_rounded, size: 16),
-                          label: const Text('Tentar Novamente'),
+                          label: const Text('Tentar novamente'),
                         ),
                       ],
                     ),
@@ -807,6 +849,8 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                 padding: const EdgeInsets.all(16),
                 children: <Widget>[
                   _buildHeaderSection(d),
+                  const SizedBox(height: 12),
+                  _buildTimelineSection(d),
                   const SizedBox(height: 12),
                   _buildActorsSection(d),
                   const SizedBox(height: 12),
@@ -829,6 +873,7 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
   Widget _buildHeaderSection(CeoOrderForensicsDossier d) {
     final stColor = founderStatusColor(d.status);
     return FounderGlassCard(
+      showTopAccentBar: true,
       accentTopBarColor: stColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -851,60 +896,176 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                 color: stColor,
               ),
               _StatusTag(
-                label: 'Escrow: ${d.escrowStatus}',
+                label: _humanEscrowLabelPt(d.escrowStatus),
                 color: FounderSovereignTokens.cyberCyan,
               ),
               _StatusTag(
-                label: 'Pagamento: ${d.paymentStatus}',
+                label: _humanPaymentLabelPt(d.paymentStatus),
                 color: FounderSovereignTokens.solvencyEmerald,
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text(
             '${d.category} · ${d.title}',
-            style: const TextStyle(
-              color: FounderSovereignTokens.primaryInk,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
+            style: FounderSovereignTokens.titleStyle(fontSize: 16),
           ),
           if (d.description.isNotEmpty) ...<Widget>[
             const SizedBox(height: 4),
             Text(
               d.description,
-              style: const TextStyle(
-                color: FounderSovereignTokens.mutedInk,
-                fontSize: 12.5,
-                height: 1.4,
-              ),
+              style: FounderSovereignTokens.subtitleStyle(),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Wrap(
-            spacing: 14,
-            runSpacing: 8,
+            spacing: 18,
+            runSpacing: 10,
             children: <Widget>[
               _MoneyKpiMini(
-                label: 'Valor Acordado (GMV)',
+                label: 'Total combinado',
                 cents: d.agreedPriceCents,
                 privacyBlurActive: widget.privacyBlurActive,
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
               _MoneyKpiMini(
-                label: 'Mão de Obra',
+                label: 'Mão de obra',
                 cents: d.laborCents,
                 privacyBlurActive: widget.privacyBlurActive,
                 color: FounderSovereignTokens.primaryInk,
               ),
               _MoneyKpiMini(
-                label: 'Peças Isentas (0%)',
+                label: 'Peças (sem taxa)',
                 cents: d.materialsCents,
                 privacyBlurActive: widget.privacyBlurActive,
                 color: FounderSovereignTokens.cyberCyan,
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimelineSection(CeoOrderForensicsDossier d) {
+    final st = d.status.trim().toLowerCase();
+    final isCanceled = st == 'canceled' || st == 'cancelled';
+    final quoteAccepted = d.agreedPriceCents > 0 ||
+        d.provider != null ||
+        const <String>{
+          'scheduled',
+          'in_progress',
+          'awaiting_approval',
+          'completed',
+        }.contains(st);
+    final paymentProtected = d.payments.isNotEmpty ||
+        d.escrowStatus.toUpperCase() != 'NONE' ||
+        const <String>{
+          'scheduled',
+          'in_progress',
+          'awaiting_approval',
+          'completed',
+        }.contains(st);
+    final checkinDone = d.job['checkin_distance_m'] != null ||
+        const <String>{
+          'in_progress',
+          'awaiting_approval',
+          'completed',
+        }.contains(st);
+    final completed = st == 'completed';
+
+    final steps = <({String title, String subtitle, bool done})>[
+      (
+        title: 'Pedido aberto pelo cliente',
+        subtitle: 'Registrado no aplicativo Desperrengue',
+        done: true,
+      ),
+      (
+        title: 'Orçamento aprovado',
+        subtitle: quoteAccepted
+            ? 'Profissional selecionado para o atendimento'
+            : 'Aguardando escolha de orçamento',
+        done: quoteAccepted && !isCanceled,
+      ),
+      (
+        title: 'Pagamento protegido no app',
+        subtitle: paymentProtected
+            ? _humanEscrowLabelPt(d.escrowStatus)
+            : 'Aguardando confirmação do PIX',
+        done: paymentProtected && !isCanceled,
+      ),
+      (
+        title: 'Chegada no endereço',
+        subtitle: d.job['checkin_distance_m'] != null
+            ? 'Presença confirmada por GPS (${d.job['checkin_distance_m']}m)'
+            : (checkinDone
+                ? 'Atendimento iniciado'
+                : 'Aguardando chegada do profissional'),
+        done: checkinDone && !isCanceled,
+      ),
+      (
+        title: isCanceled ? 'Pedido cancelado' : 'Serviço concluído',
+        subtitle: completed
+            ? 'Atendimento finalizado com sucesso'
+            : (isCanceled
+                ? 'Este pedido foi encerrado sem execução'
+                : 'Aguardando conclusão e aprovação final'),
+        done: completed,
+      ),
+    ];
+
+    return FounderGlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Etapas do atendimento',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15),
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < steps.length; i++)
+            Padding(
+              padding: EdgeInsets.only(bottom: i == steps.length - 1 ? 0 : 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(
+                    steps[i].done
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 18,
+                    color: steps[i].done
+                        ? FounderSovereignTokens.solvencyEmerald
+                        : FounderSovereignTokens.mutedInk,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          steps[i].title,
+                          style: TextStyle(
+                            color: steps[i].done
+                                ? FounderSovereignTokens.primaryInk
+                                : FounderSovereignTokens.secondaryInk,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          steps[i].subtitle,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.mutedInk,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -918,37 +1079,34 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Partes Identificadas na Ordem',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
+            'Pessoas envolvidas',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _ActorRow(
-            role: 'Cliente Solicitante',
+            role: 'Cliente',
             name: (c['full_name'] ?? 'Cliente').toString(),
             subtitle:
-                'Cidade: ${c['city'] ?? "—"} · KYC: ${c['client_kyc_status'] ?? "NOT_SUBMITTED"}',
+                '${c['city'] ?? "Cidade não informada"} · ${_humanKycLabelPt(c['client_kyc_status']?.toString())}',
             avatarUrl: c['avatar_url']?.toString(),
-            accent: FounderSovereignTokens.warmAmber,
+            accent: FounderSovereignTokens.imperialGoldBright,
           ),
-          const Divider(height: 18, color: FounderSovereignTokens.crispBorder),
+          const Divider(height: 20, color: FounderSovereignTokens.crispBorder),
           if (p != null)
             _ActorRow(
-              role: 'Prestador Designado',
-              name: (p['full_name'] ?? 'Prestador').toString(),
+              role: 'Profissional responsável',
+              name: (p['full_name'] ?? 'Profissional').toString(),
               subtitle:
-                  'Cidade: ${p['city'] ?? "—"} · Status: ${p['verification_status'] ?? "PENDING"} · OS Concluídas: ${p['jobs_done'] ?? 0}',
+                  '${p['city'] ?? "Cidade não informada"} · ${_humanKycLabelPt(p['verification_status']?.toString())} · ${p['jobs_done'] ?? 0} concluídos',
               avatarUrl: p['avatar_url']?.toString(),
               accent: FounderSovereignTokens.cyberCyan,
             )
           else
             const Text(
-              'Nenhum prestador designado até o momento (aguardando aceite de orçamento).',
+              'Ainda sem profissional definido (aguardando aceite de orçamento).',
               style: TextStyle(
                 color: FounderSovereignTokens.mutedInk,
-                fontSize: 12,
+                fontSize: 12.5,
               ),
             ),
         ],
@@ -964,18 +1122,15 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Geolocalização & Auditoria de Presença Física (GPS)',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
+            'Local do atendimento',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15),
           ),
           const SizedBox(height: 8),
           Text(
-            'Bairro/Cidade: ${loc['neighborhood'] ?? "—"} · ${loc['city'] ?? "—"}/${loc['uf'] ?? ""}',
+            '${loc['neighborhood'] ?? "Bairro não informado"} · ${loc['city'] ?? "—"}${loc['uf'] != null ? "/${loc['uf']}" : ""}',
             style: const TextStyle(
               color: FounderSovereignTokens.primaryInk,
-              fontSize: 12.5,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -985,7 +1140,7 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
               child: FounderPrivacyBlurWrap(
                 privacyBlurActive: widget.privacyBlurActive,
                 child: Text(
-                  'Endereço Custodiado: ${loc['address_line']}',
+                  'Endereço: ${loc['address_line']}',
                   style: const TextStyle(
                     color: FounderSovereignTokens.mutedInk,
                     fontSize: 12,
@@ -993,15 +1148,34 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                 ),
               ),
             ),
-          const SizedBox(height: 6),
-          Text(
-            'Check-in GPS: ${checkinDist != null ? "${checkinDist}m do pino" : "Ainda não realizado"}',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 11.5,
-              color: checkinDist != null
-                  ? FounderSovereignTokens.solvencyEmerald
-                  : FounderSovereignTokens.mutedInk,
-            ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Icon(
+                checkinDist != null
+                    ? Icons.verified_rounded
+                    : Icons.schedule_rounded,
+                size: 15,
+                color: checkinDist != null
+                    ? FounderSovereignTokens.solvencyEmerald
+                    : FounderSovereignTokens.mutedInk,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  checkinDist != null
+                      ? 'Presença no local confirmada por GPS ($checkinDist metros)'
+                      : 'Chegada ao local ainda não registrada por GPS',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: checkinDist != null
+                        ? FounderSovereignTokens.solvencyEmerald
+                        : FounderSovereignTokens.mutedInk,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1014,19 +1188,16 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Propostas / Orçamentos (${d.quotes.length}) & Convites (${d.invites.length})',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
+            'Orçamentos recebidos (${d.quotes.length})',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15),
           ),
           const SizedBox(height: 8),
           if (d.quotes.isEmpty)
             const Text(
-              'Nenhuma proposta enviada ainda para este pedido.',
+              'Nenhum orçamento enviado ainda para este pedido.',
               style: TextStyle(
                 color: FounderSovereignTokens.mutedInk,
-                fontSize: 12,
+                fontSize: 12.5,
               ),
             )
           else
@@ -1038,10 +1209,10 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                   children: <Widget>[
                     Expanded(
                       child: Text(
-                        '${q['provider_name'] ?? "Prestador"} · Status: ${q['status'] ?? "pending"}',
+                        '${q['provider_name'] ?? "Profissional"} · ${_humanQuoteStatusPt(q['status']?.toString())}',
                         style: const TextStyle(
                           color: FounderSovereignTokens.primaryInk,
-                          fontSize: 12,
+                          fontSize: 12.5,
                         ),
                       ),
                     ),
@@ -1051,7 +1222,7 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                           : 0,
                       privacyBlurActive: widget.privacyBlurActive,
                       style: FounderSovereignTokens.monoMetric(
-                        fontSize: 12,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w700,
                         color: FounderSovereignTokens.imperialGoldBright,
                       ),
@@ -1070,32 +1241,29 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Pagamentos (${d.payments.length}) · Razão Contábil (${d.ledgerTxns.length}) · Maturação (${d.maturationEntries.length})',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
+            'Movimentação financeira (${d.ledgerTxns.length})',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15),
           ),
           const SizedBox(height: 8),
           if (d.payments.isEmpty && d.ledgerTxns.isEmpty)
             const Text(
-              'Nenhuma liquidação financeira registrada para esta ordem ainda.',
+              'Nenhum pagamento processado para este pedido até agora.',
               style: TextStyle(
                 color: FounderSovereignTokens.mutedInk,
-                fontSize: 12,
+                fontSize: 12.5,
               ),
             ),
           for (final l in d.ledgerTxns)
             Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: <Widget>[
                   Expanded(
                     child: Text(
-                      '${l['entry_kind'] ?? l['kind'] ?? "LEDGER"} · ${l['bucket'] ?? ""}',
-                      style: FounderSovereignTokens.monoMetric(
-                        fontSize: 11.5,
+                      _humanLedgerEntryLabelPt(l),
+                      style: const TextStyle(
+                        fontSize: 12.5,
                         color: FounderSovereignTokens.primaryInk,
                       ),
                     ),
@@ -1106,7 +1274,8 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
                         : 0,
                     privacyBlurActive: widget.privacyBlurActive,
                     style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11.5,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
                       color: FounderSovereignTokens.solvencyEmerald,
                     ),
                   ),
@@ -1124,28 +1293,25 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Documentos Fiscais NF-e (${d.fiscalDocuments.length}) · Mediações (${d.mediations.length}) · Avaliações (${d.reviews.length})',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
+            'Notas fiscais e avaliações',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15),
           ),
           const SizedBox(height: 8),
           if (d.fiscalDocuments.isEmpty &&
               d.mediations.isEmpty &&
               d.reviews.isEmpty)
             const Text(
-              'Sem notas fiscais, mediações ou avaliações anexadas até o momento.',
+              'Sem notas fiscais ou avaliações registradas até o momento.',
               style: TextStyle(
                 color: FounderSovereignTokens.mutedInk,
-                fontSize: 12,
+                fontSize: 12.5,
               ),
             ),
           for (final f in d.fiscalDocuments)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'NF-e 44 dígitos: ${f['nfe_access_key'] ?? "—"} · Status SEFAZ: ${f['sefaz_status'] ?? "PENDING"}',
+                'Nota fiscal de peças: ${f['nfe_access_key'] ?? "—"}',
                 style: FounderSovereignTokens.monoMetric(
                   fontSize: 11.5,
                   color: FounderSovereignTokens.cyberCyan,
@@ -1156,10 +1322,10 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                'Avaliação ${r['rating'] ?? 5}★: "${r['comment'] ?? ""}"',
+                'Nota ${r['rating'] ?? 5} ★ — "${r['comment'] ?? ""}"',
                 style: const TextStyle(
                   color: FounderSovereignTokens.primaryInk,
-                  fontSize: 12,
+                  fontSize: 12.5,
                 ),
               ),
             ),
@@ -1180,16 +1346,16 @@ class _StatusTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.42)),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: color,
           fontSize: 10.5,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -1219,7 +1385,7 @@ class _MoneyKpiMini extends StatelessWidget {
           label,
           style: const TextStyle(
             color: FounderSovereignTokens.mutedInk,
-            fontSize: 10.5,
+            fontSize: 11,
           ),
         ),
         const SizedBox(height: 2),
@@ -1227,7 +1393,7 @@ class _MoneyKpiMini extends StatelessWidget {
           cents: cents,
           privacyBlurActive: privacyBlurActive,
           style: FounderSovereignTokens.monoMetric(
-            fontSize: 14,
+            fontSize: 14.5,
             fontWeight: FontWeight.w800,
             color: color,
           ),
@@ -1263,7 +1429,7 @@ class _ActorRow extends StatelessWidget {
           borderRadius: 12,
           fallbackLabel: role.substring(0, 3).toUpperCase(),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1272,15 +1438,15 @@ class _ActorRow extends StatelessWidget {
                 role,
                 style: TextStyle(
                   color: accent,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               Text(
                 name,
                 style: const TextStyle(
                   color: FounderSovereignTokens.primaryInk,
-                  fontSize: 13.5,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1300,7 +1466,7 @@ class _ActorRow extends StatelessWidget {
 }
 
 // ============================================================================
-// 3. MODAL DE LANÇAMENTO DE DESPESA REAL (`private.ceo_expense_entries`)
+// 3. MODAL DE REGISTRO DE GASTO DA EMPRESA (`private.ceo_expense_entries`)
 // ============================================================================
 
 class FounderRealExpenseModal extends StatefulWidget {
@@ -1321,7 +1487,7 @@ class FounderRealExpenseModal extends StatefulWidget {
       useSafeArea: true,
       backgroundColor: FounderSovereignTokens.obsidianBackground,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => FounderRealExpenseModal(repository: repository),
     );
@@ -1344,6 +1510,13 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
   bool _saving = false;
   String? _errorMsg;
 
+  static const List<String> _kQuickCategorySuggestions = <String>[
+    'Servidor e nuvem',
+    'Contabilidade',
+    'Marketing e anúncios',
+    'Impostos e taxas',
+  ];
+
   @override
   void dispose() {
     _categoryCtrl.dispose();
@@ -1353,10 +1526,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
   }
 
   int _parseBrlToCents(String raw) {
-    final cleaned = raw
-        .replaceAll('R\$', '')
-        .replaceAll(' ', '')
-        .trim();
+    final cleaned = raw.replaceAll('R\$', '').replaceAll(' ', '').trim();
     if (cleaned.isEmpty) return 0;
     final normalized = cleaned.contains(',')
         ? cleaned.replaceAll('.', '').replaceAll(',', '.')
@@ -1372,12 +1542,12 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
     final cents = _parseBrlToCents(_amountBrlCtrl.text);
 
     if (cat.isEmpty) {
-      setState(() => _errorMsg = 'Informe a categoria contábil da despesa.');
+      setState(() => _errorMsg = 'Informe o nome ou categoria do gasto.');
       return;
     }
     if (cents <= 0) {
       setState(
-        () => _errorMsg = 'Informe um valor real maior que R\$ 0,00.',
+        () => _errorMsg = 'Informe um valor maior que R\$ 0,00.',
       );
       return;
     }
@@ -1423,17 +1593,14 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
             Row(
               children: <Widget>[
                 const Icon(
-                  Icons.receipt_long_rounded,
+                  Icons.add_card_rounded,
                   color: FounderSovereignTokens.imperialGoldBright,
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Registrar Despesa Operacional Real',
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                    ),
+                    'Registrar gasto da empresa',
+                    style: FounderSovereignTokens.titleStyle(fontSize: 17),
                   ),
                 ),
                 IconButton(
@@ -1445,25 +1612,48 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            const Text(
-              'O DRE Soberano utiliza exclusivamente despesas reais lançadas por você (zero estimativas fixas).',
-              style: TextStyle(
-                color: FounderSovereignTokens.mutedInk,
-                fontSize: 12,
-              ),
+            const SizedBox(height: 4),
+            Text(
+              'Seus gastos reais são descontados automaticamente para mostrar seu lucro líquido verdadeiro.',
+              style: FounderSovereignTokens.subtitleStyle(),
             ),
             const SizedBox(height: 14),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: <Widget>[
-                _buildKindChip('FIXED_OPEX', 'OPEX Fixo'),
-                _buildKindChip('VARIABLE_PSP_CLOUD', 'Variável (PSP / Cloud)'),
-                _buildKindChip('TAX_EXTRA', 'Tributo / Taxa Extra'),
+                _buildKindChip('FIXED_OPEX', 'Gasto fixo mensal'),
+                _buildKindChip('VARIABLE_PSP_CLOUD', 'Taxa de PIX e sistema'),
+                _buildKindChip('TAX_EXTRA', 'Imposto ou taxa extra'),
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final suggestion in _kQuickCategorySuggestions)
+                  ActionChip(
+                    label: Text(
+                      suggestion,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: FounderSovereignTokens.secondaryInk,
+                      ),
+                    ),
+                    backgroundColor: FounderSovereignTokens.obsidianSurface,
+                    side: const BorderSide(
+                      color: FounderSovereignTokens.crispBorder,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _categoryCtrl.text = suggestion);
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
             TextField(
               key: const ValueKey<String>('ceo-expense-category-input'),
               controller: _categoryCtrl,
@@ -1472,7 +1662,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
               enableIMEPersonalizedLearning: false,
               style: const TextStyle(color: FounderSovereignTokens.primaryInk),
               decoration: InputDecoration(
-                labelText: 'Categoria (ex.: Infraestrutura Cloud, Contabilidade)',
+                labelText: 'Qual foi o gasto? (ex.: Contabilidade, Servidor)',
                 filled: true,
                 fillColor: FounderSovereignTokens.obsidianCard,
                 border: OutlineInputBorder(
@@ -1494,7 +1684,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
               decoration: InputDecoration(
-                labelText: 'Valor Real em R\$ (ex.: 149,90)',
+                labelText: 'Valor pago em R\$ (ex.: 149,90)',
                 prefixText: 'R\$ ',
                 filled: true,
                 fillColor: FounderSovereignTokens.obsidianCard,
@@ -1512,7 +1702,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
               enableIMEPersonalizedLearning: false,
               style: const TextStyle(color: FounderSovereignTokens.primaryInk),
               decoration: InputDecoration(
-                labelText: 'Descrição / Comprovante (opcional)',
+                labelText: 'Observação ou comprovante (opcional)',
                 filled: true,
                 fillColor: FounderSovereignTokens.obsidianCard,
                 border: OutlineInputBorder(
@@ -1534,7 +1724,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                 }
               },
               icon: const Icon(Icons.calendar_today_rounded, size: 15),
-              label: Text('Data de Competência: $dateStr'),
+              label: Text('Data do gasto: $dateStr'),
             ),
             if (_errorMsg != null) ...<Widget>[
               const SizedBox(height: 10),
@@ -1547,7 +1737,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                 ),
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -1555,8 +1745,11 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                 onPressed: _saving ? null : _submit,
                 style: FilledButton.styleFrom(
                   backgroundColor: FounderSovereignTokens.imperialGold,
-                  foregroundColor: const Color(0xFF111827),
-                  minimumSize: const Size.fromHeight(46),
+                  foregroundColor: const Color(0xFF0B0E14),
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 icon: _saving
                     ? const SizedBox(
@@ -1566,8 +1759,8 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                       )
                     : const Icon(Icons.check_circle_rounded, size: 18),
                 label: const Text(
-                  'Lançar no DRE Soberano',
-                  style: TextStyle(fontWeight: FontWeight.w800),
+                  'Salvar gasto',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
                 ),
               ),
             ),
@@ -1584,19 +1777,25 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
       selected: selected,
       onSelected: (_) => setState(() => _expenseKind = code),
       selectedColor: FounderSovereignTokens.imperialGoldSoft,
+      backgroundColor: FounderSovereignTokens.obsidianSurface,
+      side: BorderSide(
+        color: selected
+            ? FounderSovereignTokens.imperialGold
+            : FounderSovereignTokens.crispBorder,
+      ),
       labelStyle: TextStyle(
         color: selected
             ? FounderSovereignTokens.imperialGoldBright
             : FounderSovereignTokens.mutedInk,
-        fontSize: 11.5,
-        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+        fontSize: 12,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
       ),
     );
   }
 }
 
 // ============================================================================
-// 4. DIRETÓRIO CRM PESQUISÁVEL DE USUÁRIOS REAIS (`ceo_list_real_users_directory`)
+// 4. LISTA DE CLIENTES E PROFISSIONAIS (`ceo_list_real_users_directory`)
 // ============================================================================
 
 class FounderUsersCrmDirectoryCard extends StatefulWidget {
@@ -1672,29 +1871,25 @@ class _FounderUsersCrmDirectoryCardState
   Widget build(BuildContext context) {
     return FounderGlassCard(
       key: const ValueKey<String>('ceo-users-crm-directory-card'),
-      accentTopBarColor: FounderSovereignTokens.imperialGold,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
               const Icon(
-                Icons.badge_rounded,
-                size: 18,
+                Icons.people_alt_rounded,
+                size: 19,
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Diretório Real de Usuários & Prestadores (${_users.length})',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  'Clientes e profissionais (${_users.length})',
+                  style: FounderSovereignTokens.titleStyle(fontSize: 16),
                 ),
               ),
               IconButton(
-                tooltip: 'Recarregar diretório real',
+                tooltip: 'Atualizar lista',
                 onPressed: _loadUsers,
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(
@@ -1715,10 +1910,10 @@ class _FounderUsersCrmDirectoryCardState
             enableIMEPersonalizedLearning: false,
             style: const TextStyle(
               color: FounderSovereignTokens.primaryInk,
-              fontSize: 13,
+              fontSize: 13.5,
             ),
             decoration: InputDecoration(
-              hintText: 'Buscar por nome real, cidade ou especialidade…',
+              hintText: 'Buscar por nome, cidade ou profissão…',
               hintStyle: const TextStyle(
                 color: FounderSovereignTokens.mutedInk,
                 fontSize: 12.5,
@@ -1737,6 +1932,12 @@ class _FounderUsersCrmDirectoryCardState
                   color: FounderSovereignTokens.crispBorder,
                 ),
               ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(
+                  color: FounderSovereignTokens.crispBorder,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -1746,20 +1947,20 @@ class _FounderUsersCrmDirectoryCardState
               children: <Widget>[
                 _buildRoleChip('all', 'Todos'),
                 const SizedBox(width: 6),
-                _buildRoleChip('client', 'Clientes'),
+                _buildRoleChip('client', 'Só clientes'),
                 const SizedBox(width: 6),
-                _buildRoleChip('provider', 'Prestadores'),
+                _buildRoleChip('provider', 'Profissionais'),
                 const SizedBox(width: 6),
-                _buildRoleChip('dual', 'Modo Híbrido'),
+                _buildRoleChip('dual', 'Clientes e profissionais'),
                 const SizedBox(width: 6),
-                _buildRoleChip('kyc_pending', 'KYC Pendente'),
+                _buildRoleChip('kyc_pending', 'Documentos pendentes'),
               ],
             ),
           ),
           const SizedBox(height: 12),
           if (_loading)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
+              padding: EdgeInsets.symmetric(vertical: 22),
               child: Center(
                 child: SizedBox(
                   width: 22,
@@ -1785,11 +1986,11 @@ class _FounderUsersCrmDirectoryCardState
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: FounderSovereignTokens.crispBorder),
               ),
               child: const Text(
-                'Nenhum perfil cadastrado corresponde a este filtro no momento.',
+                'Nenhuma pessoa encontrada para este filtro.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: FounderSovereignTokens.mutedInk,
@@ -1803,10 +2004,10 @@ class _FounderUsersCrmDirectoryCardState
                 for (final u in _users.take(30))
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: FounderSovereignTokens.obsidianSurface,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(14),
                       border:
                           Border.all(color: FounderSovereignTokens.crispBorder),
                     ),
@@ -1814,12 +2015,12 @@ class _FounderUsersCrmDirectoryCardState
                       children: <Widget>[
                         FounderUltraHdImage(
                           imageUrl: u.avatarUrl,
-                          logicalWidth: 40,
-                          logicalHeight: 40,
-                          borderRadius: 10,
+                          logicalWidth: 42,
+                          logicalHeight: 42,
+                          borderRadius: 21,
                           fallbackLabel: u.isProvider ? 'PRO' : 'CLI',
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1833,7 +2034,7 @@ class _FounderUsersCrmDirectoryCardState
                                     u.fullName,
                                     style: const TextStyle(
                                       color: FounderSovereignTokens.primaryInk,
-                                      fontSize: 13,
+                                      fontSize: 13.5,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -1848,33 +2049,34 @@ class _FounderUsersCrmDirectoryCardState
                                   ),
                                   if (u.isKycApproved)
                                     const _StatusTag(
-                                      label: 'KYC Verificado',
+                                      label: 'Verificado',
                                       color:
                                           FounderSovereignTokens.solvencyEmerald,
                                     ),
                                 ],
                               ),
-                              const SizedBox(height: 3),
+                              const SizedBox(height: 4),
                               Text(
-                                '${u.city.isNotEmpty ? u.city : "Cidade não informada"} · '
-                                'Pedidos Cliente: ${u.clientJobsCount} · '
-                                'OS Prestador: ${u.jobsDone}'
-                                '${u.ratingCount > 0 ? " · ${u.ratingAvg.toStringAsFixed(1)}★ (${u.ratingCount})" : ""}'
-                                ' · Desde ${_formatDateTimeBr(u.createdAt)}',
+                                '${u.city.isNotEmpty ? u.city : "Sem cidade"} · '
+                                '${u.clientJobsCount} pedidos · '
+                                '${u.jobsDone} atendimentos'
+                                '${u.ratingCount > 0 ? " · Nota ${u.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} ★" : ""}'
+                                ' · Desde ${_formatDateBrShort(u.createdAt)}',
                                 style: const TextStyle(
                                   color: FounderSovereignTokens.mutedInk,
-                                  fontSize: 11,
+                                  fontSize: 11.5,
                                 ),
                               ),
                               if (u.specialties.isNotEmpty) ...<Widget>[
                                 const SizedBox(height: 3),
                                 Text(
-                                  'Especialidades: ${u.specialties.take(4).join(", ")}',
+                                  u.specialties.take(4).join(' · '),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
                                     color: FounderSovereignTokens.cyberCyan,
-                                    fontSize: 10.5,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
@@ -1888,17 +2090,17 @@ class _FounderUsersCrmDirectoryCardState
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: <Widget>[
                                 const Text(
-                                  'Saldo/Custódia',
+                                  'Na carteira',
                                   style: TextStyle(
                                     color: FounderSovereignTokens.mutedInk,
-                                    fontSize: 9.5,
+                                    fontSize: 10,
                                   ),
                                 ),
                                 AnimatedMoneyOdometer(
                                   cents: u.totalCustodyCents,
                                   privacyBlurActive: widget.privacyBlurActive,
                                   style: FounderSovereignTokens.monoMetric(
-                                    fontSize: 12,
+                                    fontSize: 12.5,
                                     fontWeight: FontWeight.w800,
                                     color:
                                         FounderSovereignTokens.solvencyEmerald,
@@ -1938,8 +2140,8 @@ class _FounderUsersCrmDirectoryCardState
         color: active
             ? FounderSovereignTokens.imperialGoldBright
             : FounderSovereignTokens.mutedInk,
-        fontSize: 11.5,
-        fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+        fontSize: 12,
+        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
       ),
       visualDensity: VisualDensity.compact,
     );

@@ -22,30 +22,32 @@ import '../../../core/utils/money.dart';
 class FounderSovereignTokens {
   const FounderSovereignTokens._();
 
-  static const Color obsidianBackground = Color(0xFF0E1218);
-  static const Color obsidianSurface = Color(0xFF141A22);
-  static const Color obsidianCard = Color(0xFF1A212B);
-  static const Color obsidianRaised = Color(0xFF232C39);
-  static const Color crispBorder = Color(0xFF2B3646);
+  static const Color obsidianBackground = Color(0xFF0B0E14);
+  static const Color obsidianSurface = Color(0xFF121720);
+  static const Color obsidianCard = Color(0xFF161C27);
+  static const Color obsidianRaised = Color(0xFF1E2634);
+  static const Color crispBorder = Color(0xFF232C3D);
 
-  static const Color primaryInk = Color(0xFFEAEFF6);
-  static const Color mutedInk = Color(0xFFA3AEC0);
+  static const Color primaryInk = Color(0xFFF3F6FB);
+  static const Color secondaryInk = Color(0xFFCBD5E1);
+  static const Color mutedInk = Color(0xFF94A3B8);
 
-  static const Color imperialGold = Color(0xFFF59E0B);
-  static const Color imperialGoldBright = Color(0xFFFDE047);
-  static const Color imperialGoldSoft = Color(0xFF33260E);
+  static const Color imperialGold = Color(0xFFE5B84B);
+  static const Color imperialGoldBright = Color(0xFFF3D47C);
+  static const Color imperialGoldSoft = Color(0xFF2B2312);
 
-  static const Color cyberCyan = Color(0xFF52B7C0);
-  static const Color cyberCyanSoft = Color(0xFF123236);
+  static const Color cyberCyan = Color(0xFF60A5FA);
+  static const Color cyberCyanSoft = Color(0xFF132338);
 
-  static const Color solvencyEmerald = Color(0xFF3CCB8C);
-  static const Color solvencyEmeraldSoft = Color(0xFF113125);
+  static const Color solvencyEmerald = Color(0xFF34D399);
+  static const Color solvencyEmeraldSoft = Color(0xFF102A22);
 
-  static const Color crimsonAlert = Color(0xFFFF7A80);
-  static const Color crimsonAlertSoft = Color(0xFF38191E);
+  static const Color crimsonAlert = Color(0xFFF87171);
+  static const Color crimsonAlertSoft = Color(0xFF32181C);
 
-  static const Color royalIndigo = Color(0xFF74A7FF);
-  static const Color warmAmber = Color(0xFFFF8F52);
+  static const Color royalIndigo = Color(0xFF818CF8);
+  static const Color warmAmber = Color(0xFFFBBF24);
+  static const Color warmAmberSoft = Color(0xFF2D2210);
 
   static const LinearGradient imperialGoldGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -62,10 +64,10 @@ class FounderSovereignTokens {
   static const LinearGradient topSpecularGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    stops: <double>[0.0, 0.12, 1.0],
+    stops: <double>[0.0, 0.14, 1.0],
     colors: <Color>[
-      Color(0x14FFFFFF),
-      Color(0x03FFFFFF),
+      Color(0x0DFFFFFF),
+      Color(0x02FFFFFF),
       Color(0x00FFFFFF),
     ],
   );
@@ -74,11 +76,58 @@ class FounderSovereignTokens {
     FontFeature.tabularFigures(),
   ];
 
+  /// Estilo humano e limpo para títulos de seções e cartões executivos (nunca monoespaçado).
+  static TextStyle titleStyle({
+    double fontSize = 16,
+    FontWeight fontWeight = FontWeight.w700,
+    Color color = primaryInk,
+    double letterSpacing = -0.25,
+  }) {
+    return TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+      height: 1.25,
+    );
+  }
+
+  /// Estilo de leitura descansada para subtítulos e explicações em português claro.
+  static TextStyle subtitleStyle({
+    double fontSize = 12.5,
+    FontWeight fontWeight = FontWeight.w500,
+    Color color = mutedInk,
+  }) {
+    return TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      height: 1.45,
+    );
+  }
+
+  /// Rótulo curto superior discreto (ex.: "SEU LUCRO LÍQUIDO").
+  static TextStyle eyebrowStyle({
+    double fontSize = 11,
+    FontWeight fontWeight = FontWeight.w700,
+    Color color = mutedInk,
+    double letterSpacing = 0.7,
+  }) {
+    return TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: letterSpacing,
+      height: 1.2,
+    );
+  }
+
+  /// Exclusivo para valores em R$, contadores, horários e códigos de 6 dígitos.
   static TextStyle monoMetric({
     double fontSize = 22,
     FontWeight fontWeight = FontWeight.w800,
     Color color = primaryInk,
-    double letterSpacing = -0.4,
+    double letterSpacing = -0.35,
   }) {
     return TextStyle(
       fontSize: fontSize,
@@ -112,18 +161,19 @@ class FounderSovereignTokens {
   }
 }
 
-/// Cartão executivo *Obsidian Sovereign Luxury* com reflexo especular nos `12%`
-/// superiores (`topSpecularGradient`), borda de `1px` (`#2B3646`) e elevação tonal.
+/// Cartão executivo *Luxo Silencioso* com elevação suave, cantos arredondados (`20px`)
+/// e ausência de listras coloridas repetitivas (regra anti-poluição visual).
 class FounderGlassCard extends StatefulWidget {
   const FounderGlassCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(16),
+    this.padding = const EdgeInsets.all(18),
     this.margin = EdgeInsets.zero,
-    this.borderRadius = 18,
+    this.borderRadius = 20,
     this.backgroundColor = FounderSovereignTokens.obsidianCard,
     this.borderColor,
     this.accentTopBarColor,
+    this.showTopAccentBar = false,
     this.onTap,
   });
 
@@ -134,6 +184,7 @@ class FounderGlassCard extends StatefulWidget {
   final Color backgroundColor;
   final Color? borderColor;
   final Color? accentTopBarColor;
+  final bool showTopAccentBar;
   final VoidCallback? onTap;
 
   @override
@@ -147,7 +198,7 @@ class _FounderGlassCardState extends State<FounderGlassCard> {
   Widget build(BuildContext context) {
     final effectiveBorder = widget.borderColor ??
         (_hovered
-            ? FounderSovereignTokens.imperialGold.withValues(alpha: 0.55)
+            ? FounderSovereignTokens.imperialGold.withValues(alpha: 0.45)
             : FounderSovereignTokens.crispBorder);
     final radius = BorderRadius.circular(widget.borderRadius);
 
@@ -171,19 +222,19 @@ class _FounderGlassCardState extends State<FounderGlassCard> {
                 ),
               ),
             ),
-            if (widget.accentTopBarColor != null)
+            if (widget.showTopAccentBar && widget.accentTopBarColor != null)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
-                height: 2.5,
+                height: 2.0,
                 child: IgnorePointer(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: <Color>[
                           widget.accentTopBarColor!,
-                          widget.accentTopBarColor!.withValues(alpha: 0.15),
+                          widget.accentTopBarColor!.withValues(alpha: 0.12),
                         ],
                       ),
                     ),

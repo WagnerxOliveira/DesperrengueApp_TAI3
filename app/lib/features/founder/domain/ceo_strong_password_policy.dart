@@ -86,23 +86,23 @@ class CeoPasswordEvaluation {
   String get tierLabelPt {
     switch (strengthTier) {
       case CeoPasswordStrengthTier.empty:
-        return 'Aguardando criação da Senha Mestra (12 a 64 caracteres)';
+        return 'Crie uma senha forte (12 a 64 caracteres)';
       case CeoPasswordStrengthTier.insufficient:
-        return 'Senha abaixo do padrão soberano exigido';
+        return 'Complete os requisitos abaixo';
       case CeoPasswordStrengthTier.strong:
-        return 'Senha Forte Aprovada (${totalEntropyBits.toStringAsFixed(0)} bits)';
+        return 'Senha forte aprovada';
       case CeoPasswordStrengthTier.sovereignMaximum:
-        return 'Blindagem Máxima Soberana (${totalEntropyBits.toStringAsFixed(0)} bits)';
+        return 'Senha excelente — proteção máxima';
     }
   }
 
   String? get primaryRejectionMessagePt {
     if (isApproved) return null;
     if (!lengthInRange) {
-      return 'A Senha Mestra deve ter estritamente entre 12 e 64 caracteres.';
+      return 'Sua senha precisa ter entre 12 e 64 caracteres.';
     }
     if (!noWhitespaceOrControl) {
-      return 'A Senha Mestra não pode conter espaços em branco ou caracteres de controle.';
+      return 'Sua senha não pode ter espaços em branco.';
     }
     if (!hasUppercase) {
       return 'Inclua pelo menos 1 letra maiúscula (A–Z).';
@@ -114,21 +114,21 @@ class CeoPasswordEvaluation {
       return 'Inclua pelo menos 1 número (0–9).';
     }
     if (!hasSpecialSymbol) {
-      return 'Inclua pelo menos 1 caractere especial (ex.: ! @ # \$ % & * - _ + = ?).';
+      return 'Inclua pelo menos 1 símbolo (ex.: ! @ # \$ % & * - _ + = ?).';
     }
     if (!noForbiddenContextWord) {
-      return 'Por segurança extrema, não inclua nomes próprios, números do e-mail ou termos do aplicativo na senha.';
+      return 'Por segurança, não use seu nome, números do e-mail ou o nome do aplicativo na senha.';
     }
     if (!noQuadRepeat) {
-      return 'Evite repetir o mesmo caractere 4 ou mais vezes seguidas.';
+      return 'Evite repetir a mesma letra ou número 4 vezes seguidas.';
     }
     if (!noSequentialOrWalk) {
-      return 'Sequências contínuas (ex.: 1234, abcd, qwerty) são bloqueadas.';
+      return 'Evite sequências simples (ex.: 1234, abcd, qwerty).';
     }
     if (!hasSufficientEntropy) {
-      return 'Aumente a variedade de caracteres para atingir entropia mínima de 60 bits.';
+      return 'Misture mais letras, números e símbolos diferentes.';
     }
-    return 'A senha informada não atende aos critérios de segurança soberana.';
+    return 'Sua senha ainda não atende a todas as regras abaixo.';
   }
 }
 

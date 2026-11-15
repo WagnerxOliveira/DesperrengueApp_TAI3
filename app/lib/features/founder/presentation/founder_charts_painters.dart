@@ -60,53 +60,53 @@ class _FounderSankeyMoneyFlowChartState
     final d = widget.dre;
     return <({String label, int cents, Color color, String detail})>[
       (
-        label: 'GMV Bruto Total',
+        label: 'Total pago nos serviços',
         cents: d.gmvTotalCents,
         color: FounderSovereignTokens.imperialGoldBright,
-        detail: 'Volume transacionado total (Mão de Obra + Peças Isentas)',
+        detail: 'Soma de tudo que os clientes pagaram (mão de obra + peças)',
       ),
       (
-        label: '85% MO Técnico',
+        label: '85% Profissional',
         cents: d.providerNetLaborCents,
         color: FounderSovereignTokens.royalIndigo,
-        detail: 'Repasse direto a terceiros (não integra base tributável CPC 47)',
+        detail: 'Repasse direto pela mão de obra do profissional',
       ),
       (
-        label: '100% Peças (0% Taxa)',
+        label: '100% Peças (sem taxa)',
         cents: d.materialsExemptCents,
         color: FounderSovereignTokens.cyberCyan,
-        detail: 'Reembolso integral de insumos com NF-e 44 dígitos validada',
+        detail: 'Reembolso integral das peças com nota fiscal comprovada',
       ),
       (
-        label: '13,5% Receita App',
+        label: '13,5% Faturamento do App',
         cents: d.platformGrossRevenueCents,
         color: FounderSovereignTokens.imperialGold,
-        detail: 'Take-rate exclusivo de intermediação + taxas SOS',
+        detail: 'Comissão do Desperrengue pela intermediação do serviço',
       ),
       (
-        label: '1,5% Pool Garantia',
+        label: '1,5% Reserva de garantia',
         cents: d.warrantyPoolCarveoutCents,
         color: FounderSovereignTokens.warmAmber,
-        detail: 'Carve-out atuarial para cobertura paramétrica de 90 dias',
+        detail: 'Reserva dedicada à garantia de 90 dias dos atendimentos',
       ),
       (
-        label: 'Imposto DAS 6%',
+        label: 'Imposto (6%)',
         cents: d.simplesNacionalTaxCents,
         color: FounderSovereignTokens.crimsonAlert,
         detail:
-            'Simples Nacional Anexo III só sobre 13,5% (economia de ${(d.taxSavingsBps / 100).toStringAsFixed(2)}%)',
+            'Calculado apenas sobre a comissão do app (economia de ${(d.taxSavingsBps / 100).toStringAsFixed(1)}%)',
       ),
       (
-        label: 'Custos PIX/Cloud',
+        label: 'Taxas de PIX e sistema',
         cents: d.variablePspAndCloudCents,
         color: FounderSovereignTokens.mutedInk,
-        detail: 'Custo variável R\$ 0,034/OS (webhook PIX + Supabase)',
+        detail: 'Custos operacionais de processamento de PIX e nuvem',
       ),
       (
-        label: 'Lucro Líquido Real',
+        label: 'Seu Lucro Líquido',
         cents: d.netProfitEbitdaCents,
         color: FounderSovereignTokens.solvencyEmerald,
-        detail: 'EBITDA após OPEX fixo e provisões atuariais',
+        detail: 'O que sobra livre no caixa da empresa após impostos e gastos',
       ),
     ];
   }
@@ -148,11 +148,8 @@ class _FounderSankeyMoneyFlowChartState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '1. Fluxo Sankey Smart Split (CPC 47 / IFRS 15)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Divisão automática do dinheiro',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -160,11 +157,11 @@ class _FounderSankeyMoneyFlowChartState
                   color: FounderSovereignTokens.solvencyEmeraldSoft,
                   borderRadius: BorderRadius.circular(999),
                   border: Border.all(
-                    color: FounderSovereignTokens.solvencyEmerald.withValues(alpha: 0.5),
+                    color: FounderSovereignTokens.solvencyEmerald.withValues(alpha: 0.45),
                   ),
                 ),
                 child: Text(
-                  'Economia Tributária: ${(widget.dre.taxSavingsBps / 100).toStringAsFixed(1)}%',
+                  'Economia de imposto: ${(widget.dre.taxSavingsBps / 100).toStringAsFixed(1)}%',
                   style: FounderSovereignTokens.monoMetric(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -320,7 +317,7 @@ class FounderSankeyPainter extends CustomPainter {
 
     final midTargets = <({String name, int cents, Color color, Rect rect})>[
       (
-        name: '85% MO',
+        name: '85% Prof.',
         cents: dre.providerNetLaborCents,
         color: FounderSovereignTokens.royalIndigo,
         rect: Rect.fromLTWH(midX, 14, nodeW, 44 * p),
@@ -338,7 +335,7 @@ class FounderSankeyPainter extends CustomPainter {
         rect: Rect.fromLTWH(midX, 112, nodeW, 44 * p),
       ),
       (
-        name: '1,5% Pool',
+        name: '1,5% Gar.',
         cents: dre.warrantyPoolCarveoutCents,
         color: FounderSovereignTokens.warmAmber,
         rect: Rect.fromLTWH(midX, 166, nodeW, 26 * p),
@@ -347,19 +344,19 @@ class FounderSankeyPainter extends CustomPainter {
 
     final rightTargets = <({String name, int cents, Color color, Rect rect})>[
       (
-        name: 'DAS 6%',
+        name: 'Imp. 6%',
         cents: dre.simplesNacionalTaxCents,
         color: FounderSovereignTokens.crimsonAlert,
         rect: Rect.fromLTWH(rightX, 26, nodeW, 32 * p),
       ),
       (
-        name: 'PIX/Cloud',
+        name: 'Taxas PIX',
         cents: dre.variablePspAndCloudCents,
         color: FounderSovereignTokens.mutedInk,
         rect: Rect.fromLTWH(rightX, 78, nodeW, 28 * p),
       ),
       (
-        name: 'EBITDA',
+        name: 'Lucro',
         cents: dre.netProfitEbitdaCents,
         color: FounderSovereignTokens.solvencyEmerald,
         rect: Rect.fromLTWH(rightX, 126, nodeW, 56 * p),
@@ -413,7 +410,7 @@ class FounderSankeyPainter extends CustomPainter {
     );
     _paintCanvasLabel(
       canvas,
-      'GMV',
+      'Total',
       Offset(leftX + nodeW + 4, gmvTop + 4),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 10,
@@ -518,17 +515,14 @@ class _FounderJCurveBreakEvenChartState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '2. Curva-J & Break-Even (40 OS/mês · O(1) Prefix-Sum)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Evolução diária e ponto de equilíbrio',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               Wrap(
                 spacing: 4,
                 runSpacing: 4,
                 children: <int>[7, 30, 90, 365].map((days) {
-                  final label = days == 365 ? '12m' : '${days}d';
+                  final label = days == 365 ? '1 ano' : '${days}d';
                   final selected = _selectedWindowDays == days;
                   return InkWell(
                     key: ValueKey<String>('jcurve-window-${days}d'),
@@ -578,19 +572,19 @@ class _FounderJCurveBreakEvenChartState
             runSpacing: 6,
             children: <Widget>[
               _MetricPill(
-                label: 'OS na Janela',
-                valueText: '${windowAgg.ordersCount} OS',
+                label: 'Serviços no período',
+                valueText: '${windowAgg.ordersCount}',
                 color: FounderSovereignTokens.cyberCyan,
               ),
               _MetricPill(
-                label: 'GMV Janela',
+                label: 'Total pago',
                 valueText: widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(windowAgg.gmvCents),
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
               _MetricPill(
-                label: 'Resultado Líquido',
+                label: 'Seu lucro',
                 valueText: widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(windowAgg.netProfitCents),
@@ -649,7 +643,7 @@ class _FounderJCurveBreakEvenChartState
           if (activePoint != null) ...<Widget>[
             const SizedBox(height: 8),
             Text(
-              'Dia ${activePoint.dayIso} · ${activePoint.ordersCount} OS · '
+              'Dia ${activePoint.dayIso} · ${activePoint.ordersCount} serviços · '
               'Lucro: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(activePoint.netProfitCents)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -718,7 +712,7 @@ class FounderJCurvePainter extends CustomPainter {
     }
     _paintCanvasLabel(
       canvas,
-      'Break-Even 40 OS/mês (R\$ 0,00)',
+      'Ponto de equilíbrio (R\$ 0,00)',
       Offset(padLeft + 4, math.max(2, zeroY - 14)),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 9.5,
@@ -813,17 +807,17 @@ class _FounderDemographicsVennChartState
     final d = widget.demographics;
     final segments = <({String title, int count, Color color})>[
       (
-        title: 'Exclusivamente Clientes',
+        title: 'Só clientes',
         count: d.onlyClientsCount,
         color: FounderSovereignTokens.warmAmber,
       ),
       (
-        title: 'Exclusivamente Profissionais',
+        title: 'Só profissionais',
         count: d.onlyProvidersCount,
         color: FounderSovereignTokens.royalIndigo,
       ),
       (
-        title: 'Interseção Dourada Dual-Mode (Ambos)',
+        title: 'Clientes e profissionais',
         count: d.dualModeBothCount,
         color: FounderSovereignTokens.imperialGoldBright,
       ),
@@ -843,15 +837,12 @@ class _FounderDemographicsVennChartState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '3. Demografia 4 Grupos & Offboarding LGPD Escopado',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Perfis de clientes e profissionais',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               _MetricPill(
-                label: 'Base Total Única',
-                valueText: '${d.totalUsersCount} contas',
+                label: 'Total no app',
+                valueText: '${d.totalUsersCount} pessoas',
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
             ],
@@ -903,14 +894,13 @@ class _FounderDemographicsVennChartState
                 color: current.color,
               ),
               _MetricPill(
-                label: 'KYC Verificado',
+                label: 'Documentos aprovados',
                 valueText: '${d.kycVerifiedCount}',
                 color: FounderSovereignTokens.solvencyEmerald,
               ),
               _MetricPill(
-                label: 'LGPD Escopo (C/P/Total)',
-                valueText:
-                    '${d.lgpdDeletedClientCount}/${d.lgpdDeletedProviderCount}/${d.lgpdDeletedAllCount}',
+                label: 'Contas encerradas',
+                valueText: '${d.totalLgpdOffboardings}',
                 color: FounderSovereignTokens.crimsonAlert,
               ),
             ],
@@ -1001,7 +991,7 @@ class FounderDemographicsVennPainter extends CustomPainter {
     );
     _paintCanvasLabel(
       canvas,
-      'Dual\n${demographics.dualModeBothCount}',
+      'Ambos\n${demographics.dualModeBothCount}',
       Offset(midX, vennCenterY),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 10,
@@ -1029,17 +1019,17 @@ class FounderDemographicsVennPainter extends CustomPainter {
     final barW = (size.width - 24) / 3;
     final bars = <({String label, int val, Color col})>[
       (
-        label: 'LGPD Client: ${demographics.lgpdDeletedClientCount}',
+        label: 'Saída Cliente: ${demographics.lgpdDeletedClientCount}',
         val: demographics.lgpdDeletedClientCount,
         col: FounderSovereignTokens.warmAmber,
       ),
       (
-        label: 'LGPD Prov: ${demographics.lgpdDeletedProviderCount}',
+        label: 'Saída Prof.: ${demographics.lgpdDeletedProviderCount}',
         val: demographics.lgpdDeletedProviderCount,
         col: FounderSovereignTokens.cyberCyan,
       ),
       (
-        label: 'LGPD Total: ${demographics.lgpdDeletedAllCount}',
+        label: 'Conta Excluída: ${demographics.lgpdDeletedAllCount}',
         val: demographics.lgpdDeletedAllCount,
         col: FounderSovereignTokens.crimsonAlert,
       ),
@@ -1117,11 +1107,8 @@ class _FounderPirateAarrrFunnelChartState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '4. Funil Pirata AARRR & Eficiência de Capital',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Jornada do cadastro ao serviço recorrente',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1130,7 +1117,7 @@ class _FounderPirateAarrrFunnelChartState
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  'LTV/CAC $ratio' 'x',
+                  'Retorno $ratio' 'x',
                   style: FounderSovereignTokens.monoMetric(
                     fontSize: 11,
                     fontWeight: FontWeight.w900,
@@ -1197,27 +1184,27 @@ class FounderAarrrFunnelPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final stages = <({String name, int count, Color color})>[
       (
-        name: 'Aquisição',
+        name: 'Cadastros',
         count: funnel.acquisitionCount,
         color: FounderSovereignTokens.royalIndigo,
       ),
       (
-        name: 'Ativação',
+        name: 'Documentos aprovados',
         count: funnel.activationCount,
         color: FounderSovereignTokens.cyberCyan,
       ),
       (
-        name: 'Retenção',
+        name: 'Fizeram pedido',
         count: funnel.retentionCount,
         color: FounderSovereignTokens.solvencyEmerald,
       ),
       (
-        name: 'Receita (OS Pagas)',
+        name: 'Serviços pagos',
         count: funnel.revenueCount,
         color: FounderSovereignTokens.imperialGold,
       ),
       (
-        name: 'Recomendação (Indicações)',
+        name: 'Voltaram a pedir',
         count: funnel.referralCount,
         color: FounderSovereignTokens.imperialGoldBright,
       ),
@@ -1330,15 +1317,12 @@ class _FounderCategoryLiquidityBubbleChartState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '5. Matriz de Liquidez das ${cats.length} Categorias (Oferta × Demanda)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Procura × profissionais nas ${cats.length} profissões',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               _MetricPill(
-                label: 'Catálogo Canônico',
-                valueText: '${cats.length} categorias',
+                label: 'Profissões no app',
+                valueText: '${cats.length}',
                 color: FounderSovereignTokens.cyberCyan,
               ),
             ],
@@ -1464,7 +1448,7 @@ class FounderCategoryBubblePainter extends CustomPainter {
 
     _paintCanvasLabel(
       canvas,
-      'Escassez Oferta / Alta Demanda',
+      'Muita procura / poucos profissionais',
       const Offset(16, 14),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 9,
@@ -1474,7 +1458,7 @@ class FounderCategoryBubblePainter extends CustomPainter {
     );
     _paintCanvasLabel(
       canvas,
-      'Equilíbrio Prime',
+      'Bom equilíbrio',
       Offset(midX + 6, 14),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 9,
@@ -1567,27 +1551,27 @@ class _FounderTreasuryEscrowHistogramChartState
     final t = widget.treasury;
     final buckets = <({String label, int cents, Color color})>[
       (
-        label: 'D+0/D+2 (Tier Alto)',
+        label: 'Até 2 dias',
         cents: t.maturationD0D2Cents,
         color: FounderSovereignTokens.solvencyEmerald,
       ),
       (
-        label: 'D+5 (Padrão)',
+        label: 'Em 5 dias',
         cents: t.maturationD5Cents,
         color: FounderSovereignTokens.cyberCyan,
       ),
       (
-        label: 'D+7 (Novatos)',
+        label: 'Em 7 dias',
         cents: t.maturationD7Cents,
         color: FounderSovereignTokens.royalIndigo,
       ),
       (
-        label: 'Mediação Congelada',
+        label: 'Em disputa',
         cents: t.frozenMediationCents,
         color: FounderSovereignTokens.warmAmber,
       ),
       (
-        label: 'FROZEN_UNDER_DURESS',
+        label: 'Segurança',
         cents: t.frozenUnderDuressCents,
         color: FounderSovereignTokens.crimsonAlert,
       ),
@@ -1607,14 +1591,11 @@ class _FounderTreasuryEscrowHistogramChartState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '6. Custódia Escrow & Maturação Temporal + Float CDI',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Dinheiro guardado por prazo de liberação',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               _MetricPill(
-                label: 'Float CDI Mensal Est.',
+                label: 'Rendimento est. (CDI)',
                 valueText: widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(t.estimatedMonthlyCdiFloatCents),
@@ -1781,14 +1762,11 @@ class FounderActuarialSpeedometerChart extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '7. Velocímetro Atuarial do Fundo de Garantia (ICA)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Saúde da reserva de garantia (90 dias)',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               _MetricPill(
-                label: 'FCR Camada 1',
+                label: 'Resolvidos de 1ª',
                 valueText: '$fcrPct%',
                 color: FounderSovereignTokens.solvencyEmerald,
               ),
@@ -1826,21 +1804,21 @@ class FounderActuarialSpeedometerChart extends StatelessWidget {
             runSpacing: 4,
             children: <Widget>[
               _MetricPill(
-                label: 'Índice ICA',
-                valueText: '$icaRatio' 'x (Meta >= 1,50x)',
+                label: 'Cobertura da reserva',
+                valueText: '$icaRatio' 'x (ideal >= 1,50x)',
                 color: pool.icaRatioBps >= 15000
                     ? FounderSovereignTokens.solvencyEmerald
                     : FounderSovereignTokens.crimsonAlert,
               ),
               _MetricPill(
-                label: 'Saldo do Fundo',
+                label: 'Saldo da reserva',
                 valueText: privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(pool.runningBalanceCents),
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
               _MetricPill(
-                label: 'Clawback Recuperado',
+                label: 'Valores recuperados',
                 valueText: privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(pool.clawbackRecoveredCents),
@@ -1918,7 +1896,7 @@ class FounderActuarialGaugePainter extends CustomPainter {
     );
 
     final icaText =
-        'ICA ${(icaRatioBps / 10000).toStringAsFixed(2).replaceAll('.', ',')}x';
+        '${(icaRatioBps / 10000).toStringAsFixed(2).replaceAll('.', ',')}x';
     _paintCanvasLabel(
       canvas,
       icaText,
@@ -1964,11 +1942,8 @@ class FounderCohortRetentionHeatmapChart extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            '8. Matriz de Retenção por Safra (Cohort Heatmap M0–M5)',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
+            'Clientes que voltam a pedir nos meses seguintes',
+            style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
           ),
           const SizedBox(height: 10),
           LayoutBuilder(
@@ -2118,14 +2093,11 @@ class FounderKycFinOpsThermometerChart extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '9. Termômetro KYC FinOps (Tier-0 Local R\$ 0,00)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Verificação de documentos e economia',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               _MetricPill(
-                label: 'Economia Cloud KYC',
+                label: 'Economia no sistema',
                 valueText: privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(kycFinOps.cloudSavingsCents),
@@ -2181,17 +2153,17 @@ class FounderKycThermometerPainter extends CustomPainter {
     );
     final rows = <({String label, int count, Color color})>[
       (
-        label: 'Tier-0 Local (R\$ 0,00)',
+        label: 'Validação rápida no celular',
         count: kycFinOps.tier0LocalCount,
         color: FounderSovereignTokens.solvencyEmerald,
       ),
       (
-        label: 'Argon OCR Cloud',
+        label: 'Leitura automática de documento',
         count: kycFinOps.argonCloudCount,
         color: FounderSovereignTokens.cyberCyan,
       ),
       (
-        label: 'Carbon / SERPRO Forense',
+        label: 'Consulta oficial complementar',
         count: kycFinOps.carbonSerproCount,
         color: FounderSovereignTokens.imperialGold,
       ),
@@ -2271,15 +2243,12 @@ class FounderTieredWaterfallMedalsChart extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                '10. Cascata 5 Degraus & 112 Medalhas (${waterfall.providerMedalsTotal} Prof + ${waterfall.clientMedalsTotal} Cli)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Níveis de comissão e conquistas (${waterfall.totalMedals} medalhas)',
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               _MetricPill(
-                label: 'Total Medalhas',
-                valueText: '${waterfall.totalMedals} insígnias',
+                label: 'Medalhas',
+                valueText: '${waterfall.totalMedals}',
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
             ],
@@ -2332,29 +2301,29 @@ class FounderWaterfallMedalsPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final steps = <({String label, int cents, Color color})>[
       (
-        label: '1. GMV',
+        label: 'Total pago',
         cents: dre.gmvTotalCents,
         color: FounderSovereignTokens.imperialGoldBright,
       ),
       (
-        label: '2. Repasse',
+        label: 'Profissional',
         cents: dre.providerNetLaborCents + dre.materialsExemptCents,
         color: FounderSovereignTokens.royalIndigo,
       ),
       (
-        label: '3. Receita 13,5%',
+        label: 'App 13,5%',
         cents: dre.platformGrossRevenueCents,
         color: FounderSovereignTokens.cyberCyan,
       ),
       (
-        label: '4. DAS/Pool/PIX',
+        label: 'Impostos',
         cents: dre.simplesNacionalTaxCents +
             dre.warrantyPoolCarveoutCents +
             dre.variablePspAndCloudCents,
         color: FounderSovereignTokens.crimsonAlert,
       ),
       (
-        label: '5. EBITDA',
+        label: 'Seu Lucro',
         cents: dre.netProfitEbitdaCents.abs(),
         color: FounderSovereignTokens.solvencyEmerald,
       ),

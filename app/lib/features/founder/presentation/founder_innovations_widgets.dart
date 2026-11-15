@@ -83,33 +83,50 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                'Inovação 1 · Mapa Bivariado Oferta × Demanda & Knapsack Booster',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Bairros onde faltam profissionais',
+                style: FounderSovereignTokens.titleStyle(fontSize: 16),
               ),
               FilledButton.icon(
                 key: const ValueKey<String>('innovation-1-trigger-booster-btn'),
                 onPressed: _triggerBooster,
                 style: FilledButton.styleFrom(
                   backgroundColor: FounderSovereignTokens.imperialGold,
-                  foregroundColor: const Color(0xFF111827),
+                  foregroundColor: const Color(0xFF0B0E14),
                   minimumSize: const Size(0, 36),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 icon: const Icon(Icons.bolt_rounded, size: 16),
                 label: const Text(
-                  'Disparar Smart Supply Booster',
+                  'Simular incentivo nos bairros',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 10),
+          if (cells.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: FounderSovereignTokens.crispBorder),
+              ),
+              child: const Text(
+                'Ainda não há pedidos suficientes por bairro neste período para sugerir incentivos.',
+                style: TextStyle(
+                  color: FounderSovereignTokens.mutedInk,
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -157,7 +174,7 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Dem ${c.demandScore} × Oferta ${c.supplyScore}',
+                        'Procura ${c.demandScore} · Profissionais ${c.supplyScore}',
                         style: FounderSovereignTokens.monoMetric(
                           fontSize: 10,
                           color: col,
@@ -192,15 +209,15 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                     ),
                   ),
                   Text(
-                    'OS reprimidas: ${selected.unmetOrdersCount} · Técnicos: ${selected.activeProvidersCount}',
+                    'Pedidos sem atendimento: ${selected.unmetOrdersCount} · Profissionais ativos: ${selected.activeProvidersCount}',
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 11.5,
                       color: FounderSovereignTokens.mutedInk,
                     ),
                   ),
                   Text(
-                    'Booster Sugerido: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(selected.suggestedBoosterCents)} '
-                    '-> Retorno Líq.: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(selected.expectedIncrementalNetCents)}',
+                    'Incentivo sugerido: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(selected.suggestedBoosterCents)} '
+                    '· Retorno estimado: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(selected.expectedIncrementalNetCents)}',
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 11,
                       color: FounderSovereignTokens.solvencyEmerald,
@@ -215,10 +232,10 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
             Container(
               key: const ValueKey<String>('innovation-1-knapsack-result'),
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: FounderSovereignTokens.solvencyEmeraldSoft,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: FounderSovereignTokens.solvencyEmerald,
                 ),
@@ -227,21 +244,21 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Mochila 0/1 Executada (${_activePlan!.selectedActions.length} alavancas ótimas · '
-                    'ROI ${_activePlan!.blendedRoiMultiple.toStringAsFixed(2)}x)',
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
+                    'Simulação concluída (${_activePlan!.selectedActions.length} bairros priorizados · '
+                    'Retorno ${_activePlan!.blendedRoiMultiple.toStringAsFixed(1)}x)',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
                       color: FounderSovereignTokens.solvencyEmerald,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Custo Alocado: ${Money.formatBrl(_activePlan!.totalCostCents)} -> '
-                    'Lucro Incremental: ${Money.formatBrl(_activePlan!.totalExpectedNetProfitCents)} '
-                    '(+${_activePlan!.totalExpectedNewOrders} OS)',
+                    'Investimento: ${Money.formatBrl(_activePlan!.totalCostCents)} · '
+                    'Lucro adicional estimado: ${Money.formatBrl(_activePlan!.totalExpectedNetProfitCents)} '
+                    '(+${_activePlan!.totalExpectedNewOrders} pedidos)',
                     style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11,
+                      fontSize: 11.5,
                       color: FounderSovereignTokens.primaryInk,
                     ),
                   ),
@@ -292,11 +309,8 @@ class _FounderMicroPnlOrderInspectorWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Inovação 2 · Inspetor Forense Micro-P&L por Ordem (#DESP)',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
+            'Ganho detalhado por pedido',
+            style: FounderSovereignTokens.titleStyle(fontSize: 16),
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -381,10 +395,11 @@ class _FounderMicroPnlOrderInspectorWidgetState
                               ),
                             ),
                             Text(
-                              'Status Custódia: ${selected.escrowStatus} · '
-                              'Invariante Split: ${selected.splitConservationOk ? "EXATA (0 centavos)" : "ALERTA"}',
+                              selected.splitConservationOk
+                                  ? 'Divisão de valores 100% conferida'
+                                  : 'Atenção na conferência de valores',
                               style: TextStyle(
-                                fontSize: 11,
+                                fontSize: 11.5,
                                 color: selected.escrowStatus ==
                                         'FROZEN_UNDER_DURESS'
                                     ? FounderSovereignTokens.crimsonAlert
@@ -401,22 +416,22 @@ class _FounderMicroPnlOrderInspectorWidgetState
                       runSpacing: 6,
                       children: <Widget>[
                         _MicroChip(
-                          'GMV Bruto',
+                          'Total pago',
                           Money.formatBrl(selected.gmvCents),
                           FounderSovereignTokens.imperialGoldBright,
                         ),
                         _MicroChip(
-                          'Mão de Obra',
+                          'Mão de obra',
                           Money.formatBrl(selected.laborCents),
                           FounderSovereignTokens.primaryInk,
                         ),
                         _MicroChip(
-                          'Peças 0% Taxa',
+                          'Peças s/ taxa',
                           Money.formatBrl(selected.materialsExemptCents),
                           FounderSovereignTokens.cyberCyan,
                         ),
                         _MicroChip(
-                          '85% Técnico',
+                          '85% Profissional',
                           Money.formatBrl(selected.providerNetCents),
                           FounderSovereignTokens.royalIndigo,
                         ),
@@ -426,22 +441,22 @@ class _FounderMicroPnlOrderInspectorWidgetState
                           FounderSovereignTokens.imperialGold,
                         ),
                         _MicroChip(
-                          '1,5% Pool',
+                          '1,5% Garantia',
                           Money.formatBrl(selected.poolCarveoutCents),
                           FounderSovereignTokens.warmAmber,
                         ),
                         _MicroChip(
-                          'DAS 6%',
+                          'Imposto 6%',
                           Money.formatBrl(selected.taxDasCents),
                           FounderSovereignTokens.crimsonAlert,
                         ),
                         _MicroChip(
-                          'PIX/Cloud',
+                          'Taxas PIX',
                           Money.formatBrl(selected.pixCloudCostCents),
                           FounderSovereignTokens.mutedInk,
                         ),
                         _MicroChip(
-                          'Margem Líq.',
+                          'Seu lucro',
                           Money.formatBrl(selected.netMarginCents),
                           FounderSovereignTokens.solvencyEmerald,
                         ),
@@ -449,7 +464,7 @@ class _FounderMicroPnlOrderInspectorWidgetState
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Chave NF-e (44 dígitos): ${selected.nfeAccessKey ?? "Sem peças vinculadas (100% Mão de Obra)"}',
+                      'Nota fiscal de peças: ${selected.nfeAccessKey ?? "Sem compra de peças (só mão de obra)"}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: FounderSovereignTokens.monoMetric(
@@ -524,14 +539,11 @@ class _FounderMonteCarloSimulatorWidgetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                'Inovação 3 · Máquina do Tempo Estocástica Monte Carlo (1.000 Trajetórias)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Simulador de crescimento futuro (12 meses)',
+                style: FounderSovereignTokens.titleStyle(fontSize: 16),
               ),
               _MicroChip(
-                'Prob. Break-Even',
+                'Chance de lucro',
                 '${_result.breakEvenProbabilityPct.toStringAsFixed(1)}%',
                 FounderSovereignTokens.solvencyEmerald,
               ),
@@ -541,7 +553,7 @@ class _FounderMonteCarloSimulatorWidgetState
           _buildSliderRow(
             sliderKey: const ValueKey<String>('mc-slider-growth'),
             label:
-                'Crescimento OS/mês: ${(_params.monthlyOrderGrowthBps / 100).toStringAsFixed(1)}%',
+                'Crescimento mensal de pedidos: ${(_params.monthlyOrderGrowthBps / 100).toStringAsFixed(1)}%',
             value: _params.monthlyOrderGrowthBps.toDouble().clamp(200, 2500),
             min: 200,
             max: 2500,
@@ -551,7 +563,8 @@ class _FounderMonteCarloSimulatorWidgetState
           ),
           _buildSliderRow(
             sliderKey: const ValueKey<String>('mc-slider-cac'),
-            label: 'CAC Unitário: ${Money.formatBrl(_params.cacCents)}',
+            label:
+                'Custo para atrair 1 cliente: ${Money.formatBrl(_params.cacCents)}',
             value: _params.cacCents.toDouble().clamp(1000, 7000),
             min: 1000,
             max: 7000,
@@ -562,7 +575,7 @@ class _FounderMonteCarloSimulatorWidgetState
           _buildSliderRow(
             sliderKey: const ValueKey<String>('mc-slider-takerate'),
             label:
-                'Take Rate s/ MO: ${(_params.effectiveTakeRateOnLaborBps / 100).toStringAsFixed(1)}%',
+                'Comissão média sobre mão de obra: ${(_params.effectiveTakeRateOnLaborBps / 100).toStringAsFixed(1)}%',
             value: _params.effectiveTakeRateOnLaborBps
                 .toDouble()
                 .clamp(1000, 1800),
@@ -575,7 +588,7 @@ class _FounderMonteCarloSimulatorWidgetState
           _buildSliderRow(
             sliderKey: const ValueKey<String>('mc-slider-claims'),
             label:
-                'Sinistralidade Pool: ${(_params.warrantyClaimRateBps / 100).toStringAsFixed(2)}%',
+                'Acionamento de garantia: ${(_params.warrantyClaimRateBps / 100).toStringAsFixed(2)}%',
             value: _params.warrantyClaimRateBps.toDouble().clamp(20, 400),
             min: 20,
             max: 400,
@@ -602,28 +615,28 @@ class _FounderMonteCarloSimulatorWidgetState
             runSpacing: 4,
             children: <Widget>[
               _MicroChip(
-                'P10 (12m)',
+                'Cenário cauteloso',
                 widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(_result.p10CashCents.last),
                 FounderSovereignTokens.crimsonAlert,
               ),
               _MicroChip(
-                'P50 Mediana (12m)',
+                'Cenário provável',
                 widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(_result.p50CashCents.last),
                 FounderSovereignTokens.imperialGoldBright,
               ),
               _MicroChip(
-                'P90 Otimista (12m)',
+                'Cenário otimista',
                 widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(_result.p90CashCents.last),
                 FounderSovereignTokens.solvencyEmerald,
               ),
               _MicroChip(
-                'Solvência Pool ICA>=1,5x',
+                'Reserva saudável',
                 '${_result.poolSolvencyProbabilityPct.toStringAsFixed(1)}%',
                 FounderSovereignTokens.cyberCyan,
               ),
@@ -796,11 +809,8 @@ class _FounderExecutiveCopilotWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Inovação 4 · Copiloto Executivo C-Level (AI CFO & COO Read-Only)',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
+            'Assistente Financeiro do CEO',
+            style: FounderSovereignTokens.titleStyle(fontSize: 16),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -842,7 +852,7 @@ class _FounderExecutiveCopilotWidgetState
                   controller: _promptController,
                   style: FounderSovereignTokens.monoMetric(fontSize: 12),
                   decoration: const InputDecoration(
-                    hintText: 'Pergunte ao AI CFO sobre DRE, LTV, SEFAZ ou Booster...',
+                    hintText: 'Pergunte sobre seu lucro, pedidos ou bairros…',
                     isDense: true,
                   ),
                   onSubmitted: _ask,
@@ -969,11 +979,8 @@ class _FounderAntiBypassAndSefazRadarWidgetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Inovação 5 · Radar Anti-Bypass (Wagner-Fischer DP) & Monitor SEFAZ (> 26h)',
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-            ),
+            'Notas fiscais de peças e proteção contra desvios',
+            style: FounderSovereignTokens.titleStyle(fontSize: 16),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -981,22 +988,22 @@ class _FounderAntiBypassAndSefazRadarWidgetState
             runSpacing: 6,
             children: <Widget>[
               _MicroChip(
-                'SEFAZ Fase 2 (>26h)',
+                'Notas fiscais (>26h)',
                 '${s.pendingSefazOver26hCount} pendentes',
                 FounderSovereignTokens.warmAmber,
               ),
               _MicroChip(
-                'Clawbacks Cancelamento',
+                'Cancelamentos analisados',
                 '${s.canceledClawbackCount}',
                 FounderSovereignTokens.cyberCyan,
               ),
               _MicroChip(
-                'Vazamento Geo',
-                '${s.geoPrivacyLeakBps} bps (Zero)',
+                'Endereços protegidos',
+                s.geoPrivacyLeakBps == 0 ? '100%' : 'Atenção',
                 FounderSovereignTokens.solvencyEmerald,
               ),
               _MicroChip(
-                'Canários Intrusão',
+                'Acessos indevidos bloqueados',
                 '${s.intrusionCanariesCount}',
                 FounderSovereignTokens.crimsonAlert,
               ),
@@ -1006,9 +1013,12 @@ class _FounderAntiBypassAndSefazRadarWidgetState
           TextField(
             key: const ValueKey<String>('antibypass-test-field'),
             controller: _phraseController,
-            style: FounderSovereignTokens.monoMetric(fontSize: 12),
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: FounderSovereignTokens.primaryInk,
+            ),
             decoration: const InputDecoration(
-              labelText: 'Simulador Ao Vivo Wagner-Fischer DP (Desofuscação Chat)',
+              labelText: 'Testar frase contra troca de contato fora do app',
               isDense: true,
             ),
             onChanged: _runDetector,
@@ -1134,55 +1144,51 @@ class _FounderAccountantPackExporterWidgetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                'Inovação 6 · Exportador Contábil-Fiscal CPC 47 / IFRS 15 (1-Clique)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                ),
+                'Relatório para o Contador (PDF e Planilha)',
+                style: FounderSovereignTokens.titleStyle(fontSize: 16),
               ),
               FilledButton.icon(
                 key: const ValueKey<String>('export-cpc47-pack-btn'),
                 onPressed: _generating ? null : _exportPack,
                 style: FilledButton.styleFrom(
                   backgroundColor: FounderSovereignTokens.solvencyEmerald,
-                  foregroundColor: const Color(0xFF111827),
-                  minimumSize: const Size(0, 36),
+                  foregroundColor: const Color(0xFF0B0E14),
+                  minimumSize: const Size(0, 38),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
                 label: Text(
                   _generating
-                      ? 'Gerando %PDF-1.4...'
-                      : 'Gerar Pacote Mensal CPC 47 (%PDF-1.4 + CSV)',
+                      ? 'Preparando documentos…'
+                      : 'Baixar fechamento do mês (PDF + Planilha)',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Segrega juridicamente o GMV Bruto entre Repasse de Terceiros (85% MO + 100% Peças NF-e a 0%) '
-            'e Receita Tributável da Plataforma (13,5% Anexo III a 6%), comprovando > 91% de economia legal.',
-            style: TextStyle(
-              fontSize: 11.5,
-              color: FounderSovereignTokens.mutedInk,
-            ),
+          Text(
+            'Separa automaticamente o que pertence aos profissionais (85% mão de obra + peças) do faturamento do Desperrengue (13,5%), pronto para sua contabilidade.',
+            style: FounderSovereignTokens.subtitleStyle(),
           ),
           if (pack != null) ...<Widget>[
             const SizedBox(height: 10),
             Container(
               key: const ValueKey<String>('accountant-pack-seal-box'),
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: FounderSovereignTokens.solvencyEmerald,
                 ),
@@ -1191,27 +1197,17 @@ class _FounderAccountantPackExporterWidgetState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Pacote Competência ${pack.competenceLabel} · PDF ${pack.pdfBytes.length} bytes · '
-                    'Integridade: ${pack.verifyIntegrity() ? "VERIFICADA" : "FALHA"}',
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
+                    'Fechamento ${pack.competenceLabel} pronto · '
+                    '${pack.verifyIntegrity() ? "Documento conferido" : "Verifique os dados"}',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
                       color: FounderSovereignTokens.solvencyEmerald,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Selo SHA-256: ${pack.sha256SealHex}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 10,
-                      color: FounderSovereignTokens.primaryInk,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Hash PDF: ${pack.pdfSha256Hex}',
+                    'Código de verificação: ${pack.sha256SealHex}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: FounderSovereignTokens.monoMetric(
@@ -1299,10 +1295,9 @@ class _FounderSilentDuressWarRoomWidgetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               Text(
-                'Custódia Anticoação Silent Duress (FROZEN_UNDER_DURESS)',
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
+                'Alertas de emergência em atendimentos',
+                style: FounderSovereignTokens.titleStyle(
+                  fontSize: 16,
                   color: activeIncident != null
                       ? FounderSovereignTokens.crimsonAlert
                       : FounderSovereignTokens.primaryInk,
@@ -1316,21 +1311,21 @@ class _FounderSilentDuressWarRoomWidgetState
                       : () => _generateDossier(activeIncident),
                   style: FilledButton.styleFrom(
                     backgroundColor: FounderSovereignTokens.crimsonAlert,
-                    foregroundColor: const Color(0xFF111827),
+                    foregroundColor: const Color(0xFF0B0E14),
                     minimumSize: const Size(0, 36),
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   ),
-                  icon: const Icon(Icons.policy_rounded, size: 16),
+                  icon: const Icon(Icons.shield_rounded, size: 16),
                   label: Text(
                     _generating
-                        ? 'Assinando Dossiê...'
-                        : 'Emitir Dossiê Policial Assinado (SHA-256)',
+                        ? 'Preparando relatório…'
+                        : 'Gerar relatório de ocorrência',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
@@ -1340,20 +1335,20 @@ class _FounderSilentDuressWarRoomWidgetState
           if (activeIncident == null)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: FounderSovereignTokens.solvencyEmeraldSoft,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: FounderSovereignTokens.solvencyEmerald
                       .withValues(alpha: 0.45),
                 ),
               ),
               child: const Text(
-                'Zero incidentes de coação (FROZEN_UNDER_DURESS) registrados no banco real.',
+                'Tudo tranquilo — nenhum alerta de emergência registrado nos atendimentos.',
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
                   color: FounderSovereignTokens.solvencyEmerald,
                 ),
               ),

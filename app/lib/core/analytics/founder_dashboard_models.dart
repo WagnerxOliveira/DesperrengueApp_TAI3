@@ -1683,11 +1683,11 @@ class CeoRealExpenseEntry {
   String get kindLabelPt {
     switch (expenseKind) {
       case 'VARIABLE_PSP_CLOUD':
-        return 'Variável (PSP / Cloud)';
+        return 'Taxa de PIX e sistema';
       case 'TAX_EXTRA':
-        return 'Tributo / Taxa Extra';
+        return 'Imposto ou taxa extra';
       default:
-        return 'OPEX Fixo';
+        return 'Gasto fixo mensal';
     }
   }
 
@@ -1955,10 +1955,10 @@ class CeoRealUserDirectoryRow {
   final DateTime? updatedAt;
 
   String get roleLabelPt {
-    if (isClient && isProvider) return 'Modo Híbrido (Cliente + Prestador)';
-    if (isProvider) return 'Prestador';
+    if (isClient && isProvider) return 'Cliente e Profissional';
+    if (isProvider) return 'Profissional';
     if (isClient) return 'Cliente';
-    return 'Em Onboarding';
+    return 'Cadastro incompleto';
   }
 
   bool get isKycApproved =>
@@ -2127,31 +2127,31 @@ class FounderAarrrFunnelSummary {
     return <AarrrStageMetric>[
       AarrrStageMetric(
         stageCode: 'ACQUISITION',
-        stageLabelPt: 'Cadastros Reais',
+        stageLabelPt: 'Pessoas cadastradas',
         usersCount: acquisitionCount,
         stepConversionBps: acquisitionCount > 0 ? 10000 : 0,
       ),
       AarrrStageMetric(
         stageCode: 'ACTIVATION',
-        stageLabelPt: 'KYC / Identidade Aprovada',
+        stageLabelPt: 'Documentos aprovados',
         usersCount: activationCount,
         stepConversionBps: bps(activationCount, acquisitionCount),
       ),
       AarrrStageMetric(
         stageCode: 'RETENTION',
-        stageLabelPt: 'Pedido ou Orçamento Enviado',
+        stageLabelPt: 'Fizeram pedido ou orçamento',
         usersCount: retentionCount,
         stepConversionBps: bps(retentionCount, activationCount),
       ),
       AarrrStageMetric(
         stageCode: 'REVENUE',
-        stageLabelPt: 'Custódia / Serviço Concluído',
+        stageLabelPt: 'Serviço pago ou concluído',
         usersCount: revenueCount,
         stepConversionBps: bps(revenueCount, retentionCount),
       ),
       AarrrStageMetric(
         stageCode: 'REFERRAL',
-        stageLabelPt: 'Recorrência (2+ Serviços) / Dual-Mode',
+        stageLabelPt: 'Voltaram a pedir (2+ vezes)',
         usersCount: referralCount,
         stepConversionBps: bps(referralCount, revenueCount),
       ),

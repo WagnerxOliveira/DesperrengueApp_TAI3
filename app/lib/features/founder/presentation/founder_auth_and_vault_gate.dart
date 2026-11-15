@@ -1,15 +1,13 @@
-/// Barreira Soberana de Identidade Monocrática, Criação de Senha Mestra Forte,
-/// Login 2FA em 2 Etapas (Senha Mestra AES-256 + Código de 6 Dígitos no E-mail)
-/// e Redefinição Segura via Deep-Link Efêmero do `Desperrengue CEO`.
+/// Porta de Entrada Exclusiva do `Desperrengue CEO` — Design *Luxo Silencioso Executivo*.
 ///
-/// Regras de Segurança Extrema:
-/// - **Zero Cross-App OAuth**: nenhum botão abre navegador externo ou `signInWithOAuth`,
-///   eliminando 100% qualquer possibilidade de redirecionamento ao APK do Marketplace.
-/// - **Zero campos pré-preenchidos**: todos os controladores iniciam 100% vazios (`''`).
-/// - **Teto Físico Estrito de 64 Caracteres + Política Matemática de Senha Forte**:
-///   `12 <= len <= 64`, `LengthLimitingTextInputFormatter(64)`, maiúscula, minúscula,
-///   número, símbolo especial, entropia de Shannon >= 60 bits e bloqueio de nomes/sequências.
-/// - **Exclusividade Monocrática**: apenas `wagneroliveira2395@gmail.com` é aceito.
+/// Regras de Segurança e Ergonomia:
+/// - **Zero Cross-App OAuth**: nenhum botão abre navegador externo ou redireciona ao app público.
+/// - **Zero campos pré-preenchidos**: todos os campos iniciam 100% vazios (`''`).
+/// - **Teto Físico de 64 Caracteres + Senha Forte**: entre 12 e 64 caracteres, maiúscula,
+///   minúscula, número e símbolo especial, sem nomes próprios ou sequências simples.
+/// - **Acesso Único**: exclusivo para `wagneroliveira2395@gmail.com`.
+/// - **Zero Poluição Visual**: linguagem 100% clara e humana, sem jargões técnicos e sem
+///   teclado duplicado competindo com o teclado nativo do celular.
 library;
 
 import 'dart:async';
@@ -109,7 +107,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
       setState(() {
         _errorBanner = null;
         _infoBanner =
-            'Link exclusivo de troca validado! Crie abaixo sua nova Senha Mestra Forte.';
+            'Link confirmado! Escolha abaixo sua nova senha exclusiva.';
         _stage = CeoSovereignAuthStage.stagePasswordResetFromDeepLink;
       });
     }
@@ -119,8 +117,6 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      // Limpa imediatamente qualquer senha digitada na RAM ao sair da tela,
-      // preservando apenas o challengeId caso Wagner esteja abrindo o Gmail para ler os 6 dígitos!
       _wipePasswordBuffers();
     }
   }
@@ -214,7 +210,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           _busy = false;
           _activeOtpTicket = restoredTicket;
           _infoBanner =
-              'Código ativo restaurado (Protocolo #${restoredTicket.challengeRef}). Digite ou cole os 6 dígitos enviados para $kMonocraticCeoEmail.';
+              'Seu código ainda está valendo. Digite ou cole os 6 números enviados ao seu e-mail.';
           _stage = gate.passwordConfigured
               ? CeoSovereignAuthStage.stageDailyLoginVerifyOtp
               : CeoSovereignAuthStage.stageBootstrapVerifyOtp;
@@ -245,7 +241,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   // ---------------------------------------------------------------------------
-  // CERIMÔNIA DE PRIMEIRO ACESSO (CRIAÇÃO INICIAL DA SENHA MESTRA FORTE)
+  // PRIMEIRO ACESSO (CRIAÇÃO INICIAL DA SENHA EXCLUSIVA)
   // ---------------------------------------------------------------------------
 
   Future<void> _handleBootstrapSendOtp({bool isResend = false}) async {
@@ -257,7 +253,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     if (typedEmail.isEmpty) {
       setState(() {
         _errorBanner =
-            'Digite seu e-mail soberano ($kMonocraticCeoEmail) para receber o código de 6 dígitos.';
+            'Digite seu e-mail ($kMonocraticCeoEmail) para receber o código de 6 números.';
       });
       return;
     }
@@ -281,8 +277,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
         _remainingOtpAttempts = null;
         _infoBanner = isResend
-            ? 'Novo código enviado (Protocolo #${ticket.challengeRef}). Utilize o e-mail mais recente enviado para $kMonocraticCeoEmail.'
-            : 'Código enviado (Protocolo #${ticket.challengeRef}). Confira sua caixa de entrada em $kMonocraticCeoEmail.';
+            ? 'Enviamos um novo código para $kMonocraticCeoEmail. Use o e-mail mais recente.'
+            : 'Enviamos o código de 6 números para $kMonocraticCeoEmail.';
         _stage = CeoSovereignAuthStage.stageBootstrapVerifyOtp;
       });
     } on CeoVaultSecurityException catch (e) {
@@ -319,7 +315,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     if (digits.length != 6) {
       setState(() {
         _errorBanner =
-            'Informe exatamente os 6 dígitos enviados para $kMonocraticCeoEmail.';
+            'Digite os 6 números enviados para $kMonocraticCeoEmail.';
       });
       return;
     }
@@ -344,7 +340,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _activeOtpTicket = null;
         _enrollmentTicketHex = enrollmentTicket;
         _infoBanner =
-            'Identidade confirmada! Crie agora sua Senha Mestra Forte de Administrador CEO.';
+            'Código confirmado! Crie agora sua senha exclusiva de acesso.';
         _stage = CeoSovereignAuthStage.stageBootstrapCreateMasterPassword;
       });
     } on CeoVaultSecurityException catch (e) {
@@ -378,8 +374,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     }
     if (pw != confirm) {
       setState(() {
-        _errorBanner =
-            'A confirmação da Senha Mestra precisa ser idêntica à senha criada.';
+        _errorBanner = 'As duas senhas digitadas precisam ser iguais.';
       });
       return;
     }
@@ -415,7 +410,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   // ---------------------------------------------------------------------------
-  // LOGIN DIÁRIO EM 2 ETAPAS (SENHA MESTRA FORTE + CÓDIGO DE 6 DÍGITOS NO E-MAIL)
+  // ENTRADA DO DIA A DIA (SENHA + CÓDIGO RÁPIDO DE 6 DÍGITOS NO E-MAIL)
   // ---------------------------------------------------------------------------
 
   Future<void> _handleDailyLoginStep1() async {
@@ -425,8 +420,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
     if (typedEmail.isEmpty || typedPassword.isEmpty) {
       setState(() {
-        _errorBanner =
-            'Digite seu e-mail soberano ($kMonocraticCeoEmail) e sua Senha Mestra CEO.';
+        _errorBanner = 'Preencha seu e-mail e sua senha para continuar.';
       });
       return;
     }
@@ -453,7 +447,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _otpCooldownRemainingSec = ticket.nextCooldownSeconds;
         _remainingOtpAttempts = null;
         _infoBanner =
-            'Senha Mestra validada! Enviamos o código (Protocolo #${ticket.challengeRef}) para $kMonocraticCeoEmail.';
+            'Senha correta! Enviamos o código de 6 números para $kMonocraticCeoEmail.';
         _stage = CeoSovereignAuthStage.stageDailyLoginVerifyOtp;
       });
     } on CeoVaultSecurityException catch (e) {
@@ -462,7 +456,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         setState(() {
           _busy = false;
           _infoBanner =
-              'Você ainda não possui Senha Mestra cadastrada. Valide seu e-mail para criá-la agora.';
+              'Você ainda não criou sua senha. Confirme seu e-mail abaixo para criar agora.';
           _stage = CeoSovereignAuthStage.stageBootstrapRequestEmail;
         });
         return;
@@ -504,7 +498,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _activeOtpTicket = fresh;
         _otpCooldownRemainingSec = fresh.nextCooldownSeconds;
         _infoBanner =
-            'Novo código enviado (Protocolo #${fresh.challengeRef}). Utilize o e-mail mais recente em $kMonocraticCeoEmail.';
+            'Enviamos um novo código para $kMonocraticCeoEmail. Use o último e-mail recebido.';
       });
     } on CeoVaultSecurityException catch (e) {
       if (!mounted) return;
@@ -532,7 +526,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     if (digits.length != 6) {
       setState(() {
         _errorBanner =
-            'Informe exatamente os 6 dígitos enviados para $kMonocraticCeoEmail.';
+            'Digite os 6 números enviados para $kMonocraticCeoEmail.';
       });
       return;
     }
@@ -569,7 +563,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   // ---------------------------------------------------------------------------
-  // REDEFINIÇÃO DE SENHA MESTRA VIA DEEP-LINK EFÊMERO DO 2º E-MAIL
+  // TROCA DE SENHA PELO LINK EXCLUSIVO DO E-MAIL
   // ---------------------------------------------------------------------------
 
   Future<void> _handleCommitPasswordResetFromDeepLink() async {
@@ -587,8 +581,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     }
     if (pw != confirm) {
       setState(() {
-        _errorBanner =
-            'A confirmação da nova Senha Mestra precisa ser idêntica à senha criada.';
+        _errorBanner = 'As duas senhas digitadas precisam ser iguais.';
       });
       return;
     }
@@ -614,7 +607,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         _busy = false;
         _activeOtpTicket = null;
         _infoBanner =
-            'Nova Senha Mestra gravada em AES-256! Todas as sessões anteriores foram encerradas. Valide agora sua entrada com a nova senha e o código de 6 dígitos.';
+            'Nova senha salva com sucesso! Entre agora usando sua senha nova.';
         _stage = CeoSovereignAuthStage.stageDailyLoginCredentials;
       });
     } on CeoVaultSecurityException catch (e) {
@@ -635,40 +628,19 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     }
   }
 
-  void _appendOtpDigitFromPad(int digit) {
-    final current =
-        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
-    if (current.length >= 6 || _busy) return;
-    HapticFeedback.selectionClick();
-    final next = '$current$digit';
-    _otpController.text = next;
-    _otpController.selection = TextSelection.collapsed(offset: next.length);
-    setState(() {});
-  }
-
-  void _backspaceOtpFromPad() {
-    final current =
-        CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text);
-    if (current.isEmpty || _busy) return;
-    HapticFeedback.selectionClick();
-    final next = current.substring(0, current.length - 1);
-    _otpController.text = next;
-    _otpController.selection = TextSelection.collapsed(offset: next.length);
-    setState(() {});
-  }
-
   Future<void> _handlePasteOtpFromClipboard() async {
     if (_busy) return;
     try {
       final clip = await Clipboard.getData(Clipboard.kTextPlain);
       final raw = clip?.text ?? '';
-      final extracted = CeoSmartOtpExtractor.extractSixDigitClusterOrNull(raw) ??
-          CeoSmartOtpExtractor.extractBestSixDigits(raw);
+      final extracted =
+          CeoSmartOtpExtractor.extractSixDigitClusterOrNull(raw) ??
+              CeoSmartOtpExtractor.extractBestSixDigits(raw);
       if (!mounted) return;
       if (extracted.isEmpty) {
         setState(() {
           _errorBanner =
-              'Nenhum código numérico encontrado na área de transferência.';
+              'Não encontramos nenhum número copiado. Copie o código do e-mail primeiro.';
         });
         return;
       }
@@ -683,7 +655,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   // ---------------------------------------------------------------------------
-  // CONSTRUÇÃO VISUAL OBSIDIAN & OURO 24K (ZERO OVERFLOW DE 320PX A 4K)
+  // INTERFACE LIMPA — LUXO SILENCIOSO EXECUTIVO
   // ---------------------------------------------------------------------------
 
   @override
@@ -694,53 +666,61 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 492),
-              child: FounderGlassCard(
-                padding: const EdgeInsets.all(20),
-                accentTopBarColor: FounderSovereignTokens.imperialGold,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    _buildSovereignBrandHeader(),
-                    const SizedBox(height: 16),
-                    if (_infoBanner != null) ...<Widget>[
-                      _buildBanner(
-                        message: _infoBanner!,
-                        borderColor: FounderSovereignTokens.solvencyEmerald,
-                        bgColor: FounderSovereignTokens.solvencyEmerald
-                            .withValues(alpha: 0.12),
-                        icon: Icons.verified_user_rounded,
-                        iconColor: FounderSovereignTokens.solvencyEmerald,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_errorBanner != null) ...<Widget>[
-                      _buildBanner(
-                        message: _errorBanner!,
-                        borderColor: FounderSovereignTokens.crimsonAlert,
-                        bgColor: FounderSovereignTokens.crimsonAlertSoft,
-                        icon: Icons.gpp_bad_rounded,
-                        iconColor: FounderSovereignTokens.crimsonAlert,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_vaultLockRemainingSec > 0) ...<Widget>[
-                      _buildBanner(
-                        message:
-                            'Defesa ativa: aguarde ${_vaultLockRemainingSec}s antes de tentar novamente.',
-                        borderColor: FounderSovereignTokens.warmAmber,
-                        bgColor: FounderSovereignTokens.warmAmber
-                            .withValues(alpha: 0.14),
-                        icon: Icons.timer_rounded,
-                        iconColor: FounderSovereignTokens.warmAmber,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    _buildCurrentStageContent(),
-                  ],
-                ),
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  _buildCleanBrandHero(),
+                  const SizedBox(height: 22),
+                  FounderGlassCard(
+                    padding: const EdgeInsets.all(22),
+                    showTopAccentBar: true,
+                    accentTopBarColor: FounderSovereignTokens.imperialGold,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        if (_infoBanner != null) ...<Widget>[
+                          _buildBanner(
+                            message: _infoBanner!,
+                            borderColor: FounderSovereignTokens.solvencyEmerald
+                                .withValues(alpha: 0.45),
+                            bgColor: FounderSovereignTokens.solvencyEmeraldSoft,
+                            icon: Icons.check_circle_outline_rounded,
+                            iconColor: FounderSovereignTokens.solvencyEmerald,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        if (_errorBanner != null) ...<Widget>[
+                          _buildBanner(
+                            message: _errorBanner!,
+                            borderColor: FounderSovereignTokens.crimsonAlert
+                                .withValues(alpha: 0.55),
+                            bgColor: FounderSovereignTokens.crimsonAlertSoft,
+                            icon: Icons.error_outline_rounded,
+                            iconColor: FounderSovereignTokens.crimsonAlert,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        if (_vaultLockRemainingSec > 0) ...<Widget>[
+                          _buildBanner(
+                            message:
+                                'Por segurança, aguarde ${_vaultLockRemainingSec}s para tentar novamente.',
+                            borderColor: FounderSovereignTokens.warmAmber
+                                .withValues(alpha: 0.5),
+                            bgColor: FounderSovereignTokens.warmAmber
+                                .withValues(alpha: 0.12),
+                            icon: Icons.timer_outlined,
+                            iconColor: FounderSovereignTokens.warmAmber,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                        _buildCurrentStageContent(),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -749,39 +729,26 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     );
   }
 
-  Widget _buildSovereignBrandHeader() {
-    return Row(
+  Widget _buildCleanBrandHero() {
+    return Column(
       children: <Widget>[
-        const FounderSovereignCrest(size: 46),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              const Text(
-                'Desperrengue CEO',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: FounderSovereignTokens.primaryInk,
-                  fontSize: 19,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'COFRE MONOCRÁTICO · ACESSO EXCLUSIVO DO CEO',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.9,
-                  color: FounderSovereignTokens.imperialGoldBright,
-                ),
-              ),
-            ],
+        const FounderSovereignCrest(size: 58),
+        const SizedBox(height: 12),
+        Text(
+          'Desperrengue CEO',
+          textAlign: TextAlign.center,
+          style: FounderSovereignTokens.titleStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Painel exclusivo da direção',
+          textAlign: TextAlign.center,
+          style: FounderSovereignTokens.subtitleStyle(
+            fontSize: 13,
+            color: FounderSovereignTokens.mutedInk,
           ),
         ),
       ],
@@ -796,25 +763,25 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     required Color iconColor,
   }) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: bgColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: borderColor),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(icon, size: 18, color: iconColor),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
               style: const TextStyle(
                 color: FounderSovereignTokens.primaryInk,
-                fontSize: 12.5,
+                fontSize: 13,
                 height: 1.4,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -830,17 +797,19 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           padding: const EdgeInsets.symmetric(vertical: 28),
           child: Column(
             children: <Widget>[
-              const CircularProgressIndicator(
-                color: FounderSovereignTokens.imperialGoldBright,
+              const SizedBox(
+                width: 26,
+                height: 26,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
               ),
               const SizedBox(height: 14),
               Text(
-                'Verificando integridade criptográfica do Cofre Soberano…',
+                'Preparando seu acesso seguro…',
                 textAlign: TextAlign.center,
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 12,
-                  color: FounderSovereignTokens.mutedInk,
-                ),
+                style: FounderSovereignTokens.subtitleStyle(fontSize: 13),
               ),
             ],
           ),
@@ -851,14 +820,14 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
       case CeoSovereignAuthStage.stageBootstrapVerifyOtp:
         return _buildSixDigitOtpView(
-          badgeLabel: 'PRIMEIRO ACESSO · ETAPA 1 DE 2',
-          headline: 'Valide os 6 Dígitos do Seu E-mail',
+          stepBadge: 'Primeiro acesso · Passo 1 de 2',
+          headline: 'Digite o código de 6 números',
           subtitle:
-              'Enviamos um código exclusivo de 6 dígitos para $kMonocraticCeoEmail. Digite ou cole os 6 dígitos abaixo para liberar a criação da sua Senha Mestra Forte:',
+              'Enviamos um código para $kMonocraticCeoEmail. Digite abaixo ou toque em "Colar código".',
           submitButtonKey: const ValueKey<String>(
             'ceo-bootstrap-verify-otp-btn',
           ),
-          submitLabel: 'Confirmar Código e Criar Senha Mestra',
+          submitLabel: 'Confirmar código',
           onSubmit: _handleBootstrapVerifyOtp,
           onResend: () => _handleBootstrapSendOtp(isResend: true),
           onBack: () {
@@ -874,10 +843,10 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
       case CeoSovereignAuthStage.stageBootstrapCreateMasterPassword:
         return _buildCreateOrResetPasswordView(
-          badgeLabel: 'PRIMEIRO ACESSO · ETAPA 2 DE 2',
-          headline: 'Crie Sua Senha Mestra Forte CEO',
+          stepBadge: 'Primeiro acesso · Passo 2 de 2',
+          headline: 'Crie sua senha exclusiva',
           subtitle:
-              'Sua senha é exclusiva deste aplicativo, protegida em custódia dividida (PBKDF2 210k + HMAC-SHA512 25k + AES-256) e jamais compartilhada com o Marketplace.',
+              'Você usará esta senha sempre que abrir o Desperrengue CEO.',
           newPasswordFieldKey: const ValueKey<String>(
             'ceo-create-password-input',
           ),
@@ -887,7 +856,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           submitButtonKey: const ValueKey<String>(
             'ceo-save-initial-password-btn',
           ),
-          submitLabel: 'Selar Minha Senha Mestra em AES-256 & Entrar',
+          submitLabel: 'Salvar senha e entrar',
           onSubmit: _handleCreateInitialMasterPassword,
         );
 
@@ -896,12 +865,12 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
       case CeoSovereignAuthStage.stageDailyLoginVerifyOtp:
         return _buildSixDigitOtpView(
-          badgeLabel: 'VERIFICAÇÃO 2FA DE ENTRADA · ETAPA 2 DE 2',
-          headline: 'Código de 6 Dígitos Enviado ao Seu E-mail',
+          stepBadge: 'Confirmação de entrada',
+          headline: 'Digite o código de 6 números',
           subtitle:
-              'Sua Senha Mestra foi provada! Digite ou cole agora os 6 dígitos enviados exclusivamente para $kMonocraticCeoEmail para abrir a Sala de Guerra:',
+              'Acabamos de enviar o código para $kMonocraticCeoEmail para confirmar sua entrada.',
           submitButtonKey: const ValueKey<String>('ceo-login-verify-otp-btn'),
-          submitLabel: 'Validar 6 Dígitos e Abrir Desperrengue CEO',
+          submitLabel: 'Confirmar e entrar no painel',
           onSubmit: _handleDailyLoginVerifyOtp,
           onResend: _handleResendLoginOtp,
           onBack: () {
@@ -918,10 +887,10 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
       case CeoSovereignAuthStage.stagePasswordResetFromDeepLink:
         return _buildCreateOrResetPasswordView(
-          badgeLabel: 'REDEFINIÇÃO AUTORIZADA POR E-MAIL · USO ÚNICO (10 MIN)',
-          headline: 'Definir Nova Senha de Administrador CEO',
+          stepBadge: 'Troca de senha autorizada',
+          headline: 'Escolha sua nova senha',
           subtitle:
-              'Ao salvar a nova Senha Mestra Forte em AES-256, todas as sessões anteriores serão encerradas e você validará sua entrada com a senha nova + código de 6 dígitos.',
+              'Depois de salvar, você usará esta nova senha para entrar no painel.',
           newPasswordFieldKey: const ValueKey<String>(
             'ceo-reset-new-password-input',
           ),
@@ -931,7 +900,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           submitButtonKey: const ValueKey<String>(
             'ceo-reset-commit-password-btn',
           ),
-          submitLabel: 'Salvar Nova Senha Mestra & Ir para Login',
+          submitLabel: 'Salvar nova senha',
           onSubmit: _handleCommitPasswordResetFromDeepLink,
           onCancel: () {
             _wipePasswordBuffers(triggerRebuild: false);
@@ -946,59 +915,56 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _StagePillBadge('PRIMEIRO ACESSO SOBERANO · SEM SENHA CADASTRADA'),
-        const SizedBox(height: 10),
-        const Text(
-          'Inicialize Sua Senha de Administrador CEO',
-          style: TextStyle(
-            color: FounderSovereignTokens.primaryInk,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
+        const _StepEyebrow('Primeiro acesso'),
+        const SizedBox(height: 8),
+        Text(
+          'Vamos criar sua senha',
+          style: FounderSovereignTokens.titleStyle(fontSize: 19),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Nenhuma Senha Mestra foi criada ainda neste Cofre Soberano. Confirme abaixo seu e-mail exclusivo para receber o código de 6 dígitos e criar sua própria senha forte:',
-          style: TextStyle(
-            color: FounderSovereignTokens.mutedInk,
-            fontSize: 12.5,
-            height: 1.45,
-          ),
+        Text(
+          'Confirme seu e-mail abaixo. Vamos enviar um código rápido de 6 números para liberar a criação da sua senha.',
+          style: FounderSovereignTokens.subtitleStyle(fontSize: 13),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 18),
         _buildSovereignEmailField(
           fieldKey: const ValueKey<String>('ceo-bootstrap-email-input'),
         ),
-        const SizedBox(height: 14),
-        FilledButton.icon(
+        const SizedBox(height: 16),
+        FilledButton(
           key: const ValueKey<String>('ceo-bootstrap-send-otp-btn'),
           onPressed: (_busy || _otpCooldownRemainingSec > 0)
               ? null
               : () => _handleBootstrapSendOtp(),
           style: FilledButton.styleFrom(
             backgroundColor: FounderSovereignTokens.imperialGold,
-            foregroundColor: const Color(0xFF0B0F17),
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            foregroundColor: const Color(0xFF0B0E14),
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
-          icon: _busy
+          child: _busy
               ? const SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Color(0xFF0B0F17),
+                    color: Color(0xFF0B0E14),
                   ),
                 )
-              : const Icon(Icons.mark_email_unread_rounded, size: 18),
-          label: Text(
-            _otpCooldownRemainingSec > 0
-                ? 'Aguarde ${_otpCooldownRemainingSec}s'
-                : 'Enviar Código de 6 Dígitos para Criar Minha Senha',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-          ),
+              : Text(
+                  _otpCooldownRemainingSec > 0
+                      ? 'Aguarde ${_otpCooldownRemainingSec}s'
+                      : 'Enviar código de 6 números',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         TextButton(
           onPressed: _busy
               ? null
@@ -1009,9 +975,9 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
                   });
                 },
           child: const Text(
-            'Já criei minha Senha Mestra — ir para tela de Login',
+            'Já criei minha senha — ir para entrada',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12),
+            style: TextStyle(fontSize: 12.5),
           ),
         ),
       ],
@@ -1023,34 +989,26 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _StagePillBadge('ENTRADA SOBERANA EM 2 FATORES · ETAPA 1 DE 2'),
-        const SizedBox(height: 10),
-        const Text(
-          'Autenticação Exclusiva do CEO',
-          style: TextStyle(
-            color: FounderSovereignTokens.primaryInk,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
+        const _StepEyebrow('Acesso exclusivo'),
+        const SizedBox(height: 8),
+        Text(
+          'Bem-vindo, Wagner',
+          style: FounderSovereignTokens.titleStyle(fontSize: 19),
         ),
         const SizedBox(height: 6),
-        const Text(
-          'Informe seu e-mail soberano e sua Senha Mestra Forte (máx. 64 caracteres). Após validar sua senha, enviaremos o código de 6 dígitos para o seu e-mail:',
-          style: TextStyle(
-            color: FounderSovereignTokens.mutedInk,
-            fontSize: 12.5,
-            height: 1.45,
-          ),
+        Text(
+          'Informe seu e-mail e sua senha para receber o código rápido de entrada.',
+          style: FounderSovereignTokens.subtitleStyle(fontSize: 13),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 18),
         _buildSovereignEmailField(
           fieldKey: const ValueKey<String>('ceo-login-email-input'),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         _SovereignPasswordField(
           fieldKey: const ValueKey<String>('ceo-login-password-input'),
           controller: _passwordController,
-          labelText: 'Senha Mestra de Administrador CEO',
+          labelText: 'Sua senha de acesso',
           obscureText: _obscurePrimaryPassword,
           onToggleObscure: () => setState(
             () => _obscurePrimaryPassword = !_obscurePrimaryPassword,
@@ -1058,53 +1016,54 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           onChanged: (_) => setState(() {}),
           onSubmitted: (_) => _handleDailyLoginStep1(),
         ),
-        const SizedBox(height: 6),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            '$charCount / ${CeoStrongPasswordPolicy.maxLength} caracteres',
-            key: const ValueKey<String>('ceo-login-password-char-counter'),
-            style: FounderSovereignTokens.monoMetric(
-              fontSize: 11,
-              color: charCount >= CeoStrongPasswordPolicy.maxLength
-                  ? FounderSovereignTokens.imperialGoldBright
-                  : FounderSovereignTokens.mutedInk,
+        if (charCount > 0) ...<Widget>[
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '$charCount / ${CeoStrongPasswordPolicy.maxLength}',
+              key: const ValueKey<String>('ceo-login-password-char-counter'),
+              style: FounderSovereignTokens.monoMetric(
+                fontSize: 11,
+                color: FounderSovereignTokens.mutedInk,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        FilledButton.icon(
+        ],
+        const SizedBox(height: 18),
+        FilledButton(
           key: const ValueKey<String>('ceo-login-submit-btn'),
           onPressed: (_busy || _vaultLockRemainingSec > 0)
               ? null
               : _handleDailyLoginStep1,
           style: FilledButton.styleFrom(
             backgroundColor: FounderSovereignTokens.imperialGold,
-            foregroundColor: const Color(0xFF0B0F17),
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            foregroundColor: const Color(0xFF0B0E14),
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
-          icon: _busy
+          child: _busy
               ? const SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Color(0xFF0B0F17),
+                    color: Color(0xFF0B0E14),
                   ),
                 )
-              : const Icon(Icons.shield_rounded, size: 18),
-          label: const Text(
-            'Validar Senha & Receber Código de 6 Dígitos',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-          ),
+              : const Text(
+                  'Continuar',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
         ),
       ],
     );
   }
 
   Widget _buildCreateOrResetPasswordView({
-    required String badgeLabel,
+    required String stepBadge,
     required String headline,
     required String subtitle,
     required Key newPasswordFieldKey,
@@ -1123,37 +1082,29 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _StagePillBadge(badgeLabel),
-        const SizedBox(height: 10),
+        _StepEyebrow(stepBadge),
+        const SizedBox(height: 8),
         Text(
           headline,
-          style: const TextStyle(
-            color: FounderSovereignTokens.primaryInk,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
+          style: FounderSovereignTokens.titleStyle(fontSize: 19),
         ),
         const SizedBox(height: 6),
         Text(
           subtitle,
-          style: const TextStyle(
-            color: FounderSovereignTokens.mutedInk,
-            fontSize: 12.5,
-            height: 1.45,
-          ),
+          style: FounderSovereignTokens.subtitleStyle(fontSize: 13),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 18),
         _SovereignPasswordField(
           fieldKey: newPasswordFieldKey,
           controller: _passwordController,
-          labelText: 'Nova Senha Mestra (12 a 64 caracteres)',
+          labelText: 'Sua senha (12 a 64 caracteres)',
           obscureText: _obscurePrimaryPassword,
           onToggleObscure: () => setState(
             () => _obscurePrimaryPassword = !_obscurePrimaryPassword,
           ),
           onChanged: (_) => setState(() {}),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Row(
           children: <Widget>[
             Expanded(
@@ -1162,11 +1113,11 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                   color: evaluation.isApproved
                       ? FounderSovereignTokens.solvencyEmerald
-                      : FounderSovereignTokens.imperialGoldBright,
+                      : FounderSovereignTokens.mutedInk,
                 ),
               ),
             ),
@@ -1175,8 +1126,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
               '${evaluation.charCount} / ${CeoStrongPasswordPolicy.maxLength}',
               key: const ValueKey<String>('ceo-password-char-counter'),
               style: FounderSovereignTokens.monoMetric(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
                 color: evaluation.lengthInRange
                     ? FounderSovereignTokens.solvencyEmerald
                     : FounderSovereignTokens.mutedInk,
@@ -1188,7 +1139,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         ClipRRect(
           borderRadius: BorderRadius.circular(999),
           child: LinearProgressIndicator(
-            minHeight: 6,
+            minHeight: 5,
             value: evaluation.normalizedProgress,
             backgroundColor: FounderSovereignTokens.obsidianSurface,
             color: evaluation.isApproved
@@ -1196,11 +1147,11 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
                 : FounderSovereignTokens.imperialGold,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         _SovereignPasswordField(
           fieldKey: confirmPasswordFieldKey,
           controller: _confirmPasswordController,
-          labelText: 'Confirmar Senha Mestra',
+          labelText: 'Repita a senha para confirmar',
           obscureText: _obscureConfirmPassword,
           onToggleObscure: () => setState(
             () => _obscureConfirmPassword = !_obscureConfirmPassword,
@@ -1210,42 +1161,47 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             if (canSubmit) onSubmit();
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         _PasswordRequirementsChecklist(
           evaluation: evaluation,
           passwordsMatch: passwordsMatch,
           hasConfirmationInput: confirm.isNotEmpty,
         ),
-        const SizedBox(height: 14),
-        FilledButton.icon(
+        const SizedBox(height: 18),
+        FilledButton(
           key: submitButtonKey,
           onPressed: canSubmit ? onSubmit : null,
           style: FilledButton.styleFrom(
             backgroundColor: FounderSovereignTokens.imperialGold,
-            foregroundColor: const Color(0xFF0B0F17),
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            foregroundColor: const Color(0xFF0B0E14),
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
-          icon: _busy
+          child: _busy
               ? const SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Color(0xFF0B0F17),
+                    color: Color(0xFF0B0E14),
                   ),
                 )
-              : const Icon(Icons.enhanced_encryption_rounded, size: 18),
-          label: Text(
-            submitLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-          ),
+              : Text(
+                  submitLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
         ),
         if (onCancel != null) ...<Widget>[
           const SizedBox(height: 8),
           TextButton(
             onPressed: _busy ? null : onCancel,
-            child: const Text('Cancelar redefinição'),
+            child: const Text('Cancelar'),
           ),
         ],
       ],
@@ -1253,7 +1209,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 
   Widget _buildSixDigitOtpView({
-    required String badgeLabel,
+    required String stepBadge,
     required String headline,
     required String subtitle,
     required Key submitButtonKey,
@@ -1269,31 +1225,23 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _StagePillBadge(badgeLabel),
-        const SizedBox(height: 10),
+        _StepEyebrow(stepBadge),
+        const SizedBox(height: 8),
         Text(
           headline,
-          style: const TextStyle(
-            color: FounderSovereignTokens.primaryInk,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
+          style: FounderSovereignTokens.titleStyle(fontSize: 19),
         ),
         const SizedBox(height: 6),
         Text(
           subtitle,
-          style: const TextStyle(
-            color: FounderSovereignTokens.mutedInk,
-            fontSize: 12.5,
-            height: 1.45,
-          ),
+          style: FounderSovereignTokens.subtitleStyle(fontSize: 13),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
         Wrap(
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
           spacing: 8,
-          runSpacing: 6,
+          runSpacing: 8,
           children: <Widget>[
             if (activeRef != null && activeRef.isNotEmpty)
               Container(
@@ -1303,21 +1251,16 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: FounderSovereignTokens.solvencyEmerald
-                      .withValues(alpha: 0.14),
+                  color: FounderSovereignTokens.obsidianSurface,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: FounderSovereignTokens.solvencyEmerald
-                        .withValues(alpha: 0.45),
-                  ),
+                  border: Border.all(color: FounderSovereignTokens.crispBorder),
                 ),
                 child: Text(
-                  'PROTOCOLO #$activeRef · VÁLIDO POR 10 MIN',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
-                    color: FounderSovereignTokens.solvencyEmerald,
+                  'Vale por 10 min · #$activeRef',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: FounderSovereignTokens.mutedInk,
                   ),
                 ),
               ),
@@ -1327,12 +1270,12 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
               style: OutlinedButton.styleFrom(
                 visualDensity: VisualDensity.compact,
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
+                  horizontal: 12,
                   vertical: 6,
                 ),
                 side: BorderSide(
                   color: FounderSovereignTokens.imperialGold
-                      .withValues(alpha: 0.55),
+                      .withValues(alpha: 0.45),
                 ),
               ),
               icon: const Icon(
@@ -1343,7 +1286,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
               label: const Text(
                 'Colar código',
                 style: TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: FounderSovereignTokens.imperialGoldBright,
                 ),
@@ -1352,23 +1295,23 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           ],
         ),
         if (_remainingOtpAttempts != null) ...<Widget>[
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
-            'Tentativas restantes neste código: $_remainingOtpAttempts',
+            'Você ainda tem $_remainingOtpAttempts tentativas para este código.',
             style: const TextStyle(
               color: FounderSovereignTokens.warmAmber,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () => _otpFocusNode.requestFocus(),
           child: _SixDigitOpticalDisplay(digits: digits),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         TextField(
           key: const ValueKey<String>('ceo-otp-code-input'),
           controller: _otpController,
@@ -1388,13 +1331,13 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             color: FounderSovereignTokens.primaryInk,
           ),
           decoration: InputDecoration(
-            labelText: 'Digite ou cole os 6 dígitos',
+            labelText: 'Toque aqui para digitar ou colar os 6 números',
             counterText: '',
             isDense: true,
             filled: true,
             fillColor: FounderSovereignTokens.obsidianSurface,
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
             ),
           ),
           onChanged: (_) => setState(() {}),
@@ -1407,32 +1350,37 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             }
           },
         ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
+        const SizedBox(height: 16),
+        FilledButton(
           key: submitButtonKey,
           onPressed: (_busy || digits.length != 6) ? null : onSubmit,
           style: FilledButton.styleFrom(
             backgroundColor: FounderSovereignTokens.imperialGold,
-            foregroundColor: const Color(0xFF0B0F17),
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            foregroundColor: const Color(0xFF0B0E14),
+            minimumSize: const Size.fromHeight(50),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
-          icon: _busy
+          child: _busy
               ? const SizedBox(
-                  width: 16,
-                  height: 16,
+                  width: 18,
+                  height: 18,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Color(0xFF0B0F17),
+                    color: Color(0xFF0B0E14),
                   ),
                 )
-              : const Icon(Icons.lock_open_rounded, size: 18),
-          label: Text(
-            submitLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-          ),
+              : Text(
+                  submitLabel,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Wrap(
           alignment: WrapAlignment.spaceBetween,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -1449,17 +1397,11 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
                   (_busy || _otpCooldownRemainingSec > 0) ? null : onResend,
               child: Text(
                 _otpCooldownRemainingSec > 0
-                    ? 'Reenviar em ${_otpCooldownRemainingSec}s'
-                    : 'Reenviar código de 6 dígitos',
+                    ? 'Enviar novo código em ${_otpCooldownRemainingSec}s'
+                    : 'Não chegou? Enviar novo código',
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 8),
-        _CompactNumericPad(
-          enabled: !_busy,
-          onDigit: _appendOtpDigitFromPad,
-          onBackspace: _backspaceOtpFromPad,
         ),
       ],
     );
@@ -1478,23 +1420,24 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         FilteringTextInputFormatter.deny(RegExp(r'\s')),
         LengthLimitingTextInputFormatter(120),
       ],
-      style: FounderSovereignTokens.monoMetric(
-        fontSize: 13.5,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
         color: FounderSovereignTokens.primaryInk,
       ),
       decoration: InputDecoration(
-        labelText: 'E-mail Soberano do CEO',
-        hintText: 'Digite seu e-mail autorizado',
+        labelText: 'Seu e-mail de acesso',
+        hintText: 'Digite seu e-mail',
         counterText: '',
         prefixIcon: const Icon(
-          Icons.alternate_email_rounded,
-          size: 18,
-          color: FounderSovereignTokens.imperialGoldBright,
+          Icons.mail_outline_rounded,
+          size: 19,
+          color: FounderSovereignTokens.mutedInk,
         ),
         filled: true,
         fillColor: FounderSovereignTokens.obsidianSurface,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
         ),
       ),
       onChanged: (_) => setState(() {}),
@@ -1502,33 +1445,18 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   }
 }
 
-class _StagePillBadge extends StatelessWidget {
-  const _StagePillBadge(this.text);
+class _StepEyebrow extends StatelessWidget {
+  const _StepEyebrow(this.text);
 
   final String text;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.48),
-          ),
-        ),
-        child: Text(
-          text,
-          style: FounderSovereignTokens.monoMetric(
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.7,
-            color: FounderSovereignTokens.imperialGoldBright,
-          ),
-        ),
+    return Text(
+      text.toUpperCase(),
+      style: FounderSovereignTokens.eyebrowStyle(
+        fontSize: 11,
+        color: FounderSovereignTokens.imperialGoldBright,
       ),
     );
   }
@@ -1577,33 +1505,34 @@ class _SovereignPasswordField extends StatelessWidget {
         FilteringTextInputFormatter.deny(RegExp(r'[\s\x00-\x1F\x7F]')),
         LengthLimitingTextInputFormatter(CeoStrongPasswordPolicy.maxLength),
       ],
-      style: FounderSovereignTokens.monoMetric(
-        fontSize: 14,
+      style: const TextStyle(
+        fontSize: 14.5,
+        fontWeight: FontWeight.w500,
         color: FounderSovereignTokens.primaryInk,
       ),
       decoration: InputDecoration(
         labelText: labelText,
         counterText: '',
         prefixIcon: const Icon(
-          Icons.key_rounded,
-          size: 18,
-          color: FounderSovereignTokens.imperialGoldBright,
+          Icons.lock_outline_rounded,
+          size: 19,
+          color: FounderSovereignTokens.mutedInk,
         ),
         suffixIcon: IconButton(
-          tooltip: obscureText ? 'Revelar caracteres' : 'Ocultar caracteres',
+          tooltip: obscureText ? 'Mostrar senha' : 'Esconder senha',
           onPressed: onToggleObscure,
           icon: Icon(
             obscureText
-                ? Icons.visibility_off_rounded
-                : Icons.visibility_rounded,
-            size: 18,
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            size: 19,
             color: FounderSovereignTokens.mutedInk,
           ),
         ),
         filled: true,
         fillColor: FounderSovereignTokens.obsidianSurface,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
         ),
       ),
       onChanged: onChanged,
@@ -1626,10 +1555,10 @@ class _PasswordRequirementsChecklist extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: FounderSovereignTokens.obsidianSurface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: FounderSovereignTokens.crispBorder),
       ),
       child: Column(
@@ -1637,34 +1566,30 @@ class _PasswordRequirementsChecklist extends StatelessWidget {
         children: <Widget>[
           _RuleRow(
             satisfied: evaluation.lengthInRange,
-            label: 'Entre 12 e 64 caracteres (teto rígido de 64)',
+            label: 'Entre 12 e 64 caracteres',
           ),
           _RuleRow(
-            satisfied: evaluation.hasUppercase,
-            label: 'Pelo menos 1 letra maiúscula (A–Z)',
-          ),
-          _RuleRow(
-            satisfied: evaluation.hasLowercase,
-            label: 'Pelo menos 1 letra minúscula (a–z)',
+            satisfied: evaluation.hasUppercase && evaluation.hasLowercase,
+            label: 'Letra maiúscula e letra minúscula',
           ),
           _RuleRow(
             satisfied: evaluation.hasDigit,
-            label: 'Pelo menos 1 número (0–9)',
+            label: 'Pelo menos um número (0 a 9)',
           ),
           _RuleRow(
             satisfied: evaluation.hasSpecialSymbol,
-            label: 'Pelo menos 1 caractere especial (!@#\$%&*-_+=?)',
+            label: 'Um símbolo especial (ex: ! @ # \$ % & *)',
           ),
           _RuleRow(
             satisfied: evaluation.antiPatternApproved &&
                 evaluation.charCount >= CeoStrongPasswordPolicy.minLength,
-            label: 'Alta entropia (≥ 60 bits), sem nomes ou sequências',
+            label: 'Sem seu nome ou sequências fáceis (1234, abcd)',
           ),
           _RuleRow(
             satisfied: passwordsMatch,
             label: hasConfirmationInput && !passwordsMatch
-                ? 'Confirmação divergente da senha digitada'
-                : 'Confirmação idêntica à Senha Mestra',
+                ? 'As duas senhas ainda estão diferentes'
+                : 'As duas senhas conferem',
           ),
         ],
       ),
@@ -1681,19 +1606,19 @@ class _RuleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: <Widget>[
           Icon(
             satisfied
                 ? Icons.check_circle_rounded
                 : Icons.radio_button_unchecked_rounded,
-            size: 15,
+            size: 16,
             color: satisfied
                 ? FounderSovereignTokens.solvencyEmerald
                 : FounderSovereignTokens.mutedInk,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 9),
           Expanded(
             child: Text(
               label,
@@ -1701,8 +1626,8 @@ class _RuleRow extends StatelessWidget {
                 color: satisfied
                     ? FounderSovereignTokens.primaryInk
                     : FounderSovereignTokens.mutedInk,
-                fontSize: 11.5,
-                fontWeight: satisfied ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12.5,
+                fontWeight: satisfied ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ),
@@ -1727,15 +1652,15 @@ class _SixDigitOpticalDisplay extends StatelessWidget {
         final char = filled ? digits[index] : '';
         return Expanded(
           child: Padding(
-            padding: EdgeInsets.only(left: index == 0 ? 0 : 6),
+            padding: EdgeInsets.only(left: index == 0 ? 0 : 7),
             child: Container(
-              height: 48,
+              height: 54,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(11),
+                borderRadius: BorderRadius.circular(13),
                 border: Border.all(
-                  width: active ? 1.6 : 1.0,
+                  width: active ? 1.8 : 1.0,
                   color: filled
                       ? FounderSovereignTokens.solvencyEmerald
                       : active
@@ -1746,87 +1671,15 @@ class _SixDigitOpticalDisplay extends StatelessWidget {
               child: Text(
                 char,
                 style: FounderSovereignTokens.monoMetric(
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: FounderSovereignTokens.imperialGoldBright,
+                  color: FounderSovereignTokens.primaryInk,
                 ),
               ),
             ),
           ),
         );
       }),
-    );
-  }
-}
-
-class _CompactNumericPad extends StatelessWidget {
-  const _CompactNumericPad({
-    required this.enabled,
-    required this.onDigit,
-    required this.onBackspace,
-  });
-
-  final bool enabled;
-  final ValueChanged<int> onDigit;
-  final VoidCallback onBackspace;
-
-  @override
-  Widget build(BuildContext context) {
-    const rows = <List<int?>>[
-      <int?>[1, 2, 3],
-      <int?>[4, 5, 6],
-      <int?>[7, 8, 9],
-      <int?>[null, 0, -1],
-    ];
-    return Column(
-      children: <Widget>[
-        for (final row in rows)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              children: <Widget>[
-                for (var i = 0; i < row.length; i++)
-                  Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
-                      child: _buildCell(row[i]),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildCell(int? value) {
-    if (value == null) return const SizedBox(height: 40);
-    if (value == -1) {
-      return OutlinedButton(
-        key: const ValueKey<String>('ceo-otp-backspace-btn'),
-        onPressed: enabled ? onBackspace : null,
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 40),
-          padding: EdgeInsets.zero,
-        ),
-        child: const Icon(Icons.backspace_outlined, size: 17),
-      );
-    }
-    return OutlinedButton(
-      key: ValueKey<String>('ceo-otp-digit-$value'),
-      onPressed: enabled ? () => onDigit(value) : null,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 40),
-        padding: EdgeInsets.zero,
-      ),
-      child: Text(
-        '$value',
-        style: FounderSovereignTokens.monoMetric(
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
-          color: FounderSovereignTokens.primaryInk,
-        ),
-      ),
     );
   }
 }

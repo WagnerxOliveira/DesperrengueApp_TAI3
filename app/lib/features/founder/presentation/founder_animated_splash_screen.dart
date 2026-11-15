@@ -200,12 +200,12 @@ class _FounderAnimatedSplashScreenState
                                       .withValues(alpha: 0.65),
                                 ),
                               ),
-                              child: Text(
-                                'CEO · COFRE SOBERANO',
-                                style: FounderSovereignTokens.monoMetric(
+                              child: const Text(
+                                'PAINEL EXCLUSIVO DO CEO',
+                                style: TextStyle(
                                   fontSize: 10.5,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.6,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.4,
                                   color:
                                       FounderSovereignTokens.imperialGoldBright,
                                 ),

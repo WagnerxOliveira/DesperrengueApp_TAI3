@@ -164,10 +164,10 @@ class FounderNativeOtaInstaller {
       return 'Falha ao baixar a atualização direta. Toque para tentar novamente.';
     }
     if (code.contains('SHA256_MISMATCH')) {
-      return 'Assinatura SHA-256 divergente! Instalação bloqueada por segurança.';
+      return 'Pacote inválido ou corrompido. Instalação bloqueada por segurança.';
     }
     if (code.contains('UNTRUSTED')) {
-      return 'Origem de atualização bloqueada pela política Zero-Trust.';
+      return 'Origem de atualização bloqueada por segurança.';
     }
     return 'Oscilação de rede ao baixar o pacote ($code). Toque para repetir.';
   }
@@ -752,7 +752,7 @@ class _FounderFloatingUpdateCard extends StatelessWidget {
 
     final title = switch (phase) {
       FounderOtaInstallPhase.downloading => 'Baixando atualização no celular…',
-      FounderOtaInstallPhase.verifying => 'Verificando integridade SHA-256…',
+      FounderOtaInstallPhase.verifying => 'Conferindo segurança da atualização…',
       FounderOtaInstallPhase.awaitingPermission =>
         'Autorize a instalação direta (1 única vez)',
       FounderOtaInstallPhase.installerLaunched =>
@@ -766,15 +766,15 @@ class _FounderFloatingUpdateCard extends StatelessWidget {
     final metaParts = <String>[
       'Versão ${info.version}',
       if (info.sizeLabel.isNotEmpty) info.sizeLabel,
-      if (info.sha256 != null) 'SHA-256 verificado',
+      if (info.sha256 != null) 'Download seguro',
     ];
 
     final subtitle = switch (phase) {
       FounderOtaInstallPhase.downloading => otaState.transferLabel.isNotEmpty
           ? otaState.transferLabel
-          : 'Transferindo pacote criptografado diretamente para o aparelho…',
+          : 'Transferindo pacote oficial diretamente para o seu celular…',
       FounderOtaInstallPhase.verifying =>
-        'Conferindo assinatura SHA-256 antes de abrir o instalador do Android…',
+        'Validando o pacote oficial antes de abrir o instalador do Android…',
       FounderOtaInstallPhase.awaitingPermission =>
         'Ative "Permitir desta fonte" para o Desperrengue CEO e volte: o instalador abrirá sozinho.',
       FounderOtaInstallPhase.installerLaunched =>

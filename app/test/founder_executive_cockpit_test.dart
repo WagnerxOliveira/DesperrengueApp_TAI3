@@ -1646,7 +1646,7 @@ void main() {
         );
       }
 
-      // 2. Desktop Panorâmico 1440x900 + Privacy Blur + Dossiê Forense
+      // 2. Desktop Panorâmico 1440x900 + Linguagem Clara + Gavetas Sob Demanda + Privacy Blur + Detalhes do Pedido
       await tester.binding.setSurfaceSize(const Size(1440, 900));
       await tester.pumpWidget(
         _wrapFounderTestApp(
@@ -1659,14 +1659,44 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.takeException(), isNull);
 
+      // Garante ausência de jargão técnico/contábil e presença dos nomes humanos
+      expect(find.text('Início'), findsWidgets);
+      expect(find.text('Financeiro'), findsWidgets);
+      expect(find.text('Pedidos'), findsWidgets);
+      expect(find.text('Pessoas'), findsWidgets);
+      expect(find.text('Conta'), findsWidgets);
+      expect(find.textContaining('CPC 47'), findsNothing);
+      expect(find.textContaining('COFRE MONOCRÁTICO'), findsNothing);
+      expect(find.textContaining('Mochila 0/1'), findsNothing);
+      expect(find.textContaining('OPEX'), findsNothing);
+      expect(find.textContaining('WSS'), findsNothing);
+
       await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-0')));
       await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('SEU LUCRO LÍQUIDO'), findsOneWidget);
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.textContaining('•••••'), findsWidgets);
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump(const Duration(milliseconds: 150));
 
+      // Aba Financeiro: abre gaveta de análises avançadas sem poluição visual nem overflow
+      await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-1')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Para onde foi cada real?'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('ceo-toggle-advanced-finance-btn')),
+        260,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-toggle-advanced-finance-btn')),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+
+      // Aba Pedidos: mapa limpo + alternador 2 modos + folha Detalhes do Pedido
       await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-2')));
       await tester.pump(const Duration(milliseconds: 350));
       expect(
@@ -1674,14 +1704,22 @@ void main() {
         findsOneWidget,
       );
 
-      await tester.ensureVisible(find.text('Dossiê Forense').first);
+      await tester.scrollUntilVisible(
+        find.text('Ver pedido').first,
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
       await tester.pump(const Duration(milliseconds: 100));
-      await tester.tap(find.text('Dossiê Forense').first);
+      await tester.tap(find.text('Ver pedido').first);
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump();
       expect(
         find.byKey(const ValueKey<String>('ceo-order-forensic-sheet')),
         findsOneWidget,
       );
+      expect(find.textContaining('Detalhes do Pedido'), findsOneWidget);
+      expect(find.text('Etapas do atendimento'), findsOneWidget);
       expect(find.textContaining('Marina Real'), findsWidgets);
       expect(tester.takeException(), isNull);
     });
