@@ -719,7 +719,7 @@ void main() {
               phase: GeoPrivacyPhase.confirmedFuture,
               exactUnlocked: false,
               scheduledDate: DateTime.utc(2026, 11, 20),
-              unlockAt: DateTime.now().subtract(const Duration(seconds: 1)),
+              unlockAt: DateTime.utc(2026, 11, 15, 11, 59, 59),
             );
           }
           return _buildRpcDrivenProviderView(

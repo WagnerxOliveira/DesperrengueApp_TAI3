@@ -166,9 +166,9 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                     children: <Widget>[
                       Text(
                         c.neighborhood,
-                        style: FounderSovereignTokens.monoMetric(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                           color: FounderSovereignTokens.primaryInk,
                         ),
                       ),
@@ -176,7 +176,7 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                       Text(
                         'Procura ${c.demandScore} · Profissionais ${c.supplyScore}',
                         style: FounderSovereignTokens.monoMetric(
-                          fontSize: 10,
+                          fontSize: 10.5,
                           color: col,
                         ),
                       ),
@@ -202,9 +202,9 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                 children: <Widget>[
                   Text(
                     '${selected.neighborhood}: ${selected.quadrantLabelPt}',
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w800,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                       color: FounderSovereignTokens.imperialGoldBright,
                     ),
                   ),
@@ -448,7 +448,7 @@ class _FounderMicroPnlOrderInspectorWidgetState
                         _MicroChip(
                           'Imposto 6%',
                           Money.formatBrl(selected.taxDasCents),
-                          FounderSovereignTokens.crimsonAlert,
+                          FounderSovereignTokens.warmAmber,
                         ),
                         _MicroChip(
                           'Taxas PIX',
@@ -619,7 +619,9 @@ class _FounderMonteCarloSimulatorWidgetState
                 widget.privacyBlurActive
                     ? 'R\$ •••••'
                     : Money.formatBrl(_result.p10CashCents.last),
-                FounderSovereignTokens.crimsonAlert,
+                _result.p10CashCents.last < 0
+                    ? FounderSovereignTokens.crimsonAlert
+                    : FounderSovereignTokens.warmAmber,
               ),
               _MicroChip(
                 'Cenário provável',
@@ -662,9 +664,10 @@ class _FounderMonteCarloSimulatorWidgetState
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: FounderSovereignTokens.monoMetric(
-            fontSize: 11,
-            color: FounderSovereignTokens.mutedInk,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w500,
+            color: FounderSovereignTokens.secondaryInk,
           ),
         ),
         SizedBox(
@@ -834,8 +837,9 @@ class _FounderExecutiveCopilotWidgetState
                   ),
                   child: Text(
                     questions[i],
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 10.5,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
                       color: FounderSovereignTokens.imperialGoldBright,
                     ),
                   ),
@@ -883,10 +887,10 @@ class _FounderExecutiveCopilotWidgetState
               children: <Widget>[
                 Text(
                   _currentResponse.headline,
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w800,
-                    color: FounderSovereignTokens.cyberCyan,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: FounderSovereignTokens.imperialGoldBright,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -896,7 +900,7 @@ class _FounderExecutiveCopilotWidgetState
                     child: Text(
                       '• $b',
                       style: const TextStyle(
-                        fontSize: 11.5,
+                        fontSize: 12,
                         color: FounderSovereignTokens.primaryInk,
                       ),
                     ),
@@ -904,8 +908,8 @@ class _FounderExecutiveCopilotWidgetState
                 const SizedBox(height: 4),
                 Text(
                   'Recomendação Executiva: ${_currentResponse.recommendedAction}',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 11,
+                  style: const TextStyle(
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w700,
                     color: FounderSovereignTokens.solvencyEmerald,
                   ),
@@ -974,7 +978,9 @@ class _FounderAntiBypassAndSefazRadarWidgetState
 
     return FounderGlassCard(
       key: const ValueKey<String>('founder-innovation-5-antibypass-sefaz'),
-      accentTopBarColor: FounderSovereignTokens.crimsonAlert,
+      accentTopBarColor: s.intrusionCanariesCount > 0
+          ? FounderSovereignTokens.crimsonAlert
+          : FounderSovereignTokens.imperialGold,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -1005,7 +1011,9 @@ class _FounderAntiBypassAndSefazRadarWidgetState
               _MicroChip(
                 'Acessos indevidos bloqueados',
                 '${s.intrusionCanariesCount}',
-                FounderSovereignTokens.crimsonAlert,
+                s.intrusionCanariesCount > 0
+                    ? FounderSovereignTokens.crimsonAlert
+                    : FounderSovereignTokens.solvencyEmerald,
               ),
             ],
           ),
