@@ -663,68 +663,109 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     return Scaffold(
       key: const ValueKey<String>('founder-sovereign-auth-gate-scaffold'),
       backgroundColor: FounderSovereignTokens.obsidianBackground,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  _buildCleanBrandHero(),
-                  const SizedBox(height: 22),
-                  FounderGlassCard(
-                    padding: const EdgeInsets.all(22),
-                    showTopAccentBar: true,
-                    accentTopBarColor: FounderSovereignTokens.imperialGold,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
-                        if (_infoBanner != null) ...<Widget>[
-                          _buildBanner(
-                            message: _infoBanner!,
-                            borderColor: FounderSovereignTokens.solvencyEmerald
-                                .withValues(alpha: 0.45),
-                            bgColor: FounderSovereignTokens.solvencyEmeraldSoft,
-                            icon: Icons.check_circle_outline_rounded,
-                            iconColor: FounderSovereignTokens.solvencyEmerald,
-                          ),
-                          const SizedBox(height: 14),
-                        ],
-                        if (_errorBanner != null) ...<Widget>[
-                          _buildBanner(
-                            message: _errorBanner!,
-                            borderColor: FounderSovereignTokens.crimsonAlert
-                                .withValues(alpha: 0.55),
-                            bgColor: FounderSovereignTokens.crimsonAlertSoft,
-                            icon: Icons.error_outline_rounded,
-                            iconColor: FounderSovereignTokens.crimsonAlert,
-                          ),
-                          const SizedBox(height: 14),
-                        ],
-                        if (_vaultLockRemainingSec > 0) ...<Widget>[
-                          _buildBanner(
-                            message:
-                                'Por segurança, aguarde ${_vaultLockRemainingSec}s para tentar novamente.',
-                            borderColor: FounderSovereignTokens.warmAmber
-                                .withValues(alpha: 0.5),
-                            bgColor: FounderSovereignTokens.warmAmber
-                                .withValues(alpha: 0.12),
-                            icon: Icons.timer_outlined,
-                            iconColor: FounderSovereignTokens.warmAmber,
-                          ),
-                          const SizedBox(height: 14),
-                        ],
-                        _buildCurrentStageContent(),
+      body: Stack(
+        children: <Widget>[
+          Positioned(
+            top: -90,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  width: 340,
+                  height: 340,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: <Color>[
+                        FounderSovereignTokens.imperialGold
+                            .withValues(alpha: 0.14),
+                        FounderSovereignTokens.imperialGold
+                            .withValues(alpha: 0.0),
                       ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      _buildCleanBrandHero(),
+                      const SizedBox(height: 24),
+                      FounderGlassCard(
+                        padding: const EdgeInsets.all(22),
+                        showTopAccentBar: true,
+                        accentTopBarColor: FounderSovereignTokens.imperialGold,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            if (_infoBanner != null) ...<Widget>[
+                              _buildBanner(
+                                message: _infoBanner!,
+                                borderColor: FounderSovereignTokens
+                                    .solvencyEmerald
+                                    .withValues(alpha: 0.45),
+                                bgColor:
+                                    FounderSovereignTokens.solvencyEmeraldSoft,
+                                icon: Icons.check_circle_outline_rounded,
+                                iconColor:
+                                    FounderSovereignTokens.solvencyEmerald,
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                            if (_errorBanner != null) ...<Widget>[
+                              _buildBanner(
+                                message: _errorBanner!,
+                                borderColor: FounderSovereignTokens.crimsonAlert
+                                    .withValues(alpha: 0.55),
+                                bgColor:
+                                    FounderSovereignTokens.crimsonAlertSoft,
+                                icon: Icons.error_outline_rounded,
+                                iconColor: FounderSovereignTokens.crimsonAlert,
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                            if (_vaultLockRemainingSec > 0) ...<Widget>[
+                              _buildBanner(
+                                message:
+                                    'Por segurança, aguarde ${_vaultLockRemainingSec}s para tentar novamente.',
+                                borderColor: FounderSovereignTokens.warmAmber
+                                    .withValues(alpha: 0.5),
+                                bgColor: FounderSovereignTokens.warmAmber
+                                    .withValues(alpha: 0.12),
+                                icon: Icons.timer_outlined,
+                                iconColor: FounderSovereignTokens.warmAmber,
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 220),
+                              switchInCurve:
+                                  const Cubic(0.22, 1.0, 0.36, 1.0),
+                              child: KeyedSubtree(
+                                key: ValueKey<String>(_stage.name),
+                                child: _buildCurrentStageContent(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -732,19 +773,19 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   Widget _buildCleanBrandHero() {
     return Column(
       children: <Widget>[
-        const FounderSovereignCrest(size: 58),
-        const SizedBox(height: 12),
+        const FounderSovereignCrest(size: 72),
+        const SizedBox(height: 14),
         Text(
           'Desperrengue CEO',
           textAlign: TextAlign.center,
           style: FounderSovereignTokens.titleStyle(
-            fontSize: 22,
+            fontSize: 23,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 4),
         Text(
-          'Painel exclusivo da direção',
+          'Painel exclusivo do fundador',
           textAlign: TextAlign.center,
           style: FounderSovereignTokens.subtitleStyle(
             fontSize: 13,
@@ -1653,25 +1694,37 @@ class _SixDigitOpticalDisplay extends StatelessWidget {
         return Expanded(
           child: Padding(
             padding: EdgeInsets.only(left: index == 0 ? 0 : 7),
-            child: Container(
-              height: 54,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 170),
+              height: 58,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(13),
+                color: filled
+                    ? FounderSovereignTokens.obsidianRaised
+                    : FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  width: active ? 1.8 : 1.0,
+                  width: active ? 1.8 : 1.1,
                   color: filled
                       ? FounderSovereignTokens.solvencyEmerald
                       : active
                           ? FounderSovereignTokens.imperialGoldBright
                           : FounderSovereignTokens.crispBorder,
                 ),
+                boxShadow: active
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: FounderSovereignTokens.imperialGold
+                              .withValues(alpha: 0.22),
+                          blurRadius: 12,
+                        ),
+                      ]
+                    : null,
               ),
               child: Text(
                 char,
                 style: FounderSovereignTokens.monoMetric(
-                  fontSize: 22,
+                  fontSize: 23,
                   fontWeight: FontWeight.w800,
                   color: FounderSovereignTokens.primaryInk,
                 ),

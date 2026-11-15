@@ -1,53 +1,65 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' show FontFeature, ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/utils/money.dart';
 
-/// Paleta e tokens semânticos *Obsidian Sovereign Luxury* (v2.12.0).
+bool _isAnimationTestEnv() {
+  final name = WidgetsBinding.instance.runtimeType.toString();
+  return name.contains('TestWidgetsFlutterBinding') ||
+      name.contains('AutomatedTestWidgetsFlutterBinding') ||
+      name.contains('LiveTestWidgetsFlutterBinding');
+}
+
+/// Sistema Visual **Luxo Silencioso Executivo** (`v2.16.0` — Regra `85% · 10% · 5%`).
 ///
-/// Inspirada em Stripe Sigma, Linear, Bloomberg Terminal e Apple Design Awards:
-/// - Fundo base grafite-obsidiana `#0E1218` (zero preto puro `#000000` para eliminar halation OLED);
-/// - Elevação tonal em degraus (`#141A22` -> `#1A212B` -> `#232C39`) com borda de `1px` `#2B3646`;
-/// - Contraste WCAG AAA (`15.6:1`) no texto primário `#EAEFF6` e AA+ no secundário `#A3AEC0`;
-/// - Acentos executivos: Imperial Gold (`#F59E0B` -> `#FDE047`), Cyber Cyan (`#52B7C0`),
-///   Solvency Emerald (`#3CCB8C`) e Crimson Alert (`#FF7A80`).
+/// Inspirado em Nubank Ultravioleta, Apple Card/Wallet, Uber Black e Stripe Dashboard:
+/// - **85% Neutro Profundo**: Grafite Obsidiana `#0B0E13`, cartões `#141922` com raio `20px`,
+///   espaçamento amplo e borda finíssima `1px` branca a `7%` de opacidade (`#12FFFFFF`);
+/// - **10% Ouro Champagne Acetinado (`#E5C158` / `#F3D77D`)**: reservado ao botão principal,
+///   aba selecionada, brasão oficial e destaque principal de lucro;
+/// - **5% Semântico Estrito**:
+///   - Verde Esmeralda (`#22C55E`): lucro positivo, PIX confirmado e contas 100% conferidas;
+///   - Âmbar Quente (`#F59E0B`): serviço em andamento ou documento aguardando análise;
+///   - Vermelho Coral (`#EF4444`): **estritamente proibido** em estado saudável — exclusivo
+///     para prejuízo real, disputa aberta, tentativa de invasão bloqueada ou emergência.
 @immutable
 class FounderSovereignTokens {
   const FounderSovereignTokens._();
 
-  static const Color obsidianBackground = Color(0xFF0B0E14);
-  static const Color obsidianSurface = Color(0xFF121720);
-  static const Color obsidianCard = Color(0xFF161C27);
-  static const Color obsidianRaised = Color(0xFF1E2634);
-  static const Color crispBorder = Color(0xFF232C3D);
+  static const Color obsidianBackground = Color(0xFF0B0E13);
+  static const Color obsidianSurface = Color(0xFF10151E);
+  static const Color obsidianCard = Color(0xFF141922);
+  static const Color obsidianRaised = Color(0xFF1B2230);
+  static const Color crispBorder = Color(0x16FFFFFF);
+  static const Color crispBorderStrong = Color(0x26FFFFFF);
 
-  static const Color primaryInk = Color(0xFFF3F6FB);
-  static const Color secondaryInk = Color(0xFFCBD5E1);
-  static const Color mutedInk = Color(0xFF94A3B8);
+  static const Color primaryInk = Color(0xFFF5F7FA);
+  static const Color secondaryInk = Color(0xFFD0D8E5);
+  static const Color mutedInk = Color(0xFF8E9BB0);
 
-  static const Color imperialGold = Color(0xFFE5B84B);
-  static const Color imperialGoldBright = Color(0xFFF3D47C);
-  static const Color imperialGoldSoft = Color(0xFF2B2312);
+  static const Color imperialGold = Color(0xFFE5C158);
+  static const Color imperialGoldBright = Color(0xFFF3D77D);
+  static const Color imperialGoldSoft = Color(0xFF282110);
 
-  static const Color cyberCyan = Color(0xFF60A5FA);
-  static const Color cyberCyanSoft = Color(0xFF132338);
+  static const Color cyberCyan = Color(0xFF5BA8FF);
+  static const Color cyberCyanSoft = Color(0xFF122136);
 
-  static const Color solvencyEmerald = Color(0xFF34D399);
-  static const Color solvencyEmeraldSoft = Color(0xFF102A22);
+  static const Color solvencyEmerald = Color(0xFF22C55E);
+  static const Color solvencyEmeraldSoft = Color(0xFF0F291E);
 
-  static const Color crimsonAlert = Color(0xFFF87171);
-  static const Color crimsonAlertSoft = Color(0xFF32181C);
+  static const Color crimsonAlert = Color(0xFFEF4444);
+  static const Color crimsonAlertSoft = Color(0xFF2E1418);
 
   static const Color royalIndigo = Color(0xFF818CF8);
-  static const Color warmAmber = Color(0xFFFBBF24);
-  static const Color warmAmberSoft = Color(0xFF2D2210);
+  static const Color warmAmber = Color(0xFFF59E0B);
+  static const Color warmAmberSoft = Color(0xFF2B200E);
 
   static const LinearGradient imperialGoldGradient = LinearGradient(
     begin: Alignment.topLeft,
@@ -64,9 +76,9 @@ class FounderSovereignTokens {
   static const LinearGradient topSpecularGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
-    stops: <double>[0.0, 0.14, 1.0],
+    stops: <double>[0.0, 0.18, 1.0],
     colors: <Color>[
-      Color(0x0DFFFFFF),
+      Color(0x0AFFFFFF),
       Color(0x02FFFFFF),
       Color(0x00FFFFFF),
     ],
@@ -76,23 +88,23 @@ class FounderSovereignTokens {
     FontFeature.tabularFigures(),
   ];
 
-  /// Estilo humano e limpo para títulos de seções e cartões executivos (nunca monoespaçado).
+  /// Tipografia humana, moderna e limpa para títulos e cabeçalhos (nunca monoespaçada).
   static TextStyle titleStyle({
     double fontSize = 16,
     FontWeight fontWeight = FontWeight.w700,
     Color color = primaryInk,
-    double letterSpacing = -0.25,
+    double letterSpacing = -0.30,
   }) {
     return TextStyle(
       fontSize: fontSize,
       fontWeight: fontWeight,
       color: color,
       letterSpacing: letterSpacing,
-      height: 1.25,
+      height: 1.24,
     );
   }
 
-  /// Estilo de leitura descansada para subtítulos e explicações em português claro.
+  /// Estilo descansado e legível para subtítulos e explicações em português claro.
   static TextStyle subtitleStyle({
     double fontSize = 12.5,
     FontWeight fontWeight = FontWeight.w500,
@@ -102,16 +114,17 @@ class FounderSovereignTokens {
       fontSize: fontSize,
       fontWeight: fontWeight,
       color: color,
-      height: 1.45,
+      letterSpacing: -0.1,
+      height: 1.44,
     );
   }
 
-  /// Rótulo curto superior discreto (ex.: "SEU LUCRO LÍQUIDO").
+  /// Rótulo curto superior discreto (ex.: "SEU LUCRO LÍQUIDO (HOJE)").
   static TextStyle eyebrowStyle({
     double fontSize = 11,
     FontWeight fontWeight = FontWeight.w700,
     Color color = mutedInk,
-    double letterSpacing = 0.7,
+    double letterSpacing = 0.65,
   }) {
     return TextStyle(
       fontSize: fontSize,
@@ -122,12 +135,12 @@ class FounderSovereignTokens {
     );
   }
 
-  /// Exclusivo para valores em R$, contadores, horários e códigos de 6 dígitos.
+  /// Exclusivo para valores em R$, contadores numéricos, datas/horários e códigos de 6 dígitos.
   static TextStyle monoMetric({
     double fontSize = 22,
     FontWeight fontWeight = FontWeight.w800,
     Color color = primaryInk,
-    double letterSpacing = -0.35,
+    double letterSpacing = -0.45,
   }) {
     return TextStyle(
       fontSize: fontSize,
@@ -135,7 +148,7 @@ class FounderSovereignTokens {
       color: color,
       letterSpacing: letterSpacing,
       fontFeatures: tabularFigures,
-      height: 1.15,
+      height: 1.14,
     );
   }
 
@@ -150,7 +163,7 @@ class FounderSovereignTokens {
       colorScheme: base.colorScheme.copyWith(
         brightness: Brightness.dark,
         primary: imperialGold,
-        onPrimary: const Color(0xFF111827),
+        onPrimary: const Color(0xFF0B0E13),
         secondary: cyberCyan,
         surface: obsidianBackground,
         onSurface: primaryInk,
@@ -161,13 +174,13 @@ class FounderSovereignTokens {
   }
 }
 
-/// Cartão executivo *Luxo Silencioso* com elevação suave, cantos arredondados (`20px`)
-/// e ausência de listras coloridas repetitivas (regra anti-poluição visual).
+/// Cartão executivo *Luxo Silencioso* (`#141922`, raio `20px`, padding `20px`, borda `6%` branca)
+/// sem barrinhas coloridas competitivas por padrão e com física tátil suave quando clicável.
 class FounderGlassCard extends StatefulWidget {
   const FounderGlassCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(18),
+    this.padding = const EdgeInsets.all(20),
     this.margin = EdgeInsets.zero,
     this.borderRadius = 20,
     this.backgroundColor = FounderSovereignTokens.obsidianCard,
@@ -193,59 +206,73 @@ class FounderGlassCard extends StatefulWidget {
 
 class _FounderGlassCardState extends State<FounderGlassCard> {
   bool _hovered = false;
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
     final effectiveBorder = widget.borderColor ??
         (_hovered
-            ? FounderSovereignTokens.imperialGold.withValues(alpha: 0.45)
+            ? FounderSovereignTokens.imperialGold.withValues(alpha: 0.38)
             : FounderSovereignTokens.crispBorder);
     final radius = BorderRadius.circular(widget.borderRadius);
 
-    Widget content = Container(
-      margin: widget.margin,
-      decoration: BoxDecoration(
-        color: widget.backgroundColor,
-        borderRadius: radius,
-        border: Border.all(color: effectiveBorder, width: 1.0),
-      ),
-      child: ClipRRect(
-        borderRadius: radius,
-        child: Stack(
-          children: <Widget>[
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(
-                    gradient: FounderSovereignTokens.topSpecularGradient,
-                  ),
-                ),
-              ),
+    Widget content = AnimatedScale(
+      scale: _pressed ? 0.985 : 1.0,
+      duration: const Duration(milliseconds: 140),
+      curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        margin: widget.margin,
+        decoration: BoxDecoration(
+          color: widget.backgroundColor,
+          borderRadius: radius,
+          border: Border.all(color: effectiveBorder, width: 1.0),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(
+              color: Color(0x36000000),
+              blurRadius: 18,
+              offset: Offset(0, 8),
             ),
-            if (widget.showTopAccentBar && widget.accentTopBarColor != null)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                height: 2.0,
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: Stack(
+            children: <Widget>[
+              Positioned.fill(
                 child: IgnorePointer(
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: <Color>[
-                          widget.accentTopBarColor!,
-                          widget.accentTopBarColor!.withValues(alpha: 0.12),
-                        ],
-                      ),
+                    decoration: const BoxDecoration(
+                      gradient: FounderSovereignTokens.topSpecularGradient,
                     ),
                   ),
                 ),
               ),
-            Padding(
-              padding: widget.padding,
-              child: widget.child,
-            ),
-          ],
+              if (widget.showTopAccentBar && widget.accentTopBarColor != null)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 2.0,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: <Color>[
+                            widget.accentTopBarColor!.withValues(alpha: 0.85),
+                            widget.accentTopBarColor!.withValues(alpha: 0.08),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              Padding(
+                padding: widget.padding,
+                child: widget.child,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -255,7 +282,13 @@ class _FounderGlassCardState extends State<FounderGlassCard> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: radius,
-          onTap: widget.onTap,
+          onHighlightChanged: (v) {
+            if (_pressed != v) setState(() => _pressed = v);
+          },
+          onTap: () {
+            HapticFeedback.selectionClick();
+            widget.onTap!();
+          },
           child: content,
         ),
       );
@@ -269,13 +302,226 @@ class _FounderGlassCardState extends State<FounderGlassCard> {
   }
 }
 
+/// Ponto luminoso orgânico de conexão em tempo real (`7px`) com halo respiratório suave.
+/// Em ambiente `flutter test`, mantém renderização determinística sem loop infinito.
+class LiveBreathingPulseDot extends StatefulWidget {
+  const LiveBreathingPulseDot({
+    super.key,
+    required this.color,
+    this.size = 7.0,
+    this.animate = true,
+  });
+
+  final Color color;
+  final double size;
+  final bool animate;
+
+  @override
+  State<LiveBreathingPulseDot> createState() => _LiveBreathingPulseDotState();
+}
+
+class _LiveBreathingPulseDotState extends State<LiveBreathingPulseDot>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.animate && !_isAnimationTestEnv()) {
+      _ctrl = AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2100),
+      )..repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _ctrl;
+    if (c == null) {
+      return Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          color: widget.color,
+          shape: BoxShape.circle,
+          boxShadow: <BoxShadow>[
+            BoxShadow(
+              color: widget.color.withValues(alpha: 0.45),
+              blurRadius: 6,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: c,
+      builder: (context, _) {
+        final t = Curves.easeInOutSine.transform(c.value);
+        return SizedBox(
+          width: widget.size * 2.1,
+          height: widget.size * 2.1,
+          child: Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              Container(
+                width: widget.size * (1.15 + 0.85 * t),
+                height: widget.size * (1.15 + 0.85 * t),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: widget.color.withValues(alpha: 0.26 * (1.0 - 0.55 * t)),
+                ),
+              ),
+              Container(
+                width: widget.size,
+                height: widget.size,
+                decoration: BoxDecoration(
+                  color: widget.color,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Seletor segmentado deslizante estilo Apple Card / Stripe com pílula animada a 120 FPS.
+class AnimatedSlidingPillSwitch extends StatelessWidget {
+  const AnimatedSlidingPillSwitch({
+    super.key,
+    required this.labels,
+    required this.selectedIndex,
+    required this.onChanged,
+    this.icons,
+  });
+
+  final List<String> labels;
+  final List<IconData>? icons;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = labels.length;
+    if (count == 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: FounderSovereignTokens.obsidianSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: FounderSovereignTokens.crispBorder),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final segWidth = constraints.maxWidth / count;
+          final clampedIdx = selectedIndex.clamp(0, count - 1);
+          return Stack(
+            children: <Widget>[
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 240),
+                curve: const Cubic(0.22, 1.0, 0.36, 1.0),
+                left: clampedIdx * segWidth,
+                top: 0,
+                bottom: 0,
+                width: segWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: FounderSovereignTokens.obsidianRaised,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: FounderSovereignTokens.imperialGold
+                          .withValues(alpha: 0.45),
+                    ),
+                    boxShadow: const <BoxShadow>[
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 8,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Row(
+                children: List<Widget>.generate(count, (idx) {
+                  final active = clampedIdx == idx;
+                  final icon =
+                      (icons != null && idx < icons!.length) ? icons![idx] : null;
+                  return Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        onChanged(idx);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 8,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            if (icon != null) ...<Widget>[
+                              Icon(
+                                icon,
+                                size: 15,
+                                color: active
+                                    ? FounderSovereignTokens.imperialGoldBright
+                                    : FounderSovereignTokens.mutedInk,
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Flexible(
+                              child: Text(
+                                labels[idx],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: active
+                                      ? FounderSovereignTokens.primaryInk
+                                      : FounderSovereignTokens.mutedInk,
+                                  fontSize: 12.5,
+                                  fontWeight:
+                                      active ? FontWeight.w700 : FontWeight.w500,
+                                  letterSpacing: -0.15,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
 /// Orquestrador de entrada escalonada (120 FPS) com curvas quínticas
 /// `Cubic(0.22, 1.0, 0.36, 1.0)` e suporte a física `SpringSimulation`.
 class StaggeredEntranceOrchestrator extends StatefulWidget {
   const StaggeredEntranceOrchestrator({
     super.key,
     required this.builder,
-    this.duration = const Duration(milliseconds: 620),
+    this.duration = const Duration(milliseconds: 520),
     this.useSpringPhysics = false,
   });
 
@@ -284,11 +530,11 @@ class StaggeredEntranceOrchestrator extends StatefulWidget {
   final Duration duration;
   final bool useSpringPhysics;
 
-  /// Intervalos canônicos de sobreposição (`0.0..0.45`, `0.12..0.65`, `0.25..1.0`).
   static const List<Interval> canonicalIntervals = <Interval>[
     Interval(0.00, 0.45, curve: Cubic(0.22, 1.0, 0.36, 1.0)),
-    Interval(0.12, 0.65, curve: Cubic(0.22, 1.0, 0.36, 1.0)),
-    Interval(0.25, 1.00, curve: Cubic(0.22, 1.0, 0.36, 1.0)),
+    Interval(0.10, 0.65, curve: Cubic(0.22, 1.0, 0.36, 1.0)),
+    Interval(0.22, 0.85, curve: Cubic(0.22, 1.0, 0.36, 1.0)),
+    Interval(0.32, 1.00, curve: Cubic(0.22, 1.0, 0.36, 1.0)),
   ];
 
   static Animation<double> intervalForStage(
@@ -302,7 +548,6 @@ class StaggeredEntranceOrchestrator extends StatefulWidget {
     );
   }
 
-  /// Calcula posição amortecida via `SpringSimulation` para medidores e agulhas.
   static double evaluateDampedSpring(
     double t, {
     double mass = 1.0,
@@ -362,15 +607,15 @@ class _StaggeredEntranceOrchestratorState
 }
 
 /// Item de revelação coreografada combinando `FadeTransition` + translação vertical
-/// de `14px` + `ScaleTransition(0.97 -> 1.0)` sobre intervalos sobrepostos.
+/// suave (`12px`) + `ScaleTransition(0.985 -> 1.0)`.
 class StaggeredRevealItem extends StatelessWidget {
   const StaggeredRevealItem({
     super.key,
     required this.animation,
     required this.child,
     this.stageIndex = 0,
-    this.verticalOffsetPx = 14.0,
-    this.initialScale = 0.97,
+    this.verticalOffsetPx = 12.0,
+    this.initialScale = 0.985,
   });
 
   final Animation<double> animation;
@@ -409,7 +654,7 @@ class StaggeredRevealItem extends StatelessWidget {
 }
 
 /// Wrapper de privacidade instantânea (`ClipRect` + `BackdropFilter` `sigma 16x16`)
-/// acionado pelo botão de pânico/olho ou pela tecla `Space`.
+/// acionado pelo botão de olho no topo ou pela tecla `Space`.
 class FounderPrivacyBlurWrap extends StatelessWidget {
   const FounderPrivacyBlurWrap({
     super.key,
@@ -448,10 +693,10 @@ class FounderPrivacyBlurWrap extends StatelessWidget {
   }
 }
 
-/// Odômetro financeiro em centavos inteiros (`Money.formatBrl`) com algarismos
-/// tabulares (`FontFeature.tabularFigures()`) para zero jitter horizontal e
-/// desfoque instantâneo (`sigmaX: 16, sigmaY: 16`) quando `privacyBlurActive == true`.
-class AnimatedMoneyOdometer extends StatelessWidget {
+/// Odômetro financeiro em centavos inteiros (`Money.formatBrl`) com interpolação real
+/// (`oldCents -> newCents`) a 120 FPS, algarismos tabulares (`tabularFigures`) e opção
+/// de moeda executiva em hierarquia dupla (`R$` e `,00` a `65%` de brilho e escala menor).
+class AnimatedMoneyOdometer extends StatefulWidget {
   const AnimatedMoneyOdometer({
     super.key,
     required this.cents,
@@ -459,8 +704,9 @@ class AnimatedMoneyOdometer extends StatelessWidget {
     this.style,
     this.prefix = '',
     this.suffix = '',
-    this.duration = const Duration(milliseconds: 520),
+    this.duration = const Duration(milliseconds: 340),
     this.maxLines = 1,
+    this.splitCurrencyParts = false,
   });
 
   final int cents;
@@ -470,10 +716,77 @@ class AnimatedMoneyOdometer extends StatelessWidget {
   final String suffix;
   final Duration duration;
   final int maxLines;
+  final bool splitCurrencyParts;
+
+  @override
+  State<AnimatedMoneyOdometer> createState() => _AnimatedMoneyOdometerState();
+}
+
+class _AnimatedMoneyOdometerState extends State<AnimatedMoneyOdometer> {
+  late int _fromCents = widget.cents;
+
+  @override
+  void didUpdateWidget(covariant AnimatedMoneyOdometer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.cents != widget.cents) {
+      _fromCents = oldWidget.cents;
+    }
+  }
+
+  Widget _buildFormattedText(int currentCents, TextStyle effectiveStyle) {
+    final rawBrl = Money.formatBrl(currentCents);
+    if (!widget.splitCurrencyParts) {
+      return Text(
+        '${widget.prefix}$rawBrl${widget.suffix}',
+        maxLines: widget.maxLines,
+        overflow: TextOverflow.ellipsis,
+        style: effectiveStyle,
+      );
+    }
+
+    // Separa símbolo ("R$ " / "-R$ "), inteiro ("1.480") e centavos (",80") mantendo um único Text.rich
+    final baseFontSize = effectiveStyle.fontSize ?? 28;
+    final baseColor = effectiveStyle.color ?? FounderSovereignTokens.primaryInk;
+    final mutedPartStyle = effectiveStyle.copyWith(
+      fontSize: (baseFontSize * 0.62).clamp(12.0, 26.0),
+      fontWeight: FontWeight.w700,
+      color: baseColor.withValues(alpha: 0.66),
+    );
+
+    final commaIdx = rawBrl.lastIndexOf(',');
+    final rsIdx = rawBrl.indexOf('R\$');
+    if (commaIdx > 0 && rsIdx >= 0) {
+      final currencyHead = rawBrl.substring(0, rsIdx + 2);
+      final middleWithSpace = rawBrl.substring(rsIdx + 2, commaIdx);
+      final centsTail = rawBrl.substring(commaIdx);
+      return Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            if (widget.prefix.isNotEmpty)
+              TextSpan(text: widget.prefix, style: mutedPartStyle),
+            TextSpan(text: '$currencyHead ', style: mutedPartStyle),
+            TextSpan(text: middleWithSpace.trimLeft(), style: effectiveStyle),
+            TextSpan(text: centsTail, style: mutedPartStyle),
+            if (widget.suffix.isNotEmpty)
+              TextSpan(text: widget.suffix, style: mutedPartStyle),
+          ],
+        ),
+        maxLines: widget.maxLines,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    return Text(
+      '${widget.prefix}$rawBrl${widget.suffix}',
+      maxLines: widget.maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: effectiveStyle,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final effectiveStyle = (style ??
+    final effectiveStyle = (widget.style ??
             FounderSovereignTokens.monoMetric(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -481,22 +794,18 @@ class AnimatedMoneyOdometer extends StatelessWidget {
         .copyWith(fontFeatures: FounderSovereignTokens.tabularFigures);
 
     final odometer = TweenAnimationBuilder<double>(
-      tween: Tween<double>(begin: cents.toDouble(), end: cents.toDouble()),
-      duration: duration,
+      tween: Tween<double>(
+        begin: _fromCents.toDouble(),
+        end: widget.cents.toDouble(),
+      ),
+      duration: widget.duration,
       curve: const Cubic(0.22, 1.0, 0.36, 1.0),
       builder: (context, animatedValue, _) {
-        final currentCents = animatedValue.round();
-        final formatted = '$prefix${Money.formatBrl(currentCents)}$suffix';
-        return Text(
-          formatted,
-          maxLines: maxLines,
-          overflow: TextOverflow.ellipsis,
-          style: effectiveStyle,
-        );
+        return _buildFormattedText(animatedValue.round(), effectiveStyle);
       },
     );
 
-    if (!privacyBlurActive) {
+    if (!widget.privacyBlurActive) {
       return odometer;
     }
 
@@ -514,9 +823,9 @@ class AnimatedMoneyOdometer extends StatelessWidget {
               child: Container(
                 alignment: Alignment.centerLeft,
                 color: FounderSovereignTokens.obsidianCard
-                    .withValues(alpha: 0.45),
+                    .withValues(alpha: 0.52),
                 child: Text(
-                  '${prefix}R\$ •••••$suffix',
+                  '${widget.prefix}R\$ •••••${widget.suffix}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: effectiveStyle.copyWith(
@@ -627,6 +936,11 @@ class _FounderUltraHdImageState extends State<FounderUltraHdImage> {
   }
 
   Widget _buildVectorFallback(BorderRadius radius) {
+    final trimmed = widget.fallbackLabel.trim();
+    final initials = trimmed.isEmpty
+        ? 'W'
+        : trimmed.substring(0, math.min(2, trimmed.length)).toUpperCase();
+
     return Container(
       width: widget.logicalWidth,
       height: widget.logicalHeight,
@@ -636,55 +950,31 @@ class _FounderUltraHdImageState extends State<FounderUltraHdImage> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: <Color>[
-            Color(0xFF1E293B),
-            Color(0xFF0F172A),
+            Color(0xFF1D2432),
+            Color(0xFF10151F),
           ],
         ),
         border: Border.all(
-          color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.45),
+          color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.35),
         ),
       ),
       alignment: Alignment.center,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(
-            Icons.verified_rounded,
-            size: math.min(widget.logicalWidth, widget.logicalHeight) * 0.36,
-            color: FounderSovereignTokens.imperialGoldBright,
-          ),
-          if (widget.logicalHeight >= 44)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                widget.fallbackLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  color: FounderSovereignTokens.primaryInk,
-                ),
-              ),
-            ),
-        ],
+      child: Text(
+        initials,
+        maxLines: 1,
+        style: TextStyle(
+          fontSize: (math.min(widget.logicalWidth, widget.logicalHeight) * 0.36)
+              .clamp(11.0, 18.0),
+          fontWeight: FontWeight.w800,
+          color: FounderSovereignTokens.imperialGoldBright,
+          letterSpacing: -0.2,
+        ),
       ),
     );
   }
 }
 
-/// Brasão vetorial soberano (`CustomPainter` + `RepaintBoundary`) do Founder Cockpit.
-///
-/// Renderiza a edição executiva *Sovereign Synonym* do símbolo oficial **Desperrengue CEO**
-/// a 120 FPS:
-/// 1. Fundo **Obsidian Carbon-Onyx Velvet** (`#05070B` -> `#0C1018` -> `#1E170B`) com
-///    halo horológico guilloché concêntrico em Ouro 24k;
-/// 2. Monograma arquitetônico $G^1$-contínuo **"Casa-Escudo D"** (`dHousePath`) forjado
-///    em **Ouro Imperial 24k** (`#FFFBEB` -> `#FDE047` -> `#F59E0B` -> `#D97706`);
-/// 3. **Keystone Diamante Soberano de 4 Facetas** coroando a cumeeira a $45^\circ$
-///    (`cx = 0.490, cy = -0.094`) com espaço negativo Gestalt paralelo;
-/// 4. **Check Central de Resolução e Custódia Zero-Trust** em **Ciano-Platina Luminoso**
-///    (`#0891B2` -> `#06B6D4` -> `#67E8F9` -> `#ECFEFF`).
+/// Brasão vetorial oficial (`CustomPainter` + `RepaintBoundary`) do **Desperrengue CEO** a 120 FPS.
 class FounderSovereignCrest extends StatelessWidget {
   const FounderSovereignCrest({
     super.key,
@@ -728,7 +1018,6 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       Radius.circular(minSide * 0.26),
     );
 
-    // 1. Deep Obsidian Carbon-Onyx Velvet Squircle Vault + Warm Golden Core
     final bgPaint = Paint()
       ..isAntiAlias = true
       ..shader = RadialGradient(
@@ -736,9 +1025,9 @@ class _FounderSovereignCrestPainter extends CustomPainter {
         radius: 0.78,
         colors: isSovereignCeo
             ? const <Color>[
-                Color(0xFF241B0B),
-                Color(0xFF0C1018),
-                Color(0xFF05070B),
+                Color(0xFF261E0D),
+                Color(0xFF0E131C),
+                Color(0xFF07090E),
               ]
             : const <Color>[
                 Color(0xFF102830),
@@ -749,7 +1038,6 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       ).createShader(rect);
     canvas.drawRRect(rrect, bgPaint);
 
-    // Outer 24k Gold / Cyber-Emerald Bezel Border
     final borderPaint = Paint()
       ..isAntiAlias = true
       ..style = PaintingStyle.stroke
@@ -759,9 +1047,9 @@ class _FounderSovereignCrestPainter extends CustomPainter {
         end: Alignment.bottomRight,
         colors: isSovereignCeo
             ? const <Color>[
-                Color(0xFFFDE047),
-                Color(0xFFF59E0B),
-                Color(0xFF92400E),
+                Color(0xFFF3D77D),
+                Color(0xFFE5C158),
+                Color(0xFF8C6A22),
               ]
             : const <Color>[
                 Color(0xFF67E8F9),
@@ -771,7 +1059,6 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       ).createShader(rect);
     canvas.drawRRect(rrect, borderPaint);
 
-    // 2. Concentric Sovereign Horological Medallion Halo
     final haloRadius = minSide * 0.42;
     final haloPaint = Paint()
       ..isAntiAlias = true
@@ -780,10 +1067,9 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       ..color = (isSovereignCeo
               ? FounderSovereignTokens.imperialGoldBright
               : FounderSovereignTokens.cyberCyan)
-          .withValues(alpha: 0.24);
+          .withValues(alpha: 0.22);
     canvas.drawCircle(center, haloRadius, haloPaint);
 
-    // 3. Optical Safe-Zone Transformation for Casa-Escudo D + Apex Diamond Keystone
     final boxSize = minSide * 0.58;
     final left = center.dx - boxSize / 2;
     final top = center.dy - boxSize / 2;
@@ -797,7 +1083,6 @@ class _FounderSovereignCrestPainter extends CustomPainter {
     final strokeMain = boxSize * 0.130;
     final strokeCheck = boxSize * 0.122;
 
-    // Path A: Exact G1-Continuous Architectural "Casa-Escudo D"
     final dHousePath = Path()
       ..moveTo(px(0.21), py(0.595))
       ..lineTo(px(0.21), py(0.84))
@@ -805,7 +1090,7 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       ..lineTo(px(0.49), py(0.91))
       ..arcToPoint(
         Offset(px(0.7375), py(0.3125)),
-        radius: Radius.circular( boxSize * 0.35),
+        radius: Radius.circular(boxSize * 0.35),
         largeArc: false,
         clockwise: false,
       )
@@ -825,9 +1110,9 @@ class _FounderSovereignCrestPainter extends CustomPainter {
         colors: isSovereignCeo
             ? const <Color>[
                 Color(0xFFFFFBEB),
-                Color(0xFFFDE047),
-                Color(0xFFF59E0B),
-                Color(0xFFD97706),
+                Color(0xFFF3D77D),
+                Color(0xFFE5C158),
+                Color(0xFFC89B32),
               ]
             : const <Color>[
                 Color(0xFFECFEFF),
@@ -839,7 +1124,6 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       ).createShader(Offset.zero & Size.square(boxSize));
     canvas.drawPath(dHousePath, dPaint);
 
-    // Path B: Sovereign Apex 4-Facet Diamond Keystone (Crowning the Roof Ridge)
     final dCx = px(0.490);
     final dCy = py(-0.094);
     final dSpan = boxSize * 0.088;
@@ -866,9 +1150,9 @@ class _FounderSovereignCrestPainter extends CustomPainter {
 
     if (isSovereignCeo) {
       drawFacet(pLeft, pTop, const Color(0xFFFFFBEB));
-      drawFacet(pTop, pRight, const Color(0xFFFDE047));
-      drawFacet(pBottom, pLeft, const Color(0xFFFACC15));
-      drawFacet(pRight, pBottom, const Color(0xFFD97706));
+      drawFacet(pTop, pRight, const Color(0xFFF3D77D));
+      drawFacet(pBottom, pLeft, const Color(0xFFE5C158));
+      drawFacet(pRight, pBottom, const Color(0xFFB78826));
     } else {
       drawFacet(pLeft, pTop, const Color(0xFFECFEFF));
       drawFacet(pTop, pRight, const Color(0xFF67E8F9));
@@ -876,7 +1160,6 @@ class _FounderSovereignCrestPainter extends CustomPainter {
       drawFacet(pRight, pBottom, const Color(0xFF0E7490));
     }
 
-    //Path C: Luminous Platinum-Cyan Central Resolution Checkmark
     final checkPath = Path()
       ..moveTo(px(0.380), py(0.555))
       ..lineTo(px(0.470), py(0.645))
@@ -893,10 +1176,10 @@ class _FounderSovereignCrestPainter extends CustomPainter {
         end: Alignment.topRight,
         colors: isSovereignCeo
             ? const <Color>[
-                Color(0xFF0891B2),
-                Color(0xFF06B6D4),
-                Color(0xFF67E8F9),
-                Color(0xFFECFEFF),
+                Color(0xFF16A34A),
+                Color(0xFF22C55E),
+                Color(0xFF86EFAC),
+                Color(0xFFECFDF5),
               ]
             : const <Color>[
                 Color(0xFFD97706),

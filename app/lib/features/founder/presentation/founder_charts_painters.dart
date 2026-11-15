@@ -92,7 +92,7 @@ class _FounderSankeyMoneyFlowChartState
       (
         label: 'Imposto (6%)',
         cents: d.simplesNacionalTaxCents,
-        color: FounderSovereignTokens.crimsonAlert,
+        color: FounderSovereignTokens.warmAmber,
         detail:
             'Calculado apenas sobre a comissão do app (economia de ${(d.taxSavingsBps / 100).toStringAsFixed(1)}%)',
       ),
@@ -229,8 +229,8 @@ class _FounderSankeyMoneyFlowChartState
                 ),
                 Text(
                   active.label,
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 12,
+                  style: FounderSovereignTokens.titleStyle(
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                     color: active.color,
                   ),
@@ -346,7 +346,7 @@ class FounderSankeyPainter extends CustomPainter {
       (
         name: 'Imp. 6%',
         cents: dre.simplesNacionalTaxCents,
-        color: FounderSovereignTokens.crimsonAlert,
+        color: FounderSovereignTokens.warmAmber,
         rect: Rect.fromLTWH(rightX, 26, nodeW, 32 * p),
       ),
       (

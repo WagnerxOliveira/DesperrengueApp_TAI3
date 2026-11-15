@@ -318,76 +318,136 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
 
     return FounderGlassCard(
       key: const ValueKey<String>('ceo-monocratic-passport-card'),
-      showTopAccentBar: true,
-      accentTopBarColor: FounderSovereignTokens.imperialGold,
+      borderColor: FounderSovereignTokens.imperialGold.withValues(alpha: 0.34),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const FounderSovereignCrest(size: 46),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // Cartão Metálico Escovado estilo Apple Card / Ultravioleta
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  Color(0xFF1F2633),
+                  Color(0xFF121720),
+                  Color(0xFF0C1017),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: FounderSovereignTokens.imperialGold.withValues(
+                  alpha: 0.36,
+                ),
+              ),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x52000000),
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
                   children: <Widget>[
-                    Text(
-                      'Wagner Oliveira',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: FounderSovereignTokens.titleStyle(fontSize: 17),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'Fundador & CEO · Único acesso autorizado',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: FounderSovereignTokens.solvencyEmerald,
+                    const FounderSovereignCrest(size: 46),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            'DESPERRENGUE CEO',
+                            style: FounderSovereignTokens.eyebrowStyle(
+                              fontSize: 10.5,
+                              color: FounderSovereignTokens.imperialGoldBright,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'Wagner Oliveira',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                FounderSovereignTokens.titleStyle(fontSize: 18),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      kMonocraticCeoEmail,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: FounderSovereignTokens.mutedInk,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: FounderSovereignTokens.solvencyEmeraldSoft,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(
+                          color: FounderSovereignTokens.solvencyEmerald
+                              .withValues(alpha: 0.45),
+                        ),
+                      ),
+                      child: const Text(
+                        'Titular Único',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: FounderSovereignTokens.solvencyEmerald,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: FounderSovereignTokens.obsidianSurface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: FounderSovereignTokens.crispBorder),
-            ),
-            child: Row(
-              children: <Widget>[
-                const Icon(
-                  Icons.verified_user_outlined,
-                  size: 16,
-                  color: FounderSovereignTokens.imperialGoldBright,
+                const SizedBox(height: 14),
+                const Divider(
+                  height: 1,
+                  color: FounderSovereignTokens.crispBorder,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Última atualização de senha: $updatedLabel',
-                    style: const TextStyle(
-                      color: FounderSovereignTokens.mutedInk,
-                      fontSize: 12,
-                    ),
+                const SizedBox(height: 12),
+                Text(
+                  'Fundador & CEO · Único acesso autorizado',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: FounderSovereignTokens.secondaryInk,
                   ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  kMonocraticCeoEmail,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: FounderSovereignTokens.monoMetric(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: FounderSovereignTokens.imperialGoldBright,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: <Widget>[
+                    const Icon(
+                      Icons.verified_user_outlined,
+                      size: 14,
+                      color: FounderSovereignTokens.mutedInk,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Última atualização de senha: $updatedLabel',
+                        style: const TextStyle(
+                          color: FounderSovereignTokens.mutedInk,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

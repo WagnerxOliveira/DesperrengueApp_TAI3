@@ -1674,16 +1674,55 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-0')));
       await tester.pump(const Duration(milliseconds: 250));
       expect(find.text('SEU LUCRO LÍQUIDO'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('ceo-home-people-overview-card')),
+        findsOneWidget,
+      );
+      expect(find.text('Só Clientes'), findsWidgets);
+      expect(find.text('Só Profissionais'), findsWidgets);
+      expect(find.text('Ambos (Os 2 modos)'), findsWidgets);
+
+      // Abre e confirma o Calendário Executivo de Luxo
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-open-executive-calendar-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(
+        find.byKey(const ValueKey<String>('ceo-executive-calendar-sheet')),
+        findsOneWidget,
+      );
+      expect(find.text('Calendário Executivo'), findsOneWidget);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-calendar-apply-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.textContaining('•••••'), findsWidgets);
       await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump(const Duration(milliseconds: 150));
 
-      // Aba Financeiro: abre gaveta de análises avançadas sem poluição visual nem overflow
+      // Aba Financeiro: palco interativo 1 gráfico por vez + gaveta avançada sem overflow
       await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-1')));
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('Para onde foi cada real?'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('ceo-interactive-chart-stage-card')),
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-finance-chart-pill-2')),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.byKey(const ValueKey<String>('founder-innovation-3-monte-carlo')),
+        findsOneWidget,
+      );
       await tester.scrollUntilVisible(
         find.byKey(const ValueKey<String>('ceo-toggle-advanced-finance-btn')),
         260,
@@ -1696,13 +1735,33 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
 
-      // Aba Pedidos: mapa limpo + alternador 2 modos + folha Detalhes do Pedido
+      // Aba Pedidos: mapa executivo + alternador Noite/Claro + Mapa Grande em Tela Cheia + Detalhes do Pedido
       await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-2')));
       await tester.pump(const Duration(milliseconds: 350));
       expect(
         find.byKey(const ValueKey<String>('ceo-live-geo-radar-card')),
         findsOneWidget,
       );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-map-theme-toggle-btn')),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-expand-fullscreen-map-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(
+        find.byKey(const ValueKey<String>('ceo-fullscreen-map-modal')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-close-fullscreen-map-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
 
       await tester.scrollUntilVisible(
         find.text('Ver pedido').first,
