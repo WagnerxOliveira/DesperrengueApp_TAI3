@@ -863,6 +863,33 @@ check('18. Calendário Executivo & Ponte Realtime Integral (`20261116120000` + `
   assert.ok(calAssertions >= 14, `Esperado >= 14 asserções em ceo_calendar_agenda_and_realtime_smoke.sql (encontradas: ${calAssertions})`);
 });
 
+check('19. Marco Zero Operacional do Marketplace (`20261116184500` + `marketplace_zero_slate_preserve_ceo_smoke.sql`): purga integral de Clientes/Profissionais/Híbridos + Pedidos/Transações com preservação estrita do Cofre Soberano CEO e WORM SHA-256', () => {
+  const migResetPath = path.join(MIGRATIONS_DIR, '20261116184500_reset_marketplace_users_and_operational_data_preserve_ceo.sql');
+  const testResetPath = path.join(TESTS_DIR, 'marketplace_zero_slate_preserve_ceo_smoke.sql');
+  assert.ok(fs.existsSync(migResetPath), 'Migration 20261116184500_reset_marketplace_users_and_operational_data_preserve_ceo.sql obrigatória');
+  assert.ok(fs.existsSync(testResetPath), 'Suíte marketplace_zero_slate_preserve_ceo_smoke.sql obrigatória');
+
+  const migReset = fs.readFileSync(migResetPath, 'utf8');
+  const testReset = fs.readFileSync(testResetPath, 'utf8');
+  const strippedReset = lexSql(migReset, '20261116184500_reset_marketplace_users_and_operational_data_preserve_ceo.sql');
+  const strippedTestReset = lexSql(testReset, 'marketplace_zero_slate_preserve_ceo_smoke.sql');
+
+  assert.match(strippedReset, /^\s*begin\s*;/i, '20261116184500 deve abrir com begin;');
+  assert.match(strippedReset, /commit\s*;\s*$/i, '20261116184500 deve encerrar com commit;');
+  assert.match(strippedTestReset, /^\s*begin\s*;/i, 'marketplace_zero_slate_preserve_ceo_smoke.sql deve abrir com begin;');
+  assert.match(strippedTestReset, /rollback\s*;\s*$/i, 'marketplace_zero_slate_preserve_ceo_smoke.sql deve encerrar com rollback;');
+  assert.doesNotMatch(strippedReset, /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i);
+
+  assert.match(migReset, /private\.ceo_owner_canonical_email\(\)/i);
+  assert.match(migReset, /ERR_MARKETPLACE_RESET_INCOMPLETE/);
+  assert.match(migReset, /ERR_AUTH_USERS_RESET_INCOMPLETE/);
+  assert.match(migReset, /ERR_CEO_ACCOUNT_PROTECTION_VIOLATION/);
+  assert.doesNotMatch(strippedReset, /delete\s+from\s+private\.ceo_sovereign_vault/i);
+  assert.doesNotMatch(strippedReset, /delete\s+from\s+private\.ceo_crypto_pepper/i);
+  assert.doesNotMatch(strippedReset, /delete\s+from\s+private\.ceo_password_history/i);
+  assert.doesNotMatch(strippedReset, /delete\s+from\s+private\.founder_audit_log/i);
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {
