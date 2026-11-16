@@ -76,30 +76,30 @@ String _humanizeAgendaBadgeLabel(CeoCalendarAgendaEvent ev) {
   return raw;
 }
 
-IconData _iconForAgendaEvent(CeoCalendarAgendaEvent ev) {
+FounderIconGlyph _glyphForAgendaEvent(CeoCalendarAgendaEvent ev) {
   switch (ev.eventKind) {
     case 'COMPLETED_ORDER':
-      return Icons.check_circle_rounded;
+      return FounderIconGlyph.checkValid;
     case 'SCHEDULED_ORDER':
-      return Icons.event_available_rounded;
+      return FounderIconGlyph.upcomingEvent;
     case 'MEDIATION_OPENED':
     case 'MEDIATION_SLA_DUE':
     case 'SUPPORT_DISPUTE_OPENED':
     case 'SUPPORT_DISPUTE_SLA_DUE':
-      return Icons.gavel_rounded;
+      return FounderIconGlyph.mediationBalance;
     case 'TAX_DAS_DUE':
     case 'FISCAL_DEFIS_DECLARATION':
-      return Icons.account_balance_rounded;
+      return FounderIconGlyph.taxBankDas;
     case 'COMPANY_EXPENSE':
       return ev.isScheduledExpense
-          ? Icons.receipt_long_rounded
-          : Icons.task_alt_rounded;
+          ? FounderIconGlyph.expenseReceipt
+          : FounderIconGlyph.checkValid;
     case 'ESCROW_MATURATION_RELEASE':
-      return Icons.payments_rounded;
+      return FounderIconGlyph.pixDiamond;
     case 'SEFAZ_AUDIT_DEADLINE':
-      return Icons.description_rounded;
+      return FounderIconGlyph.nfeBarcode;
     default:
-      return Icons.verified_user_rounded;
+      return FounderIconGlyph.shieldVerified;
   }
 }
 
@@ -206,6 +206,7 @@ class FounderExecutiveCalendarSheet extends StatefulWidget {
     return showModalBottomSheet<FounderCalendarSelectionResult>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => FounderExecutiveCalendarSheet._(
         key: const ValueKey<String>('ceo-executive-calendar-sheet'),
@@ -240,6 +241,7 @@ class FounderExecutiveCalendarSheet extends StatefulWidget {
     return showModalBottomSheet<DateTime>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => FounderExecutiveCalendarSheet._(
         key: const ValueKey<String>('ceo-executive-date-picker-sheet'),
@@ -262,6 +264,7 @@ class FounderExecutiveCalendarSheet extends StatefulWidget {
 
 class _FounderExecutiveCalendarSheetState
     extends State<FounderExecutiveCalendarSheet> {
+  final GlobalKey _daySummaryAnchorKey = GlobalKey();
   late final DateTime _todayBrt;
   late DateTime _displayedMonth;
   late DateTime _selectedDate;
@@ -340,6 +343,20 @@ class _FounderExecutiveCalendarSheetState
         _activeWindowKey = 'day:${_toIsoDay(clean)}';
       }
     });
+    if (!widget.isSingleDatePicker) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final ctx = _daySummaryAnchorKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          );
+        }
+      });
+    }
   }
 
   DateTime _nextOfficialDasDueDate() {
@@ -404,7 +421,11 @@ class _FounderExecutiveCalendarSheetState
     BuildContext context,
     FounderDashboardSnapshot liveSnapshot,
   ) {
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final safeBottomFooter = FounderSovereignTokens.modalBottomSafeSpace(
+      context,
+      extraWhenKeyboardClosed: 14,
+      extraWhenKeyboardOpen: 12,
+    );
     final maxHeight = MediaQuery.sizeOf(context).height * 0.92;
     final dailyByIso = <String, FounderDailyMetricPoint>{
       for (final pt in liveSnapshot.dailySeries)
@@ -426,167 +447,195 @@ class _FounderExecutiveCalendarSheetState
           ),
           boxShadow: <BoxShadow>[
             BoxShadow(
-              color: Color(0x80000000),
-              blurRadius: 32,
-              offset: Offset(0, -8),
+              color: Color(0x88000000),
+              blurRadius: 34,
+              offset: Offset(0, -10),
             ),
           ],
         ),
-        child: SafeArea(
-          top: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 540),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  Flexible(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          Center(
-                            child: Container(
-                              width: 42,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: FounderSovereignTokens.crispBorderStrong,
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                            ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 540),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                // Zona 1: Cabeçalho fixo (não rola para fora da tela)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: FounderSovereignTokens.crispBorderStrong,
+                            borderRadius: BorderRadius.circular(99),
                           ),
-                          const SizedBox(height: 16),
-                          _buildSheetHeader(context),
-                          const SizedBox(height: 14),
-                          if (widget.isSingleDatePicker)
-                            _buildSingleDateQuickShortcuts()
-                          else
-                            _buildPeriodAndAgendaShortcuts(liveSnapshot),
-                          const SizedBox(height: 14),
-                          FounderGlassCard(
-                            padding: const EdgeInsets.fromLTRB(14, 15, 14, 13),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: <Widget>[
-                                _buildMonthHeader(),
-                                const SizedBox(height: 12),
-                                _buildWeekdayHeaderRow(),
-                                const SizedBox(height: 8),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 220),
-                                  switchInCurve:
-                                      const Cubic(0.22, 1.0, 0.36, 1.0),
-                                  transitionBuilder: (child, animation) {
-                                    final slide = Tween<Offset>(
-                                      begin:
-                                          Offset(0.06 * _monthSlideDirection, 0),
-                                      end: Offset.zero,
-                                    ).animate(animation);
-                                    return FadeTransition(
-                                      opacity: animation,
-                                      child: SlideTransition(
-                                        position: slide,
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                                  child: KeyedSubtree(
-                                    key: ValueKey<String>(
-                                      '${_displayedMonth.year}-${_displayedMonth.month}',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildSheetHeader(context),
+                    ],
+                  ),
+                ),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: FounderSovereignTokens.crispBorder,
+                ),
+
+                // Zona 2: Corpo rolável (atalhos + grade mensal + resumo da data)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        if (widget.isSingleDatePicker)
+                          _buildSingleDateQuickShortcuts()
+                        else
+                          _buildPeriodAndAgendaShortcuts(liveSnapshot),
+                        const SizedBox(height: 12),
+                        FounderGlassCard(
+                          padding: const EdgeInsets.fromLTRB(13, 13, 13, 11),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: <Widget>[
+                              _buildMonthHeader(),
+                              const SizedBox(height: 10),
+                              _buildWeekdayHeaderRow(),
+                              const SizedBox(height: 6),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                switchInCurve:
+                                    const Cubic(0.22, 1.0, 0.36, 1.0),
+                                transitionBuilder: (child, animation) {
+                                  final slide = Tween<Offset>(
+                                    begin:
+                                        Offset(0.06 * _monthSlideDirection, 0),
+                                    end: Offset.zero,
+                                  ).animate(animation);
+                                  return FadeTransition(
+                                    opacity: animation,
+                                    child: SlideTransition(
+                                      position: slide,
+                                      child: child,
                                     ),
-                                    child: _buildMonthGrid(
-                                      liveSnapshot,
-                                      dailyByIso,
-                                    ),
+                                  );
+                                },
+                                child: KeyedSubtree(
+                                  key: ValueKey<String>(
+                                    '${_displayedMonth.year}-${_displayedMonth.month}',
+                                  ),
+                                  child: _buildMonthGrid(
+                                    liveSnapshot,
+                                    dailyByIso,
                                   ),
                                 ),
-                                if (!widget.isSingleDatePicker) ...<Widget>[
-                                  const SizedBox(height: 12),
-                                  _buildHeatLegend(),
-                                ],
+                              ),
+                              if (!widget.isSingleDatePicker) ...<Widget>[
+                                const SizedBox(height: 10),
+                                _buildHeatLegend(),
                               ],
-                            ),
+                            ],
                           ),
-                          const SizedBox(height: 14),
-                          if (widget.isSingleDatePicker)
-                            _buildSingleDateSummaryBox()
-                          else
-                            _buildExecutiveDaySummaryCard(
+                        ),
+                        const SizedBox(height: 12),
+                        if (widget.isSingleDatePicker)
+                          _buildSingleDateSummaryBox()
+                        else
+                          Container(
+                            key: _daySummaryAnchorKey,
+                            child: _buildExecutiveDaySummaryCard(
                               liveSnapshot,
                               dailyByIso,
                             ),
-                        ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Zona 3: Rodapé fixo protegido contra barras de navegação Android Edge-to-Edge
+                Container(
+                  padding: EdgeInsets.fromLTRB(20, 10, 20, safeBottomFooter),
+                  decoration: const BoxDecoration(
+                    color: FounderSovereignTokens.obsidianBackground,
+                    border: Border(
+                      top: BorderSide(
+                        color: FounderSovereignTokens.crispBorder,
                       ),
                     ),
                   ),
-                  Container(
-                    padding:
-                        EdgeInsets.fromLTRB(20, 10, 20, 16 + bottomInset),
-                    decoration: const BoxDecoration(
-                      color: FounderSovereignTokens.obsidianBackground,
-                      border: Border(
-                        top: BorderSide(
-                          color: FounderSovereignTokens.crispBorder,
-                        ),
-                      ),
-                    ),
-                    child: SizedBox(
-                      height: 50,
-                      child: widget.isSingleDatePicker
-                          ? FilledButton.icon(
-                              key: const ValueKey<String>(
-                                'ceo-date-picker-confirm-btn',
+                  child: SizedBox(
+                    height: 50,
+                    child: widget.isSingleDatePicker
+                        ? FilledButton.icon(
+                            key: const ValueKey<String>(
+                              'ceo-date-picker-confirm-btn',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor:
+                                  FounderSovereignTokens.imperialGold,
+                              foregroundColor: const Color(0xFF0B0E13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor:
-                                    FounderSovereignTokens.imperialGold,
-                                foregroundColor: const Color(0xFF0B0E13),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                textStyle: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              onPressed: () {
-                                HapticFeedback.lightImpact();
-                                Navigator.of(context).pop(_selectedDate);
-                              },
-                              icon: const Icon(Icons.check_rounded, size: 19),
-                              label: const Text('Confirmar data'),
-                            )
-                          : FilledButton.icon(
-                              key: const ValueKey<String>(
-                                'ceo-calendar-apply-btn',
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor:
-                                    FounderSovereignTokens.imperialGold,
-                                foregroundColor: const Color(0xFF0B0E13),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                textStyle: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              onPressed: _confirmOverviewSelection,
-                              icon: const Icon(Icons.check_rounded, size: 19),
-                              label: Text(
-                                confirmLabel,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                    ),
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              Navigator.of(context).pop(_selectedDate);
+                            },
+                            icon: const FounderPrecisionIcon(
+                              FounderIconGlyph.checkValid,
+                              size: 17,
+                              color: Color(0xFF0B0E13),
+                              accentColor: Color(0xFF0B0E13),
+                              duotoneAlpha: 0.0,
+                            ),
+                            label: const Text('Confirmar data'),
+                          )
+                        : FilledButton.icon(
+                            key: const ValueKey<String>(
+                              'ceo-calendar-apply-btn',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor:
+                                  FounderSovereignTokens.imperialGold,
+                              foregroundColor: const Color(0xFF0B0E13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            onPressed: _confirmOverviewSelection,
+                            icon: const FounderPrecisionIcon(
+                              FounderIconGlyph.checkValid,
+                              size: 17,
+                              color: Color(0xFF0B0E13),
+                              accentColor: Color(0xFF0B0E13),
+                              duotoneAlpha: 0.0,
+                            ),
+                            label: Text(
+                              confirmLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -604,37 +653,29 @@ class _FounderExecutiveCalendarSheetState
 
     return Row(
       children: <Widget>[
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: FounderSovereignTokens.imperialGoldSoft,
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(
-              color:
-                  FounderSovereignTokens.imperialGold.withValues(alpha: 0.42),
-            ),
-          ),
-          child: const Icon(
-            Icons.calendar_month_rounded,
-            color: FounderSovereignTokens.imperialGoldBright,
-            size: 21,
-          ),
+        const FounderPrecisionBadge(
+          FounderIconGlyph.calendarExec,
+          boxSize: 40,
+          iconSize: 19,
+          tintColor: FounderSovereignTokens.imperialGoldBright,
         ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(title, style: FounderSovereignTokens.titleStyle(fontSize: 18)),
+              Text(title, style: FounderSovereignTokens.titleStyle(fontSize: 17)),
               const SizedBox(height: 2),
               Text(
                 subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: FounderSovereignTokens.subtitleStyle(fontSize: 11.5),
               ),
             ],
           ),
         ),
+        const SizedBox(width: 8),
         IconButton(
           onPressed: () => Navigator.of(context).pop(),
           tooltip: 'Fechar calendário',
@@ -643,10 +684,10 @@ class _FounderExecutiveCalendarSheetState
             side: const BorderSide(color: FounderSovereignTokens.crispBorder),
             minimumSize: const Size(40, 40),
           ),
-          icon: const Icon(
-            Icons.close_rounded,
+          icon: const FounderPrecisionIcon(
+            FounderIconGlyph.closeCross,
             color: FounderSovereignTokens.primaryInk,
-            size: 19,
+            size: 16,
           ),
         ),
       ],
@@ -670,12 +711,13 @@ class _FounderExecutiveCalendarSheetState
       children: <Widget>[
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
           child: Row(
             children: _kCalendarWindows.map((choice) {
               final active =
                   !_selectionModeIsSingleDay && _activeWindowKey == choice.key;
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: 7),
                 child: InkWell(
                   key: ValueKey<String>('ceo-calendar-window-${choice.key}'),
                   borderRadius: BorderRadius.circular(99),
@@ -696,8 +738,8 @@ class _FounderExecutiveCalendarSheetState
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8.5,
+                      horizontal: 13,
+                      vertical: 8,
                     ),
                     decoration: BoxDecoration(
                       color: active
@@ -729,12 +771,13 @@ class _FounderExecutiveCalendarSheetState
         const SizedBox(height: 8),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
           child: Row(
             children: <Widget>[
               _QuickAgendaMilestonePill(
                 pillKey:
                     const ValueKey<String>('ceo-calendar-jump-next-das-btn'),
-                icon: Icons.account_balance_rounded,
+                glyph: FounderIconGlyph.taxBankDas,
                 label: 'Próximo DAS ($nextDasShort)',
                 accent: FounderSovereignTokens.warmAmber,
                 active: _selectionModeIsSingleDay &&
@@ -747,7 +790,7 @@ class _FounderExecutiveCalendarSheetState
                   pillKey: const ValueKey<String>(
                     'ceo-calendar-jump-active-mediation-btn',
                   ),
-                  icon: Icons.gavel_rounded,
+                  glyph: FounderIconGlyph.mediationBalance,
                   label:
                       'Mediação ativa (${firstOpenMediation.protocolCode})',
                   accent: FounderSovereignTokens.crimsonAlert,
@@ -786,6 +829,7 @@ class _FounderExecutiveCalendarSheetState
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
       child: Row(
         children: shortcuts.map((entry) {
           final label = entry.$1;
@@ -802,8 +846,8 @@ class _FounderExecutiveCalendarSheetState
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8.5,
+                    horizontal: 13,
+                    vertical: 8,
                   ),
                   decoration: BoxDecoration(
                     color: active
@@ -844,7 +888,7 @@ class _FounderExecutiveCalendarSheetState
       children: <Widget>[
         _MonthNavArrowButton(
           key: const ValueKey<String>('ceo-calendar-prev-month-btn'),
-          icon: Icons.chevron_left_rounded,
+          glyph: FounderIconGlyph.chevronLeft,
           tooltip: 'Mês anterior',
           onTap: () => _shiftMonth(-1),
         ),
@@ -855,10 +899,10 @@ class _FounderExecutiveCalendarSheetState
               Text(
                 '$monthName ${_displayedMonth.year}',
                 textAlign: TextAlign.center,
-                style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
               ),
               if (!isCurrentMonth && _isDateEnabled(_todayBrt)) ...<Widget>[
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 GestureDetector(
                   onTap: () => _selectSpecificDay(_todayBrt),
                   child: const Text(
@@ -877,7 +921,7 @@ class _FounderExecutiveCalendarSheetState
         const SizedBox(width: 8),
         _MonthNavArrowButton(
           key: const ValueKey<String>('ceo-calendar-next-month-btn'),
-          icon: Icons.chevron_right_rounded,
+          glyph: FounderIconGlyph.chevronRight,
           tooltip: 'Próximo mês',
           onTap: () => _shiftMonth(1),
         ),
@@ -893,9 +937,9 @@ class _FounderExecutiveCalendarSheetState
             child: Text(
               label,
               style: FounderSovereignTokens.eyebrowStyle(
-                fontSize: 10.5,
+                fontSize: 10.0,
                 color: FounderSovereignTokens.mutedInk,
-                letterSpacing: 0.5,
+                letterSpacing: 0.45,
               ),
             ),
           ),
@@ -923,7 +967,7 @@ class _FounderExecutiveCalendarSheetState
         final idx = r * 7 + c;
         final dayNum = idx - leadingEmpty + 1;
         if (dayNum < 1 || dayNum > daysInMonth) {
-          cells.add(const Expanded(child: SizedBox(height: 46)));
+          cells.add(const Expanded(child: SizedBox(height: 42)));
         } else {
           final date = DateTime(year, month, dayNum);
           cells.add(
@@ -935,7 +979,7 @@ class _FounderExecutiveCalendarSheetState
       }
       rows.add(
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 2.5),
+          padding: const EdgeInsets.symmetric(vertical: 2.0),
           child: Row(children: cells),
         ),
       );
@@ -986,11 +1030,11 @@ class _FounderExecutiveCalendarSheetState
         opacity: enabled ? 1.0 : 0.28,
         child: InkWell(
           key: ValueKey<String>('ceo-calendar-day-$iso'),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(11),
           onTap: enabled ? () => _selectSpecificDay(date) : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            height: 46,
+            height: 42,
             decoration: BoxDecoration(
               gradient:
                   isSelected ? FounderSovereignTokens.imperialGoldGradient : null,
@@ -1001,7 +1045,7 @@ class _FounderExecutiveCalendarSheetState
                       : (isPreviewedDay
                           ? FounderSovereignTokens.obsidianSurface
                           : Colors.transparent)),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(11),
               border: isSelected
                   ? null
                   : (isToday
@@ -1018,7 +1062,7 @@ class _FounderExecutiveCalendarSheetState
                   ? <BoxShadow>[
                       BoxShadow(
                         color: FounderSovereignTokens.imperialGold
-                            .withValues(alpha: 0.28),
+                            .withValues(alpha: 0.26),
                         blurRadius: 10,
                         offset: const Offset(0, 3),
                       ),
@@ -1038,16 +1082,16 @@ class _FounderExecutiveCalendarSheetState
                             : (date.isAfter(_todayBrt)
                                 ? FounderSovereignTokens.secondaryInk
                                 : FounderSovereignTokens.primaryInk)),
-                    fontSize: 13.5,
+                    fontSize: 13.0,
                     fontWeight: isSelected || isToday
                         ? FontWeight.w800
                         : FontWeight.w600,
                     fontFeatures: FounderSovereignTokens.tabularFigures,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2.5),
                 SizedBox(
-                  height: 5,
+                  height: 4.5,
                   child: dots.isEmpty
                       ? const SizedBox.shrink()
                       : Row(
@@ -1079,34 +1123,37 @@ class _FounderExecutiveCalendarSheetState
 
   Widget _buildHeatLegend() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: FounderSovereignTokens.obsidianSurface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: FounderSovereignTokens.crispBorder),
+      padding: const EdgeInsets.only(top: 9),
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: FounderSovereignTokens.crispBorder),
+        ),
       ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 6,
-        alignment: WrapAlignment.center,
-        children: const <Widget>[
-          _CalendarLegendChip(
-            color: FounderSovereignTokens.solvencyEmerald,
-            label: 'Lucro líquido',
-          ),
-          _CalendarLegendChip(
-            color: FounderSovereignTokens.imperialGoldBright,
-            label: 'Serviços / liberações',
-          ),
-          _CalendarLegendChip(
-            color: FounderSovereignTokens.warmAmber,
-            label: 'Imposto (DAS) / contas',
-          ),
-          _CalendarLegendChip(
-            color: FounderSovereignTokens.crimsonAlert,
-            label: 'Mediações / atenção',
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: const <Widget>[
+            _CalendarLegendChip(
+              color: FounderSovereignTokens.solvencyEmerald,
+              label: 'Lucro',
+            ),
+            SizedBox(width: 12),
+            _CalendarLegendChip(
+              color: FounderSovereignTokens.imperialGoldBright,
+              label: 'Serviços',
+            ),
+            SizedBox(width: 12),
+            _CalendarLegendChip(
+              color: FounderSovereignTokens.warmAmber,
+              label: 'Imposto / contas',
+            ),
+            SizedBox(width: 12),
+            _CalendarLegendChip(
+              color: FounderSovereignTokens.crimsonAlert,
+              label: 'Mediações',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1130,7 +1177,7 @@ class _FounderExecutiveCalendarSheetState
       duration: const Duration(milliseconds: 200),
       child: FounderGlassCard(
         key: ValueKey<String>('day-summary-$iso-${snap.latestEventSeq}'),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(15),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -1143,10 +1190,10 @@ class _FounderExecutiveCalendarSheetState
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Icon(
+                    FounderPrecisionIcon(
                       isFuture
-                          ? Icons.upcoming_rounded
-                          : Icons.insights_rounded,
+                          ? FounderIconGlyph.upcomingEvent
+                          : FounderIconGlyph.profitJCurve,
                       size: 16,
                       color: isFuture
                           ? FounderSovereignTokens.warmAmber
@@ -1255,15 +1302,8 @@ class _FounderExecutiveCalendarSheetState
               ),
             const SizedBox(height: 12),
             if (events.isEmpty)
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: FounderSovereignTokens.obsidianSurface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: FounderSovereignTokens.crispBorder),
-                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
                   isFuture
                       ? 'Nenhum imposto previsto, mediação ativa, conta a pagar ou serviço agendado para esta data até o momento.'
@@ -1286,8 +1326,7 @@ class _FounderExecutiveCalendarSheetState
                     ),
                   ),
                   const SizedBox(height: 8),
-                  for (final ev in events.take(8))
-                    _buildDayEventTile(ev),
+                  for (final ev in events.take(8)) _buildDayEventTile(ev),
                 ],
               ),
             if (widget.onAddExpenseForDate != null) ...<Widget>[
@@ -1301,16 +1340,22 @@ class _FounderExecutiveCalendarSheetState
                 },
                 style: OutlinedButton.styleFrom(
                   foregroundColor: FounderSovereignTokens.imperialGoldBright,
+                  backgroundColor: FounderSovereignTokens.imperialGoldSoft
+                      .withValues(alpha: 0.45),
                   side: BorderSide(
                     color: FounderSovereignTokens.imperialGold
                         .withValues(alpha: 0.45),
                   ),
-                  minimumSize: const Size.fromHeight(40),
+                  minimumSize: const Size.fromHeight(42),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: const Icon(Icons.add_card_rounded, size: 17),
+                icon: const FounderPrecisionIcon(
+                  FounderIconGlyph.expenseReceipt,
+                  size: 16,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
                 label: Text(
                   isFuture
                       ? 'Agendar conta ou imposto para ${CeoBrazilFiscalCalendar.formatShortDayPtBr(_selectedDate)}'
@@ -1359,18 +1404,18 @@ class _FounderExecutiveCalendarSheetState
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Expanded(child: box1),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(child: box2),
                 ],
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Expanded(child: box3),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(child: box4),
                 ],
               ),
@@ -1383,14 +1428,14 @@ class _FounderExecutiveCalendarSheetState
 
   Widget _buildDayEventTile(CeoCalendarAgendaEvent ev) {
     final accent = _colorForAgendaEvent(ev);
-    final icon = _iconForAgendaEvent(ev);
+    final glyph = _glyphForAgendaEvent(ev);
     final canOpenOrder = ev.hasLinkedOrder && widget.onInspectOrder != null;
     final canMarkPaid =
         ev.isScheduledExpense && widget.onToggleExpensePaid != null;
     final cleanCode = _humanizeAgendaBadgeLabel(ev);
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Material(
         color: FounderSovereignTokens.obsidianSurface,
         borderRadius: BorderRadius.circular(12),
@@ -1408,7 +1453,7 @@ class _FounderExecutiveCalendarSheetState
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: ev.isMediationOrDispute
-                    ? accent.withValues(alpha: 0.48)
+                    ? accent.withValues(alpha: 0.45)
                     : FounderSovereignTokens.crispBorder,
               ),
             ),
@@ -1419,10 +1464,16 @@ class _FounderExecutiveCalendarSheetState
                   width: 30,
                   height: 30,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.14),
+                    color: accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(9),
                   ),
-                  child: Icon(icon, size: 16, color: accent),
+                  alignment: Alignment.center,
+                  child: FounderPrecisionIcon(
+                    glyph,
+                    size: 15.5,
+                    color: accent,
+                    accentColor: accent,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1451,13 +1502,20 @@ class _FounderExecutiveCalendarSheetState
                   ),
                 ),
                 if (ev.grossCents > 0) ...<Widget>[
-                  const SizedBox(width: 8),
-                  Text(
-                    _maskOrFormatCents(ev.grossCents),
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: accent,
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 108),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        _maskOrFormatCents(ev.grossCents),
+                        style: FounderSovereignTokens.monoMetric(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -1471,17 +1529,17 @@ class _FounderExecutiveCalendarSheetState
                     padding: EdgeInsets.zero,
                     onPressed: () =>
                         widget.onToggleExpensePaid!(ev.refId, true),
-                    icon: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      size: 18,
+                    icon: const FounderPrecisionIcon(
+                      FounderIconGlyph.checkValid,
+                      size: 17,
                       color: FounderSovereignTokens.solvencyEmerald,
                     ),
                   ),
                 ] else if (canOpenOrder) ...<Widget>[
                   const SizedBox(width: 4),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    size: 17,
+                  const FounderPrecisionIcon(
+                    FounderIconGlyph.chevronRight,
+                    size: 15,
                     color: FounderSovereignTokens.mutedInk,
                   ),
                 ],
@@ -1499,7 +1557,7 @@ class _FounderExecutiveCalendarSheetState
     final yyyy = _selectedDate.year.toString().padLeft(4, '0');
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
         color: FounderSovereignTokens.obsidianCard,
         borderRadius: BorderRadius.circular(14),
@@ -1507,9 +1565,9 @@ class _FounderExecutiveCalendarSheetState
       ),
       child: Row(
         children: <Widget>[
-          const Icon(
-            Icons.event_available_rounded,
-            size: 18,
+          const FounderPrecisionIcon(
+            FounderIconGlyph.calendarExec,
+            size: 17,
             color: FounderSovereignTokens.imperialGoldBright,
           ),
           const SizedBox(width: 10),
@@ -1538,7 +1596,7 @@ class _FounderExecutiveCalendarSheetState
 class _QuickAgendaMilestonePill extends StatelessWidget {
   const _QuickAgendaMilestonePill({
     required this.pillKey,
-    required this.icon,
+    required this.glyph,
     required this.label,
     required this.accent,
     required this.active,
@@ -1546,7 +1604,7 @@ class _QuickAgendaMilestonePill extends StatelessWidget {
   });
 
   final Key pillKey;
-  final IconData icon;
+  final FounderIconGlyph glyph;
   final String label;
   final Color accent;
   final bool active;
@@ -1572,7 +1630,12 @@ class _QuickAgendaMilestonePill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 13.5, color: accent),
+            FounderPrecisionIcon(
+              glyph,
+              size: 13.5,
+              color: accent,
+              accentColor: accent,
+            ),
             const SizedBox(width: 6),
             Text(
               label,
@@ -1592,12 +1655,12 @@ class _QuickAgendaMilestonePill extends StatelessWidget {
 class _MonthNavArrowButton extends StatelessWidget {
   const _MonthNavArrowButton({
     super.key,
-    required this.icon,
+    required this.glyph,
     required this.tooltip,
     required this.onTap,
   });
 
-  final IconData icon;
+  final FounderIconGlyph glyph;
   final String tooltip;
   final VoidCallback onTap;
 
@@ -1616,12 +1679,13 @@ class _MonthNavArrowButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: FounderSovereignTokens.crispBorder),
           ),
+          alignment: Alignment.center,
           child: Tooltip(
             message: tooltip,
-            child: Icon(
-              icon,
+            child: FounderPrecisionIcon(
+              glyph,
               color: FounderSovereignTokens.primaryInk,
-              size: 20,
+              size: 17,
             ),
           ),
         ),
@@ -1645,15 +1709,15 @@ class _CalendarLegendChip extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Container(
-          width: 7,
-          height: 7,
+          width: 6.5,
+          height: 6.5,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 5),
         Text(
           label,
           style: FounderSovereignTokens.subtitleStyle(
-            fontSize: 11,
+            fontSize: 10.8,
             color: FounderSovereignTokens.secondaryInk,
           ),
         ),
@@ -1678,11 +1742,10 @@ class _DayMiniMetricBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
       decoration: BoxDecoration(
-        color: FounderSovereignTokens.obsidianSurface,
+        color: FounderSovereignTokens.obsidianSurface.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: FounderSovereignTokens.crispBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1692,9 +1755,9 @@ class _DayMiniMetricBox extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: FounderSovereignTokens.subtitleStyle(fontSize: 11),
+            style: FounderSovereignTokens.subtitleStyle(fontSize: 10.8),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Row(
             children: <Widget>[
               Flexible(
@@ -1703,7 +1766,7 @@ class _DayMiniMetricBox extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: FounderSovereignTokens.monoMetric(
-                    fontSize: 14,
+                    fontSize: 13.5,
                     color: accent,
                   ),
                 ),
@@ -1716,7 +1779,7 @@ class _DayMiniMetricBox extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: FounderSovereignTokens.subtitleStyle(
-                      fontSize: 11,
+                      fontSize: 10.8,
                       color: FounderSovereignTokens.mutedInk,
                     ),
                   ),

@@ -37,17 +37,17 @@ const List<_PeriodOption> _kPeriodOptions = <_PeriodOption>[
 ];
 
 class _NavTabSpec {
-  const _NavTabSpec(this.label, this.icon);
+  const _NavTabSpec(this.label, this.glyph);
   final String label;
-  final IconData icon;
+  final FounderIconGlyph glyph;
 }
 
 const List<_NavTabSpec> _kFiveTabs = <_NavTabSpec>[
-  _NavTabSpec('Início', Icons.home_rounded),
-  _NavTabSpec('Financeiro', Icons.account_balance_wallet_rounded),
-  _NavTabSpec('Pedidos', Icons.assignment_rounded),
-  _NavTabSpec('Pessoas', Icons.people_alt_rounded),
-  _NavTabSpec('Conta', Icons.person_rounded),
+  _NavTabSpec('Início', FounderIconGlyph.navHome),
+  _NavTabSpec('Financeiro', FounderIconGlyph.navFinance),
+  _NavTabSpec('Pedidos', FounderIconGlyph.navOrders),
+  _NavTabSpec('Pessoas', FounderIconGlyph.navPeople),
+  _NavTabSpec('Conta', FounderIconGlyph.navAccount),
 ];
 
 String _formatHumanTimeBrt(DateTime? utc) {
@@ -92,20 +92,20 @@ String _humanizeAuditEventCode(String rawCode) {
   return rawCode.replaceAll('_', ' ').toLowerCase();
 }
 
-({IconData icon, Color color, String category}) _classifyLiveEvent(
+({FounderIconGlyph glyph, Color color, String category}) _classifyLiveEvent(
   CeoLiveEventItem ev,
 ) {
   final text = '${ev.eventType} ${ev.title} ${ev.subtitle}'.toLowerCase();
   if (ev.severity.toUpperCase() == 'CRITICAL') {
     return (
-      icon: Icons.warning_amber_rounded,
+      glyph: FounderIconGlyph.warningTriangle,
       color: FounderSovereignTokens.crimsonAlert,
       category: 'orders',
     );
   }
   if (text.contains('avalia') || text.contains('nota') || text.contains('★')) {
     return (
-      icon: Icons.star_rounded,
+      glyph: FounderIconGlyph.starRating,
       color: FounderSovereignTokens.imperialGoldBright,
       category: 'reviews',
     );
@@ -118,7 +118,7 @@ String _humanizeAuditEventCode(String rawCode) {
       text.contains('escrow') ||
       text.contains('carteira')) {
     return (
-      icon: Icons.payments_rounded,
+      glyph: FounderIconGlyph.pixDiamond,
       color: FounderSovereignTokens.solvencyEmerald,
       category: 'payments',
     );
@@ -131,26 +131,27 @@ String _humanizeAuditEventCode(String rawCode) {
       text.contains('conta') ||
       text.contains('modo')) {
     return (
-      icon: Icons.person_add_alt_1_rounded,
+      glyph: FounderIconGlyph.userProvider,
       color: FounderSovereignTokens.imperialGold,
       category: 'people',
     );
   }
   return (
-    icon: Icons.handyman_rounded,
+    glyph: FounderIconGlyph.navOrders,
     color: FounderSovereignTokens.imperialGoldBright,
     category: 'orders',
   );
 }
 
-/// Painel Executivo em Tempo Real do `Desperrengue CEO` (`v2.16.0`).
+/// Painel Executivo em Tempo Real do `Desperrengue CEO` (`v2.18.0`).
 ///
 /// Princípios inegociáveis:
 /// - **Zero dados falsos (`Zero-Fake Policy`)**: 100% alimentado pelas tabelas reais
 ///   do `Desperrengue` em tempo real via PostgreSQL + WebSocket privado.
 /// - **Exclusividade Monocrática**: acesso único de `wagneroliveira2395@gmail.com`.
 /// - **Luxo Silencioso Executivo (85% Neutro · 10% Ouro Champagne · 5% Semântico)**:
-///   zero poluição visual, grades simétricas e linguagem 100% clara de Dono de Empresa.
+///   zero poluição visual, iconografia vetorial exclusiva (`FounderPrecisionIcon`),
+///   ações de 1 toque e linguagem 100% clara de Dono de Empresa.
 class FounderCockpitScreen extends StatefulWidget {
   const FounderCockpitScreen({
     super.key,
@@ -516,6 +517,16 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     );
   }
 
+  Future<void> _openFullScreenLiveMapFromShortcut() async {
+    HapticFeedback.mediumImpact();
+    await FounderFullScreenMapModal.show(
+      context,
+      points: _snapshot.liveMapPoints,
+      privacyBlurActive: _privacyBlurActive,
+      onInspectOrder: (jobId, code) => _openOrderForensics(jobId, code),
+    );
+  }
+
   void _openCeoProfileSheet() {
     HapticFeedback.selectionClick();
     FounderCeoProfileSheet.show(
@@ -561,6 +572,55 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     }
   }
 
+  Future<void> _confirmAndDeleteExpense(CeoRealExpenseEntry exp) async {
+    HapticFeedback.selectionClick();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: FounderSovereignTokens.obsidianCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: FounderSovereignTokens.crispBorder),
+          ),
+          title: Text(
+            'Excluir lançamento?',
+            style: FounderSovereignTokens.titleStyle(fontSize: 16.5),
+          ),
+          content: Text(
+            'Deseja remover "${exp.category}" (${Money.formatBrl(exp.amountCents)}) do seu livro-caixa?',
+            style: FounderSovereignTokens.subtitleStyle(
+              color: FounderSovereignTokens.secondaryInk,
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text(
+                'Cancelar',
+                style: TextStyle(color: FounderSovereignTokens.secondaryInk),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: FounderSovereignTokens.crimsonAlert,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text(
+                'Excluir',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed == true && mounted) {
+      await _repo.deleteRealExpense(exp.id);
+    }
+  }
+
   void _jumpToPeopleFilter(String roleFilter) {
     HapticFeedback.selectionClick();
     setState(() {
@@ -574,33 +634,53 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     final recon = _snapshot.reconciliation;
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
+        final safeBottom = FounderSovereignTokens.modalBottomSafeSpace(
+          ctx,
+          extraWhenKeyboardClosed: 18,
+        );
         return Container(
-          padding: const EdgeInsets.all(20),
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(ctx).height * 0.88,
+          ),
           decoration: const BoxDecoration(
             color: FounderSovereignTokens.obsidianCard,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             border: Border(
-              top: BorderSide(color: FounderSovereignTokens.crispBorder),
+              top: BorderSide(color: FounderSovereignTokens.crispBorderStrong),
             ),
           ),
-          child: SafeArea(
-            top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(20, 14, 20, safeBottom),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: FounderSovereignTokens.crispBorderStrong,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Row(
                   children: <Widget>[
-                    Icon(
+                    FounderPrecisionBadge(
                       recon.threeWayReconciliationOk
-                          ? Icons.verified_rounded
-                          : Icons.warning_amber_rounded,
-                      color: recon.threeWayReconciliationOk
+                          ? FounderIconGlyph.shieldVerified
+                          : FounderIconGlyph.warningTriangle,
+                      boxSize: 38,
+                      iconSize: 18,
+                      tintColor: recon.threeWayReconciliationOk
                           ? FounderSovereignTokens.solvencyEmerald
                           : FounderSovereignTokens.crimsonAlert,
-                      size: 22,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -634,14 +714,18 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   recon.walletsAndEscrowTotalCents,
                   FounderSovereignTokens.solvencyEmerald,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
+                  height: 48,
                   child: FilledButton(
                     onPressed: () => Navigator.of(ctx).pop(),
                     style: FilledButton.styleFrom(
                       backgroundColor: FounderSovereignTokens.imperialGold,
                       foregroundColor: const Color(0xFF0B0E14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                     child: const Text(
                       'Entendido',
@@ -681,6 +765,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isDesktopWide = constraints.maxWidth >= 960;
+          final showCompactRefresh = constraints.maxWidth >= 356;
+          final safeBottom = FounderSovereignTokens.safeBottomInset(context);
+
           return Scaffold(
             key: const ValueKey<String>('founder-cockpit-unlocked-scaffold'),
             backgroundColor: FounderSovereignTokens.obsidianBackground,
@@ -694,7 +781,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   Expanded(
                     child: Column(
                       children: <Widget>[
-                        _buildTopExecutiveHeader(isDesktopWide),
+                        _buildTopExecutiveHeader(
+                          isDesktopWide: isDesktopWide,
+                          showRefreshButton: showCompactRefresh,
+                        ),
                         if (_transientLiveBanner != null)
                           _buildLiveArrivalBanner(_transientLiveBanner!),
                         if (_snapshotErrorBanner != null)
@@ -712,7 +802,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                               builder: (context, anim) {
                                 return _buildActiveTabBody(
                                   anim,
-                                  bottomInset: isDesktopWide ? 32 : 112,
+                                  bottomInset: isDesktopWide
+                                      ? 36
+                                      : (safeBottom + 98),
                                 );
                               },
                             ),
@@ -850,9 +942,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
           ),
           child: Row(
             children: <Widget>[
-              Icon(
-                spec.icon,
+              FounderPrecisionIcon(
+                spec.glyph,
                 size: 19,
+                isActive: active,
                 color: active
                     ? FounderSovereignTokens.imperialGoldBright
                     : FounderSovereignTokens.mutedInk,
@@ -880,87 +973,94 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   }
 
   Widget _buildMobileFloatingGlassDock() {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(26),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              height: 68,
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-              decoration: BoxDecoration(
-                color: FounderSovereignTokens.obsidianSurface
-                    .withValues(alpha: 0.94),
-                borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: FounderSovereignTokens.crispBorder),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(
-                    color: Color(0x66000000),
-                    blurRadius: 24,
-                    offset: Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: List<Widget>.generate(_kFiveTabs.length, (i) {
-                  final spec = _kFiveTabs[i];
-                  final active = _selectedTabIndex == i;
-                  return Expanded(
-                    child: InkWell(
-                      key: ValueKey<String>('ceo-nav-tab-$i'),
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        setState(() => _selectedTabIndex = i);
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
-                        curve: Curves.easeOutCubic,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? FounderSovereignTokens.imperialGoldSoft
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Icon(
-                              spec.icon,
-                              size: 21,
-                              color: active
-                                  ? FounderSovereignTokens.imperialGoldBright
-                                  : FounderSovereignTokens.mutedInk,
-                            ),
-                            const SizedBox(height: 3),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                spec.label,
-                                maxLines: 1,
-                                style: TextStyle(
-                                  color: active
-                                      ? FounderSovereignTokens
-                                          .imperialGoldBright
-                                      : FounderSovereignTokens.mutedInk,
-                                  fontSize: 11,
-                                  fontWeight: active
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                ),
+    final bottomPad = math.max(
+      10.0,
+      FounderSovereignTokens.safeBottomInset(context) + 8.0,
+    );
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 0, 12, bottomPad),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            height: 68,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            decoration: BoxDecoration(
+              color: FounderSovereignTokens.obsidianSurface
+                  .withValues(alpha: 0.94),
+              borderRadius: BorderRadius.circular(26),
+              border:
+                  Border.all(color: FounderSovereignTokens.crispBorderStrong),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x66000000),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              children: List<Widget>.generate(_kFiveTabs.length, (i) {
+                final spec = _kFiveTabs[i];
+                final active = _selectedTabIndex == i;
+                return Expanded(
+                  child: InkWell(
+                    key: ValueKey<String>('ceo-nav-tab-$i'),
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _selectedTabIndex = i);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? FounderSovereignTokens.imperialGoldSoft
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                        border: active
+                            ? Border.all(
+                                color: FounderSovereignTokens.imperialGold
+                                    .withValues(alpha: 0.34),
+                              )
+                            : null,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          FounderPrecisionIcon(
+                            spec.glyph,
+                            size: 20,
+                            isActive: active,
+                            color: active
+                                ? FounderSovereignTokens.imperialGoldBright
+                                : FounderSovereignTokens.mutedInk,
+                          ),
+                          const SizedBox(height: 3.5),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              spec.label,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: active
+                                    ? FounderSovereignTokens.imperialGoldBright
+                                    : FounderSovereignTokens.mutedInk,
+                                fontSize: 11,
+                                fontWeight:
+                                    active ? FontWeight.w700 : FontWeight.w500,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                }),
-              ),
+                  ),
+                );
+              }),
             ),
           ),
         ),
@@ -969,10 +1069,13 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   }
 
   // ===========================================================================
-  // CABEÇALHO SUPERIOR ÚNICO (56PX) — AVATAR DOURADO W + 2 BOTÕES AMPLOS 44X44
+  // CABEÇALHO SUPERIOR EXECUTIVO — AVATAR DOURADO W + CONTROLES TÁTEIS
   // ===========================================================================
 
-  Widget _buildTopExecutiveHeader(bool isDesktopWide) {
+  Widget _buildTopExecutiveHeader({
+    required bool isDesktopWide,
+    required bool showRefreshButton,
+  }) {
     return Container(
       constraints: const BoxConstraints(minHeight: 58),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -1070,7 +1173,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             ),
           ),
           const SizedBox(width: 6),
-          if (isDesktopWide) ...<Widget>[
+          if (showRefreshButton) ...<Widget>[
             _HeaderActionIconBtn(
               buttonKey: const ValueKey<String>('ceo-manual-refresh-btn'),
               tooltip: 'Atualizar agora',
@@ -1085,9 +1188,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                         color: FounderSovereignTokens.imperialGoldBright,
                       ),
                     )
-                  : const Icon(
-                      Icons.refresh_rounded,
-                      size: 19,
+                  : const FounderPrecisionIcon(
+                      FounderIconGlyph.refreshArc,
+                      size: 17.5,
                       color: FounderSovereignTokens.secondaryInk,
                     ),
             ),
@@ -1103,11 +1206,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               HapticFeedback.selectionClick();
               setState(() => _privacyBlurActive = !_privacyBlurActive);
             },
-            child: Icon(
+            child: FounderPrecisionIcon(
               _privacyBlurActive
-                  ? Icons.visibility_off_rounded
-                  : Icons.visibility_rounded,
-              size: 19,
+                  ? FounderIconGlyph.eyeClosed
+                  : FounderIconGlyph.eyeOpen,
+              size: 18,
+              isActive: _privacyBlurActive,
               color: _privacyBlurActive
                   ? FounderSovereignTokens.imperialGoldBright
                   : FounderSovereignTokens.secondaryInk,
@@ -1120,9 +1224,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             onPressed: () => _lockVaultWithReason(
               'Aplicativo bloqueado manualmente por você.',
             ),
-            child: const Icon(
-              Icons.lock_outline_rounded,
-              size: 19,
+            child: const FounderPrecisionIcon(
+              FounderIconGlyph.vaultLock,
+              size: 17.5,
               color: FounderSovereignTokens.secondaryInk,
             ),
           ),
@@ -1144,6 +1248,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
       child: Row(
         children: <Widget>[
           Padding(
@@ -1170,9 +1275,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Icon(
-                        Icons.calendar_month_rounded,
-                        size: 15,
+                      FounderPrecisionIcon(
+                        FounderIconGlyph.calendarExec,
+                        size: 14.5,
                         color: FounderSovereignTokens.imperialGoldBright,
                       ),
                       SizedBox(width: 6),
@@ -1221,10 +1326,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Icon(
+                        FounderPrecisionIcon(
                           isFutureSingleDate
-                              ? Icons.upcoming_rounded
-                              : Icons.event_available_rounded,
+                              ? FounderIconGlyph.upcomingEvent
+                              : FounderIconGlyph.calendarExec,
                           size: 14,
                           color: isFutureSingleDate
                               ? FounderSovereignTokens.warmAmber
@@ -1242,9 +1347,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Icon(
-                          Icons.close_rounded,
-                          size: 14,
+                        FounderPrecisionIcon(
+                          FounderIconGlyph.closeCross,
+                          size: 12.5,
                           color: isFutureSingleDate
                               ? FounderSovereignTokens.warmAmber
                               : FounderSovereignTokens.imperialGoldBright,
@@ -1413,8 +1518,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       color: FounderSovereignTokens.crimsonAlertSoft,
       child: Row(
         children: <Widget>[
-          const Icon(
-            Icons.warning_amber_rounded,
+          const FounderPrecisionIcon(
+            FounderIconGlyph.warningTriangle,
             size: 16,
             color: FounderSovereignTokens.crimsonAlert,
           ),
@@ -1481,7 +1586,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   }
 
   // ===========================================================================
-  // ABA 0: INÍCIO (VISÃO DE 5 SEGUNDOS DO DONO DA EMPRESA)
+  // ABA 0: INÍCIO (VISÃO DE 5 SEGUNDOS DO DONO + AÇÕES DIRETAS DE 1 TOQUE)
   // ===========================================================================
 
   List<Widget> _buildTab0Home(Animation<double> anim) {
@@ -1494,38 +1599,54 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
         dre.variablePspAndCloudCents +
         dre.fixedOpexCents;
 
-    final attentionItems = <({String text, int targetTab, bool critical})>[
+    final attentionItems = <({
+      String text,
+      VoidCallback onTap,
+      bool critical,
+      FounderIconGlyph glyph,
+    })>[
       if (sw.duressIncidents.isNotEmpty)
         (
           text:
               '${sw.duressIncidents.length} alerta urgente de segurança em atendimento',
-          targetTab: 4,
+          onTap: () => setState(() {
+                _selectedTabIndex = 4;
+                _showSecurityAuditDetails = true;
+              }),
           critical: true,
+          glyph: FounderIconGlyph.duressEmergencyShield,
         ),
       if (!reconOk)
         (
           text: 'Diferença detectada na conferência de saldos',
-          targetTab: 1,
+          onTap: _showReconciliationModal,
           critical: true,
+          glyph: FounderIconGlyph.warningTriangle,
         ),
       if (p.disputedJobsCount > 0)
         (
           text: '${p.disputedJobsCount} pedido(s) aguardando solução de disputa',
-          targetTab: 2,
+          onTap: () => setState(() {
+                _ordersStatusFilter = 'disputed';
+                _selectedTabIndex = 2;
+              }),
           critical: true,
+          glyph: FounderIconGlyph.mediationBalance,
         )
       else if (p.totalOpenMediationsAndTicketsCount > 0)
         (
           text:
               '${p.totalOpenMediationsAndTicketsCount} mediação(ões) ou chamado(s) em aberto',
-          targetTab: 2,
+          onTap: () => setState(() => _selectedTabIndex = 2),
           critical: true,
+          glyph: FounderIconGlyph.mediationBalance,
         ),
       if (demo.kycPendingCount > 0)
         (
           text: '${demo.kycPendingCount} cadastro(s) aguardando aprovação',
-          targetTab: 3,
+          onTap: () => _jumpToPeopleFilter('kyc_pending'),
           critical: false,
+          glyph: FounderIconGlyph.clockSla,
         ),
     ];
 
@@ -1604,17 +1725,36 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                             : FounderSovereignTokens.crimsonAlertSoft,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text(
-                        reconOk
-                            ? '✓ Contas 100% conferidas'
-                            : 'Verificar conferência de saldos',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: reconOk
-                              ? FounderSovereignTokens.solvencyEmerald
-                              : FounderSovereignTokens.crimsonAlert,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          FounderPrecisionIcon(
+                            reconOk
+                                ? FounderIconGlyph.checkValid
+                                : FounderIconGlyph.warningTriangle,
+                            size: 13,
+                            color: reconOk
+                                ? FounderSovereignTokens.solvencyEmerald
+                                : FounderSovereignTokens.crimsonAlert,
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              reconOk
+                                  ? 'Contas 100% conferidas'
+                                  : 'Conferir saldos',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: reconOk
+                                    ? FounderSovereignTokens.solvencyEmerald
+                                    : FounderSovereignTokens.crimsonAlert,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1687,75 +1827,112 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   );
                 },
               ),
+              const SizedBox(height: 16),
+              const Divider(
+                height: 1,
+                color: FounderSovereignTokens.crispBorder,
+              ),
+              const SizedBox(height: 12),
+              // Ações diretas de 1 toque (economiza múltiplos cliques no dia a dia do CEO!)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  _ExecutiveQuickActionPill(
+                    glyph: FounderIconGlyph.expenseReceipt,
+                    label: '+ Registrar gasto',
+                    primary: true,
+                    onTap: () async {
+                      await FounderRealExpenseModal.show(
+                        context,
+                        repository: _repo,
+                      );
+                    },
+                  ),
+                  _ExecutiveQuickActionPill(
+                    glyph: FounderIconGlyph.radarPulse,
+                    label: 'Abrir mapa (${_snapshot.liveMapPoints.length})',
+                    onTap: _openFullScreenLiveMapFromShortcut,
+                  ),
+                  _ExecutiveQuickActionPill(
+                    glyph: FounderIconGlyph.taxBankDas,
+                    label: 'Ver impostos e agenda',
+                    onTap: _openExecutiveCalendar,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
       if (attentionItems.isNotEmpty) ...<Widget>[
         const SizedBox(height: 12),
-        Builder(
-          builder: (context) {
-            final hasCritical = attentionItems.any((e) => e.critical);
-            final accent = hasCritical
-                ? FounderSovereignTokens.crimsonAlert
-                : FounderSovereignTokens.warmAmber;
-            return Material(
-              color: hasCritical
-                  ? FounderSovereignTokens.crimsonAlertSoft
-                  : FounderSovereignTokens.warmAmberSoft,
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(
-                    () => _selectedTabIndex = attentionItems.first.targetTab,
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: accent.withValues(alpha: 0.45)),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(
-                        hasCritical
-                            ? Icons.notification_important_rounded
-                            : Icons.schedule_rounded,
-                        size: 18,
-                        color: accent,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          attentionItems.map((e) => e.text).join(' · '),
-                          style: const TextStyle(
-                            color: FounderSovereignTokens.primaryInk,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
+        Column(
+          children: <Widget>[
+            for (var i = 0; i < attentionItems.length; i++) ...<Widget>[
+              if (i > 0) const SizedBox(height: 8),
+              Builder(
+                builder: (context) {
+                  final item = attentionItems[i];
+                  final accent = item.critical
+                      ? FounderSovereignTokens.crimsonAlert
+                      : FounderSovereignTokens.warmAmber;
+                  return Material(
+                    color: item.critical
+                        ? FounderSovereignTokens.crimsonAlertSoft
+                        : FounderSovereignTokens.warmAmberSoft,
+                    borderRadius: BorderRadius.circular(14),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        item.onTap();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.42),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Ver agora ›',
-                        style: TextStyle(
-                          color: accent,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                        child: Row(
+                          children: <Widget>[
+                            FounderPrecisionIcon(
+                              item.glyph,
+                              size: 16.5,
+                              color: accent,
+                              accentColor: accent,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                item.text,
+                                style: const TextStyle(
+                                  color: FounderSovereignTokens.primaryInk,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            FounderPrecisionIcon(
+                              FounderIconGlyph.chevronRight,
+                              size: 15,
+                              color: accent,
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
-            );
-          },
+            ],
+          ],
         ),
       ],
       const SizedBox(height: 14),
@@ -1770,8 +1947,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  const Icon(
-                    Icons.people_alt_rounded,
+                  const FounderPrecisionIcon(
+                    FounderIconGlyph.navPeople,
                     size: 17,
                     color: FounderSovereignTokens.imperialGoldBright,
                   ),
@@ -1794,13 +1971,24 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                         horizontal: 6,
                         vertical: 2,
                       ),
-                      child: Text(
-                        'Total: ${demo.totalUsersCount} ›',
-                        style: FounderSovereignTokens.monoMetric(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: FounderSovereignTokens.imperialGoldBright,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            'Total: ${demo.totalUsersCount}',
+                            style: FounderSovereignTokens.monoMetric(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: FounderSovereignTokens.imperialGoldBright,
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          const FounderPrecisionIcon(
+                            FounderIconGlyph.chevronRight,
+                            size: 13,
+                            color: FounderSovereignTokens.imperialGoldBright,
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1837,7 +2025,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               subtitle:
                   '${p.inExecutionPipelineCount} em execução · ${p.awaitingQuoteOrPaymentCount} aguardando',
               accent: FounderSovereignTokens.imperialGoldBright,
-              icon: Icons.bolt_rounded,
+              glyph: FounderIconGlyph.sparkBolt,
               onTap: () => setState(() => _selectedTabIndex = 2),
             );
             final tile1 = _BentoSummaryTile(
@@ -1846,7 +2034,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               subtitle:
                   '${p.completedAllTimeCount} no total · Nota $avgStars',
               accent: FounderSovereignTokens.solvencyEmerald,
-              icon: Icons.check_circle_outline_rounded,
+              glyph: FounderIconGlyph.checkValid,
               onTap: () => setState(() => _selectedTabIndex = 2),
             );
             final tile2 = _BentoSummaryTile(
@@ -1858,7 +2046,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   ? 'Zero acionamentos pagos'
                   : 'Pago: ${_privacyBlurActive ? "R\$ •••" : Money.formatBrl(_snapshot.actuarialPool.claimsPaidCents)}',
               accent: FounderSovereignTokens.solvencyEmerald,
-              icon: Icons.verified_user_outlined,
+              glyph: FounderIconGlyph.shieldVerified,
               onTap: () => setState(() => _selectedTabIndex = 1),
             );
             final tile3 = _BentoSummaryTile(
@@ -1868,7 +2056,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   : '${demo.kycVerifiedCount} verificados',
               subtitle: ltvCacText,
               accent: FounderSovereignTokens.imperialGold,
-              icon: Icons.trending_up_rounded,
+              glyph: FounderIconGlyph.profitJCurve,
               onTap: () => setState(() => _selectedTabIndex = 3),
             );
 
@@ -1957,6 +2145,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               const SizedBox(height: 12),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
                 child: Row(
                   children: <Widget>[
                     _buildLiveFeedFilterChip('all', 'Tudo'),
@@ -1973,24 +2162,21 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               ),
               const SizedBox(height: 12),
               if (filteredEvents.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: FounderSovereignTokens.obsidianSurface,
-                    borderRadius: BorderRadius.circular(16),
-                    border:
-                        Border.all(color: FounderSovereignTokens.crispBorder),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
                   ),
-                  child: const Column(
+                  child: Column(
                     children: <Widget>[
-                      Icon(
-                        Icons.wifi_tethering_rounded,
-                        size: 26,
-                        color: FounderSovereignTokens.solvencyEmerald,
+                      const FounderPrecisionBadge(
+                        FounderIconGlyph.radarPulse,
+                        boxSize: 44,
+                        iconSize: 21,
+                        tintColor: FounderSovereignTokens.solvencyEmerald,
                       ),
-                      SizedBox(height: 8),
-                      Text(
+                      const SizedBox(height: 10),
+                      const Text(
                         'Tudo pronto e conectado em tempo real',
                         textAlign: TextAlign.center,
                         style: TextStyle(
@@ -1999,14 +2185,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      SizedBox(height: 4),
+                      const SizedBox(height: 4),
                       Text(
                         'Assim que um cliente ou profissional usar o Desperrengue, a movimentação aparece aqui no mesmo segundo.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: FounderSovereignTokens.mutedInk,
+                        style: FounderSovereignTokens.subtitleStyle(
                           fontSize: 12,
-                          height: 1.35,
                         ),
                       ),
                     ],
@@ -2015,8 +2199,16 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               else
                 Column(
                   children: <Widget>[
-                    for (final ev in filteredEvents.take(35))
-                      _buildLiveEventRow(ev),
+                    for (var i = 0;
+                        i < filteredEvents.length && i < 35;
+                        i++) ...<Widget>[
+                      if (i > 0)
+                        const Divider(
+                          height: 1,
+                          color: FounderSovereignTokens.crispBorder,
+                        ),
+                      _buildLiveEventRow(filteredEvents[i]),
+                    ],
                   ],
                 ),
             ],
@@ -2158,110 +2350,107 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     final estimatedNetCents =
         ev.amountCents > 0 ? ((ev.amountCents * 112) ~/ 1000) : 0;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: FounderSovereignTokens.obsidianSurface,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: jobId != null ? () => _openOrderForensics(jobId) : null,
-          child: Container(
-            padding: const EdgeInsets.all(13),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: FounderSovereignTokens.crispBorder),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: meta.color.withValues(alpha: 0.14),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(meta.icon, size: 17, color: meta.color),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: jobId != null ? () => _openOrderForensics(jobId) : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: meta.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 2,
-                        alignment: WrapAlignment.spaceBetween,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            ev.title,
-                            style: const TextStyle(
-                              color: FounderSovereignTokens.primaryInk,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (ev.amountCents > 0)
-                            AnimatedMoneyOdometer(
-                              cents: ev.amountCents,
-                              privacyBlurActive: _privacyBlurActive,
-                              style: FounderSovereignTokens.monoMetric(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color:
-                                    FounderSovereignTokens.imperialGoldBright,
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (ev.subtitle.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 3),
+                alignment: Alignment.center,
+                child: FounderPrecisionIcon(
+                  meta.glyph,
+                  size: 16.5,
+                  color: meta.color,
+                  accentColor: meta.color,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 2,
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: <Widget>[
                         Text(
-                          ev.subtitle,
+                          ev.title,
                           style: const TextStyle(
-                            color: FounderSovereignTokens.secondaryInk,
-                            fontSize: 11.5,
-                          ),
-                        ),
-                      ],
-                      if (ev.amountCents > 0 &&
-                          meta.category == 'payments') ...<Widget>[
-                        const SizedBox(height: 4),
-                        Text(
-                          _privacyBlurActive
-                              ? '↳ Seu ganho líquido previsto: + R\$ •••••'
-                              : '↳ Seu ganho líquido previsto: + ${Money.formatBrl(estimatedNetCents)}',
-                          style: const TextStyle(
-                            color: FounderSovereignTokens.solvencyEmerald,
-                            fontSize: 11.5,
+                            color: FounderSovereignTokens.primaryInk,
+                            fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
+                        if (ev.amountCents > 0)
+                          AnimatedMoneyOdometer(
+                            cents: ev.amountCents,
+                            privacyBlurActive: _privacyBlurActive,
+                            style: FounderSovereignTokens.monoMetric(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: FounderSovereignTokens.imperialGoldBright,
+                            ),
+                          ),
                       ],
+                    ),
+                    if (ev.subtitle.isNotEmpty) ...<Widget>[
                       const SizedBox(height: 3),
                       Text(
-                        _formatHumanTimeBrt(ev.occurredAt),
+                        ev.subtitle,
                         style: const TextStyle(
-                          color: FounderSovereignTokens.mutedInk,
-                          fontSize: 10.5,
+                          color: FounderSovereignTokens.secondaryInk,
+                          fontSize: 11.5,
                         ),
                       ),
                     ],
+                    if (ev.amountCents > 0 &&
+                        meta.category == 'payments') ...<Widget>[
+                      const SizedBox(height: 4),
+                      Text(
+                        _privacyBlurActive
+                            ? '↳ Seu ganho líquido previsto: + R\$ •••••'
+                            : '↳ Seu ganho líquido previsto: + ${Money.formatBrl(estimatedNetCents)}',
+                        style: const TextStyle(
+                          color: FounderSovereignTokens.solvencyEmerald,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 3),
+                    Text(
+                      _formatHumanTimeBrt(ev.occurredAt),
+                      style: const TextStyle(
+                        color: FounderSovereignTokens.mutedInk,
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (jobId != null)
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, top: 2),
+                  child: FounderPrecisionIcon(
+                    FounderIconGlyph.chevronRight,
+                    size: 15,
+                    color: FounderSovereignTokens.mutedInk,
                   ),
                 ),
-                if (jobId != null)
-                  const Padding(
-                    padding: EdgeInsets.only(left: 4, top: 2),
-                    child: Icon(
-                      Icons.chevron_right_rounded,
-                      size: 18,
-                      color: FounderSovereignTokens.mutedInk,
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
@@ -2297,9 +2486,24 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: <Widget>[
-                  Text(
-                    'Seu caixa × Dinheiro guardado no app',
-                    style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const FounderPrecisionIcon(
+                        FounderIconGlyph.walletVault,
+                        size: 17,
+                        color: FounderSovereignTokens.imperialGoldBright,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Seu caixa × Dinheiro guardado no app',
+                          style: FounderSovereignTokens.titleStyle(
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -2312,17 +2516,34 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                           : FounderSovereignTokens.crimsonAlertSoft,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Text(
-                      recon.threeWayReconciliationOk
-                          ? '✓ Contas 100% conferidas'
-                          : 'Diferença de ${Money.formatBrl(recon.discrepancyCents)}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: recon.threeWayReconciliationOk
-                            ? FounderSovereignTokens.solvencyEmerald
-                            : FounderSovereignTokens.crimsonAlert,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        FounderPrecisionIcon(
+                          recon.threeWayReconciliationOk
+                              ? FounderIconGlyph.checkValid
+                              : FounderIconGlyph.warningTriangle,
+                          size: 13,
+                          color: recon.threeWayReconciliationOk
+                              ? FounderSovereignTokens.solvencyEmerald
+                              : FounderSovereignTokens.crimsonAlert,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            recon.threeWayReconciliationOk
+                                ? 'Contas 100% conferidas'
+                                : 'Diferença de ${Money.formatBrl(recon.discrepancyCents)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: recon.threeWayReconciliationOk
+                                  ? FounderSovereignTokens.solvencyEmerald
+                                  : FounderSovereignTokens.crimsonAlert,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -2337,7 +2558,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
                         color: FounderSovereignTokens.imperialGold
-                            .withValues(alpha: 0.40),
+                            .withValues(alpha: 0.36),
                       ),
                     ),
                     child: Column(
@@ -2466,12 +2687,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                           ),
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Icon(
+                      const SizedBox(width: 5),
+                      FounderPrecisionIcon(
                         _showReconciliationProof
-                            ? Icons.expand_less_rounded
-                            : Icons.expand_more_rounded,
-                        size: 16,
+                            ? FounderIconGlyph.chevronUp
+                            : FounderIconGlyph.chevronDown,
+                        size: 14,
                         color: FounderSovereignTokens.imperialGoldBright,
                       ),
                     ],
@@ -2486,8 +2707,6 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   decoration: BoxDecoration(
                     color: FounderSovereignTokens.obsidianSurface,
                     borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: FounderSovereignTokens.crispBorder),
                   ),
                   child: Wrap(
                     spacing: 18,
@@ -2531,9 +2750,24 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                 alignment: WrapAlignment.spaceBetween,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: <Widget>[
-                  Text(
-                    'Para onde foi cada real?',
-                    style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      const FounderPrecisionIcon(
+                        FounderIconGlyph.moneySplitSankey,
+                        size: 17,
+                        color: FounderSovereignTokens.imperialGoldBright,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Para onde foi cada real?',
+                          style: FounderSovereignTokens.titleStyle(
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   FilledButton.icon(
                     key: const ValueKey<String>(
@@ -2557,7 +2791,13 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-                    icon: const Icon(Icons.add_rounded, size: 16),
+                    icon: const FounderPrecisionIcon(
+                      FounderIconGlyph.expenseReceipt,
+                      size: 15,
+                      color: Color(0xFF0B0E14),
+                      accentColor: Color(0xFF0B0E14),
+                      duotoneAlpha: 0.0,
+                    ),
                     label: const Text(
                       'Lançar gasto',
                       style: TextStyle(
@@ -2656,8 +2896,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                 ),
                 child: const Row(
                   children: <Widget>[
-                    Icon(
-                      Icons.auto_awesome_rounded,
+                    FounderPrecisionIcon(
+                      FounderIconGlyph.shieldVerified,
                       size: 16,
                       color: FounderSovereignTokens.solvencyEmerald,
                     ),
@@ -2682,127 +2922,144 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   style: FounderSovereignTokens.titleStyle(fontSize: 14),
                 ),
                 const SizedBox(height: 8),
-                for (final exp in _snapshot.realExpenses)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                for (var idx = 0;
+                    idx < _snapshot.realExpenses.length;
+                    idx++) ...<Widget>[
+                  if (idx > 0)
+                    const Divider(
+                      height: 1,
+                      color: FounderSovereignTokens.crispBorder,
                     ),
-                    decoration: BoxDecoration(
-                      color: FounderSovereignTokens.obsidianSurface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: exp.isScheduled
-                            ? FounderSovereignTokens.warmAmber
-                                .withValues(alpha: 0.42)
-                            : FounderSovereignTokens.crispBorder,
-                      ),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Wrap(
-                                spacing: 6,
-                                runSpacing: 4,
-                                crossAxisAlignment: WrapCrossAlignment.center,
+                  Builder(
+                    builder: (context) {
+                      final exp = _snapshot.realExpenses[idx];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        child: Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: <Widget>[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: exp.isScheduled
-                                          ? FounderSovereignTokens.warmAmberSoft
-                                          : FounderSovereignTokens
-                                              .solvencyEmeraldSoft,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      exp.statusLabelPt,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w800,
-                                        color: exp.isScheduled
-                                            ? FounderSovereignTokens.warmAmber
-                                            : FounderSovereignTokens
-                                                .solvencyEmerald,
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: <Widget>[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6.5,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: exp.isScheduled
+                                              ? FounderSovereignTokens
+                                                  .warmAmberSoft
+                                              : FounderSovereignTokens
+                                                  .solvencyEmeraldSoft,
+                                          borderRadius:
+                                              BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          exp.statusLabelPt,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w800,
+                                            color: exp.isScheduled
+                                                ? FounderSovereignTokens
+                                                    .warmAmber
+                                                : FounderSovereignTokens
+                                                    .solvencyEmerald,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      Text(
+                                        '${exp.competenceDateIso} · ${exp.kindLabelPt}',
+                                        style: const TextStyle(
+                                          color: FounderSovereignTokens.mutedInk,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 3),
                                   Text(
-                                    '${exp.competenceDateIso} · ${exp.kindLabelPt}',
+                                    '${exp.category}${exp.description.isNotEmpty ? " (${exp.description})" : ""}',
                                     style: const TextStyle(
-                                      color: FounderSovereignTokens.mutedInk,
-                                      fontSize: 11,
+                                      color: FounderSovereignTokens.primaryInk,
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 3),
-                              Text(
-                                '${exp.category}${exp.description.isNotEmpty ? " (${exp.description})" : ""}',
-                                style: const TextStyle(
-                                  color: FounderSovereignTokens.primaryInk,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            ),
+                            const SizedBox(width: 8),
+                            AnimatedMoneyOdometer(
+                              cents: exp.amountCents,
+                              prefix: '- ',
+                              privacyBlurActive: _privacyBlurActive,
+                              style: FounderSovereignTokens.monoMetric(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w800,
+                                color: exp.isScheduled
+                                    ? FounderSovereignTokens.warmAmber
+                                    : FounderSovereignTokens.secondaryInk,
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 6),
+                            IconButton(
+                              key: ValueKey<String>(
+                                'ceo-toggle-expense-paid-${exp.id}',
+                              ),
+                              tooltip: exp.isScheduled
+                                  ? 'Marcar como pago'
+                                  : 'Voltar para agendado',
+                              style: IconButton.styleFrom(
+                                backgroundColor: exp.isScheduled
+                                    ? FounderSovereignTokens.warmAmberSoft
+                                    : FounderSovereignTokens
+                                        .solvencyEmeraldSoft,
+                                minimumSize: const Size(34, 34),
+                                padding: EdgeInsets.zero,
+                              ),
+                              onPressed: () => _repo.toggleExpensePaidStatus(
+                                expenseId: exp.id,
+                                paid: exp.isScheduled,
+                              ),
+                              icon: FounderPrecisionIcon(
+                                exp.isScheduled
+                                    ? FounderIconGlyph.ringPending
+                                    : FounderIconGlyph.checkValid,
+                                size: 16,
+                                color: exp.isScheduled
+                                    ? FounderSovereignTokens.warmAmber
+                                    : FounderSovereignTokens.solvencyEmerald,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              tooltip: 'Excluir gasto',
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                minWidth: 34,
+                                minHeight: 34,
+                              ),
+                              padding: EdgeInsets.zero,
+                              onPressed: () => _confirmAndDeleteExpense(exp),
+                              icon: const FounderPrecisionIcon(
+                                FounderIconGlyph.trashDelete,
+                                size: 15.5,
+                                color: FounderSovereignTokens.mutedInk,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        AnimatedMoneyOdometer(
-                          cents: exp.amountCents,
-                          prefix: '- ',
-                          privacyBlurActive: _privacyBlurActive,
-                          style: FounderSovereignTokens.monoMetric(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: exp.isScheduled
-                                ? FounderSovereignTokens.warmAmber
-                                : FounderSovereignTokens.secondaryInk,
-                          ),
-                        ),
-                        IconButton(
-                          key: ValueKey<String>(
-                            'ceo-toggle-expense-paid-${exp.id}',
-                          ),
-                          tooltip: exp.isScheduled
-                              ? 'Marcar como pago'
-                              : 'Voltar para agendado',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _repo.toggleExpensePaidStatus(
-                            expenseId: exp.id,
-                            paid: exp.isScheduled,
-                          ),
-                          icon: Icon(
-                            exp.isScheduled
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.task_alt_rounded,
-                            size: 18,
-                            color: exp.isScheduled
-                                ? FounderSovereignTokens.warmAmber
-                                : FounderSovereignTokens.solvencyEmerald,
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Excluir gasto',
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _repo.deleteRealExpense(exp.id),
-                          icon: const Icon(
-                            Icons.delete_outline_rounded,
-                            size: 17,
-                            color: FounderSovereignTokens.mutedInk,
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
+                ],
               ],
             ],
           ),
@@ -2850,11 +3107,11 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     Animation<double> anim,
     FounderDreCents dre,
   ) {
-    const pills = <(int, String, IconData)>[
-      (0, 'Fluxo do Dinheiro', Icons.account_tree_rounded),
-      (1, 'Evolução do Lucro', Icons.show_chart_rounded),
-      (2, 'Simulador de Metas', Icons.auto_graph_rounded),
-      (3, 'Saúde da Garantia', Icons.shield_outlined),
+    const pills = <(int, String, FounderIconGlyph)>[
+      (0, 'Fluxo do Dinheiro', FounderIconGlyph.moneySplitSankey),
+      (1, 'Evolução do Lucro', FounderIconGlyph.profitJCurve),
+      (2, 'Simulador de Metas', FounderIconGlyph.monteCarloCone),
+      (3, 'Saúde da Garantia', FounderIconGlyph.shieldVerified),
     ];
 
     Widget activeChart;
@@ -2916,20 +3173,23 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
         children: <Widget>[
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
             child: Row(
               children: <Widget>[
-                for (final (idx, label, icon) in pills)
+                for (final (idx, label, glyph) in pills)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
                       key: ValueKey<String>('ceo-finance-chart-pill-$idx'),
-                      avatar: Icon(
-                        icon,
-                        size: 15,
+                      avatar: FounderPrecisionIcon(
+                        glyph,
+                        size: 14.5,
+                        isActive: _selectedFinanceChartStage == idx,
                         color: _selectedFinanceChartStage == idx
                             ? FounderSovereignTokens.imperialGoldBright
                             : FounderSovereignTokens.mutedInk,
                       ),
+                      showCheckmark: false,
                       label: Text(label),
                       selected: _selectedFinanceChartStage == idx,
                       onSelected: (_) {
@@ -2999,11 +3259,11 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(
+                  FounderPrecisionIcon(
                     isFuture
-                        ? Icons.upcoming_rounded
-                        : Icons.event_available_rounded,
-                    size: 18,
+                        ? FounderIconGlyph.upcomingEvent
+                        : FounderIconGlyph.calendarExec,
+                    size: 17,
                     color: isFuture
                         ? FounderSovereignTokens.warmAmber
                         : FounderSovereignTokens.imperialGoldBright,
@@ -3026,7 +3286,11 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   visualDensity: VisualDensity.compact,
                   foregroundColor: FounderSovereignTokens.imperialGoldBright,
                 ),
-                icon: const Icon(Icons.restore_rounded, size: 15),
+                icon: const FounderPrecisionIcon(
+                  FounderIconGlyph.refreshArc,
+                  size: 14,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
                 label: const Text(
                   'Voltar p/ 30 dias',
                   style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
@@ -3086,14 +3350,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
           ),
           const SizedBox(height: 12),
           if (events.isEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: FounderSovereignTokens.crispBorder),
-              ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
               child: Text(
                 isFuture
                     ? 'Nenhum imposto previsto, mediação ativa, conta ou serviço agendado nesta data até agora.'
@@ -3133,7 +3391,11 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              icon: const Icon(Icons.add_card_rounded, size: 16),
+              icon: const FounderPrecisionIcon(
+                FounderIconGlyph.expenseReceipt,
+                size: 15,
+                color: FounderSovereignTokens.imperialGoldBright,
+              ),
               label: Text(
                 isFuture
                     ? 'Agendar conta ou imposto para $dateFormatted'
@@ -3154,32 +3416,32 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
 
   Widget _buildConsultedAgendaEventRow(CeoCalendarAgendaEvent ev) {
     final Color accent;
-    final IconData icon;
+    final FounderIconGlyph glyph;
     if (ev.isMediationOrDispute) {
       accent = ev.severity == 'CRITICAL'
           ? FounderSovereignTokens.crimsonAlert
           : FounderSovereignTokens.warmAmber;
-      icon = Icons.gavel_rounded;
+      glyph = FounderIconGlyph.mediationBalance;
     } else if (ev.isTaxEvent) {
       accent = ev.statusCode == 'PAID'
           ? FounderSovereignTokens.solvencyEmerald
           : FounderSovereignTokens.warmAmber;
-      icon = Icons.account_balance_rounded;
+      glyph = FounderIconGlyph.taxBankDas;
     } else if (ev.eventKind == 'COMPANY_EXPENSE') {
       accent = ev.isScheduledExpense
           ? FounderSovereignTokens.warmAmber
           : FounderSovereignTokens.secondaryInk;
-      icon = Icons.receipt_long_rounded;
+      glyph = FounderIconGlyph.expenseReceipt;
     } else if (ev.eventKind == 'COMPLETED_ORDER') {
       accent = FounderSovereignTokens.solvencyEmerald;
-      icon = Icons.check_circle_rounded;
+      glyph = FounderIconGlyph.checkValid;
     } else {
       accent = FounderSovereignTokens.imperialGoldBright;
-      icon = Icons.event_available_rounded;
+      glyph = FounderIconGlyph.upcomingEvent;
     }
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 7),
       child: Material(
         color: FounderSovereignTokens.obsidianSurface,
         borderRadius: BorderRadius.circular(12),
@@ -3201,7 +3463,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Icon(icon, size: 17, color: accent),
+                FounderPrecisionIcon(
+                  glyph,
+                  size: 16.5,
+                  color: accent,
+                  accentColor: accent,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
@@ -3229,14 +3496,21 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   ),
                 ),
                 if (ev.grossCents > 0) ...<Widget>[
-                  const SizedBox(width: 8),
-                  AnimatedMoneyOdometer(
-                    cents: ev.grossCents,
-                    privacyBlurActive: _privacyBlurActive,
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      color: accent,
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 108),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: AnimatedMoneyOdometer(
+                        cents: ev.grossCents,
+                        privacyBlurActive: _privacyBlurActive,
+                        style: FounderSovereignTokens.monoMetric(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: accent,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -3252,17 +3526,17 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                       expenseId: ev.refId,
                       paid: true,
                     ),
-                    icon: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      size: 18,
+                    icon: const FounderPrecisionIcon(
+                      FounderIconGlyph.checkValid,
+                      size: 17,
                       color: FounderSovereignTokens.solvencyEmerald,
                     ),
                   ),
                 ] else if (ev.hasLinkedOrder) ...<Widget>[
                   const SizedBox(width: 4),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    size: 17,
+                  const FounderPrecisionIcon(
+                    FounderIconGlyph.chevronRight,
+                    size: 15,
                     color: FounderSovereignTokens.mutedInk,
                   ),
                 ],
@@ -3279,7 +3553,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       CeoBrazilFiscalCalendar.todayBrasilia(),
     );
     final upcoming = _snapshot.taxObligationsSchedule
-        .where((t) => t.dueDateIso.compareTo(todayIso) >= 0 || t.remainingDueCents > 0)
+        .where(
+          (t) =>
+              t.dueDateIso.compareTo(todayIso) >= 0 || t.remainingDueCents > 0,
+        )
         .take(4)
         .toList(growable: false);
     if (upcoming.isEmpty) return const SizedBox.shrink();
@@ -3291,12 +3568,13 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(
-                Icons.account_balance_rounded,
-                size: 18,
-                color: FounderSovereignTokens.warmAmber,
+              const FounderPrecisionBadge(
+                FounderIconGlyph.taxBankDas,
+                boxSize: 34,
+                iconSize: 16.5,
+                tintColor: FounderSovereignTokens.warmAmber,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   'Calendário de Impostos (Simples Nacional · DAS)',
@@ -3311,87 +3589,85 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             style: FounderSovereignTokens.subtitleStyle(fontSize: 11.5),
           ),
           const SizedBox(height: 12),
-          for (final item in upcoming)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Material(
-                color: FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  key: ValueKey<String>(
-                    'ceo-tax-schedule-row-${item.dueDateIso}',
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => _refreshLiveSnapshot(
-                    windowKey: 'day:${item.dueDateIso}',
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
+          for (var i = 0; i < upcoming.length; i++) ...<Widget>[
+            if (i > 0)
+              const Divider(
+                height: 1,
+                color: FounderSovereignTokens.crispBorder,
+              ),
+            Builder(
+              builder: (context) {
+                final item = upcoming[i];
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    key: ValueKey<String>(
+                      'ceo-tax-schedule-row-${item.dueDateIso}',
                     ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: item.remainingDueCents > 0
-                            ? FounderSovereignTokens.warmAmber
-                                .withValues(alpha: 0.40)
-                            : FounderSovereignTokens.crispBorder,
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => _refreshLiveSnapshot(
+                      windowKey: 'day:${item.dueDateIso}',
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 2,
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  'Vencimento ${item.dueDateFormattedPt} · Competência ${item.competenceLabelPt}',
+                                  style: const TextStyle(
+                                    color: FounderSovereignTokens.primaryInk,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.statusLabelPt,
+                                  style: TextStyle(
+                                    color: item.status == 'PAID'
+                                        ? FounderSovereignTokens.solvencyEmerald
+                                        : (item.remainingDueCents > 0
+                                            ? FounderSovereignTokens.warmAmber
+                                            : FounderSovereignTokens.mutedInk),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          AnimatedMoneyOdometer(
+                            cents: item.remainingDueCents,
+                            privacyBlurActive: _privacyBlurActive,
+                            style: FounderSovereignTokens.monoMetric(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: item.remainingDueCents > 0
+                                  ? FounderSovereignTokens.warmAmber
+                                  : FounderSovereignTokens.secondaryInk,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          const FounderPrecisionIcon(
+                            FounderIconGlyph.chevronRight,
+                            size: 15,
+                            color: FounderSovereignTokens.mutedInk,
+                          ),
+                        ],
                       ),
                     ),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                'Vencimento ${item.dueDateFormattedPt} · Competência ${item.competenceLabelPt}',
-                                style: const TextStyle(
-                                  color: FounderSovereignTokens.primaryInk,
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.statusLabelPt,
-                                style: TextStyle(
-                                  color: item.status == 'PAID'
-                                      ? FounderSovereignTokens.solvencyEmerald
-                                      : (item.remainingDueCents > 0
-                                          ? FounderSovereignTokens.warmAmber
-                                          : FounderSovereignTokens.mutedInk),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        AnimatedMoneyOdometer(
-                          cents: item.remainingDueCents,
-                          privacyBlurActive: _privacyBlurActive,
-                          style: FounderSovereignTokens.monoMetric(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: item.remainingDueCents > 0
-                                ? FounderSovereignTokens.warmAmber
-                                : FounderSovereignTokens.secondaryInk,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          size: 17,
-                          color: FounderSovereignTokens.mutedInk,
-                        ),
-                      ],
-                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
+          ],
         ],
       ),
     );
@@ -3401,8 +3677,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     final openMeds = _snapshot.activeMediations
         .where((m) => m.isOpen)
         .toList(growable: false);
-    final displayed =
-        openMeds.isNotEmpty ? openMeds : _snapshot.activeMediations.take(4).toList();
+    final displayed = openMeds.isNotEmpty
+        ? openMeds
+        : _snapshot.activeMediations.take(4).toList();
 
     return FounderGlassCard(
       key: const ValueKey<String>('ceo-active-mediations-card'),
@@ -3420,8 +3697,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(
-                    Icons.gavel_rounded,
+                  FounderPrecisionIcon(
+                    FounderIconGlyph.mediationBalance,
                     size: 18,
                     color: openMeds.isNotEmpty
                         ? FounderSovereignTokens.crimsonAlert
@@ -3520,9 +3797,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                         if (m.hasLinkedOrder)
                           const Padding(
                             padding: EdgeInsets.only(left: 4),
-                            child: Icon(
-                              Icons.chevron_right_rounded,
-                              size: 18,
+                            child: FounderPrecisionIcon(
+                              FounderIconGlyph.chevronRight,
+                              size: 15,
                               color: FounderSovereignTokens.mutedInk,
                             ),
                           ),
@@ -3642,7 +3919,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       const SizedBox(height: 12),
       AnimatedSlidingPillSwitch(
         labels: const <String>['Pedidos e Mapa', 'Bairros e Profissões'],
-        icons: const <IconData>[Icons.map_rounded, Icons.grid_view_rounded],
+        precisionIcons: const <FounderIconGlyph>[
+          FounderIconGlyph.radarPulse,
+          FounderIconGlyph.navOrders,
+        ],
         selectedIndex: _operationsSubView,
         onChanged: (idx) => setState(() => _operationsSubView = idx),
       ),
@@ -3658,6 +3938,9 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
           child: FounderLiveGeoRadarCard(
             points: _snapshot.liveMapPoints,
             privacyBlurActive: _privacyBlurActive,
+            externalStatusFilter: _ordersStatusFilter,
+            onStatusFilterChanged: (next) =>
+                setState(() => _ordersStatusFilter = next),
             onInspectOrder: (jobId, code) => _openOrderForensics(jobId, code),
           ),
         ),
@@ -3670,13 +3953,27 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  'Pedidos dos clientes (${filteredOrders.length})',
-                  style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                Row(
+                  children: <Widget>[
+                    const FounderPrecisionBadge(
+                      FounderIconGlyph.navOrders,
+                      boxSize: 34,
+                      iconSize: 16.5,
+                      tintColor: FounderSovereignTokens.imperialGoldBright,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Pedidos dos clientes (${filteredOrders.length})',
+                        style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
                   child: Row(
                     children: <Widget>[
                       _buildOrderFilterChip(
@@ -3698,34 +3995,38 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                 ),
                 const SizedBox(height: 12),
                 if (filteredOrders.isEmpty)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: FounderSovereignTokens.obsidianSurface,
-                      borderRadius: BorderRadius.circular(14),
-                      border:
-                          Border.all(color: FounderSovereignTokens.crispBorder),
-                    ),
-                    child: const Text(
-                      'Nenhum pedido nesta etapa no momento.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: FounderSovereignTokens.mutedInk,
-                        fontSize: 12.5,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Center(
+                      child: Text(
+                        'Nenhum pedido nesta etapa no momento.',
+                        textAlign: TextAlign.center,
+                        style: FounderSovereignTokens.subtitleStyle(
+                          fontSize: 12.5,
+                        ),
                       ),
                     ),
                   )
                 else
                   Column(
                     children: <Widget>[
-                      for (final o in filteredOrders.take(30))
+                      for (var i = 0;
+                          i < filteredOrders.length && i < 30;
+                          i++) ...<Widget>[
+                        if (i > 0)
+                          const Divider(
+                            height: 1,
+                            color: FounderSovereignTokens.crispBorder,
+                          ),
                         _ExecutiveOrderPipelineCard(
-                          order: o,
+                          order: filteredOrders[i],
                           privacyBlurActive: _privacyBlurActive,
-                          onTap: () =>
-                              _openOrderForensics(o.jobId, o.orderCode),
+                          onTap: () => _openOrderForensics(
+                            filteredOrders[i].jobId,
+                            filteredOrders[i].orderCode,
+                          ),
                         ),
+                      ],
                     ],
                   ),
               ],
@@ -3766,82 +4067,89 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                 ],
               ),
               const SizedBox(height: 10),
-              for (final c in displayedCats)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: FounderSovereignTokens.obsidianSurface,
-                    borderRadius: BorderRadius.circular(14),
-                    border:
-                        Border.all(color: FounderSovereignTokens.crispBorder),
+              for (var i = 0; i < displayedCats.length; i++) ...<Widget>[
+                if (i > 0)
+                  const Divider(
+                    height: 1,
+                    color: FounderSovereignTokens.crispBorder,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
+                Builder(
+                  builder: (context) {
+                    final c = displayedCats[i];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          CategoryBrandEmblem(
-                            categoryName: c.categoryName,
-                            size: 34,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text(
-                                  c.categoryName,
-                                  style: const TextStyle(
-                                    color: FounderSovereignTokens.primaryInk,
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                          Row(
+                            children: <Widget>[
+                              CategoryBrandEmblem(
+                                categoryName: c.categoryName,
+                                size: 34,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Text(
+                                      c.categoryName,
+                                      style: const TextStyle(
+                                        color: FounderSovereignTokens.primaryInk,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${c.demandCount} pedidos · ${c.activeProvidersCount} profissionais',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: c.isSupplyBottleneck
+                                            ? FounderSovereignTokens.warmAmber
+                                            : FounderSovereignTokens.mutedInk,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${c.demandCount} pedidos · ${c.activeProvidersCount} profissionais',
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: c.isSupplyBottleneck
-                                        ? FounderSovereignTokens.warmAmber
-                                        : FounderSovereignTokens.mutedInk,
-                                  ),
+                              ),
+                              AnimatedMoneyOdometer(
+                                cents: c.avgTicketCents,
+                                privacyBlurActive: _privacyBlurActive,
+                                style: FounderSovereignTokens.monoMetric(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: FounderSovereignTokens
+                                      .imperialGoldBright,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                          AnimatedMoneyOdometer(
-                            cents: c.avgTicketCents,
-                            privacyBlurActive: _privacyBlurActive,
-                            style: FounderSovereignTokens.monoMetric(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: FounderSovereignTokens.imperialGoldBright,
+                          if (c.demandCount > 0) ...<Widget>[
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                value: (c.demandCount / maxCatDemand)
+                                    .clamp(0.05, 1.0),
+                                minHeight: 4,
+                                backgroundColor:
+                                    FounderSovereignTokens.obsidianSurface,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  c.isSupplyBottleneck
+                                      ? FounderSovereignTokens.warmAmber
+                                      : FounderSovereignTokens
+                                          .imperialGoldBright,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
-                      if (c.demandCount > 0) ...<Widget>[
-                        const SizedBox(height: 8),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: LinearProgressIndicator(
-                            value:
-                                (c.demandCount / maxCatDemand).clamp(0.05, 1.0),
-                            minHeight: 4,
-                            backgroundColor: FounderSovereignTokens.obsidianCard,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              c.isSupplyBottleneck
-                                  ? FounderSovereignTokens.warmAmber
-                                  : FounderSovereignTokens.imperialGoldBright,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                    );
+                  },
                 ),
+              ],
             ],
           ),
         ),
@@ -3877,7 +4185,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   }
 
   // ===========================================================================
-  // ABA 3: PESSOAS (4 GRUPOS DEMOGRÁFICOS + DIRETÓRIO + AVALIAÇÕES + JORNADA)
+  // ABA 3: PESSOAS (PARTIÇÃO DEMOGRÁFICA + DIRETÓRIO + AVALIAÇÕES + JORNADA)
   // ===========================================================================
 
   List<Widget> _buildTab3People(Animation<double> anim) {
@@ -3927,15 +4235,30 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                       color: FounderSovereignTokens.solvencyEmeraldSoft,
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Text(
-                      d.partitionInvariantOk
-                          ? '✓ Contagem conferida'
-                          : 'Revisar cadastros',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: FounderSovereignTokens.solvencyEmerald,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const FounderPrecisionIcon(
+                          FounderIconGlyph.checkValid,
+                          size: 13,
+                          color: FounderSovereignTokens.solvencyEmerald,
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            d.partitionInvariantOk
+                                ? 'Contagem conferida'
+                                : 'Revisar cadastros',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: FounderSovereignTokens.solvencyEmerald,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -3952,7 +4275,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
                 child: SizedBox(
-                  height: 8,
+                  height: 7,
                   child: Row(
                     children: <Widget>[
                       Expanded(
@@ -4012,13 +4335,28 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                               .withValues(alpha: 0.40),
                         ),
                       ),
-                      child: Text(
-                        '✓ ${d.kycVerifiedCount} documentos aprovados',
-                        style: const TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: FounderSovereignTokens.solvencyEmerald,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const FounderPrecisionIcon(
+                            FounderIconGlyph.shieldVerified,
+                            size: 13.5,
+                            color: FounderSovereignTokens.solvencyEmerald,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '${d.kycVerifiedCount} documentos aprovados',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: FounderSovereignTokens.solvencyEmerald,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -4039,20 +4377,37 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(
                           color: d.kycPendingCount > 0
-                              ? FounderSovereignTokens.warmAmber
-                                  .withValues(alpha: 0.45)
-                              : FounderSovereignTokens.crispBorder,
+                                  ? FounderSovereignTokens.warmAmber
+                                      .withValues(alpha: 0.45)
+                                  : FounderSovereignTokens.crispBorder,
                         ),
                       ),
-                      child: Text(
-                        '⏳ ${d.kycPendingCount} aguardando análise ›',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: d.kycPendingCount > 0
-                              ? FounderSovereignTokens.warmAmber
-                              : FounderSovereignTokens.mutedInk,
-                        ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          FounderPrecisionIcon(
+                            FounderIconGlyph.clockSla,
+                            size: 13.5,
+                            color: d.kycPendingCount > 0
+                                ? FounderSovereignTokens.warmAmber
+                                : FounderSovereignTokens.mutedInk,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              '${d.kycPendingCount} aguardando análise ›',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: d.kycPendingCount > 0
+                                    ? FounderSovereignTokens.warmAmber
+                                    : FounderSovereignTokens.mutedInk,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -4092,9 +4447,21 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              'Avaliações dos atendimentos (${_snapshot.recentReviews.length})',
-              style: FounderSovereignTokens.titleStyle(fontSize: 16),
+            Row(
+              children: <Widget>[
+                const FounderPrecisionIcon(
+                  FounderIconGlyph.starRating,
+                  size: 17,
+                  color: FounderSovereignTokens.imperialGoldBright,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Avaliações dos atendimentos (${_snapshot.recentReviews.length})',
+                    style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 10),
             if (_snapshot.recentReviews.isEmpty)
@@ -4106,40 +4473,43 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                 ),
               )
             else
-              for (final rev in _snapshot.recentReviews.take(15))
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: FounderSovereignTokens.obsidianSurface,
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: FounderSovereignTokens.crispBorder),
+              for (var i = 0;
+                  i < _snapshot.recentReviews.length && i < 15;
+                  i++) ...<Widget>[
+                if (i > 0)
+                  const Divider(
+                    height: 16,
+                    color: FounderSovereignTokens.crispBorder,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'Nota ${rev.rating} ★ · ${rev.reviewerName} avaliou ${rev.revieweeName} (${rev.categoryName})',
-                        style: const TextStyle(
-                          color: FounderSovereignTokens.imperialGoldBright,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (rev.comment.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 4),
+                Builder(
+                  builder: (context) {
+                    final rev = _snapshot.recentReviews[i];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
                         Text(
-                          rev.comment,
+                          'Nota ${rev.rating} ★ · ${rev.reviewerName} avaliou ${rev.revieweeName} (${rev.categoryName})',
                           style: const TextStyle(
-                            color: FounderSovereignTokens.primaryInk,
+                            color: FounderSovereignTokens.imperialGoldBright,
                             fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
+                        if (rev.comment.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 4),
+                          Text(
+                            rev.comment,
+                            style: const TextStyle(
+                              color: FounderSovereignTokens.primaryInk,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    );
+                  },
                 ),
+              ],
           ],
         ),
       ),
@@ -4177,32 +4547,37 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   ),
                 )
               else
-                for (final st in _snapshot.realConversionFunnel)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            st.label,
-                            style: const TextStyle(
-                              color: FounderSovereignTokens.primaryInk,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${st.usersCount}',
-                          style: FounderSovereignTokens.monoMetric(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w800,
-                            color: FounderSovereignTokens.imperialGoldBright,
-                          ),
-                        ),
-                      ],
+                for (var i = 0;
+                    i < _snapshot.realConversionFunnel.length;
+                    i++) ...<Widget>[
+                  if (i > 0)
+                    const Divider(
+                      height: 12,
+                      color: FounderSovereignTokens.crispBorder,
                     ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          _snapshot.realConversionFunnel[i].label,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.primaryInk,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${_snapshot.realConversionFunnel[i].usersCount}',
+                        style: FounderSovereignTokens.monoMetric(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: FounderSovereignTokens.imperialGoldBright,
+                        ),
+                      ),
+                    ],
                   ),
+                ],
             ],
           ),
         ),
@@ -4230,7 +4605,6 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
         animation: anim,
         stageIndex: 0,
         child: FounderCeoProfileCard(
-          key: const ValueKey<String>('ceo-monocratic-passport-card'),
           repository: _repo,
           vaultMetadata: vm,
           onSignOutComplete: () async {
@@ -4252,87 +4626,90 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                'Proteção da tela e atualizações',
-                style: FounderSovereignTokens.titleStyle(fontSize: 16),
+              Row(
+                children: <Widget>[
+                  const FounderPrecisionBadge(
+                    FounderIconGlyph.screenCaptureShield,
+                    boxSize: 34,
+                    iconSize: 16.5,
+                    tintColor: FounderSovereignTokens.imperialGoldBright,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Proteção da tela e atualizações',
+                      style: FounderSovereignTokens.titleStyle(fontSize: 16),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: FounderSovereignTokens.obsidianSurface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: FounderSovereignTokens.crispBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Icon(
-                          _screenProtection.temporaryCaptureAllowed
-                              ? Icons.lock_open_rounded
-                              : Icons.screen_lock_portrait_rounded,
-                          size: 20,
-                          color: _screenProtection.temporaryCaptureAllowed
-                              ? FounderSovereignTokens.warmAmber
-                              : FounderSovereignTokens.solvencyEmerald,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _screenProtection.temporaryCaptureAllowed
-                                ? 'Prints liberados por ${_screenProtection.remainingCaptureSeconds}s'
-                                : 'Bloqueio contra prints e gravações ativo',
-                            style: const TextStyle(
-                              color: FounderSovereignTokens.primaryInk,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
+              Row(
+                children: <Widget>[
+                  FounderPrecisionIcon(
+                    _screenProtection.temporaryCaptureAllowed
+                        ? FounderIconGlyph.vaultOpen
+                        : FounderIconGlyph.shieldVerified,
+                    size: 18,
+                    color: _screenProtection.temporaryCaptureAllowed
+                        ? FounderSovereignTokens.warmAmber
+                        : FounderSovereignTokens.solvencyEmerald,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _screenProtection.temporaryCaptureAllowed
+                          ? 'Prints liberados por ${_screenProtection.remainingCaptureSeconds}s'
+                          : 'Bloqueio contra prints e gravações ativo',
+                      style: const TextStyle(
+                        color: FounderSovereignTokens.primaryInk,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 8,
-                      children: <Widget>[
-                        OutlinedButton.icon(
-                          key: const ValueKey<String>(
-                            'ceo-toggle-flag-secure-btn',
-                          ),
-                          onPressed: _toggleTemporaryScreenCapture,
-                          icon: Icon(
-                            _screenProtection.temporaryCaptureAllowed
-                                ? Icons.lock_rounded
-                                : Icons.screenshot_monitor_rounded,
-                            size: 16,
-                          ),
-                          label: Text(
-                            _screenProtection.temporaryCaptureAllowed
-                                ? 'Bloquear prints agora'
-                                : 'Permitir print por 5 min',
-                          ),
-                        ),
-                        FilledButton.tonalIcon(
-                          key: const ValueKey<String>(
-                            'ceo-manual-ota-check-btn',
-                          ),
-                          onPressed:
-                              _checkingOta ? null : _checkManualOtaUpdate,
-                          icon:
-                              const Icon(Icons.system_update_rounded, size: 16),
-                          label: Text(
-                            _checkingOta
-                                ? 'Procurando atualização…'
-                                : 'Atualizar direto no celular',
-                          ),
-                        ),
-                      ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: <Widget>[
+                  OutlinedButton.icon(
+                    key: const ValueKey<String>(
+                      'ceo-toggle-flag-secure-btn',
                     ),
-                  ],
-                ),
+                    onPressed: _toggleTemporaryScreenCapture,
+                    icon: FounderPrecisionIcon(
+                      _screenProtection.temporaryCaptureAllowed
+                          ? FounderIconGlyph.vaultLock
+                          : FounderIconGlyph.screenCaptureShield,
+                      size: 15.5,
+                      color: FounderSovereignTokens.imperialGoldBright,
+                    ),
+                    label: Text(
+                      _screenProtection.temporaryCaptureAllowed
+                          ? 'Bloquear prints agora'
+                          : 'Permitir print por 5 min',
+                    ),
+                  ),
+                  FilledButton.tonalIcon(
+                    key: const ValueKey<String>(
+                      'ceo-manual-ota-check-btn',
+                    ),
+                    onPressed: _checkingOta ? null : _checkManualOtaUpdate,
+                    icon: const FounderPrecisionIcon(
+                      FounderIconGlyph.otaDirectUpdate,
+                      size: 15.5,
+                      color: FounderSovereignTokens.imperialGoldBright,
+                    ),
+                    label: Text(
+                      _checkingOta
+                          ? 'Procurando atualização…'
+                          : 'Atualizar direto no celular',
+                    ),
+                  ),
+                ],
               ),
               if (_otaStatusMessage != null) ...<Widget>[
                 const SizedBox(height: 10),
@@ -4371,68 +4748,68 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   ),
                 )
               else
-                for (final dev in _snapshot.trustedDevices)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: FounderSovereignTokens.obsidianSurface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: dev.isCurrentDevice
-                            ? FounderSovereignTokens.solvencyEmerald
-                                .withValues(alpha: 0.45)
-                            : FounderSovereignTokens.crispBorder,
-                      ),
+                for (var i = 0; i < _snapshot.trustedDevices.length; i++) ...<Widget>[
+                  if (i > 0)
+                    const Divider(
+                      height: 1,
+                      color: FounderSovereignTokens.crispBorder,
                     ),
-                    child: Row(
-                      children: <Widget>[
-                        Icon(
-                          Icons.phone_android_rounded,
-                          size: 20,
-                          color: dev.isCurrentDevice
-                              ? FounderSovereignTokens.solvencyEmerald
-                              : FounderSovereignTokens.imperialGoldBright,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                '${dev.deviceLabel}${dev.isCurrentDevice ? " · Este aparelho" : ""}',
-                                style: const TextStyle(
-                                  color: FounderSovereignTokens.primaryInk,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                'Último acesso ${_formatHumanTimeBrt(dev.lastSeenAt)}',
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  color: FounderSovereignTokens.mutedInk,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (!dev.isCurrentDevice)
-                          TextButton(
-                            onPressed: () =>
-                                _repo.revokeTrustedDevice(dev.deviceId),
-                            child: const Text(
-                              'Desconectar',
-                              style: TextStyle(
-                                color: FounderSovereignTokens.warmAmber,
-                                fontWeight: FontWeight.w700,
+                  Builder(
+                    builder: (context) {
+                      final dev = _snapshot.trustedDevices[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Row(
+                          children: <Widget>[
+                            FounderPrecisionIcon(
+                              FounderIconGlyph.biometricId,
+                              size: 19,
+                              color: dev.isCurrentDevice
+                                  ? FounderSovereignTokens.solvencyEmerald
+                                  : FounderSovereignTokens.imperialGoldBright,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    '${dev.deviceLabel}${dev.isCurrentDevice ? " · Este aparelho" : ""}',
+                                    style: const TextStyle(
+                                      color: FounderSovereignTokens.primaryInk,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Último acesso ${_formatHumanTimeBrt(dev.lastSeenAt)}',
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: FounderSovereignTokens.mutedInk,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                      ],
-                    ),
+                            if (!dev.isCurrentDevice)
+                              TextButton(
+                                onPressed: () =>
+                                    _repo.revokeTrustedDevice(dev.deviceId),
+                                child: const Text(
+                                  'Desconectar',
+                                  style: TextStyle(
+                                    color: FounderSovereignTokens.warmAmber,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
+                ],
             ],
           ),
         ),
@@ -4452,19 +4829,19 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               text: 'Acesso exclusivo: somente seu e-mail entra neste app',
               ok: true,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             _SecurityCheckRow(
               text: sw.intrusionCanariesCount == 0
                   ? 'Nenhuma tentativa de acesso indevido detectada'
                   : '${sw.intrusionCanariesCount} tentativa(s) de outro e-mail bloqueada(s)',
               ok: sw.intrusionCanariesCount == 0,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             _SecurityCheckRow(
               text: 'Endereços de clientes e profissionais protegidos',
               ok: sw.geoPrivacyLeakBps == 0,
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             _SecurityCheckRow(
               text: sw.auditChainIntact
                   ? 'Histórico de acessos íntegro e protegido'
@@ -4512,65 +4889,127 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   ),
                 )
               else
-                for (final a in _snapshot.recentAuditLog.take(25))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: a.isIntrusionCanary
-                            ? FounderSovereignTokens.crimsonAlertSoft
-                            : FounderSovereignTokens.obsidianSurface,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: a.isIntrusionCanary
-                              ? FounderSovereignTokens.crimsonAlert
-                              : FounderSovereignTokens.crispBorder,
-                        ),
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          Icon(
-                            a.isIntrusionCanary
-                                ? Icons.gpp_bad_rounded
-                                : Icons.verified_user_rounded,
-                            size: 16,
-                            color: a.isIntrusionCanary
-                                ? FounderSovereignTokens.crimsonAlert
-                                : FounderSovereignTokens.solvencyEmerald,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _humanizeAuditEventCode(a.eventCode),
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                color: a.isIntrusionCanary
-                                    ? FounderSovereignTokens.crimsonAlert
-                                    : FounderSovereignTokens.primaryInk,
+                for (var i = 0;
+                    i < _snapshot.recentAuditLog.length && i < 25;
+                    i++) ...<Widget>[
+                  if (i > 0)
+                    const Divider(
+                      height: 1,
+                      color: FounderSovereignTokens.crispBorder,
+                    ),
+                  Builder(
+                    builder: (context) {
+                      final a = _snapshot.recentAuditLog[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        child: Row(
+                          children: <Widget>[
+                            FounderPrecisionIcon(
+                              a.isIntrusionCanary
+                                  ? FounderIconGlyph.duressEmergencyShield
+                                  : FounderIconGlyph.shieldVerified,
+                              size: 16,
+                              color: a.isIntrusionCanary
+                                  ? FounderSovereignTokens.crimsonAlert
+                                  : FounderSovereignTokens.solvencyEmerald,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _humanizeAuditEventCode(a.eventCode),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: a.isIntrusionCanary
+                                      ? FounderSovereignTokens.crimsonAlert
+                                      : FounderSovereignTokens.primaryInk,
+                                ),
                               ),
                             ),
-                          ),
-                          Text(
-                            _formatHumanTimeBrt(a.createdAt),
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: FounderSovereignTokens.mutedInk,
+                            Text(
+                              _formatHumanTimeBrt(a.createdAt),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: FounderSovereignTokens.mutedInk,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
+                ],
             ],
           ),
         ),
       ],
     ];
+  }
+}
+
+class _ExecutiveQuickActionPill extends StatelessWidget {
+  const _ExecutiveQuickActionPill({
+    required this.glyph,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final FounderIconGlyph glyph;
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: primary
+          ? FounderSovereignTokens.imperialGoldSoft
+          : FounderSovereignTokens.obsidianSurface,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7.5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: primary
+                  ? FounderSovereignTokens.imperialGold.withValues(alpha: 0.55)
+                  : FounderSovereignTokens.crispBorder,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              FounderPrecisionIcon(
+                glyph,
+                size: 14.5,
+                color: primary
+                    ? FounderSovereignTokens.imperialGoldBright
+                    : FounderSovereignTokens.secondaryInk,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: primary
+                        ? FounderSovereignTokens.imperialGoldBright
+                        : FounderSovereignTokens.secondaryInk,
+                    fontSize: 12,
+                    fontWeight: primary ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -4780,161 +5219,148 @@ class _ExecutiveOrderPipelineCard extends StatelessWidget {
     final profitCents =
         order.netMarginCents > 0 ? order.netMarginCents : order.platformFeeCents;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Material(
-        color: FounderSovereignTokens.obsidianSurface,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: FounderSovereignTokens.crispBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    CategoryBrandEmblem(
-                      categoryName: order.categoryName,
-                      size: 38,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 4,
-                            alignment: WrapAlignment.spaceBetween,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: <Widget>[
-                              Text(
-                                order.categoryName,
-                                style: const TextStyle(
-                                  color: FounderSovereignTokens.primaryInk,
-                                  fontSize: 14,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  CategoryBrandEmblem(
+                    categoryName: order.categoryName,
+                    size: 38,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: <Widget>[
+                            Text(
+                              order.categoryName,
+                              style: const TextStyle(
+                                color: FounderSovereignTokens.primaryInk,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2.5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: statusCol.withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                founderStatusLabelPt(order.status),
+                                style: TextStyle(
+                                  color: statusCol,
+                                  fontSize: 10.5,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: statusCol.withValues(alpha: 0.14),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  founderStatusLabelPt(order.status),
-                                  style: TextStyle(
-                                    color: statusCol,
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (order.title.isNotEmpty) ...<Widget>[
-                            const SizedBox(height: 3),
-                            Text(
-                              order.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: FounderSovereignTokens.secondaryInk,
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w500,
-                              ),
                             ),
                           ],
-                          const SizedBox(height: 4),
+                        ),
+                        if (order.title.isNotEmpty) ...<Widget>[
+                          const SizedBox(height: 3),
                           Text(
-                            '${order.neighborhood} · ${order.orderCode} · Cliente: ${order.clientName}',
+                            order.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: FounderSovereignTokens.mutedInk,
-                              fontSize: 11.5,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            order.providerName != null
-                                ? 'Profissional: ${order.providerName}'
-                                : 'Orçamentos recebidos: ${order.quotesCount}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: FounderSovereignTokens.mutedInk,
-                              fontSize: 11.5,
+                              color: FounderSovereignTokens.secondaryInk,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                const Divider(
-                  height: 1,
-                  color: FounderSovereignTokens.crispBorder,
-                ),
-                const SizedBox(height: 9),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: <Widget>[
-                    Text(
-                      privacyBlurActive
-                          ? 'Total pago: R\$ •••••'
-                          : 'Total pago: ${Money.formatBrl(order.gmvCents)}'
-                              '${order.materialsExemptCents > 0 ? " (${Money.formatBrl(order.materialsExemptCents)} em peças)" : ""}',
-                      style: const TextStyle(
-                        color: FounderSovereignTokens.secondaryInk,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Flexible(
-                          child: Text(
-                            privacyBlurActive
-                                ? 'Seu lucro: +R\$ •••'
-                                : 'Seu lucro: +${Money.formatBrl(profitCents)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: FounderSovereignTokens.monoMetric(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: FounderSovereignTokens.solvencyEmerald,
-                            ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${order.neighborhood} · ${order.orderCode} · Cliente: ${order.clientName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.mutedInk,
+                            fontSize: 11.5,
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          size: 16,
-                          color: FounderSovereignTokens.solvencyEmerald,
+                        const SizedBox(height: 2),
+                        Text(
+                          order.providerName != null
+                              ? 'Profissional: ${order.providerName}'
+                              : 'Orçamentos recebidos: ${order.quotesCount}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.mutedInk,
+                            fontSize: 11.5,
+                          ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  Text(
+                    privacyBlurActive
+                        ? 'Total pago: R\$ •••••'
+                        : 'Total pago: ${Money.formatBrl(order.gmvCents)}'
+                            '${order.materialsExemptCents > 0 ? " (${Money.formatBrl(order.materialsExemptCents)} em peças)" : ""}',
+                    style: const TextStyle(
+                      color: FounderSovereignTokens.secondaryInk,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Flexible(
+                        child: Text(
+                          privacyBlurActive
+                              ? 'Seu lucro: +R\$ •••'
+                              : 'Seu lucro: +${Money.formatBrl(profitCents)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: FounderSovereignTokens.monoMetric(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: FounderSovereignTokens.solvencyEmerald,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const FounderPrecisionIcon(
+                        FounderIconGlyph.chevronRight,
+                        size: 14,
+                        color: FounderSovereignTokens.solvencyEmerald,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
@@ -4948,7 +5374,7 @@ class _BentoSummaryTile extends StatelessWidget {
     required this.value,
     required this.subtitle,
     required this.accent,
-    required this.icon,
+    required this.glyph,
     required this.onTap,
   });
 
@@ -4956,7 +5382,7 @@ class _BentoSummaryTile extends StatelessWidget {
   final String value;
   final String subtitle;
   final Color accent;
-  final IconData icon;
+  final FounderIconGlyph glyph;
   final VoidCallback onTap;
 
   @override
@@ -4974,10 +5400,16 @@ class _BentoSummaryTile extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.14),
+                  color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, size: 16, color: accent),
+                alignment: Alignment.center,
+                child: FounderPrecisionIcon(
+                  glyph,
+                  size: 15,
+                  color: accent,
+                  accentColor: accent,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -5084,12 +5516,12 @@ class _ProgressiveDisclosureToggleCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(
+              FounderPrecisionIcon(
                 expanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
+                    ? FounderIconGlyph.chevronUp
+                    : FounderIconGlyph.chevronDown,
                 color: FounderSovereignTokens.imperialGoldBright,
-                size: 22,
+                size: 18,
               ),
             ],
           ),
@@ -5112,10 +5544,11 @@ class _SecurityCheckRow extends StatelessWidget {
         : FounderSovereignTokens.crimsonAlert;
     return Row(
       children: <Widget>[
-        Icon(
-          ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
-          size: 16,
+        FounderPrecisionIcon(
+          ok ? FounderIconGlyph.checkValid : FounderIconGlyph.warningTriangle,
+          size: 15.5,
           color: col,
+          accentColor: col,
         ),
         const SizedBox(width: 8),
         Expanded(

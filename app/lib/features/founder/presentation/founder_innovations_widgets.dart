@@ -9,8 +9,47 @@ import '../../../core/analytics/founder_dp_optimization_engine.dart';
 import '../../../core/utils/money.dart';
 import 'founder_animations_and_shaders.dart';
 
+class _InnovationCardHeader extends StatelessWidget {
+  const _InnovationCardHeader({
+    required this.glyph,
+    required this.title,
+    this.iconColor = FounderSovereignTokens.imperialGoldBright,
+    this.titleColor = FounderSovereignTokens.primaryInk,
+  });
+
+  final FounderIconGlyph glyph;
+  final String title;
+  final Color iconColor;
+  final Color titleColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        FounderPrecisionIcon(
+          glyph,
+          size: 18,
+          color: iconColor,
+          accentColor: iconColor,
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            title,
+            style: FounderSovereignTokens.titleStyle(
+              fontSize: 16,
+              color: titleColor,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ============================================================================
-// INNOVATION 1: BIVARIATE SUPPLY × DEMAND NEIGHBORHOOD HEATMAP & KNAPSACK BOOSTER
+// INNOVATION 1: BIVARIATE SUPPLY × DEMAND NEIGHBORHOOD HEATMAP & BOOSTER
 // ============================================================================
 
 class FounderNeighborhoodBivariateHeatmapWidget extends StatefulWidget {
@@ -63,6 +102,9 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
     );
   }
 
+  String _fmtBrl(int cents) =>
+      widget.privacyBlurActive ? 'R\$ •••••' : Money.formatBrl(cents);
+
   @override
   Widget build(BuildContext context) {
     final cells = widget.snapshot.neighborhoodHeatmap;
@@ -82,9 +124,10 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Bairros onde faltam profissionais',
-                style: FounderSovereignTokens.titleStyle(fontSize: 16),
+              const _InnovationCardHeader(
+                glyph: FounderIconGlyph.sparkBolt,
+                title: 'Bairros onde faltam profissionais',
+                iconColor: FounderSovereignTokens.imperialGoldBright,
               ),
               FilledButton.icon(
                 key: const ValueKey<String>('innovation-1-trigger-booster-btn'),
@@ -99,7 +142,12 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                icon: const Icon(Icons.bolt_rounded, size: 16),
+                icon: const FounderPrecisionIcon(
+                  FounderIconGlyph.sparkBolt,
+                  size: 15,
+                  color: Color(0xFF0B0E14),
+                  accentColor: Color(0xFF0B0E14),
+                ),
                 label: const Text(
                   'Simular incentivo nos bairros',
                   maxLines: 1,
@@ -154,9 +202,7 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                         : FounderSovereignTokens.obsidianSurface,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: isSelected
-                          ? col
-                          : col.withValues(alpha: 0.45),
+                      color: isSelected ? col : col.withValues(alpha: 0.45),
                       width: isSelected ? 1.6 : 1.0,
                     ),
                   ),
@@ -216,8 +262,8 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                     ),
                   ),
                   Text(
-                    'Incentivo sugerido: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(selected.suggestedBoosterCents)} '
-                    '· Retorno estimado: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(selected.expectedIncrementalNetCents)}',
+                    'Incentivo sugerido: ${_fmtBrl(selected.suggestedBoosterCents)} '
+                    '· Retorno estimado: ${_fmtBrl(selected.expectedIncrementalNetCents)}',
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 11,
                       color: FounderSovereignTokens.solvencyEmerald,
@@ -254,8 +300,8 @@ class _FounderNeighborhoodBivariateHeatmapWidgetState
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Investimento: ${Money.formatBrl(_activePlan!.totalCostCents)} · '
-                    'Lucro adicional estimado: ${Money.formatBrl(_activePlan!.totalExpectedNetProfitCents)} '
+                    'Investimento: ${_fmtBrl(_activePlan!.totalCostCents)} · '
+                    'Lucro adicional estimado: ${_fmtBrl(_activePlan!.totalExpectedNetProfitCents)} '
                     '(+${_activePlan!.totalExpectedNewOrders} pedidos)',
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 11.5,
@@ -295,6 +341,9 @@ class _FounderMicroPnlOrderInspectorWidgetState
     extends State<FounderMicroPnlOrderInspectorWidget> {
   int _selectedOrderIdx = 0;
 
+  String _fmtBrl(int cents) =>
+      widget.privacyBlurActive ? 'R\$ •••••' : Money.formatBrl(cents);
+
   @override
   Widget build(BuildContext context) {
     final list = widget.orders;
@@ -308,179 +357,415 @@ class _FounderMicroPnlOrderInspectorWidgetState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Ganho detalhado por pedido',
-            style: FounderSovereignTokens.titleStyle(fontSize: 16),
+          const _InnovationCardHeader(
+            glyph: FounderIconGlyph.moneySplitSankey,
+            title: 'Ganho detalhado por pedido',
+            iconColor: FounderSovereignTokens.cyberCyan,
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: List<Widget>.generate(list.length, (i) {
-              final o = list[i];
-              final isSelected = i == _selectedOrderIdx;
-              final isDuress = o.escrowStatus == 'FROZEN_UNDER_DURESS';
-              return InkWell(
-                key: ValueKey<String>('micro-pnl-row-${o.orderCode}'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _selectedOrderIdx = i);
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? FounderSovereignTokens.cyberCyanSoft
-                        : FounderSovereignTokens.obsidianSurface,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isDuress
-                          ? FounderSovereignTokens.crimsonAlert
-                          : (isSelected
-                              ? FounderSovereignTokens.cyberCyan
-                              : FounderSovereignTokens.crispBorder),
-                    ),
+          if (list.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: FounderSovereignTokens.crispBorder),
+              ),
+              child: Row(
+                children: <Widget>[
+                  const FounderPrecisionIcon(
+                    FounderIconGlyph.moneySplitSankey,
+                    size: 16,
+                    color: FounderSovereignTokens.mutedInk,
                   ),
-                  child: Text(
-                    '${o.orderCode} · ${o.categoryName}',
-                    style: FounderSovereignTokens.monoMetric(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: isDuress
-                          ? FounderSovereignTokens.crimsonAlert
-                          : FounderSovereignTokens.primaryInk,
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-          if (selected != null) ...<Widget>[
-            const SizedBox(height: 12),
-            FounderPrivacyBlurWrap(
-              privacyBlurActive: widget.privacyBlurActive,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: FounderSovereignTokens.obsidianSurface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: FounderSovereignTokens.crispBorder),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: <Widget>[
-                        FounderUltraHdImage(
-                          imageUrl: selected.evidencePhotoUrl ??
-                              selected.providerAvatarUrl,
-                          logicalWidth: 48,
-                          logicalHeight: 48,
-                          fallbackLabel: selected.orderCode,
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              '${selected.orderCode} · ${selected.categoryName} (${selected.neighborhood})',
-                              style: FounderSovereignTokens.monoMetric(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              selected.splitConservationOk
-                                  ? 'Divisão de valores 100% conferida'
-                                  : 'Atenção na conferência de valores',
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: selected.escrowStatus ==
-                                        'FROZEN_UNDER_DURESS'
-                                    ? FounderSovereignTokens.crimsonAlert
-                                    : FounderSovereignTokens.solvencyEmerald,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 6,
-                      children: <Widget>[
-                        _MicroChip(
-                          'Total pago',
-                          Money.formatBrl(selected.gmvCents),
-                          FounderSovereignTokens.imperialGoldBright,
-                        ),
-                        _MicroChip(
-                          'Mão de obra',
-                          Money.formatBrl(selected.laborCents),
-                          FounderSovereignTokens.primaryInk,
-                        ),
-                        _MicroChip(
-                          'Peças s/ taxa',
-                          Money.formatBrl(selected.materialsExemptCents),
-                          FounderSovereignTokens.cyberCyan,
-                        ),
-                        _MicroChip(
-                          '85% Profissional',
-                          Money.formatBrl(selected.providerNetCents),
-                          FounderSovereignTokens.royalIndigo,
-                        ),
-                        _MicroChip(
-                          '13,5% App',
-                          Money.formatBrl(selected.platformFeeCents),
-                          FounderSovereignTokens.imperialGold,
-                        ),
-                        _MicroChip(
-                          '1,5% Garantia',
-                          Money.formatBrl(selected.poolCarveoutCents),
-                          FounderSovereignTokens.warmAmber,
-                        ),
-                        _MicroChip(
-                          'Imposto 6%',
-                          Money.formatBrl(selected.taxDasCents),
-                          FounderSovereignTokens.warmAmber,
-                        ),
-                        _MicroChip(
-                          'Taxas PIX',
-                          Money.formatBrl(selected.pixCloudCostCents),
-                          FounderSovereignTokens.mutedInk,
-                        ),
-                        _MicroChip(
-                          'Seu lucro',
-                          Money.formatBrl(selected.netMarginCents),
-                          FounderSovereignTokens.solvencyEmerald,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Nota fiscal de peças: ${selected.nfeAccessKey ?? "Sem compra de peças (só mão de obra)"}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: FounderSovereignTokens.monoMetric(
-                        fontSize: 10.5,
-                        color: selected.hasValid44DigitNfeKey
-                            ? FounderSovereignTokens.solvencyEmerald
-                            : FounderSovereignTokens.mutedInk,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Assim que houver pedidos concluídos, o ganho detalhado por atendimento aparecerá aqui.',
+                      style: FounderSovereignTokens.subtitleStyle(
+                        fontSize: 12.5,
                       ),
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            )
+          else ...<Widget>[
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: List<Widget>.generate(list.length, (i) {
+                final o = list[i];
+                final isSelected = i == _selectedOrderIdx;
+                final isDuress = o.escrowStatus == 'FROZEN_UNDER_DURESS';
+                return InkWell(
+                  key: ValueKey<String>('micro-pnl-row-${o.orderCode}'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedOrderIdx = i);
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? FounderSovereignTokens.cyberCyanSoft
+                          : FounderSovereignTokens.obsidianSurface,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDuress
+                            ? FounderSovereignTokens.crimsonAlert
+                            : (isSelected
+                                ? FounderSovereignTokens.cyberCyan
+                                : FounderSovereignTokens.crispBorder),
+                      ),
+                    ),
+                    child: Text(
+                      '${o.orderCode} · ${o.categoryName}',
+                      style: FounderSovereignTokens.monoMetric(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: isDuress
+                            ? FounderSovereignTokens.crimsonAlert
+                            : FounderSovereignTokens.primaryInk,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            if (selected != null) ...<Widget>[
+              const SizedBox(height: 12),
+              FounderPrivacyBlurWrap(
+                privacyBlurActive: widget.privacyBlurActive,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: FounderSovereignTokens.obsidianSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: FounderSovereignTokens.crispBorder),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Row(
+                        children: <Widget>[
+                          FounderUltraHdImage(
+                            imageUrl: selected.evidencePhotoUrl ??
+                                selected.providerAvatarUrl,
+                            logicalWidth: 44,
+                            logicalHeight: 44,
+                            fallbackLabel: selected.orderCode,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  '${selected.orderCode} · ${selected.categoryName} (${selected.neighborhood})',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: FounderSovereignTokens.monoMetric(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  selected.splitConservationOk
+                                      ? 'Divisão de valores 100% conferida'
+                                      : 'Atenção na conferência de valores',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
+                                    color: selected.escrowStatus ==
+                                            'FROZEN_UNDER_DURESS'
+                                        ? FounderSovereignTokens.crimsonAlert
+                                        : FounderSovereignTokens.solvencyEmerald,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Faixa executiva limpa com os 3 indicadores principais
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: FounderSovereignTokens.obsidianCard,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: FounderSovereignTokens.crispBorder,
+                          ),
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final netColor = selected.netMarginCents < 0
+                                ? FounderSovereignTokens.crimsonAlert
+                                : FounderSovereignTokens.solvencyEmerald;
+                            if (constraints.maxWidth >= 340) {
+                              return Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: _ExecutiveKpiCell(
+                                      label: 'Total pago',
+                                      value: _fmtBrl(selected.gmvCents),
+                                      valueColor:
+                                          FounderSovereignTokens.primaryInk,
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 30,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    color: FounderSovereignTokens.crispBorder,
+                                  ),
+                                  Expanded(
+                                    child: _ExecutiveKpiCell(
+                                      label: 'Comissão 13,5%',
+                                      value: _fmtBrl(selected.platformFeeCents),
+                                      valueColor: FounderSovereignTokens
+                                          .imperialGoldBright,
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 1,
+                                    height: 30,
+                                    margin: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                    ),
+                                    color: FounderSovereignTokens.crispBorder,
+                                  ),
+                                  Expanded(
+                                    child: _ExecutiveKpiCell(
+                                      label: 'Seu lucro líquido',
+                                      value: _fmtBrl(selected.netMarginCents),
+                                      valueColor: netColor,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                _QuietBreakdownLine(
+                                  label: 'Total pago',
+                                  value: _fmtBrl(selected.gmvCents),
+                                  valueColor: FounderSovereignTokens.primaryInk,
+                                ),
+                                const Divider(
+                                  height: 12,
+                                  thickness: 1,
+                                  color: FounderSovereignTokens.crispBorder,
+                                ),
+                                _QuietBreakdownLine(
+                                  label: 'Comissão 13,5%',
+                                  value: _fmtBrl(selected.platformFeeCents),
+                                  valueColor:
+                                      FounderSovereignTokens.imperialGoldBright,
+                                ),
+                                const Divider(
+                                  height: 12,
+                                  thickness: 1,
+                                  color: FounderSovereignTokens.crispBorder,
+                                ),
+                                _QuietBreakdownLine(
+                                  label: 'Seu lucro líquido',
+                                  value: _fmtBrl(selected.netMarginCents),
+                                  valueColor: netColor,
+                                  emphasize: true,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      // Detalhamento silencioso com divisores finos
+                      _QuietBreakdownLine(
+                        label: 'Repasse ao profissional (85% mão de obra)',
+                        value: _fmtBrl(selected.providerNetCents),
+                      ),
+                      const Divider(
+                        height: 10,
+                        thickness: 1,
+                        color: FounderSovereignTokens.crispBorder,
+                      ),
+                      _QuietBreakdownLine(
+                        label: 'Peças reembolsadas (isento de comissão)',
+                        value: _fmtBrl(selected.materialsExemptCents),
+                      ),
+                      const Divider(
+                        height: 10,
+                        thickness: 1,
+                        color: FounderSovereignTokens.crispBorder,
+                      ),
+                      _QuietBreakdownLine(
+                        label: 'Reserva de garantia (1,5%)',
+                        value: _fmtBrl(selected.poolCarveoutCents),
+                      ),
+                      const Divider(
+                        height: 10,
+                        thickness: 1,
+                        color: FounderSovereignTokens.crispBorder,
+                      ),
+                      _QuietBreakdownLine(
+                        label: 'Imposto Simples Nacional (6%)',
+                        value: _fmtBrl(selected.taxDasCents),
+                      ),
+                      const Divider(
+                        height: 10,
+                        thickness: 1,
+                        color: FounderSovereignTokens.crispBorder,
+                      ),
+                      _QuietBreakdownLine(
+                        label: 'Processamento PIX e sistema',
+                        value: _fmtBrl(selected.pixCloudCostCents),
+                      ),
+                      const Divider(
+                        height: 12,
+                        thickness: 1,
+                        color: FounderSovereignTokens.crispBorder,
+                      ),
+                      Row(
+                        children: <Widget>[
+                          FounderPrecisionIcon(
+                            FounderIconGlyph.nfeBarcode,
+                            size: 14,
+                            color: selected.hasValid44DigitNfeKey
+                                ? FounderSovereignTokens.solvencyEmerald
+                                : FounderSovereignTokens.mutedInk,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Nota fiscal de peças: ${selected.nfeAccessKey ?? "Sem compra de peças (só mão de obra)"}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: FounderSovereignTokens.monoMetric(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: selected.hasValid44DigitNfeKey
+                                    ? FounderSovereignTokens.solvencyEmerald
+                                    : FounderSovereignTokens.mutedInk,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ],
       ),
+    );
+  }
+}
+
+class _ExecutiveKpiCell extends StatelessWidget {
+  const _ExecutiveKpiCell({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: FounderSovereignTokens.mutedInk,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: FounderSovereignTokens.monoMetric(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+            color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuietBreakdownLine extends StatelessWidget {
+  const _QuietBreakdownLine({
+    required this.label,
+    required this.value,
+    this.valueColor = FounderSovereignTokens.secondaryInk,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: emphasize ? FontWeight.w600 : FontWeight.w500,
+              color: emphasize
+                  ? FounderSovereignTokens.primaryInk
+                  : FounderSovereignTokens.mutedInk,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: FounderSovereignTokens.monoMetric(
+            fontSize: emphasize ? 12.5 : 11.5,
+            fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600,
+            color: valueColor,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -524,6 +809,9 @@ class _FounderMonteCarloSimulatorWidgetState
     }
   }
 
+  String _fmtBrl(int cents) =>
+      widget.privacyBlurActive ? 'R\$ •••••' : Money.formatBrl(cents);
+
   @override
   Widget build(BuildContext context) {
     return FounderGlassCard(
@@ -538,9 +826,10 @@ class _FounderMonteCarloSimulatorWidgetState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Simulador de crescimento futuro (12 meses)',
-                style: FounderSovereignTokens.titleStyle(fontSize: 16),
+              const _InnovationCardHeader(
+                glyph: FounderIconGlyph.monteCarloCone,
+                title: 'Simulador de crescimento futuro (12 meses)',
+                iconColor: FounderSovereignTokens.solvencyEmerald,
               ),
               _MicroChip(
                 'Chance de lucro',
@@ -563,8 +852,7 @@ class _FounderMonteCarloSimulatorWidgetState
           ),
           _buildSliderRow(
             sliderKey: const ValueKey<String>('mc-slider-cac'),
-            label:
-                'Custo para atrair 1 cliente: ${Money.formatBrl(_params.cacCents)}',
+            label: 'Custo para atrair 1 cliente: ${_fmtBrl(_params.cacCents)}',
             value: _params.cacCents.toDouble().clamp(1000, 7000),
             min: 1000,
             max: 7000,
@@ -599,9 +887,15 @@ class _FounderMonteCarloSimulatorWidgetState
           const SizedBox(height: 8),
           FounderPrivacyBlurWrap(
             privacyBlurActive: widget.privacyBlurActive,
-            child: SizedBox(
+            child: Container(
               width: double.infinity,
-              height: 140,
+              height: 144,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: FounderSovereignTokens.crispBorder),
+              ),
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: _MonteCarloFanChartPainter(result: _result),
@@ -609,32 +903,26 @@ class _FounderMonteCarloSimulatorWidgetState
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
-            runSpacing: 4,
+            runSpacing: 6,
             children: <Widget>[
               _MicroChip(
                 'Cenário cauteloso',
-                widget.privacyBlurActive
-                    ? 'R\$ •••••'
-                    : Money.formatBrl(_result.p10CashCents.last),
+                _fmtBrl(_result.p10CashCents.last),
                 _result.p10CashCents.last < 0
                     ? FounderSovereignTokens.crimsonAlert
                     : FounderSovereignTokens.warmAmber,
               ),
               _MicroChip(
                 'Cenário provável',
-                widget.privacyBlurActive
-                    ? 'R\$ •••••'
-                    : Money.formatBrl(_result.p50CashCents.last),
+                _fmtBrl(_result.p50CashCents.last),
                 FounderSovereignTokens.imperialGoldBright,
               ),
               _MicroChip(
                 'Cenário otimista',
-                widget.privacyBlurActive
-                    ? 'R\$ •••••'
-                    : Money.formatBrl(_result.p90CashCents.last),
+                _fmtBrl(_result.p90CashCents.last),
                 FounderSovereignTokens.solvencyEmerald,
               ),
               _MicroChip(
@@ -672,12 +960,24 @@ class _FounderMonteCarloSimulatorWidgetState
         ),
         SizedBox(
           height: 28,
-          child: Slider(
-            key: sliderKey,
-            value: value,
-            min: min,
-            max: max,
-            onChanged: onChanged,
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 3.0,
+              activeTrackColor: FounderSovereignTokens.imperialGold,
+              inactiveTrackColor: FounderSovereignTokens.obsidianRaised,
+              thumbColor: FounderSovereignTokens.imperialGoldBright,
+              overlayColor:
+                  FounderSovereignTokens.imperialGold.withValues(alpha: 0.14),
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.5),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 13.0),
+            ),
+            child: Slider(
+              key: sliderKey,
+              value: value,
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
           ),
         ),
       ],
@@ -702,17 +1002,38 @@ class _MonteCarloFanChartPainter extends CustomPainter {
       maxVal = math.max(maxVal, result.p90CashCents[i]);
     }
     final span = math.max(1, maxVal - minVal);
-    double xAt(int i) => 10 + (i / (n - 1)) * (size.width - 20);
+    double xAt(int i) => 12 + (i / (n - 1)) * (size.width - 24);
     double yAt(int v) =>
         10 + (size.height - 20) * (1.0 - ((v - minVal) / span).clamp(0.0, 1.0));
 
+    if (minVal <= 0 && maxVal >= 0) {
+      final zeroY = yAt(0);
+      final zeroPaint = Paint()
+        ..color = FounderSovereignTokens.imperialGold.withValues(alpha: 0.35)
+        ..strokeWidth = 1.0;
+      for (var x = 12.0; x < size.width - 12.0; x += 8.0) {
+        canvas.drawLine(
+          Offset(x, zeroY),
+          Offset(math.min(x + 4.0, size.width - 12.0), zeroY),
+          zeroPaint,
+        );
+      }
+    }
+
     final fanPath = Path();
+    final upperEdge = Path();
+    final lowerEdge = Path();
     for (var i = 0; i < n; i++) {
-      final pt = Offset(xAt(i), yAt(result.p90CashCents[i]));
+      final ptTop = Offset(xAt(i), yAt(result.p90CashCents[i]));
+      final ptBot = Offset(xAt(i), yAt(result.p10CashCents[i]));
       if (i == 0) {
-        fanPath.moveTo(pt.dx, pt.dy);
+        fanPath.moveTo(ptTop.dx, ptTop.dy);
+        upperEdge.moveTo(ptTop.dx, ptTop.dy);
+        lowerEdge.moveTo(ptBot.dx, ptBot.dy);
       } else {
-        fanPath.lineTo(pt.dx, pt.dy);
+        fanPath.lineTo(ptTop.dx, ptTop.dy);
+        upperEdge.lineTo(ptTop.dx, ptTop.dy);
+        lowerEdge.lineTo(ptBot.dx, ptBot.dy);
       }
     }
     for (var i = n - 1; i >= 0; i--) {
@@ -723,8 +1044,22 @@ class _MonteCarloFanChartPainter extends CustomPainter {
     canvas.drawPath(
       fanPath,
       Paint()
-        ..color = FounderSovereignTokens.cyberCyan.withValues(alpha: 0.20),
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            FounderSovereignTokens.solvencyEmerald.withValues(alpha: 0.22),
+            FounderSovereignTokens.cyberCyan.withValues(alpha: 0.10),
+          ],
+        ).createShader(Offset.zero & size),
     );
+
+    final edgePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0
+      ..color = FounderSovereignTokens.cyberCyan.withValues(alpha: 0.42);
+    canvas.drawPath(upperEdge, edgePaint);
+    canvas.drawPath(lowerEdge, edgePaint);
 
     final p50Path = Path();
     for (var i = 0; i < n; i++) {
@@ -735,19 +1070,32 @@ class _MonteCarloFanChartPainter extends CustomPainter {
         p50Path.lineTo(pt.dx, pt.dy);
       }
     }
+    final medianColor = result.p50CashCents.last < 0
+        ? FounderSovereignTokens.crimsonAlert
+        : FounderSovereignTokens.solvencyEmerald;
     canvas.drawPath(
       p50Path,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.4
-        ..color = FounderSovereignTokens.solvencyEmerald,
+        ..strokeCap = StrokeCap.round
+        ..color = medianColor,
+    );
+    canvas.drawCircle(
+      Offset(xAt(n - 1), yAt(result.p50CashCents.last)),
+      4.0,
+      Paint()..color = medianColor,
     );
   }
 
   @override
   bool shouldRepaint(covariant _MonteCarloFanChartPainter oldDelegate) {
     return oldDelegate.result.terminalMedianCashCents !=
-        result.terminalMedianCashCents;
+            result.terminalMedianCashCents ||
+        oldDelegate.result.breakEvenProbabilityBps !=
+            result.breakEvenProbabilityBps ||
+        oldDelegate.result.p10CashCents.last != result.p10CashCents.last ||
+        oldDelegate.result.p90CashCents.last != result.p90CashCents.last;
   }
 }
 
@@ -811,11 +1159,12 @@ class _FounderExecutiveCopilotWidgetState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Assistente Financeiro do CEO',
-            style: FounderSovereignTokens.titleStyle(fontSize: 16),
+          const _InnovationCardHeader(
+            glyph: FounderIconGlyph.copilotAiStar,
+            title: 'Assistente Financeiro do CEO',
+            iconColor: FounderSovereignTokens.imperialGoldBright,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 6,
             runSpacing: 6,
@@ -854,10 +1203,37 @@ class _FounderExecutiveCopilotWidgetState
                 child: TextField(
                   key: const ValueKey<String>('copilot-prompt-field'),
                   controller: _promptController,
-                  style: FounderSovereignTokens.monoMetric(fontSize: 12),
-                  decoration: const InputDecoration(
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    color: FounderSovereignTokens.primaryInk,
+                    height: 1.35,
+                  ),
+                  decoration: InputDecoration(
                     hintText: 'Pergunte sobre seu lucro, pedidos ou bairros…',
+                    hintStyle: const TextStyle(
+                      fontSize: 13,
+                      color: FounderSovereignTokens.mutedInk,
+                    ),
                     isDense: true,
+                    filled: true,
+                    fillColor: FounderSovereignTokens.obsidianSurface,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                        color: FounderSovereignTokens.crispBorder,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(
+                        color: FounderSovereignTokens.imperialGold,
+                      ),
+                    ),
                   ),
                   onSubmitted: _ask,
                 ),
@@ -866,9 +1242,12 @@ class _FounderExecutiveCopilotWidgetState
               IconButton(
                 key: const ValueKey<String>('copilot-ask-btn'),
                 onPressed: () => _ask(_promptController.text),
-                icon: const Icon(
-                  Icons.send_rounded,
+                tooltip: 'Enviar pergunta',
+                icon: const FounderPrecisionIcon(
+                  FounderIconGlyph.sendVector,
+                  size: 18,
                   color: FounderSovereignTokens.imperialGoldBright,
+                  accentColor: FounderSovereignTokens.imperialGoldBright,
                 ),
               ),
             ],
@@ -880,7 +1259,9 @@ class _FounderExecutiveCopilotWidgetState
             decoration: BoxDecoration(
               color: FounderSovereignTokens.obsidianSurface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: FounderSovereignTokens.cyberCyan),
+              border: Border.all(
+                color: FounderSovereignTokens.cyberCyan.withValues(alpha: 0.55),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -924,7 +1305,7 @@ class _FounderExecutiveCopilotWidgetState
 }
 
 // ============================================================================
-// INNOVATION 5: ANTI-BYPASS RADAR (WAGNER-FISCHER DP) & SEFAZ PHASE 2 MONITOR
+// INNOVATION 5: ANTI-BYPASS RADAR & SEFAZ PHASE 2 MONITOR
 // ============================================================================
 
 class FounderAntiBypassAndSefazRadarWidget extends StatefulWidget {
@@ -975,6 +1356,12 @@ class _FounderAntiBypassAndSefazRadarWidgetState
   @override
   Widget build(BuildContext context) {
     final s = widget.securityWatch;
+    final hasInput = _phraseController.text.trim().isNotEmpty;
+    final riskColor = _assessment.compositeRiskBps >= 5000
+        ? FounderSovereignTokens.crimsonAlert
+        : (_assessment.compositeRiskBps >= 2000
+            ? FounderSovereignTokens.warmAmber
+            : FounderSovereignTokens.solvencyEmerald);
 
     return FounderGlassCard(
       key: const ValueKey<String>('founder-innovation-5-antibypass-sefaz'),
@@ -984,11 +1371,14 @@ class _FounderAntiBypassAndSefazRadarWidgetState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Notas fiscais de peças e proteção contra desvios',
-            style: FounderSovereignTokens.titleStyle(fontSize: 16),
+          _InnovationCardHeader(
+            glyph: FounderIconGlyph.nfeBarcode,
+            title: 'Notas fiscais de peças e proteção contra desvios',
+            iconColor: s.intrusionCanariesCount > 0
+                ? FounderSovereignTokens.crimsonAlert
+                : FounderSovereignTokens.imperialGoldBright,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 6,
@@ -1022,63 +1412,88 @@ class _FounderAntiBypassAndSefazRadarWidgetState
             key: const ValueKey<String>('antibypass-test-field'),
             controller: _phraseController,
             style: const TextStyle(
-              fontSize: 12.5,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
               color: FounderSovereignTokens.primaryInk,
             ),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Testar frase contra troca de contato fora do app',
+              labelStyle: const TextStyle(
+                fontSize: 12.5,
+                color: FounderSovereignTokens.mutedInk,
+              ),
               isDense: true,
+              filled: true,
+              fillColor: FounderSovereignTokens.obsidianSurface,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: FounderSovereignTokens.crispBorder,
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: FounderSovereignTokens.imperialGold,
+                ),
+              ),
             ),
             onChanged: _runDetector,
           ),
           const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: FounderSovereignTokens.obsidianSurface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: _assessment.compositeRiskBps >= 5000
-                    ? FounderSovereignTokens.crimsonAlert
-                    : FounderSovereignTokens.solvencyEmerald,
+          if (!hasInput)
+            Text(
+              'Digite uma frase acima para verificar automaticamente tentativas de contato por fora do aplicativo.',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FounderSovereignTokens.subtitleStyle(fontSize: 11.5),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: riskColor.withValues(alpha: 0.65)),
               ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  '${_assessment.severity.labelPt} · Score Composto: ${_assessment.compositeRiskPct.toStringAsFixed(1)}%',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: _assessment.compositeRiskBps >= 5000
-                        ? FounderSovereignTokens.crimsonAlert
-                        : FounderSovereignTokens.solvencyEmerald,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Texto Desofuscado: "${_assessment.normalizedPreview}"',
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 10.5,
-                    color: FounderSovereignTokens.mutedInk,
-                  ),
-                ),
-                for (final flag in _assessment.reasonFlags)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Text(
-                      '• $flag',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: FounderSovereignTokens.primaryInk,
-                      ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    '${_assessment.severity.labelPt} · Risco identificado: ${_assessment.compositeRiskPct.toStringAsFixed(1).replaceAll(".", ",")}%',
+                    style: FounderSovereignTokens.monoMetric(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: riskColor,
                     ),
                   ),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    'Texto analisado: "${_assessment.normalizedPreview}"',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: FounderSovereignTokens.secondaryInk,
+                    ),
+                  ),
+                  for (final flag in _assessment.reasonFlags)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        '• $flag',
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: FounderSovereignTokens.primaryInk,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1086,7 +1501,7 @@ class _FounderAntiBypassAndSefazRadarWidgetState
 }
 
 // ============================================================================
-// INNOVATION 6: 1-CLICK MONTHLY ACCOUNTING-TAX PACK CPC 47 / IFRS 15 EXPORTER
+// INNOVATION 6: 1-CLICK MONTHLY ACCOUNTING-TAX PACK EXPORTER
 // ============================================================================
 
 class FounderAccountantPackExporterWidget extends StatefulWidget {
@@ -1147,13 +1562,14 @@ class _FounderAccountantPackExporterWidgetState
         children: <Widget>[
           Wrap(
             spacing: 8,
-            runSpacing: 6,
+            runSpacing: 8,
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Relatório para o Contador (PDF e Planilha)',
-                style: FounderSovereignTokens.titleStyle(fontSize: 16),
+              const _InnovationCardHeader(
+                glyph: FounderIconGlyph.accountingPackPdf,
+                title: 'Relatório para o Contador (PDF e Planilha)',
+                iconColor: FounderSovereignTokens.solvencyEmerald,
               ),
               FilledButton.icon(
                 key: const ValueKey<String>('export-cpc47-pack-btn'),
@@ -1163,16 +1579,19 @@ class _FounderAccountantPackExporterWidgetState
                   foregroundColor: const Color(0xFF0B0E14),
                   minimumSize: const Size(0, 38),
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
                 ),
-                icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
+                icon: const FounderPrecisionIcon(
+                  FounderIconGlyph.accountingPackPdf,
+                  size: 16,
+                  color: Color(0xFF0B0E14),
+                  accentColor: Color(0xFF0B0E14),
+                ),
                 label: Text(
-                  _generating
-                      ? 'Preparando documentos…'
-                      : 'Baixar fechamento do mês (PDF + Planilha)',
+                  _generating ? 'Preparando…' : 'Baixar fechamento',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
@@ -1241,10 +1660,12 @@ class FounderSilentDuressWarRoomWidget extends StatefulWidget {
   const FounderSilentDuressWarRoomWidget({
     super.key,
     required this.securityWatch,
+    this.privacyBlurActive = false,
     this.onExecuteStrategicAction,
   });
 
   final FounderSecurityAndSefazWatch securityWatch;
+  final bool privacyBlurActive;
   final Future<void> Function(String actionCode, Map<String, dynamic> payload)?
       onExecuteStrategicAction;
 
@@ -1302,14 +1723,15 @@ class _FounderSilentDuressWarRoomWidgetState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Alertas de emergência em atendimentos',
-                style: FounderSovereignTokens.titleStyle(
-                  fontSize: 16,
-                  color: activeIncident != null
-                      ? FounderSovereignTokens.crimsonAlert
-                      : FounderSovereignTokens.primaryInk,
-                ),
+              _InnovationCardHeader(
+                glyph: FounderIconGlyph.duressEmergencyShield,
+                title: 'Alertas de emergência em atendimentos',
+                iconColor: activeIncident != null
+                    ? FounderSovereignTokens.crimsonAlert
+                    : FounderSovereignTokens.solvencyEmerald,
+                titleColor: activeIncident != null
+                    ? FounderSovereignTokens.crimsonAlert
+                    : FounderSovereignTokens.primaryInk,
               ),
               if (activeIncident != null)
                 FilledButton.icon(
@@ -1323,12 +1745,18 @@ class _FounderSilentDuressWarRoomWidgetState
                     minimumSize: const Size(0, 36),
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
-                  icon: const Icon(Icons.shield_rounded, size: 16),
+                  icon: const FounderPrecisionIcon(
+                    FounderIconGlyph.duressEmergencyShield,
+                    size: 16,
+                    color: Color(0xFF0B0E14),
+                    accentColor: Color(0xFF0B0E14),
+                  ),
                   label: Text(
-                    _generating
-                        ? 'Preparando relatório…'
-                        : 'Gerar relatório de ocorrência',
+                    _generating ? 'Preparando…' : 'Gerar dossiê de ocorrência',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1375,7 +1803,7 @@ class _FounderSilentDuressWarRoomWidgetState
                 children: <Widget>[
                   Text(
                     'Incidente ${activeIncident.incidentId} · Ordem ${activeIncident.orderCode} · '
-                    'Retido: ${Money.formatBrl(activeIncident.frozenAmountCents)}',
+                    'Retido: ${widget.privacyBlurActive ? "R\$ •••••" : Money.formatBrl(activeIncident.frozenAmountCents)}',
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -1384,7 +1812,7 @@ class _FounderSilentDuressWarRoomWidgetState
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    'Tx Bloqueio: ${activeIncident.ledgerFreezeTxId} · Macrozona: ${activeIncident.coarseNeighborhood}',
+                    'Bloqueio preventivo: ${activeIncident.ledgerFreezeTxId} · Região: ${activeIncident.coarseNeighborhood}',
                     style: const TextStyle(
                       fontSize: 11,
                       color: FounderSovereignTokens.mutedInk,
@@ -1408,8 +1836,8 @@ class _FounderSilentDuressWarRoomWidgetState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    'Dossiê Pericial ${_dossier!.incidentId} Emitido (${_dossier!.pdfBytes.length} bytes) · '
-                    'Integridade: ${_dossier!.verifyIntegrity() ? "ÍNTEGRA" : "FALHA"}',
+                    'Relatório ${_dossier!.incidentId} pronto (${_dossier!.pdfBytes.length} bytes) · '
+                    '${_dossier!.verifyIntegrity() ? "Documento conferido" : "Verifique os dados"}',
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w800,
@@ -1418,7 +1846,7 @@ class _FounderSilentDuressWarRoomWidgetState
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Selo SHA-256: ${_dossier!.sha256SealHex}',
+                    'Código de verificação: ${_dossier!.sha256SealHex}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: FounderSovereignTokens.monoMetric(

@@ -40,8 +40,8 @@ class AppVersionAndUpdateService {
 
   final UpdateService? updateService;
 
-  static const String currentVersion = 'v2.17.0';
-  static const String currentBuild = 'Build 2026.11.16.1';
+  static const String currentVersion = 'v2.18.0';
+  static const String currentBuild = 'Build 2026.11.16.2';
   static const String fullVersionBadge = '$currentVersion • $currentBuild';
 
   static const String prefAcknowledgedVersionKey =

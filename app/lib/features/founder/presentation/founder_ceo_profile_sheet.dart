@@ -51,75 +51,78 @@ class FounderCeoProfileSheet extends StatelessWidget {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) {
-        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottomInset),
-          child: DraggableScrollableSheet(
-            initialChildSize: 0.82,
-            minChildSize: 0.55,
-            maxChildSize: 0.94,
-            expand: false,
-            builder: (_, scrollController) {
-              return Container(
-                decoration: const BoxDecoration(
-                  color: FounderSovereignTokens.obsidianBackground,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(24),
-                  ),
-                  border: Border(
-                    top: BorderSide(color: FounderSovereignTokens.crispBorder),
+        final mq = MediaQuery.of(ctx);
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: mq.size.height * 0.92),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: FounderSovereignTokens.obsidianBackground,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              border: Border(
+                top: BorderSide(color: FounderSovereignTokens.crispBorder),
+              ),
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                12,
+                16,
+                FounderSovereignTokens.modalBottomSafeSpace(
+                  ctx,
+                  extraWhenKeyboardClosed: 24,
+                ),
+              ),
+              children: <Widget>[
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: FounderSovereignTokens.crispBorder,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
                   ),
                 ),
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
+                const SizedBox(height: 12),
+                Row(
                   children: <Widget>[
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: FounderSovereignTokens.crispBorder,
-                          borderRadius: BorderRadius.circular(999),
+                    Expanded(
+                      child: Text(
+                        'Sua Conta de CEO',
+                        style: FounderSovereignTokens.titleStyle(
+                          fontSize: 18,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: Text(
-                            'Sua Conta de CEO',
-                            style: FounderSovereignTokens.titleStyle(
-                              fontSize: 18,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          tooltip: 'Fechar',
-                          onPressed: () => Navigator.of(ctx).pop(),
-                          icon: const Icon(
-                            Icons.close_rounded,
-                            color: FounderSovereignTokens.mutedInk,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    FounderCeoProfileCard(
-                      repository: repository,
-                      vaultMetadata: vaultMetadata,
-                      onSignOutComplete: () async {
-                        Navigator.of(ctx).pop();
-                        await onSignOutComplete();
-                      },
+                    IconButton(
+                      tooltip: 'Fechar',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const FounderPrecisionIcon(
+                        FounderIconGlyph.closeCross,
+                        size: 18,
+                        color: FounderSovereignTokens.mutedInk,
+                      ),
                     ),
                   ],
                 ),
-              );
-            },
+                const SizedBox(height: 8),
+                FounderCeoProfileCard(
+                  repository: repository,
+                  vaultMetadata: vaultMetadata,
+                  onSignOutComplete: () async {
+                    Navigator.of(ctx).pop();
+                    await onSignOutComplete();
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -136,7 +139,7 @@ class FounderCeoProfileSheet extends StatelessWidget {
   }
 }
 
-/// Cartão executivo de identidade do CEO + fluxo simples de troca de senha em 2 passos.
+/// Cartão executivo metálico escovado de identidade do CEO + troca de senha em 2 passos.
 class FounderCeoProfileCard extends StatefulWidget {
   const FounderCeoProfileCard({
     super.key,
@@ -307,6 +310,32 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
     }
   }
 
+  Widget _buildTitularBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 9,
+        vertical: 4,
+      ),
+      decoration: BoxDecoration(
+        color: FounderSovereignTokens.solvencyEmeraldSoft,
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: FounderSovereignTokens.solvencyEmerald.withValues(alpha: 0.42),
+        ),
+      ),
+      child: const Text(
+        'Titular Único',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: FounderSovereignTokens.solvencyEmerald,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = _profileStatus;
@@ -315,47 +344,48 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
           widget.vaultMetadata.pinRotatedAt ??
           widget.vaultMetadata.pinConfiguredAt,
     );
+    const passportKey = ValueKey<String>('ceo-monocratic-passport-card');
 
-    return FounderGlassCard(
-      key: const ValueKey<String>('ceo-monocratic-passport-card'),
-      borderColor: FounderSovereignTokens.imperialGold.withValues(alpha: 0.34),
+    return Container(
+      key: widget.key == passportKey ? null : passportKey,
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            Color(0xFF1C2330),
+            Color(0xFF131822),
+            Color(0xFF0E121A),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.28),
+        ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x42000000),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          // Cartão Metálico Escovado estilo Apple Card / Ultravioleta
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  Color(0xFF1F2633),
-                  Color(0xFF121720),
-                  Color(0xFF0C1017),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: FounderSovereignTokens.imperialGold.withValues(
-                  alpha: 0.36,
-                ),
-              ),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(
-                  color: Color(0x52000000),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final textScale = MediaQuery.textScalerOf(context).scale(10) / 10;
+              final compactHeader =
+                  constraints.maxWidth < 340 || textScale > 1.15;
+
+              if (compactHeader) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    const FounderSovereignCrest(size: 46),
+                    const FounderSovereignCrest(size: 40),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -363,10 +393,12 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                         children: <Widget>[
                           Text(
                             'DESPERRENGUE CEO',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: FounderSovereignTokens.eyebrowStyle(
-                              fontSize: 10.5,
+                              fontSize: 10,
                               color: FounderSovereignTokens.imperialGoldBright,
-                              letterSpacing: 1.1,
+                              letterSpacing: 1.0,
                             ),
                           ),
                           const SizedBox(height: 3),
@@ -374,85 +406,108 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                             'Wagner Oliveira',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style:
-                                FounderSovereignTokens.titleStyle(fontSize: 18),
+                            style: FounderSovereignTokens.titleStyle(
+                              fontSize: 17.5,
+                            ),
                           ),
+                          const SizedBox(height: 6),
+                          _buildTitularBadge(),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: FounderSovereignTokens.solvencyEmeraldSoft,
-                        borderRadius: BorderRadius.circular(99),
-                        border: Border.all(
-                          color: FounderSovereignTokens.solvencyEmerald
-                              .withValues(alpha: 0.45),
-                        ),
-                      ),
-                      child: const Text(
-                        'Titular Único',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: FounderSovereignTokens.solvencyEmerald,
-                        ),
-                      ),
-                    ),
                   ],
-                ),
-                const SizedBox(height: 14),
-                const Divider(
-                  height: 1,
-                  color: FounderSovereignTokens.crispBorder,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Fundador & CEO · Único acesso autorizado',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: FounderSovereignTokens.secondaryInk,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  kMonocraticCeoEmail,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: FounderSovereignTokens.monoMetric(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: FounderSovereignTokens.imperialGoldBright,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: <Widget>[
-                    const Icon(
-                      Icons.verified_user_outlined,
-                      size: 14,
-                      color: FounderSovereignTokens.mutedInk,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'Última atualização de senha: $updatedLabel',
-                        style: const TextStyle(
-                          color: FounderSovereignTokens.mutedInk,
-                          fontSize: 11.5,
+                );
+              }
+
+              return Row(
+                children: <Widget>[
+                  const FounderSovereignCrest(size: 44),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          'DESPERRENGUE CEO',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: FounderSovereignTokens.eyebrowStyle(
+                            fontSize: 10.5,
+                            color: FounderSovereignTokens.imperialGoldBright,
+                            letterSpacing: 1.1,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Wagner Oliveira',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: FounderSovereignTokens.titleStyle(
+                            fontSize: 18,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  const SizedBox(width: 8),
+                  _buildTitularBadge(),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          const Divider(
+            height: 1,
+            color: FounderSovereignTokens.crispBorder,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Fundador & CEO · Único acesso autorizado',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: FounderSovereignTokens.secondaryInk,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 3),
+          Text(
+            kMonocraticCeoEmail,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: FounderSovereignTokens.monoMetric(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: FounderSovereignTokens.imperialGoldBright,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              const FounderPrecisionIcon(
+                FounderIconGlyph.shieldVerified,
+                size: 14.5,
+                color: FounderSovereignTokens.solvencyEmerald,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Última atualização de senha: $updatedLabel',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: FounderSovereignTokens.mutedInk,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Divider(
+            height: 1,
+            color: FounderSovereignTokens.crispBorder,
+          ),
+          const SizedBox(height: 12),
           if (_errorMessage != null) ...<Widget>[
             Container(
               width: double.infinity,
@@ -462,8 +517,8 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                 color: FounderSovereignTokens.crimsonAlertSoft,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color:
-                      FounderSovereignTokens.crimsonAlert.withValues(alpha: 0.5),
+                  color: FounderSovereignTokens.crimsonAlert
+                      .withValues(alpha: 0.5),
                 ),
               ),
               child: Text(
@@ -478,10 +533,12 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
           ],
           if (_step == _ProfilePasswordChangeStep.idle) ...<Widget>[
             Text(
-              'Precisa trocar sua senha? Enviamos um código rápido de 6 números ao seu e-mail e, em seguida, o botão direto para definir a nova senha.',
-              style: FounderSovereignTokens.subtitleStyle(fontSize: 12.5),
+              'Confirmação rápida em 2 passos pelo seu e-mail exclusivo.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: FounderSovereignTokens.subtitleStyle(fontSize: 12),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Wrap(
               spacing: 10,
               runSpacing: 8,
@@ -493,7 +550,7 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                     backgroundColor: FounderSovereignTokens.imperialGold,
                     foregroundColor: const Color(0xFF0B0E14),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
+                      horizontal: 15,
                       vertical: 11,
                     ),
                     shape: RoundedRectangleBorder(
@@ -509,7 +566,13 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                             color: Color(0xFF0B0E14),
                           ),
                         )
-                      : const Icon(Icons.key_rounded, size: 17),
+                      : const FounderPrecisionIcon(
+                          FounderIconGlyph.masterKey,
+                          size: 16.5,
+                          color: Color(0xFF0B0E14),
+                          accentColor: Color(0xFF0B0E14),
+                          duotoneAlpha: 0.14,
+                        ),
                   label: const Text(
                     'Trocar minha senha',
                     style: TextStyle(
@@ -530,7 +593,12 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  icon: const Icon(Icons.logout_rounded, size: 16),
+                  icon: const FounderPrecisionIcon(
+                    FounderIconGlyph.signOutDoor,
+                    size: 16,
+                    color: FounderSovereignTokens.secondaryInk,
+                    accentColor: FounderSovereignTokens.mutedInk,
+                  ),
                   label: const Text('Sair da conta'),
                 ),
               ],
@@ -544,7 +612,7 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: FounderSovereignTokens.imperialGold
-                      .withValues(alpha: 0.4),
+                      .withValues(alpha: 0.36),
                 ),
               ),
               child: Column(
@@ -572,8 +640,8 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                             vertical: 4,
                           ),
                         ),
-                        icon: const Icon(
-                          Icons.content_paste_go_rounded,
+                        icon: const FounderPrecisionIcon(
+                          FounderIconGlyph.clipboardOtp,
                           size: 14,
                           color: FounderSovereignTokens.imperialGoldBright,
                         ),
@@ -709,10 +777,12 @@ class _FounderCeoProfileCardState extends State<FounderCeoProfileCard> {
                 children: <Widget>[
                   Row(
                     children: <Widget>[
-                      const Icon(
-                        Icons.mark_email_read_rounded,
-                        color: FounderSovereignTokens.solvencyEmerald,
+                      const FounderPrecisionIcon(
+                        FounderIconGlyph.mailDispatched,
                         size: 20,
+                        color: FounderSovereignTokens.solvencyEmerald,
+                        accentColor: FounderSovereignTokens.solvencyEmerald,
+                        isActive: true,
                       ),
                       const SizedBox(width: 8),
                       Expanded(

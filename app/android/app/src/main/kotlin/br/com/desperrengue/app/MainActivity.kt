@@ -334,9 +334,9 @@ class MainActivity : FlutterActivity() {
                     throw SecurityException("ERR_UNTRUSTED_REDIRECT_HOST")
                 }
                 val userAgent = if (isFounderCeoBuild) {
-                    "DesperrengueCEO-OTA/2.17"
+                    "DesperrengueCEO-OTA/2.18"
                 } else {
-                    "Desperrengue-OTA/2.17"
+                    "Desperrengue-OTA/2.18"
                 }
                 val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = false

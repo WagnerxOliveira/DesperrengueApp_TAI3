@@ -105,25 +105,29 @@ class _FounderAnimatedSplashScreenState
             return Stack(
               alignment: Alignment.center,
               children: <Widget>[
-                // Pré-aquecimento silencioso da fonte de ícones executivos
+                // Pré-aquecimento silencioso dos glifos vetoriais executivos
                 const Positioned(
                   left: 0,
                   top: 0,
-                  child: Opacity(
-                    opacity: 0.01,
-                    child: SizedBox(
-                      width: 6,
-                      height: 6,
-                      child: FittedBox(
-                        child: Row(
-                          children: <Widget>[
-                            Icon(Icons.bolt_rounded),
-                            Icon(Icons.account_balance_rounded),
-                            Icon(Icons.explore_rounded),
-                            Icon(Icons.groups_rounded),
-                            Icon(Icons.shield_rounded),
-                            Icon(Icons.lock_rounded),
-                          ],
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: 0.01,
+                      child: SizedBox(
+                        width: 6,
+                        height: 6,
+                        child: FittedBox(
+                          child: Row(
+                            children: <Widget>[
+                              FounderPrecisionIcon(FounderIconGlyph.navHome),
+                              FounderPrecisionIcon(FounderIconGlyph.navFinance),
+                              FounderPrecisionIcon(FounderIconGlyph.navOrders),
+                              FounderPrecisionIcon(FounderIconGlyph.navPeople),
+                              FounderPrecisionIcon(
+                                FounderIconGlyph.shieldVerified,
+                              ),
+                              FounderPrecisionIcon(FounderIconGlyph.vaultLock),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -562,7 +566,13 @@ class _FounderBootGateState extends State<FounderBootGate> {
                         width: double.infinity,
                         child: FilledButton.icon(
                           onPressed: _retryBoot,
-                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          icon: const FounderPrecisionIcon(
+                            FounderIconGlyph.refreshArc,
+                            size: 17,
+                            color: Color(0xFF0B0E13),
+                            accentColor: Color(0xFF0B0E13),
+                            duotoneAlpha: 0.14,
+                          ),
                           label: const Text('Reconectar ao Kernel Soberano'),
                         ),
                       ),

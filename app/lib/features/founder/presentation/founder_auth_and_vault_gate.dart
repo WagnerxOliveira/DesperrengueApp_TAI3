@@ -86,6 +86,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _otpFocusNode.addListener(_handleOtpFocusChanged);
     _infoBanner = widget.lockReasonBanner;
     _ensureCountdownTicker();
 
@@ -93,6 +94,12 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
       _stage = CeoSovereignAuthStage.stagePasswordResetFromDeepLink;
     } else {
       unawaited(_inspectInitialSovereignState());
+    }
+  }
+
+  void _handleOtpFocusChanged() {
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -128,6 +135,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     _wipePasswordBuffers(triggerRebuild: false);
     _emailController.clear();
     _otpController.clear();
+    _otpFocusNode.removeListener(_handleOtpFocusChanged);
     _otpFocusNode.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -660,6 +668,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 80;
+
     return Scaffold(
       key: const ValueKey<String>('founder-sovereign-auth-gate-scaffold'),
       backgroundColor: FounderSovereignTokens.obsidianBackground,
@@ -690,79 +700,100 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
             ),
           ),
           SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      _buildCleanBrandHero(),
-                      const SizedBox(height: 24),
-                      FounderGlassCard(
-                        padding: const EdgeInsets.all(22),
-                        showTopAccentBar: true,
-                        accentTopBarColor: FounderSovereignTokens.imperialGold,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            if (_infoBanner != null) ...<Widget>[
-                              _buildBanner(
-                                message: _infoBanner!,
-                                borderColor: FounderSovereignTokens
-                                    .solvencyEmerald
-                                    .withValues(alpha: 0.45),
-                                bgColor:
-                                    FounderSovereignTokens.solvencyEmeraldSoft,
-                                icon: Icons.check_circle_outline_rounded,
-                                iconColor:
-                                    FounderSovereignTokens.solvencyEmerald,
-                              ),
-                              const SizedBox(height: 14),
-                            ],
-                            if (_errorBanner != null) ...<Widget>[
-                              _buildBanner(
-                                message: _errorBanner!,
-                                borderColor: FounderSovereignTokens.crimsonAlert
-                                    .withValues(alpha: 0.55),
-                                bgColor:
-                                    FounderSovereignTokens.crimsonAlertSoft,
-                                icon: Icons.error_outline_rounded,
-                                iconColor: FounderSovereignTokens.crimsonAlert,
-                              ),
-                              const SizedBox(height: 14),
-                            ],
-                            if (_vaultLockRemainingSec > 0) ...<Widget>[
-                              _buildBanner(
-                                message:
-                                    'Por segurança, aguarde ${_vaultLockRemainingSec}s para tentar novamente.',
-                                borderColor: FounderSovereignTokens.warmAmber
-                                    .withValues(alpha: 0.5),
-                                bgColor: FounderSovereignTokens.warmAmber
-                                    .withValues(alpha: 0.12),
-                                icon: Icons.timer_outlined,
-                                iconColor: FounderSovereignTokens.warmAmber,
-                              ),
-                              const SizedBox(height: 14),
-                            ],
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 220),
-                              switchInCurve:
-                                  const Cubic(0.22, 1.0, 0.36, 1.0),
-                              child: KeyedSubtree(
-                                key: ValueKey<String>(_stage.name),
-                                child: _buildCurrentStageContent(),
-                              ),
+            bottom: false,
+            child: Builder(
+              builder: (scrollCtx) {
+                final bottomSafe = keyboardOpen
+                    ? 20.0
+                    : FounderSovereignTokens.modalBottomSafeSpace(
+                        scrollCtx,
+                        extraWhenKeyboardClosed: 24,
+                      );
+                return Center(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.fromLTRB(
+                      20,
+                      keyboardOpen ? 10 : 24,
+                      20,
+                      bottomSafe,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          _buildCleanBrandHero(compact: keyboardOpen),
+                          SizedBox(height: keyboardOpen ? 12 : 24),
+                          FounderGlassCard(
+                            padding: EdgeInsets.all(keyboardOpen ? 18 : 22),
+                            showTopAccentBar: true,
+                            accentTopBarColor:
+                                FounderSovereignTokens.imperialGold,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: <Widget>[
+                                if (_infoBanner != null) ...<Widget>[
+                                  _buildBanner(
+                                    message: _infoBanner!,
+                                    borderColor: FounderSovereignTokens
+                                        .solvencyEmerald
+                                        .withValues(alpha: 0.45),
+                                    bgColor: FounderSovereignTokens
+                                        .solvencyEmeraldSoft,
+                                    glyph: FounderIconGlyph.checkValid,
+                                    iconColor:
+                                        FounderSovereignTokens.solvencyEmerald,
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
+                                if (_errorBanner != null) ...<Widget>[
+                                  _buildBanner(
+                                    message: _errorBanner!,
+                                    borderColor: FounderSovereignTokens
+                                        .crimsonAlert
+                                        .withValues(alpha: 0.55),
+                                    bgColor:
+                                        FounderSovereignTokens.crimsonAlertSoft,
+                                    glyph: FounderIconGlyph.warningTriangle,
+                                    iconColor:
+                                        FounderSovereignTokens.crimsonAlert,
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
+                                if (_vaultLockRemainingSec > 0) ...<Widget>[
+                                  _buildBanner(
+                                    message:
+                                        'Por segurança, aguarde ${_vaultLockRemainingSec}s para tentar novamente.',
+                                    borderColor: FounderSovereignTokens
+                                        .warmAmber
+                                        .withValues(alpha: 0.5),
+                                    bgColor: FounderSovereignTokens.warmAmber
+                                        .withValues(alpha: 0.12),
+                                    glyph: FounderIconGlyph.clockSla,
+                                    iconColor: FounderSovereignTokens.warmAmber,
+                                  ),
+                                  const SizedBox(height: 14),
+                                ],
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 220),
+                                  switchInCurve:
+                                      const Cubic(0.22, 1.0, 0.36, 1.0),
+                                  child: KeyedSubtree(
+                                    key: ValueKey<String>(_stage.name),
+                                    child: _buildCurrentStageContent(),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
@@ -770,10 +801,31 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     );
   }
 
-  Widget _buildCleanBrandHero() {
+  Widget _buildCleanBrandHero({required bool compact}) {
+    if (compact) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const FounderSovereignCrest(size: 30),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              'Desperrengue CEO',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: FounderSovereignTokens.titleStyle(
+                fontSize: 17.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return Column(
       children: <Widget>[
-        const FounderSovereignCrest(size: 72),
+        const FounderSovereignCrest(size: 68),
         const SizedBox(height: 14),
         Text(
           'Desperrengue CEO',
@@ -800,7 +852,7 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
     required String message,
     required Color borderColor,
     required Color bgColor,
-    required IconData icon,
+    required FounderIconGlyph glyph,
     required Color iconColor,
   }) {
     return Container(
@@ -813,7 +865,15 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 18, color: iconColor),
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: FounderPrecisionIcon(
+              glyph,
+              size: 18,
+              color: iconColor,
+              accentColor: iconColor,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -1319,8 +1379,8 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
                       .withValues(alpha: 0.45),
                 ),
               ),
-              icon: const Icon(
-                Icons.content_paste_go_rounded,
+              icon: const FounderPrecisionIcon(
+                FounderIconGlyph.clipboardOtp,
                 size: 15,
                 color: FounderSovereignTokens.imperialGoldBright,
               ),
@@ -1347,51 +1407,79 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
           ),
         ],
         const SizedBox(height: 16),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _otpFocusNode.requestFocus(),
-          child: _SixDigitOpticalDisplay(digits: digits),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          key: const ValueKey<String>('ceo-otp-code-input'),
-          controller: _otpController,
-          focusNode: _otpFocusNode,
-          keyboardType: TextInputType.number,
-          autofillHints: const <String>[AutofillHints.oneTimeCode],
-          autocorrect: false,
-          enableSuggestions: false,
-          enableIMEPersonalizedLearning: false,
-          inputFormatters: const <TextInputFormatter>[
-            CeoSmartSixDigitOtpInputFormatter(),
-          ],
-          style: FounderSovereignTokens.monoMetric(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 4,
-            color: FounderSovereignTokens.primaryInk,
-          ),
-          decoration: InputDecoration(
-            labelText: 'Toque aqui para digitar ou colar os 6 números',
-            counterText: '',
-            isDense: true,
-            filled: true,
-            fillColor: FounderSovereignTokens.obsidianSurface,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+        Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            IgnorePointer(
+              child: _SixDigitOpticalDisplay(
+                digits: digits,
+                hasFocus: _otpFocusNode.hasFocus,
+              ),
             ),
-          ),
-          onChanged: (_) => setState(() {}),
-          onSubmitted: (_) {
-            if (!_busy &&
-                CeoSmartOtpExtractor.extractBestSixDigits(_otpController.text)
-                        .length ==
-                    6) {
-              onSubmit();
-            }
-          },
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.01,
+                child: TextField(
+                  key: const ValueKey<String>('ceo-otp-code-input'),
+                  controller: _otpController,
+                  focusNode: _otpFocusNode,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  autofillHints: const <String>[AutofillHints.oneTimeCode],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
+                  showCursor: false,
+                  enableInteractiveSelection: true,
+                  inputFormatters: const <TextInputFormatter>[
+                    CeoSmartSixDigitOtpInputFormatter(),
+                  ],
+                  style: const TextStyle(
+                    fontSize: 20,
+                    color: Colors.transparent,
+                    height: 1.0,
+                  ),
+                  cursorColor: Colors.transparent,
+                  decoration: const InputDecoration(
+                    counterText: '',
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 8,
+                    ),
+                  ),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) {
+                    if (!_busy &&
+                        CeoSmartOtpExtractor.extractBestSixDigits(
+                              _otpController.text,
+                            ).length ==
+                            6) {
+                      onSubmit();
+                    }
+                  },
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
+        Text(
+          digits.isEmpty
+              ? 'Toque nos 6 campos acima para digitar'
+              : '${digits.length} de 6 números preenchidos',
+          textAlign: TextAlign.center,
+          style: FounderSovereignTokens.subtitleStyle(
+            fontSize: 11.5,
+            color: digits.length == 6
+                ? FounderSovereignTokens.solvencyEmerald
+                : FounderSovereignTokens.mutedInk,
+          ),
+        ),
+        const SizedBox(height: 14),
         FilledButton(
           key: submitButtonKey,
           onPressed: (_busy || digits.length != 6) ? null : onSubmit,
@@ -1470,10 +1558,16 @@ class _FounderAuthAndVaultGateState extends State<FounderAuthAndVaultGate>
         labelText: 'Seu e-mail de acesso',
         hintText: 'Digite seu e-mail',
         counterText: '',
-        prefixIcon: const Icon(
-          Icons.mail_outline_rounded,
-          size: 19,
-          color: FounderSovereignTokens.mutedInk,
+        prefixIcon: const SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: FounderPrecisionIcon(
+              FounderIconGlyph.mailEnvelope,
+              size: 18.5,
+              color: FounderSovereignTokens.mutedInk,
+            ),
+          ),
         ),
         filled: true,
         fillColor: FounderSovereignTokens.obsidianSurface,
@@ -1554,20 +1648,28 @@ class _SovereignPasswordField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: labelText,
         counterText: '',
-        prefixIcon: const Icon(
-          Icons.lock_outline_rounded,
-          size: 19,
-          color: FounderSovereignTokens.mutedInk,
+        prefixIcon: const SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: FounderPrecisionIcon(
+              FounderIconGlyph.vaultLock,
+              size: 18.5,
+              color: FounderSovereignTokens.mutedInk,
+            ),
+          ),
         ),
         suffixIcon: IconButton(
           tooltip: obscureText ? 'Mostrar senha' : 'Esconder senha',
           onPressed: onToggleObscure,
-          icon: Icon(
+          icon: FounderPrecisionIcon(
             obscureText
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
-            size: 19,
-            color: FounderSovereignTokens.mutedInk,
+                ? FounderIconGlyph.eyeClosed
+                : FounderIconGlyph.eyeOpen,
+            size: 18.5,
+            color: obscureText
+                ? FounderSovereignTokens.mutedInk
+                : FounderSovereignTokens.imperialGoldBright,
           ),
         ),
         filled: true,
@@ -1650,14 +1752,18 @@ class _RuleRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: <Widget>[
-          Icon(
+          FounderPrecisionIcon(
             satisfied
-                ? Icons.check_circle_rounded
-                : Icons.radio_button_unchecked_rounded,
+                ? FounderIconGlyph.checkValid
+                : FounderIconGlyph.ringPending,
             size: 16,
             color: satisfied
                 ? FounderSovereignTokens.solvencyEmerald
                 : FounderSovereignTokens.mutedInk,
+            accentColor: satisfied
+                ? FounderSovereignTokens.solvencyEmerald
+                : FounderSovereignTokens.mutedInk,
+            isActive: satisfied,
           ),
           const SizedBox(width: 9),
           Expanded(
@@ -1679,60 +1785,75 @@ class _RuleRow extends StatelessWidget {
 }
 
 class _SixDigitOpticalDisplay extends StatelessWidget {
-  const _SixDigitOpticalDisplay({required this.digits});
+  const _SixDigitOpticalDisplay({
+    required this.digits,
+    this.hasFocus = false,
+  });
 
   final String digits;
+  final bool hasFocus;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: List<Widget>.generate(6, (index) {
-        final filled = index < digits.length;
-        final active = index == digits.length;
-        final char = filled ? digits[index] : '';
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(left: index == 0 ? 0 : 7),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 170),
-              height: 58,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: filled
-                    ? FounderSovereignTokens.obsidianRaised
-                    : FounderSovereignTokens.obsidianSurface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  width: active ? 1.8 : 1.1,
-                  color: filled
-                      ? FounderSovereignTokens.solvencyEmerald
-                      : active
-                          ? FounderSovereignTokens.imperialGoldBright
-                          : FounderSovereignTokens.crispBorder,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const gap = 7.0;
+        final availW = (constraints.maxWidth - gap * 5).clamp(150.0, 600.0);
+        final cellW = availW / 6.0;
+        final cellH = (cellW * 1.25).clamp(46.0, 56.0);
+        final fontSize = (cellH * 0.41).clamp(19.0, 23.0);
+
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: List<Widget>.generate(6, (index) {
+            final filled = index < digits.length;
+            final active = index == digits.length ||
+                (hasFocus && digits.length == 6 && index == 5);
+            final char = filled ? digits[index] : '';
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: index == 0 ? 0 : gap),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 170),
+                  height: cellH,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: filled
+                        ? FounderSovereignTokens.obsidianRaised
+                        : FounderSovereignTokens.obsidianSurface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      width: active ? 1.8 : 1.1,
+                      color: filled
+                          ? FounderSovereignTokens.solvencyEmerald
+                          : active
+                              ? FounderSovereignTokens.imperialGoldBright
+                              : FounderSovereignTokens.crispBorder,
+                    ),
+                    boxShadow: active
+                        ? <BoxShadow>[
+                            BoxShadow(
+                              color: FounderSovereignTokens.imperialGold
+                                  .withValues(alpha: hasFocus ? 0.28 : 0.16),
+                              blurRadius: 12,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Text(
+                    char,
+                    style: FounderSovereignTokens.monoMetric(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.w800,
+                      color: FounderSovereignTokens.primaryInk,
+                    ),
+                  ),
                 ),
-                boxShadow: active
-                    ? <BoxShadow>[
-                        BoxShadow(
-                          color: FounderSovereignTokens.imperialGold
-                              .withValues(alpha: 0.22),
-                          blurRadius: 12,
-                        ),
-                      ]
-                    : null,
               ),
-              child: Text(
-                char,
-                style: FounderSovereignTokens.monoMetric(
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                  color: FounderSovereignTokens.primaryInk,
-                ),
-              ),
-            ),
-          ),
+            );
+          }),
         );
-      }),
+      },
     );
   }
 }

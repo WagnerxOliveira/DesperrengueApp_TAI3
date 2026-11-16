@@ -14,15 +14,16 @@ void _paintCanvasLabel(
   Offset position, {
   required TextStyle style,
   double maxWidth = 160,
-  TextAlign textAlign = TextAlign.left,
-   bool centerHorizontally = false,
+  int maxLines = 1,
+  TextAlign textAlign = TextAlign.center,
+  bool centerHorizontally = false,
   bool centerVertically = false,
 }) {
   final tp = TextPainter(
     text: TextSpan(text: text, style: style),
     textDirection: TextDirection.ltr,
     textAlign: textAlign,
-    maxLines: 1,
+    maxLines: maxLines,
     ellipsis: '…',
   )..layout(maxWidth: math.max(16, maxWidth));
 
@@ -31,8 +32,42 @@ void _paintCanvasLabel(
   tp.paint(canvas, Offset(dx, dy));
 }
 
+class _ChartTitleWithIcon extends StatelessWidget {
+  const _ChartTitleWithIcon({
+    required this.glyph,
+    required this.title,
+    this.iconColor = FounderSovereignTokens.imperialGoldBright,
+  });
+
+  final FounderIconGlyph glyph;
+  final String title;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        FounderPrecisionIcon(
+          glyph,
+          size: 17,
+          color: iconColor,
+          accentColor: iconColor,
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            title,
+            style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ============================================================================
-// CHART 1: SANKEY DIAGRAM (SMART SPLIT MONEY FLOW — CPC 47 / IFRS 15)
+// CHART 1: SANKEY DIAGRAM (SMART SPLIT MONEY FLOW)
 // ============================================================================
 
 class FounderSankeyMoneyFlowChart extends StatefulWidget {
@@ -105,7 +140,9 @@ class _FounderSankeyMoneyFlowChartState
       (
         label: 'Seu Lucro Líquido',
         cents: d.netProfitEbitdaCents,
-        color: FounderSovereignTokens.solvencyEmerald,
+        color: d.netProfitEbitdaCents < 0
+            ? FounderSovereignTokens.crimsonAlert
+            : FounderSovereignTokens.solvencyEmerald,
         detail: 'O que sobra livre no caixa da empresa após impostos e gastos',
       ),
     ];
@@ -118,10 +155,30 @@ class _FounderSankeyMoneyFlowChartState
     if (localPos.dx < colWidth) {
       picked = 0;
     } else if (localPos.dx < colWidth * 2) {
-      final band = ((localPos.dy / math.max(1, size.height)) * 4).floor().clamp(0, 3);
+      final weights0 = FounderSankeyMoneyFlowPainter.computeStage0Weights(widget.dre);
+      final relY = (localPos.dy / math.max(1, size.height)).clamp(0.0, 0.9999);
+      var accum = 0.0;
+      var band = 3;
+      for (var i = 0; i < weights0.length; i++) {
+        accum += weights0[i];
+        if (relY <= accum) {
+          band = i;
+          break;
+        }
+      }
       picked = 1 + band;
     } else {
-      final band = ((localPos.dy / math.max(1, size.height)) * 3).floor().clamp(0, 2);
+      final weights1 = FounderSankeyMoneyFlowPainter.computeStage1Weights(widget.dre);
+      final relY = (localPos.dy / math.max(1, size.height)).clamp(0.0, 0.9999);
+      var accum = 0.0;
+      var band = 2;
+      for (var j = 0; j < weights1.length; j++) {
+        accum += weights1[j];
+        if (relY <= accum) {
+          band = j;
+          break;
+        }
+      }
       picked = 5 + band;
     }
     if (picked < nodes.length && picked != _selectedNodeIndex) {
@@ -147,9 +204,10 @@ class _FounderSankeyMoneyFlowChartState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Divisão automática do dinheiro',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.moneySplitSankey,
+                title: 'Divisão automática do dinheiro',
+                iconColor: FounderSovereignTokens.imperialGoldBright,
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -190,7 +248,7 @@ class _FounderSankeyMoneyFlowChartState
                           animation: widget.animation,
                           builder: (context, _) {
                             return CustomPaint(
-                              painter: FounderSankeyPainter(
+                              painter: FounderSankeyMoneyFlowPainter(
                                 dre: widget.dre,
                                 progress: widget.animation.value.clamp(0.0, 1.0),
                                 selectedNodeIndex: _selectedNodeIndex,
@@ -259,8 +317,10 @@ class _FounderSankeyMoneyFlowChartState
   }
 }
 
-class FounderSankeyPainter extends CustomPainter {
-  const FounderSankeyPainter({
+typedef FounderSankeyPainter = FounderSankeyMoneyFlowPainter;
+
+class FounderSankeyMoneyFlowPainter extends CustomPainter {
+  const FounderSankeyMoneyFlowPainter({
     required this.dre,
     required this.progress,
     required this.selectedNodeIndex,
@@ -269,6 +329,88 @@ class FounderSankeyPainter extends CustomPainter {
   final FounderDreCents dre;
   final double progress;
   final int selectedNodeIndex;
+
+  static List<double> _proportionalWeightsWithFloor(
+    List<int> centsList, {
+    required List<double> fallback,
+    double minFloor = 0.12,
+  }) {
+    final n = centsList.length;
+    if (n == 0) return const <double>[];
+    final sanitized =
+        centsList.map((c) => math.max(0, c).toDouble()).toList(growable: false);
+    final total = sanitized.fold<double>(0.0, (acc, v) => acc + v);
+    if (total <= 0) return fallback;
+
+    final floor = math.min(minFloor, 1.0 / n);
+    final weights = List<double>.filled(n, 0.0);
+    final locked = List<bool>.filled(n, false);
+    var remainingShare = 1.0;
+    var remainingRaw = total;
+
+    while (true) {
+      var clampedAny = false;
+      if (remainingRaw <= 0) {
+        final unlocked = locked.where((flag) => !flag).length;
+        if (unlocked > 0) {
+          final equalShare = remainingShare / unlocked;
+          for (var i = 0; i < n; i++) {
+            if (!locked[i]) weights[i] = equalShare;
+          }
+        }
+        break;
+      }
+      for (var i = 0; i < n; i++) {
+        if (locked[i]) continue;
+        final share = remainingShare * (sanitized[i] / remainingRaw);
+        if (share < floor) {
+          weights[i] = floor;
+          locked[i] = true;
+          remainingShare = math.max(0.0, remainingShare - floor);
+          remainingRaw = math.max(0.0, remainingRaw - sanitized[i]);
+          clampedAny = true;
+        }
+      }
+      if (!clampedAny) {
+        for (var i = 0; i < n; i++) {
+          if (!locked[i]) {
+            weights[i] = remainingShare * (sanitized[i] / remainingRaw);
+          }
+        }
+        break;
+      }
+    }
+    return weights;
+  }
+
+  static List<double> computeStage0Weights(FounderDreCents dre) {
+    const fallback = <double>[0.42, 0.22, 0.24, 0.12];
+    if (dre.gmvTotalCents <= 0) return fallback;
+    return _proportionalWeightsWithFloor(
+      <int>[
+        dre.providerNetLaborCents,
+        dre.materialsExemptCents,
+        dre.platformGrossRevenueCents,
+        dre.warrantyPoolCarveoutCents,
+      ],
+      fallback: fallback,
+      minFloor: 0.12,
+    );
+  }
+
+  static List<double> computeStage1Weights(FounderDreCents dre) {
+    const fallback = <double>[0.22, 0.16, 0.62];
+    if (dre.gmvTotalCents <= 0) return fallback;
+    return _proportionalWeightsWithFloor(
+      <int>[
+        dre.simplesNacionalTaxCents,
+        dre.variablePspAndCloudCents,
+        math.max(0, dre.netProfitEbitdaCents),
+      ],
+      fallback: fallback,
+      minFloor: 0.12,
+    );
+  }
 
   void _drawCubicRibbon(
     Canvas canvas, {
@@ -306,66 +448,93 @@ class FounderSankeyPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = progress.clamp(0.05, 1.0);
-    final leftX = 12.0;
-    final midX = size.width * 0.46;
-    final rightX = size.width - 20.0;
+    const leftX = 12.0;
+    final midX = size.width * 0.44;
+    final rightX = size.width - 18.0;
     const nodeW = 10.0;
 
-    final gmvTop = 24.0;
-    final gmvBottom = size.height - 24.0;
+    const gmvTop = 22.0;
+    final gmvBottom = size.height - 22.0;
     final gmvH = (gmvBottom - gmvTop) * p;
 
-    final midTargets = <({String name, int cents, Color color, Rect rect})>[
+    final weights0 = computeStage0Weights(dre);
+    final weights1 = computeStage1Weights(dre);
+
+    const midGap = 10.0;
+    final midAvailH = math.max(64.0, size.height - 28.0 - midGap * 3);
+    final midSpecs = <({String name, int cents, Color color})>[
       (
         name: '85% Prof.',
         cents: dre.providerNetLaborCents,
         color: FounderSovereignTokens.royalIndigo,
-        rect: Rect.fromLTWH(midX, 14, nodeW, 44 * p),
       ),
       (
         name: '100% Peças',
         cents: dre.materialsExemptCents,
         color: FounderSovereignTokens.cyberCyan,
-        rect: Rect.fromLTWH(midX, 68, nodeW, 34 * p),
       ),
       (
         name: '13,5% App',
         cents: dre.platformGrossRevenueCents,
         color: FounderSovereignTokens.imperialGold,
-        rect: Rect.fromLTWH(midX, 112, nodeW, 44 * p),
       ),
       (
         name: '1,5% Gar.',
         cents: dre.warrantyPoolCarveoutCents,
         color: FounderSovereignTokens.warmAmber,
-        rect: Rect.fromLTWH(midX, 166, nodeW, 26 * p),
       ),
     ];
 
-    final rightTargets = <({String name, int cents, Color color, Rect rect})>[
+    final midTargets = <({String name, int cents, Color color, Rect rect})>[];
+    var midY = 14.0;
+    for (var i = 0; i < midSpecs.length; i++) {
+      final fullH = midAvailH * weights0[i];
+      midTargets.add((
+        name: midSpecs[i].name,
+        cents: midSpecs[i].cents,
+        color: midSpecs[i].color,
+        rect: Rect.fromLTWH(midX, midY, nodeW, fullH * p),
+      ));
+      midY += fullH + midGap;
+    }
+
+    const rightGap = 14.0;
+    final rightAvailH = math.max(54.0, size.height - 44.0 - rightGap * 2);
+    final rightSpecs = <({String name, int cents, Color color})>[
       (
         name: 'Imp. 6%',
         cents: dre.simplesNacionalTaxCents,
         color: FounderSovereignTokens.warmAmber,
-        rect: Rect.fromLTWH(rightX, 26, nodeW, 32 * p),
       ),
       (
         name: 'Taxas PIX',
         cents: dre.variablePspAndCloudCents,
         color: FounderSovereignTokens.mutedInk,
-        rect: Rect.fromLTWH(rightX, 78, nodeW, 28 * p),
       ),
       (
         name: 'Lucro',
         cents: dre.netProfitEbitdaCents,
-        color: FounderSovereignTokens.solvencyEmerald,
-        rect: Rect.fromLTWH(rightX, 126, nodeW, 56 * p),
+        color: dre.netProfitEbitdaCents < 0
+            ? FounderSovereignTokens.crimsonAlert
+            : FounderSovereignTokens.solvencyEmerald,
       ),
     ];
 
+    final rightTargets = <({String name, int cents, Color color, Rect rect})>[];
+    var rightY = 22.0;
+    for (var j = 0; j < rightSpecs.length; j++) {
+      final fullH = rightAvailH * weights1[j];
+      rightTargets.add((
+        name: rightSpecs[j].name,
+        cents: rightSpecs[j].cents,
+        color: rightSpecs[j].color,
+        rect: Rect.fromLTWH(rightX, rightY, nodeW, fullH * p),
+      ));
+      rightY += fullH + rightGap;
+    }
+
     // Ribbons Stage 0 -> Stage 1
     var cursorY = gmvTop;
-    final weights0 = <double>[0.42, 0.22, 0.24, 0.12];
     for (var i = 0; i < midTargets.length; i++) {
       final sliceH = gmvH * weights0[i];
       final target = midTargets[i];
@@ -385,7 +554,6 @@ class FounderSankeyPainter extends CustomPainter {
     // Ribbons Stage 1 (13.5% App) -> Stage 2
     final appNode = midTargets[2].rect;
     var appCursor = appNode.top;
-    final weights1 = <double>[0.22, 0.16, 0.62];
     for (var j = 0; j < rightTargets.length; j++) {
       final sliceH = appNode.height * weights1[j];
       final target = rightTargets[j];
@@ -411,7 +579,7 @@ class FounderSankeyPainter extends CustomPainter {
     _paintCanvasLabel(
       canvas,
       'Total',
-      Offset(leftX + nodeW + 4, gmvTop + 4),
+      Offset(leftX + nodeW + 5, gmvTop + 4),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 10,
         color: FounderSovereignTokens.primaryInk,
@@ -419,6 +587,8 @@ class FounderSankeyPainter extends CustomPainter {
       maxWidth: math.max(36, midX - leftX - 20),
     );
 
+    final midLabelMaxW =
+        math.max(30.0, ((rightX - (midX + nodeW)) * 0.50).clamp(30.0, 84.0));
     for (final m in midTargets) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(m.rect, const Radius.circular(4)),
@@ -427,44 +597,56 @@ class FounderSankeyPainter extends CustomPainter {
       _paintCanvasLabel(
         canvas,
         m.name,
-        Offset(m.rect.right + 4, m.rect.top + 2),
+        Offset(m.rect.right + 5, m.rect.center.dy),
         style: FounderSovereignTokens.monoMetric(
           fontSize: 9.5,
           color: FounderSovereignTokens.primaryInk,
         ),
-        maxWidth: math.max(32, rightX - m.rect.right - 12),
+        maxWidth: midLabelMaxW,
+        centerVertically: true,
       );
     }
 
+    final rightLabelMaxW =
+        math.max(30.0, ((rightX - (midX + nodeW)) * 0.46).clamp(30.0, 76.0));
     for (final r in rightTargets) {
       canvas.drawRRect(
         RRect.fromRectAndRadius(r.rect, const Radius.circular(4)),
         Paint()..color = r.color,
       );
-      _paintCanvasLabel(
-        canvas,
-        r.name,
-        Offset(math.max(midX + 20, r.rect.left - 54), r.rect.top + 2),
-        style: FounderSovereignTokens.monoMetric(
-          fontSize: 9.5,
-          color: r.color,
+      final tp = TextPainter(
+        text: TextSpan(
+          text: r.name,
+          style: FounderSovereignTokens.monoMetric(
+            fontSize: 9.5,
+            color: r.color,
+          ),
         ),
-        maxWidth: 50,
+        textDirection: TextDirection.ltr,
         textAlign: TextAlign.right,
-      );
+        maxLines: 1,
+        ellipsis: '…',
+      )..layout(maxWidth: rightLabelMaxW);
+
+      final dx = math.max(midX + nodeW + 8, r.rect.left - tp.width - 6);
+      final dy = r.rect.center.dy - tp.height / 2;
+      tp.paint(canvas, Offset(dx, dy));
     }
   }
 
   @override
-  bool shouldRepaint(covariant FounderSankeyPainter oldDelegate) {
+  bool shouldRepaint(covariant FounderSankeyMoneyFlowPainter oldDelegate) {
     return oldDelegate.progress != progress ||
         oldDelegate.selectedNodeIndex != selectedNodeIndex ||
-        oldDelegate.dre.gmvTotalCents != dre.gmvTotalCents;
+        oldDelegate.dre.gmvTotalCents != dre.gmvTotalCents ||
+        oldDelegate.dre.providerNetLaborCents != dre.providerNetLaborCents ||
+        oldDelegate.dre.materialsExemptCents != dre.materialsExemptCents ||
+        oldDelegate.dre.netProfitEbitdaCents != dre.netProfitEbitdaCents;
   }
 }
 
 // ============================================================================
-// CHART 2: MONTHLY J-CURVE + 40 OS/MÊS BREAK-EVEN LINE (O(1) PREFIX-SUM)
+// CHART 2: MONTHLY J-CURVE + BREAK-EVEN LINE (O(1) PREFIX-SUM)
 // ============================================================================
 
 class FounderJCurveBreakEvenChart extends StatefulWidget {
@@ -514,9 +696,10 @@ class _FounderJCurveBreakEvenChartState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Evolução diária e ponto de equilíbrio',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.profitJCurve,
+                title: 'Evolução diária e ponto de equilíbrio',
+                iconColor: FounderSovereignTokens.solvencyEmerald,
               ),
               Wrap(
                 spacing: 4,
@@ -675,10 +858,10 @@ class FounderJCurvePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty) return;
 
-    final padLeft = 10.0;
-    final padRight = 10.0;
-    final padTop = 18.0;
-    final padBottom = 22.0;
+    const padLeft = 10.0;
+    const padRight = 10.0;
+    const padTop = 18.0;
+    const padBottom = 22.0;
     final plotW = math.max(1.0, size.width - padLeft - padRight);
     final plotH = math.max(1.0, size.height - padTop - padBottom);
 
@@ -699,7 +882,7 @@ class FounderJCurvePainter extends CustomPainter {
 
     final zeroY = yFor(0);
 
-    // Draw break-even 40 OS/month reference line
+    // Draw break-even reference line
     final dashPaint = Paint()
       ..color = FounderSovereignTokens.imperialGold.withValues(alpha: 0.55)
       ..strokeWidth = 1.2;
@@ -722,38 +905,72 @@ class FounderJCurvePainter extends CustomPainter {
     );
 
     final fullPath = Path();
-    for (var i = 0; i < cumulative.length; i++) {
-      final x = padLeft +
-          (cumulative.length == 1
-              ? plotW / 2
-              : (i / (cumulative.length - 1)) * plotW);
-      final y = yFor(cumulative[i]);
-      if (i == 0) {
-        fullPath.moveTo(x, y);
-      } else {
-        fullPath.lineTo(x, y);
+    if (cumulative.length == 1) {
+      final y = yFor(cumulative.first);
+      fullPath
+        ..moveTo(padLeft, y)
+        ..lineTo(padLeft + plotW, y);
+    } else {
+      for (var i = 0; i < cumulative.length; i++) {
+        final x = padLeft + (i / (cumulative.length - 1)) * plotW;
+        final y = yFor(cumulative[i]);
+        if (i == 0) {
+          fullPath.moveTo(x, y);
+        } else {
+          fullPath.lineTo(x, y);
+        }
       }
     }
 
-    // Progressive PathMetrics extraction
+    final p = progress.clamp(0.05, 1.0);
     final extracted = Path();
     for (final metric in fullPath.computeMetrics()) {
-      extracted.addPath(
-        metric.extractPath(0.0, metric.length * progress.clamp(0.05, 1.0)),
-        Offset.zero,
-      );
+      final extractLen = metric.length * p;
+      final sub = metric.extractPath(0.0, extractLen);
+      extracted.addPath(sub, Offset.zero);
+
+      if (minVal >= 0 && extractLen > 0) {
+        final startTan = metric.getTangentForOffset(0.0);
+        final endTan = metric.getTangentForOffset(extractLen);
+        if (startTan != null && endTan != null) {
+          final areaPath = Path.from(sub)
+            ..lineTo(endTan.position.dx, zeroY)
+            ..lineTo(startTan.position.dx, zeroY)
+            ..close();
+          final areaPaint = Paint()
+            ..style = PaintingStyle.fill
+            ..shader = LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: <Color>[
+                FounderSovereignTokens.solvencyEmerald.withValues(alpha: 0.22),
+                FounderSovereignTokens.cyberCyan.withValues(alpha: 0.08),
+                FounderSovereignTokens.obsidianCard.withValues(alpha: 0.0),
+              ],
+            ).createShader(Rect.fromLTWH(padLeft, padTop, plotW, plotH));
+          canvas.drawPath(areaPath, areaPaint);
+        }
+      }
     }
+
+    final gradientColors = minVal < 0
+        ? const <Color>[
+            FounderSovereignTokens.crimsonAlert,
+            FounderSovereignTokens.imperialGoldBright,
+            FounderSovereignTokens.solvencyEmerald,
+          ]
+        : const <Color>[
+            FounderSovereignTokens.cyberCyan,
+            FounderSovereignTokens.imperialGoldBright,
+            FounderSovereignTokens.solvencyEmerald,
+          ];
 
     final linePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.6
       ..strokeCap = StrokeCap.round
-      ..shader = const LinearGradient(
-        colors: <Color>[
-          FounderSovereignTokens.crimsonAlert,
-          FounderSovereignTokens.imperialGoldBright,
-          FounderSovereignTokens.solvencyEmerald,
-        ],
+      ..shader = LinearGradient(
+        colors: gradientColors,
       ).createShader(Offset.zero & size);
     canvas.drawPath(extracted, linePaint);
 
@@ -767,7 +984,10 @@ class FounderJCurvePainter extends CustomPainter {
     canvas.drawCircle(
       Offset(activeX, activeY),
       4.5,
-      Paint()..color = FounderSovereignTokens.solvencyEmerald,
+      Paint()
+        ..color = cumulative[activeIdx] < 0
+            ? FounderSovereignTokens.crimsonAlert
+            : FounderSovereignTokens.solvencyEmerald,
     );
   }
 
@@ -836,9 +1056,10 @@ class _FounderDemographicsVennChartState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Perfis de clientes e profissionais',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.dualModeVenn,
+                title: 'Perfis de clientes e profissionais',
+                iconColor: FounderSovereignTokens.cyberCyan,
               ),
               _MetricPill(
                 label: 'Total no app',
@@ -856,9 +1077,9 @@ class _FounderDemographicsVennChartState
                 onTapDown: (details) {
                   final relX = details.localPosition.dx /
                       math.max(1, canvasSize.width);
-                  final next = relX < 0.35
+                  final next = relX < 0.42
                       ? 0
-                      : (relX > 0.65 ? 1 : 2);
+                      : (relX > 0.58 ? 1 : 2);
                   HapticFeedback.selectionClick();
                   setState(() => _selectedSegment = next);
                 },
@@ -925,10 +1146,10 @@ class FounderDemographicsVennPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final p = progress.clamp(0.1, 1.0);
-    final vennCenterY = size.height * 0.45;
-    final r = math.min(size.width * 0.19, size.height * 0.34) * p;
-    final leftCenter = Offset(size.width * 0.33, vennCenterY);
-    final rightCenter = Offset(size.width * 0.51, vennCenterY);
+    final vennCenterY = size.height * 0.43;
+    final r = math.min(size.width * 0.20, size.height * 0.34) * p;
+    final leftCenter = Offset(size.width * 0.39, vennCenterY);
+    final rightCenter = Offset(size.width * 0.61, vennCenterY);
 
     // Left circle: Only Clients
     canvas.drawCircle(
@@ -980,12 +1201,14 @@ class FounderDemographicsVennPainter extends CustomPainter {
     _paintCanvasLabel(
       canvas,
       'Clientes\n${demographics.onlyClientsCount}',
-      Offset(leftCenter.dx - r * 0.45, vennCenterY),
+      Offset(leftCenter.dx - r * 0.44, vennCenterY),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 10,
         color: FounderSovereignTokens.primaryInk,
       ),
-      maxWidth: r * 1.1,
+      maxWidth: math.max(58.0, r * 1.25),
+      maxLines: 2,
+      textAlign: TextAlign.center,
       centerHorizontally: true,
       centerVertically: true,
     );
@@ -997,19 +1220,23 @@ class FounderDemographicsVennPainter extends CustomPainter {
         fontSize: 10,
         color: FounderSovereignTokens.imperialGoldBright,
       ),
-      maxWidth: r * 0.9,
+      maxWidth: math.max(50.0, r * 1.05),
+      maxLines: 2,
+      textAlign: TextAlign.center,
       centerHorizontally: true,
       centerVertically: true,
     );
     _paintCanvasLabel(
       canvas,
       'Prof.\n${demographics.onlyProvidersCount}',
-      Offset(rightCenter.dx + r * 0.45, vennCenterY),
+      Offset(rightCenter.dx + r * 0.44, vennCenterY),
       style: FounderSovereignTokens.monoMetric(
         fontSize: 10,
         color: FounderSovereignTokens.primaryInk,
       ),
-      maxWidth: r * 1.1,
+      maxWidth: math.max(58.0, r * 1.25),
+      maxLines: 2,
+      textAlign: TextAlign.center,
       centerHorizontally: true,
       centerVertically: true,
     );
@@ -1106,9 +1333,10 @@ class _FounderPirateAarrrFunnelChartState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Jornada do cadastro ao serviço recorrente',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.userClient,
+                title: 'Jornada do cadastro ao serviço recorrente',
+                iconColor: FounderSovereignTokens.imperialGoldBright,
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1316,9 +1544,10 @@ class _FounderCategoryLiquidityBubbleChartState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Procura × profissionais nas ${cats.length} profissões',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.sparkBolt,
+                title: 'Procura × profissionais nas ${cats.length} profissões',
+                iconColor: FounderSovereignTokens.royalIndigo,
               ),
               _MetricPill(
                 label: 'Profissões no app',
@@ -1590,9 +1819,10 @@ class _FounderTreasuryEscrowHistogramChartState
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Dinheiro guardado por prazo de liberação',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.walletVault,
+                title: 'Dinheiro guardado por prazo de liberação',
+                iconColor: FounderSovereignTokens.cyberCyan,
               ),
               _MetricPill(
                 label: 'Rendimento est. (CDI)',
@@ -1680,6 +1910,18 @@ class FounderTreasuryHistogramPainter extends CustomPainter {
   final double progress;
   final int selectedBar;
 
+  static String _shortBucketAxisLabel(String raw) {
+    final normalized = raw.trim();
+    final lower = normalized.toLowerCase();
+    if (lower.contains('2 dia') || lower.contains('2d')) return 'Até 2d';
+    if (lower.contains('5 dia') || lower.contains('5d')) return 'Em 5d';
+    if (lower.contains('7 dia') || lower.contains('7d')) return 'Em 7d';
+    if (lower.contains('disputa') || lower.contains('media')) return 'Disputa';
+    if (lower.contains('seguran')) return 'Segur.';
+    if (normalized.length <= 8) return normalized;
+    return '${normalized.substring(0, 7).trimRight()}.';
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     if (buckets.isEmpty) return;
@@ -1707,7 +1949,7 @@ class FounderTreasuryHistogramPainter extends CustomPainter {
       );
       _paintCanvasLabel(
         canvas,
-        b.label.split(' ').first,
+        _shortBucketAxisLabel(b.label),
         Offset(i * slotW + slotW / 2, size.height - 16),
         style: FounderSovereignTokens.monoMetric(
           fontSize: 9,
@@ -1715,7 +1957,7 @@ class FounderTreasuryHistogramPainter extends CustomPainter {
               ? b.color
               : FounderSovereignTokens.mutedInk,
         ),
-        maxWidth: slotW - 4,
+        maxWidth: slotW - 2,
         centerHorizontally: true,
       );
     }
@@ -1761,9 +2003,10 @@ class FounderActuarialSpeedometerChart extends StatelessWidget {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Saúde da reserva de garantia (90 dias)',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.shieldVerified,
+                title: 'Saúde da reserva de garantia (90 dias)',
+                iconColor: FounderSovereignTokens.solvencyEmerald,
               ),
               _MetricPill(
                 label: 'Resolvidos de 1ª',
@@ -1941,9 +2184,10 @@ class FounderCohortRetentionHeatmapChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Clientes que voltam a pedir nos meses seguintes',
-            style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+          const _ChartTitleWithIcon(
+            glyph: FounderIconGlyph.calendarExec,
+            title: 'Clientes que voltam a pedir nos meses seguintes',
+            iconColor: FounderSovereignTokens.cyberCyan,
           ),
           const SizedBox(height: 10),
           LayoutBuilder(
@@ -2092,9 +2336,10 @@ class FounderKycFinOpsThermometerChart extends StatelessWidget {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Verificação de documentos e economia',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              const _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.biometricId,
+                title: 'Verificação de documentos e economia',
+                iconColor: FounderSovereignTokens.solvencyEmerald,
               ),
               _MetricPill(
                 label: 'Economia no sistema',
@@ -2242,9 +2487,11 @@ class FounderTieredWaterfallMedalsChart extends StatelessWidget {
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Text(
-                'Níveis de comissão e conquistas (${waterfall.totalMedals} medalhas)',
-                style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+              _ChartTitleWithIcon(
+                glyph: FounderIconGlyph.starRating,
+                title:
+                    'Níveis de comissão e conquistas (${waterfall.totalMedals} medalhas)',
+                iconColor: FounderSovereignTokens.imperialGoldBright,
               ),
               _MetricPill(
                 label: 'Medalhas',
@@ -2320,12 +2567,14 @@ class FounderWaterfallMedalsPainter extends CustomPainter {
         cents: dre.simplesNacionalTaxCents +
             dre.warrantyPoolCarveoutCents +
             dre.variablePspAndCloudCents,
-        color: FounderSovereignTokens.crimsonAlert,
+        color: FounderSovereignTokens.warmAmber,
       ),
       (
         label: 'Seu Lucro',
         cents: dre.netProfitEbitdaCents.abs(),
-        color: FounderSovereignTokens.solvencyEmerald,
+        color: dre.netProfitEbitdaCents < 0
+            ? FounderSovereignTokens.crimsonAlert
+            : FounderSovereignTokens.solvencyEmerald,
       ),
     ];
 

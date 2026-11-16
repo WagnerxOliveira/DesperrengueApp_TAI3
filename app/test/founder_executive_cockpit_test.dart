@@ -1063,6 +1063,8 @@ FounderDashboardSnapshot _buildSampleRealSnapshot() {
 Widget _wrapFounderTestApp({
   required Widget child,
   TextScaler textScaler = TextScaler.noScaling,
+  EdgeInsets? simulatedViewPadding,
+  EdgeInsets? simulatedViewInsets,
 }) {
   final theme = FounderSovereignTokens.buildTheme();
   return ProviderScope(
@@ -1080,8 +1082,24 @@ Widget _wrapFounderTestApp({
       themeMode: ThemeMode.dark,
       builder: (context, inner) {
         final mq = MediaQuery.of(context);
+        final effectiveViewInsets = simulatedViewInsets ?? mq.viewInsets;
+        final effectiveViewPadding = simulatedViewPadding ?? mq.viewPadding;
+        final effectivePadding = simulatedViewPadding != null
+            ? EdgeInsets.only(
+                left: effectiveViewPadding.left,
+                top: effectiveViewPadding.top,
+                right: effectiveViewPadding.right,
+                bottom: (effectiveViewPadding.bottom - effectiveViewInsets.bottom)
+                    .clamp(0.0, double.infinity),
+              )
+            : mq.padding;
         return MediaQuery(
-          data: mq.copyWith(textScaler: textScaler),
+          data: mq.copyWith(
+            textScaler: textScaler,
+            viewPadding: effectiveViewPadding,
+            padding: effectivePadding,
+            viewInsets: effectiveViewInsets,
+          ),
           child: inner ?? const SizedBox.shrink(),
         );
       },
@@ -2654,5 +2672,282 @@ void main() {
 
       await tester.pump(const Duration(seconds: 6));
     });
+
+    testWidgets(
+      'Regression: Salvar gasto button in FounderRealExpenseModal is never clipped behind Android 48dp 3-button nav bar, keyboard, or 320x640 @ 1.35x',
+      (tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        const viewport = Size(360, 740);
+        const navBarHeight = 48.0;
+        await tester.binding.setSurfaceSize(viewport);
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final gw = FakeCeoBackendGateway(
+          pbkdf2Iterations: 1200,
+          initialSnapshot: _buildSampleRealSnapshot(),
+        );
+        final repo = FounderCockpitRepository(
+          gateway: gw,
+          pbkdf2Iterations: 1200,
+        );
+        addTearDown(repo.dispose);
+        await tester.runAsync(() async {
+          await gw.preSealAndUnlockForTest(repo: repo);
+        });
+
+        final noopLinks = FounderDeepLinkCoordinator(
+          getInitialLinkOverride: () async => null,
+          uriStreamOverride: const Stream<Uri>.empty(),
+        );
+        addTearDown(noopLinks.dispose);
+
+        await tester.pumpWidget(
+          _wrapFounderTestApp(
+            simulatedViewPadding: const EdgeInsets.only(
+              top: 28,
+              bottom: navBarHeight,
+            ),
+            child: FounderCockpitScreen(
+              repository: repo,
+              deepLinkCoordinator: noopLinks,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // 1. Abre o Calendário Executivo, toca no dia com ponto dourado (Próximo DAS) -> Registrar/Agendar gasto
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-open-executive-calendar-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-calendar-jump-next-das-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 260));
+
+        await tester.ensureVisible(
+          find.byKey(
+            const ValueKey<String>('ceo-calendar-schedule-expense-btn'),
+          ),
+        );
+        await tester.pump();
+        await tester.tap(
+          find.byKey(
+            const ValueKey<String>('ceo-calendar-schedule-expense-btn'),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // 2. Verifica geometricamente que o botão "Salvar gasto" está 100% visível ACIMA da barra de 48dp SEM rolar!
+        final saveBtnFinder = find.byKey(
+          const ValueKey<String>('ceo-expense-save-btn'),
+        );
+        expect(saveBtnFinder, findsOneWidget);
+        final saveRect = tester.getRect(saveBtnFinder);
+        expect(saveRect.top, greaterThan(0));
+        expect(saveRect.height, greaterThanOrEqualTo(48.0));
+        expect(
+          saveRect.bottom,
+          lessThanOrEqualTo(viewport.height - navBarHeight),
+          reason:
+              'Botão Salvar gasto jamais pode ficar cortado atrás da barra Android de 3 botões (48dp)',
+        );
+        expect(tester.takeException(), isNull);
+
+        // 3. Preenche e salva diretamente em 1 toque sem precisar de ensureVisible no botão fixo!
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('ceo-expense-category-input')),
+          'Servidor Cloud Produção',
+        );
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('ceo-expense-amount-input')),
+          '189,90',
+        );
+        await tester.pump();
+        await tester.tap(saveBtnFinder);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(find.byKey(const ValueKey<String>('ceo-real-expense-modal')), findsNothing);
+        expect(tester.takeException(), isNull);
+
+        // Fecha calendário
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-calendar-apply-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // 4. Tortura com teclado aberto (280dp) e tela estreita 320x640 @ 1.35x pelo atalho rápido de 1 toque na Home!
+        const compactViewport = Size(320, 640);
+        const kbHeight = 240.0;
+        await tester.binding.setSurfaceSize(compactViewport);
+        await tester.pumpWidget(
+          _wrapFounderTestApp(
+            textScaler: const TextScaler.linear(1.35),
+            simulatedViewPadding: const EdgeInsets.only(top: 24, bottom: 48),
+            simulatedViewInsets: const EdgeInsets.only(bottom: kbHeight),
+            child: FounderCockpitScreen(
+              repository: repo,
+              deepLinkCoordinator: noopLinks,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+
+        await tester.scrollUntilVisible(
+          find.text('+ Registrar gasto'),
+          180,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pump();
+        await tester.tap(find.text('+ Registrar gasto'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        final kbSaveRect = tester.getRect(saveBtnFinder);
+        expect(kbSaveRect.height, greaterThanOrEqualTo(48.0));
+        expect(
+          kbSaveRect.bottom,
+          lessThanOrEqualTo(compactViewport.height - kbHeight),
+          reason:
+              'Botão Salvar gasto permanece 100% visível acima do teclado virtual em 320x640 @ 1.35x',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'Regression: Inline map tap-to-expand and Edge-to-Edge FullScreenMapModal render 0-point & multi-point states without clipping or overflow',
+      (tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        await tester.binding.setSurfaceSize(const Size(360, 740));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        // Parte 1: Plataforma recém-zerada (0 serviços no mapa) -> expansão limpa sem cortes
+        final zeroGw = FakeCeoBackendGateway(
+          pbkdf2Iterations: 1200,
+          initialSnapshot: FounderDashboardSnapshot.emptyZero(),
+        );
+        final zeroRepo = FounderCockpitRepository(
+          gateway: zeroGw,
+          pbkdf2Iterations: 1200,
+        );
+        addTearDown(zeroRepo.dispose);
+        await tester.runAsync(() async {
+          await zeroGw.preSealAndUnlockForTest(repo: zeroRepo);
+        });
+
+        final noopLinks = FounderDeepLinkCoordinator(
+          getInitialLinkOverride: () async => null,
+          uriStreamOverride: const Stream<Uri>.empty(),
+        );
+        addTearDown(noopLinks.dispose);
+
+        await tester.pumpWidget(
+          _wrapFounderTestApp(
+            simulatedViewPadding: const EdgeInsets.only(top: 32, bottom: 48),
+            child: FounderCockpitScreen(
+              repository: zeroRepo,
+              deepLinkCoordinator: noopLinks,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+
+        // Vai para Aba Pedidos e toca diretamente no card do mapa para expandir
+        await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-2')));
+        await tester.pump(const Duration(milliseconds: 350));
+
+        final radarFinder = find.byKey(
+          const ValueKey<String>('ceo-live-geo-radar-card'),
+        );
+        expect(radarFinder, findsOneWidget);
+        await tester.tap(
+          find.textContaining('Nenhum serviço ativo neste filtro'),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        expect(
+          find.byKey(const ValueKey<String>('ceo-fullscreen-map-modal')),
+          findsOneWidget,
+        );
+        expect(find.text('Mapa ao Vivo'), findsOneWidget);
+        expect(
+          find.text('Nenhum serviço ativo neste filtro no momento.'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+
+        // Alterna filtros full-bleed e modo Claro/Noite em 320x640 @ 1.35x sem overflow
+        await tester.binding.setSurfaceSize(const Size(320, 640));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(tester.takeException(), isNull);
+
+        await tester.tap(find.text('Noite'));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(find.text('Claro'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-close-fullscreen-map-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+        expect(
+          find.byKey(const ValueKey<String>('ceo-fullscreen-map-modal')),
+          findsNothing,
+        );
+
+        // Parte 2: Múltiplos serviços reais no mapa -> navegação < Anterior · Próximo > e inspeção
+        await tester.binding.setSurfaceSize(const Size(390, 844));
+        await tester.pump();
+        final multiSnap = _buildSampleRealSnapshot().copyWith(
+          liveMapPoints: <CeoLiveMapPoint>[
+            ..._buildSampleRealSnapshot().liveMapPoints,
+            CeoLiveMapPoint(
+              jobId: 'job-real-2',
+              orderCode: '#DESP-REAL2',
+              title: 'Instalação de Disjuntor Bifásico',
+              categoryName: 'Eletricista',
+              status: 'scheduled',
+              escrowStatus: 'HELD',
+              urgency: 'scheduled',
+              neighborhood: 'Moema',
+              city: 'São Paulo',
+              uf: 'SP',
+              lat: -23.6001,
+              lng: -46.6652,
+              isExactPin: true,
+              amountCents: 32000,
+              clientName: 'Bruno Costa',
+              providerName: 'Ana Luz',
+              createdAt: DateTime.utc(2026, 11, 14, 15, 0),
+            ),
+          ],
+        );
+        zeroGw.snapshotToReturn = multiSnap;
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-manual-refresh-btn')),
+        );
+        await tester.pump(const Duration(milliseconds: 350));
+
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-expand-fullscreen-map-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+
+        expect(find.text('Serviço 1 de 2'), findsOneWidget);
+        await tester.tap(find.text('Próximo'));
+        await tester.pump(const Duration(milliseconds: 250));
+        expect(find.text('Serviço 2 de 2'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }

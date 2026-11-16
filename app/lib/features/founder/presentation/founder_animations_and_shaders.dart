@@ -47,6 +47,7 @@ class FounderSovereignTokens {
   static const Color imperialGold = Color(0xFFE5C158);
   static const Color imperialGoldBright = Color(0xFFF3D77D);
   static const Color imperialGoldSoft = Color(0xFF282110);
+  static const Color gold24k = Color(0xFFD4AF37);
 
   static const Color cyberCyan = Color(0xFF5BA8FF);
   static const Color cyberCyanSoft = Color(0xFF122136);
@@ -150,6 +151,32 @@ class FounderSovereignTokens {
       fontFeatures: tabularFigures,
       height: 1.14,
     );
+  }
+
+  static double safeTopInset(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return math.max(mq.padding.top, mq.viewPadding.top);
+  }
+
+  static double safeBottomInset(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return math.max(mq.padding.bottom, mq.viewPadding.bottom);
+  }
+
+  /// Espaço inferior à prova de Android 15/16/17 Edge-to-Edge (barra de 3 botões `48dp`,
+  /// barra gestual `24dp` e teclado virtual `viewInsets.bottom`).
+  static double modalBottomSafeSpace(
+    BuildContext context, {
+    double extraWhenKeyboardClosed = 16.0,
+    double extraWhenKeyboardOpen = 12.0,
+  }) {
+    final mq = MediaQuery.of(context);
+    final kb = mq.viewInsets.bottom;
+    if (kb > 0) {
+      return kb + extraWhenKeyboardOpen;
+    }
+    return math.max(mq.padding.bottom, mq.viewPadding.bottom) +
+        extraWhenKeyboardClosed;
   }
 
   static ThemeData buildTheme() {
@@ -403,10 +430,12 @@ class AnimatedSlidingPillSwitch extends StatelessWidget {
     required this.selectedIndex,
     required this.onChanged,
     this.icons,
+    this.precisionIcons,
   });
 
   final List<String> labels;
   final List<IconData>? icons;
+  final List<FounderIconGlyph>? precisionIcons;
   final int selectedIndex;
   final ValueChanged<int> onChanged;
 
@@ -456,6 +485,10 @@ class AnimatedSlidingPillSwitch extends StatelessWidget {
               Row(
                 children: List<Widget>.generate(count, (idx) {
                   final active = clampedIdx == idx;
+                  final precisionGlyph = (precisionIcons != null &&
+                          idx < precisionIcons!.length)
+                      ? precisionIcons![idx]
+                      : null;
                   final icon =
                       (icons != null && idx < icons!.length) ? icons![idx] : null;
                   return Expanded(
@@ -473,7 +506,20 @@ class AnimatedSlidingPillSwitch extends StatelessWidget {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: <Widget>[
-                            if (icon != null) ...<Widget>[
+                            if (precisionGlyph != null) ...<Widget>[
+                              FounderPrecisionIcon(
+                                precisionGlyph,
+                                size: 15.5,
+                                isActive: active,
+                                color: active
+                                    ? FounderSovereignTokens.imperialGoldBright
+                                    : FounderSovereignTokens.mutedInk,
+                                accentColor: active
+                                    ? FounderSovereignTokens.gold24k
+                                    : FounderSovereignTokens.mutedInk,
+                              ),
+                              const SizedBox(width: 6),
+                            ] else if (icon != null) ...<Widget>[
                               Icon(
                                 icon,
                                 size: 15,
@@ -1078,7 +1124,7 @@ class _FounderSovereignCrestPainter extends CustomPainter {
     canvas.translate(left, top);
 
     double px(double nx) => (nx + 0.012) * boxSize;
-    double py(double ny) => (ny + 0.068) * boxSize;
+    double py(double ny) => (ny + 0.084) * boxSize;
 
     final strokeMain = boxSize * 0.130;
     final strokeCheck = boxSize * 0.122;
@@ -1199,5 +1245,1274 @@ class _FounderSovereignCrestPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _FounderSovereignCrestPainter oldDelegate) {
     return oldDelegate.isSovereignCeo != isSovereignCeo;
+  }
+}
+
+
+// ============================================================================
+// SISTEMA UNIFICADO DE ICONOGRAFIA VETORIAL DE PRECISÃO (`FounderPrecisionIcon`)
+// Geometria óptica em 3 camadas (Vidro Duotone 14% + Traço 1.72px + Acento 24k)
+// ============================================================================
+
+enum FounderIconGlyph {
+  // 1. Abas de Navegação Executiva
+  navHome,
+  navFinance,
+  navOrders,
+  navPeople,
+  navAccount,
+
+  // 2. Tesouraria, Receita, Split & Simulação
+  moneySplitSankey,
+  profitJCurve,
+  monteCarloCone,
+  pixDiamond,
+  walletVault,
+  expenseReceipt,
+
+  // 3. Impostos, Notas Fiscais & Contabilidade
+  taxBankDas,
+  nfeBarcode,
+  accountingPackPdf,
+
+  // 4. Calendário & Tempo
+  calendarExec,
+  clockSla,
+  upcomingEvent,
+
+  // 5. Cartografia, Radar & HUD de Mapa
+  radarPulse,
+  mapPinLuxury,
+  moonDarkMap,
+  sunLightMap,
+  compassRose,
+  zoomPlus,
+  zoomMinus,
+  gpsTarget,
+  fullscreenExpand,
+  fullscreenExit,
+
+  // 6. Mediações, Segurança, Cofre & OTA
+  mediationBalance,
+  shieldVerified,
+  vaultLock,
+  vaultOpen,
+  masterKey,
+  biometricId,
+  eyeOpen,
+  eyeClosed,
+  mailEnvelope,
+  mailDispatched,
+  clipboardOtp,
+  otaDirectUpdate,
+  duressEmergencyShield,
+  screenCaptureShield,
+
+  // 7. Pessoas, Perfis & Avaliações
+  userClient,
+  userProvider,
+  dualModeVenn,
+  starRating,
+
+  // 8. Alertas & Ações Rápidas
+  warningTriangle,
+  checkValid,
+  ringPending,
+  sparkBolt,
+  copilotAiStar,
+  sendVector,
+  refreshArc,
+  closeCross,
+  signOutDoor,
+  trashDelete,
+  searchGlass,
+  chevronLeft,
+  chevronRight,
+  chevronDown,
+  chevronUp,
+  arrowBack,
+}
+
+/// Ícone vetorial executivo desenhado matematicamente no grid canônico `24×24`
+/// com calibração óptica de traço não-linear (`1.28px` em `14px` até `1.85px` em `26px`),
+/// preenchimento de vidro duotone (`13%–17%`) e micro-acento especular 24k Gold / Semântico.
+class FounderPrecisionIcon extends StatelessWidget {
+  const FounderPrecisionIcon(
+    this.glyph, {
+    super.key,
+    this.size = 18.0,
+    this.color,
+    this.accentColor,
+    this.strokeWidth,
+    this.isActive = false,
+    this.duotoneAlpha,
+  });
+
+  final FounderIconGlyph glyph;
+  final double size;
+  final Color? color;
+  final Color? accentColor;
+  final double? strokeWidth;
+  final bool isActive;
+  final double? duotoneAlpha;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = color ??
+        IconTheme.of(context).color ??
+        FounderSovereignTokens.primaryInk;
+    final accent = accentColor ?? _defaultAccentFor(glyph, primary, isActive);
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _FounderPrecisionIconPainter(
+          glyph: glyph,
+          primaryColor: primary,
+          accentColor: accent,
+          strokeWidth: strokeWidth,
+          isActive: isActive,
+          duotoneAlpha: duotoneAlpha,
+        ),
+      ),
+    );
+  }
+
+  static Color _defaultAccentFor(
+    FounderIconGlyph g,
+    Color primary,
+    bool isActive,
+  ) {
+    if (isActive) return FounderSovereignTokens.imperialGoldBright;
+    return switch (g) {
+      FounderIconGlyph.profitJCurve ||
+      FounderIconGlyph.pixDiamond ||
+      FounderIconGlyph.shieldVerified ||
+      FounderIconGlyph.mailDispatched ||
+      FounderIconGlyph.checkValid =>
+        FounderSovereignTokens.solvencyEmerald,
+      FounderIconGlyph.taxBankDas ||
+      FounderIconGlyph.clockSla ||
+      FounderIconGlyph.upcomingEvent ||
+      FounderIconGlyph.mediationBalance ||
+      FounderIconGlyph.warningTriangle =>
+        FounderSovereignTokens.warmAmber,
+      FounderIconGlyph.duressEmergencyShield ||
+      FounderIconGlyph.trashDelete =>
+        FounderSovereignTokens.crimsonAlert,
+      FounderIconGlyph.monteCarloCone ||
+      FounderIconGlyph.radarPulse ||
+      FounderIconGlyph.gpsTarget =>
+        FounderSovereignTokens.cyberCyan,
+      _ => primary == FounderSovereignTokens.mutedInk
+          ? FounderSovereignTokens.secondaryInk
+          : FounderSovereignTokens.imperialGoldBright,
+    };
+  }
+}
+
+/// Emblema arquitetônico discreto (*Obsidian Squircle* sem bordas pesadas) para
+/// ancorar títulos principais de cartões e folhas executivas.
+class FounderPrecisionBadge extends StatelessWidget {
+  const FounderPrecisionBadge(
+    this.glyph, {
+    super.key,
+    this.boxSize = 36.0,
+    this.iconSize = 18.0,
+    this.tintColor,
+    this.accentColor,
+    this.isActive = true,
+  });
+
+  final FounderIconGlyph glyph;
+  final double boxSize;
+  final double iconSize;
+  final Color? tintColor;
+  final Color? accentColor;
+  final bool isActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = tintColor ?? FounderSovereignTokens.imperialGoldBright;
+    return Container(
+      width: boxSize,
+      height: boxSize,
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.11),
+        borderRadius: BorderRadius.circular(boxSize * 0.30),
+        border: Border.all(
+          color: tint.withValues(alpha: 0.22),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: FounderPrecisionIcon(
+        glyph,
+        size: iconSize,
+        color: tint,
+        accentColor: accentColor ?? tint,
+        isActive: isActive,
+      ),
+    );
+  }
+}
+
+class _FounderPrecisionIconPainter extends CustomPainter {
+  const _FounderPrecisionIconPainter({
+    required this.glyph,
+    required this.primaryColor,
+    required this.accentColor,
+    required this.isActive,
+    this.strokeWidth,
+    this.duotoneAlpha,
+  });
+
+  final FounderIconGlyph glyph;
+  final Color primaryColor;
+  final Color accentColor;
+  final bool isActive;
+  final double? strokeWidth;
+  final double? duotoneAlpha;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final minSide = math.min(size.width, size.height);
+    if (minSide <= 0) return;
+
+    final scale = minSide / 24.0;
+    final dx = (size.width - minSide) * 0.5;
+    final dy = (size.height - minSide) * 0.5;
+
+    final nominal = strokeWidth ?? (isActive ? 1.82 : 1.68);
+    final opticalPx =
+        (nominal * math.pow(minSide / 24.0, 0.82)).clamp(1.22, 2.35);
+    final sw = opticalPx / scale;
+
+    final glassAlpha = duotoneAlpha ?? (isActive ? 0.18 : 0.13);
+    final duoPaint = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..color = accentColor.withValues(alpha: glassAlpha);
+
+    final mainStroke = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = sw
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = primaryColor;
+
+    final accentStroke = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = sw
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = accentColor;
+
+    final accentFill = Paint()
+      ..isAntiAlias = true
+      ..style = PaintingStyle.fill
+      ..color = accentColor;
+
+    canvas.save();
+    canvas.translate(dx, dy);
+    canvas.scale(scale, scale);
+
+    RRect rr(double l, double t, double r, double b, double rad) =>
+        RRect.fromRectAndRadius(Rect.fromLTRB(l, t, r, b), Radius.circular(rad));
+
+    switch (glyph) {
+      case FounderIconGlyph.navHome:
+        final body = Path()
+          ..moveTo(5.2, 10.2)
+          ..lineTo(12.0, 4.4)
+          ..lineTo(18.8, 10.2)
+          ..lineTo(18.8, 18.2)
+          ..quadraticBezierTo(18.8, 20.0, 17.0, 20.0)
+          ..lineTo(7.0, 20.0)
+          ..quadraticBezierTo(5.2, 20.0, 5.2, 18.2)
+          ..close();
+        canvas.drawPath(body, duoPaint);
+        final roof = Path()
+          ..moveTo(3.6, 11.2)
+          ..lineTo(12.0, 4.0)
+          ..lineTo(20.4, 11.2);
+        canvas.drawPath(roof, mainStroke);
+        final walls = Path()
+          ..moveTo(5.6, 10.0)
+          ..lineTo(5.6, 18.2)
+          ..quadraticBezierTo(5.6, 20.0, 7.4, 20.0)
+          ..lineTo(16.6, 20.0)
+          ..quadraticBezierTo(18.4, 20.0, 18.4, 18.2)
+          ..lineTo(18.4, 10.0);
+        canvas.drawPath(walls, mainStroke);
+        canvas.drawLine(
+          const Offset(12.0, 13.4),
+          const Offset(12.0, 17.0),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.navFinance:
+      case FounderIconGlyph.walletVault:
+        final card = rr(3.5, 6.2, 20.5, 19.2, 2.8);
+        canvas.drawRRect(card, duoPaint);
+        final topFlap = Path()
+          ..moveTo(5.8, 6.2)
+          ..lineTo(5.8, 5.0)
+          ..quadraticBezierTo(5.8, 3.8, 7.2, 3.8)
+          ..lineTo(17.2, 3.8);
+        canvas.drawPath(topFlap, mainStroke);
+        canvas.drawRRect(card, mainStroke);
+        canvas.drawRRect(rr(15.0, 10.7, 20.8, 14.7, 1.8), accentStroke);
+        canvas.drawCircle(const Offset(17.4, 12.7), 1.0, accentFill);
+
+      case FounderIconGlyph.navOrders:
+        final board = rr(5.0, 5.0, 19.0, 20.4, 2.5);
+        canvas.drawRRect(board, duoPaint);
+        canvas.drawRRect(board, mainStroke);
+        canvas.drawRRect(
+          rr(9.0, 3.2, 15.0, 6.2, 1.3),
+          Paint()
+            ..isAntiAlias = true
+            ..style = PaintingStyle.fill
+            ..color = FounderSovereignTokens.obsidianCard,
+        );
+        canvas.drawRRect(rr(9.0, 3.2, 15.0, 6.2, 1.3), accentStroke);
+        canvas.drawLine(
+          const Offset(8.4, 10.6),
+          const Offset(15.6, 10.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(8.4, 14.2),
+          const Offset(12.8, 14.2),
+          mainStroke,
+        );
+        final chk = Path()
+          ..moveTo(13.8, 15.6)
+          ..lineTo(15.1, 16.9)
+          ..lineTo(17.4, 14.2);
+        canvas.drawPath(chk, accentStroke);
+
+      case FounderIconGlyph.navPeople:
+        canvas.drawCircle(const Offset(9.4, 8.6), 3.0, duoPaint);
+        canvas.drawCircle(const Offset(9.4, 8.6), 3.0, mainStroke);
+        final shoulders = Path()
+          ..moveTo(4.0, 19.2)
+          ..cubicTo(4.0, 15.2, 14.8, 15.2, 14.8, 19.2);
+        canvas.drawPath(shoulders, mainStroke);
+        canvas.drawCircle(const Offset(16.2, 9.2), 2.2, accentStroke);
+        final sideShoulder = Path()
+          ..moveTo(15.6, 15.4)
+          ..cubicTo(18.2, 15.7, 20.2, 17.0, 20.2, 19.2);
+        canvas.drawPath(sideShoulder, accentStroke);
+
+      case FounderIconGlyph.navAccount:
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.8, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.8, mainStroke);
+        canvas.drawCircle(const Offset(12.0, 9.6), 2.6, mainStroke);
+        final bust = Path()
+          ..moveTo(7.3, 18.0)
+          ..cubicTo(8.2, 14.8, 15.8, 14.8, 16.7, 18.0);
+        canvas.drawPath(bust, mainStroke);
+        final gem = Path()
+          ..moveTo(18.2, 4.4)
+          ..lineTo(19.5, 5.7)
+          ..lineTo(18.2, 7.0)
+          ..lineTo(16.9, 5.7)
+          ..close();
+        canvas.drawPath(gem, accentFill);
+
+      case FounderIconGlyph.moneySplitSankey:
+        canvas.drawCircle(const Offset(4.8, 12.0), 2.2, duoPaint);
+        final up = Path()
+          ..moveTo(7.0, 12.0)
+          ..cubicTo(11.2, 12.0, 11.8, 7.0, 17.2, 7.0);
+        final down = Path()
+          ..moveTo(7.0, 12.0)
+          ..cubicTo(11.2, 12.0, 11.8, 17.0, 17.2, 17.0);
+        canvas.drawPath(up, accentStroke);
+        canvas.drawPath(down, mainStroke);
+        canvas.drawCircle(const Offset(4.8, 12.0), 2.1, mainStroke);
+        canvas.drawCircle(const Offset(19.0, 7.0), 1.9, accentFill);
+        canvas.drawCircle(const Offset(19.0, 17.0), 1.9, mainStroke);
+
+      case FounderIconGlyph.profitJCurve:
+        final area = Path()
+          ..moveTo(3.8, 18.5)
+          ..quadraticBezierTo(9.2, 18.0, 12.6, 12.6)
+          ..quadraticBezierTo(15.6, 7.8, 19.8, 6.2)
+          ..lineTo(19.8, 18.5)
+          ..close();
+        canvas.drawPath(area, duoPaint);
+        final curve = Path()
+          ..moveTo(3.8, 17.8)
+          ..quadraticBezierTo(9.2, 17.4, 12.6, 12.2)
+          ..quadraticBezierTo(15.6, 7.6, 19.8, 6.0);
+        canvas.drawPath(curve, mainStroke);
+        final head = Path()
+          ..moveTo(16.2, 5.8)
+          ..lineTo(20.0, 5.8)
+          ..lineTo(20.0, 9.6);
+        canvas.drawPath(head, accentStroke);
+
+      case FounderIconGlyph.monteCarloCone:
+        final cone = Path()
+          ..moveTo(4.0, 15.5)
+          ..lineTo(20.0, 5.8)
+          ..lineTo(20.0, 18.2)
+          ..close();
+        canvas.drawPath(cone, duoPaint);
+        canvas.drawLine(
+          const Offset(4.0, 15.5),
+          const Offset(20.0, 5.8),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(4.0, 15.5),
+          const Offset(20.0, 18.2),
+          mainStroke,
+        );
+        final median = Path()
+          ..moveTo(4.0, 15.5)
+          ..quadraticBezierTo(12.0, 13.2, 19.8, 11.6);
+        canvas.drawPath(median, accentStroke);
+        canvas.drawCircle(const Offset(19.8, 11.6), 1.5, accentFill);
+
+      case FounderIconGlyph.pixDiamond:
+        canvas.save();
+        canvas.translate(12.0, 12.0);
+        canvas.rotate(math.pi / 4);
+        final d = rr(-6.2, -6.2, 6.2, 6.2, 2.1);
+        canvas.drawRRect(d, duoPaint);
+        canvas.drawRRect(d, mainStroke);
+        canvas.restore();
+        final beam = Path()
+          ..moveTo(8.5, 10.2)
+          ..lineTo(10.8, 12.0)
+          ..lineTo(8.5, 13.8)
+          ..moveTo(15.5, 10.2)
+          ..lineTo(13.2, 12.0)
+          ..lineTo(15.5, 13.8);
+        canvas.drawPath(beam, accentStroke);
+
+      case FounderIconGlyph.expenseReceipt:
+        final doc = rr(4.0, 5.2, 20.0, 18.8, 2.5);
+        canvas.drawRRect(doc, duoPaint);
+        canvas.drawRRect(doc, mainStroke);
+        canvas.drawLine(
+          const Offset(4.2, 9.4),
+          const Offset(19.8, 9.4),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(8.0, 14.2),
+          const Offset(12.4, 14.2),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(16.2, 12.5),
+          const Offset(16.2, 15.9),
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(14.5, 14.2),
+          const Offset(17.9, 14.2),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.taxBankDas:
+        final roofTri = Path()
+          ..moveTo(3.8, 9.2)
+          ..lineTo(12.0, 4.0)
+          ..lineTo(20.2, 9.2)
+          ..close();
+        canvas.drawPath(roofTri, duoPaint);
+        canvas.drawPath(roofTri, mainStroke);
+        canvas.drawLine(
+          const Offset(4.0, 19.6),
+          const Offset(20.0, 19.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(7.2, 9.6),
+          const Offset(7.2, 19.2),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(12.0, 9.6),
+          const Offset(12.0, 19.2),
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(16.8, 9.6),
+          const Offset(16.8, 19.2),
+          mainStroke,
+        );
+
+      case FounderIconGlyph.nfeBarcode:
+        final sheet = rr(4.5, 3.8, 19.5, 20.2, 2.4);
+        canvas.drawRRect(sheet, duoPaint);
+        canvas.drawRRect(sheet, mainStroke);
+        canvas.drawLine(
+          const Offset(8.2, 12.2),
+          const Offset(8.2, 16.8),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(11.4, 11.2),
+          const Offset(11.4, 16.8),
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(14.8, 12.2),
+          const Offset(14.8, 16.8),
+          mainStroke,
+        );
+        final miniChk = Path()
+          ..moveTo(13.8, 7.6)
+          ..lineTo(15.0, 8.8)
+          ..lineTo(17.2, 6.5);
+        canvas.drawPath(miniChk, accentStroke);
+
+      case FounderIconGlyph.accountingPackPdf:
+        final page = Path()
+          ..moveTo(5.5, 3.6)
+          ..lineTo(14.2, 3.6)
+          ..lineTo(18.6, 8.0)
+          ..lineTo(18.6, 20.4)
+          ..lineTo(5.5, 20.4)
+          ..close();
+        canvas.drawPath(page, duoPaint);
+        canvas.drawPath(page, mainStroke);
+        final fold = Path()
+          ..moveTo(14.0, 3.8)
+          ..lineTo(14.0, 8.2)
+          ..lineTo(18.4, 8.2);
+        canvas.drawPath(fold, accentStroke);
+        canvas.drawLine(
+          const Offset(8.6, 12.4),
+          const Offset(15.4, 12.4),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(8.6, 15.8),
+          const Offset(13.4, 15.8),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.calendarExec:
+        final cal = rr(3.6, 5.4, 20.4, 20.4, 2.8);
+        canvas.drawRRect(cal, duoPaint);
+        canvas.drawRRect(cal, mainStroke);
+        canvas.drawLine(
+          const Offset(3.8, 9.8),
+          const Offset(20.2, 9.8),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(8.2, 3.4),
+          const Offset(8.2, 6.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(15.8, 3.4),
+          const Offset(15.8, 6.6),
+          mainStroke,
+        );
+        canvas.drawCircle(const Offset(8.8, 13.6), 1.0, mainStroke);
+        canvas.drawCircle(const Offset(12.0, 13.6), 1.0, mainStroke);
+        canvas.drawCircle(const Offset(15.4, 15.6), 1.6, accentFill);
+
+      case FounderIconGlyph.clockSla:
+        canvas.drawCircle(const Offset(12.0, 12.6), 8.2, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.6), 8.2, mainStroke);
+        canvas.drawLine(
+          const Offset(9.8, 2.8),
+          const Offset(14.2, 2.8),
+          mainStroke,
+        );
+        final hands = Path()
+          ..moveTo(12.0, 8.2)
+          ..lineTo(12.0, 12.6)
+          ..lineTo(15.4, 14.6);
+        canvas.drawPath(hands, accentStroke);
+
+      case FounderIconGlyph.upcomingEvent:
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.6, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.6, mainStroke);
+        final arr = Path()
+          ..moveTo(8.5, 12.0)
+          ..lineTo(15.2, 12.0)
+          ..moveTo(12.6, 9.2)
+          ..lineTo(15.5, 12.0)
+          ..lineTo(12.6, 14.8);
+        canvas.drawPath(arr, accentStroke);
+
+      case FounderIconGlyph.radarPulse:
+        canvas.drawCircle(const Offset(12.0, 12.0), 5.0, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.8, mainStroke);
+        canvas.drawCircle(
+          const Offset(12.0, 12.0),
+          4.6,
+          Paint()
+            ..isAntiAlias = true
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = sw * 0.85
+            ..color = primaryColor.withValues(alpha: 0.65),
+        );
+        canvas.drawLine(
+          const Offset(12.0, 12.0),
+          const Offset(18.0, 6.0),
+          accentStroke,
+        );
+        canvas.drawCircle(const Offset(15.4, 8.6), 1.6, accentFill);
+
+      case FounderIconGlyph.mapPinLuxury:
+        final pin = Path()
+          ..moveTo(12.0, 20.8)
+          ..cubicTo(12.0, 20.8, 18.4, 14.8, 18.4, 9.8)
+          ..arcToPoint(
+            const Offset(5.6, 9.8),
+            radius: const Radius.circular(6.4),
+            largeArc: true,
+            clockwise: false,
+          )
+          ..cubicTo(5.6, 14.8, 12.0, 20.8, 12.0, 20.8)
+          ..close();
+        canvas.drawPath(pin, duoPaint);
+        canvas.drawPath(pin, mainStroke);
+        canvas.drawCircle(const Offset(12.0, 9.8), 2.3, accentFill);
+
+      case FounderIconGlyph.moonDarkMap:
+        final moon = Path()
+          ..moveTo(19.2, 14.6)
+          ..arcToPoint(
+            const Offset(9.4, 4.8),
+            radius: const Radius.circular(7.8),
+            largeArc: false,
+            clockwise: true,
+          )
+          ..arcToPoint(
+            const Offset(19.2, 14.6),
+            radius: const Radius.circular(8.2),
+            largeArc: true,
+            clockwise: false,
+          )
+          ..close();
+        canvas.drawPath(moon, duoPaint);
+        canvas.drawPath(moon, mainStroke);
+
+      case FounderIconGlyph.sunLightMap:
+        canvas.drawCircle(const Offset(12.0, 12.0), 4.2, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 4.2, accentStroke);
+        for (var i = 0; i < 8; i++) {
+          final a = (math.pi / 4) * i;
+          canvas.drawLine(
+            Offset(12.0 + math.cos(a) * 6.6, 12.0 + math.sin(a) * 6.6),
+            Offset(12.0 + math.cos(a) * 8.8, 12.0 + math.sin(a) * 8.8),
+            mainStroke,
+          );
+        }
+
+      case FounderIconGlyph.compassRose:
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.8, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.8, mainStroke);
+        final needle = Path()
+          ..moveTo(15.6, 8.4)
+          ..lineTo(13.4, 13.4)
+          ..lineTo(8.4, 15.6)
+          ..lineTo(10.6, 10.6)
+          ..close();
+        canvas.drawPath(needle, accentStroke);
+
+      case FounderIconGlyph.zoomPlus:
+        canvas.drawLine(
+          const Offset(12.0, 5.5),
+          const Offset(12.0, 18.5),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(5.5, 12.0),
+          const Offset(18.5, 12.0),
+          mainStroke,
+        );
+
+      case FounderIconGlyph.zoomMinus:
+        canvas.drawLine(
+          const Offset(5.5, 12.0),
+          const Offset(18.5, 12.0),
+          mainStroke,
+        );
+
+      case FounderIconGlyph.gpsTarget:
+        canvas.drawCircle(const Offset(12.0, 12.0), 6.2, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 6.2, mainStroke);
+        canvas.drawCircle(const Offset(12.0, 12.0), 2.0, accentFill);
+        canvas.drawLine(
+          const Offset(12.0, 3.0),
+          const Offset(12.0, 5.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(12.0, 18.4),
+          const Offset(12.0, 21.0),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(3.0, 12.0),
+          const Offset(5.6, 12.0),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(18.4, 12.0),
+          const Offset(21.0, 12.0),
+          mainStroke,
+        );
+
+      case FounderIconGlyph.fullscreenExpand:
+        final corners = Path()
+          ..moveTo(4.2, 9.0)
+          ..lineTo(4.2, 4.2)
+          ..lineTo(9.0, 4.2)
+          ..moveTo(15.0, 4.2)
+          ..lineTo(19.8, 4.2)
+          ..lineTo(19.8, 9.0)
+          ..moveTo(19.8, 15.0)
+          ..lineTo(19.8, 19.8)
+          ..lineTo(15.0, 19.8)
+          ..moveTo(9.0, 19.8)
+          ..lineTo(4.2, 19.8)
+          ..lineTo(4.2, 15.0);
+        canvas.drawPath(corners, mainStroke);
+
+      case FounderIconGlyph.fullscreenExit:
+        final inward = Path()
+          ..moveTo(4.2, 9.0)
+          ..lineTo(9.0, 9.0)
+          ..lineTo(9.0, 4.2)
+          ..moveTo(19.8, 9.0)
+          ..lineTo(15.0, 9.0)
+          ..lineTo(15.0, 4.2)
+          ..moveTo(19.8, 15.0)
+          ..lineTo(15.0, 15.0)
+          ..lineTo(15.0, 19.8)
+          ..moveTo(4.2, 15.0)
+          ..lineTo(9.0, 15.0)
+          ..lineTo(9.0, 19.8);
+        canvas.drawPath(inward, mainStroke);
+
+      case FounderIconGlyph.mediationBalance:
+        canvas.drawLine(
+          const Offset(12.0, 4.4),
+          const Offset(12.0, 19.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(8.2, 19.6),
+          const Offset(15.8, 19.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(4.8, 8.0),
+          const Offset(19.2, 8.0),
+          accentStroke,
+        );
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: const Offset(6.8, 13.6),
+            width: 5.2,
+            height: 4.0,
+          ),
+          0,
+          math.pi,
+          true,
+          duoPaint,
+        );
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: const Offset(6.8, 13.6),
+            width: 5.2,
+            height: 4.0,
+          ),
+          0,
+          math.pi,
+          false,
+          mainStroke,
+        );
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: const Offset(17.2, 13.6),
+            width: 5.2,
+            height: 4.0,
+          ),
+          0,
+          math.pi,
+          true,
+          duoPaint,
+        );
+        canvas.drawArc(
+          Rect.fromCenter(
+            center: const Offset(17.2, 13.6),
+            width: 5.2,
+            height: 4.0,
+          ),
+          0,
+          math.pi,
+          false,
+          mainStroke,
+        );
+
+      case FounderIconGlyph.shieldVerified:
+        final shield = Path()
+          ..moveTo(12.0, 3.4)
+          ..lineTo(19.0, 6.2)
+          ..lineTo(19.0, 11.6)
+          ..cubicTo(19.0, 16.0, 15.8, 19.3, 12.0, 20.8)
+          ..cubicTo(8.2, 19.3, 5.0, 16.0, 5.0, 11.6)
+          ..lineTo(5.0, 6.2)
+          ..close();
+        canvas.drawPath(shield, duoPaint);
+        canvas.drawPath(shield, mainStroke);
+        final vChk = Path()
+          ..moveTo(9.0, 12.0)
+          ..lineTo(11.1, 14.1)
+          ..lineTo(15.2, 9.8);
+        canvas.drawPath(vChk, accentStroke);
+
+      case FounderIconGlyph.vaultLock:
+        final lockBody = rr(5.5, 10.6, 18.5, 20.2, 2.7);
+        canvas.drawRRect(lockBody, duoPaint);
+        canvas.drawRRect(lockBody, mainStroke);
+        final shackle = Path()
+          ..moveTo(8.2, 10.6)
+          ..lineTo(8.2, 7.6)
+          ..arcToPoint(
+            const Offset(15.8, 7.6),
+            radius: const Radius.circular(3.8),
+            largeArc: false,
+            clockwise: true,
+          )
+          ..lineTo(15.8, 10.6);
+        canvas.drawPath(shackle, mainStroke);
+        canvas.drawLine(
+          const Offset(12.0, 14.0),
+          const Offset(12.0, 16.8),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.vaultOpen:
+        final openBody = rr(5.5, 10.6, 18.5, 20.2, 2.7);
+        canvas.drawRRect(openBody, duoPaint);
+        canvas.drawRRect(openBody, mainStroke);
+        final openShackle = Path()
+          ..moveTo(8.2, 10.6)
+          ..lineTo(8.2, 7.2)
+          ..arcToPoint(
+            const Offset(15.8, 6.4),
+            radius: const Radius.circular(3.8),
+            largeArc: false,
+            clockwise: true,
+          );
+        canvas.drawPath(openShackle, accentStroke);
+        canvas.drawLine(
+          const Offset(12.0, 14.0),
+          const Offset(12.0, 16.8),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.masterKey:
+        canvas.drawCircle(const Offset(8.2, 12.0), 4.0, duoPaint);
+        canvas.drawCircle(const Offset(8.2, 12.0), 4.0, mainStroke);
+        canvas.drawCircle(const Offset(8.2, 12.0), 1.1, accentFill);
+        canvas.drawLine(
+          const Offset(12.2, 12.0),
+          const Offset(20.4, 12.0),
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(17.2, 12.0),
+          const Offset(17.2, 15.0),
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(19.8, 12.0),
+          const Offset(19.8, 14.2),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.biometricId:
+        final focus = Path()
+          ..moveTo(4.5, 8.2)
+          ..lineTo(4.5, 5.2)
+          ..lineTo(7.5, 5.2)
+          ..moveTo(16.5, 5.2)
+          ..lineTo(19.5, 5.2)
+          ..lineTo(19.5, 8.2)
+          ..moveTo(19.5, 15.8)
+          ..lineTo(19.5, 18.8)
+          ..lineTo(16.5, 18.8)
+          ..moveTo(7.5, 18.8)
+          ..lineTo(4.5, 18.8)
+          ..lineTo(4.5, 15.8);
+        canvas.drawPath(focus, mainStroke);
+        canvas.drawArc(
+          Rect.fromCircle(center: const Offset(12.0, 12.5), radius: 3.6),
+          math.pi * 1.15,
+          math.pi * 0.7,
+          false,
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(12.0, 11.0),
+          const Offset(12.0, 15.2),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.eyeOpen:
+        final eye = Path()
+          ..moveTo(3.2, 12.0)
+          ..cubicTo(6.2, 6.6, 17.8, 6.6, 20.8, 12.0)
+          ..cubicTo(17.8, 17.4, 6.2, 17.4, 3.2, 12.0)
+          ..close();
+        canvas.drawPath(eye, duoPaint);
+        canvas.drawPath(eye, mainStroke);
+        canvas.drawCircle(const Offset(12.0, 12.0), 2.5, accentStroke);
+
+      case FounderIconGlyph.eyeClosed:
+        final eyeC = Path()
+          ..moveTo(3.4, 12.0)
+          ..cubicTo(6.4, 6.8, 17.6, 6.8, 20.6, 12.0)
+          ..cubicTo(17.6, 17.2, 6.4, 17.2, 3.4, 12.0);
+        canvas.drawPath(eyeC, mainStroke);
+        canvas.drawLine(
+          const Offset(4.8, 19.2),
+          const Offset(19.2, 4.8),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.mailEnvelope:
+        final env = rr(3.5, 5.6, 20.5, 18.4, 2.5);
+        canvas.drawRRect(env, duoPaint);
+        canvas.drawRRect(env, mainStroke);
+        final flap = Path()
+          ..moveTo(4.2, 7.0)
+          ..lineTo(12.0, 12.6)
+          ..lineTo(19.8, 7.0);
+        canvas.drawPath(flap, accentStroke);
+
+      case FounderIconGlyph.mailDispatched:
+        final envD = rr(3.2, 5.6, 19.2, 17.8, 2.4);
+        canvas.drawRRect(envD, duoPaint);
+        canvas.drawRRect(envD, mainStroke);
+        final flapD = Path()
+          ..moveTo(4.0, 6.8)
+          ..lineTo(11.2, 12.0)
+          ..lineTo(18.4, 6.8);
+        canvas.drawPath(flapD, mainStroke);
+        final okD = Path()
+          ..moveTo(15.4, 17.8)
+          ..lineTo(17.2, 19.6)
+          ..lineTo(20.6, 15.8);
+        canvas.drawPath(okD, accentStroke);
+
+      case FounderIconGlyph.clipboardOtp:
+        final clip = rr(5.5, 5.0, 18.5, 20.2, 2.4);
+        canvas.drawRRect(clip, duoPaint);
+        canvas.drawRRect(clip, mainStroke);
+        canvas.drawRRect(rr(9.2, 3.2, 14.8, 6.0, 1.2), accentStroke);
+        final pasteArr = Path()
+          ..moveTo(12.0, 9.6)
+          ..lineTo(12.0, 15.8)
+          ..moveTo(9.5, 13.4)
+          ..lineTo(12.0, 16.0)
+          ..lineTo(14.5, 13.4);
+        canvas.drawPath(pasteArr, accentStroke);
+
+      case FounderIconGlyph.otaDirectUpdate:
+        canvas.drawCircle(const Offset(12.0, 11.5), 7.2, duoPaint);
+        final tray = Path()
+          ..moveTo(5.0, 16.2)
+          ..lineTo(5.0, 18.0)
+          ..quadraticBezierTo(5.0, 19.8, 6.8, 19.8)
+          ..lineTo(17.2, 19.8)
+          ..quadraticBezierTo(19.0, 19.8, 19.0, 18.0)
+          ..lineTo(19.0, 16.2);
+        canvas.drawPath(tray, mainStroke);
+        final dlArr = Path()
+          ..moveTo(12.0, 4.2)
+          ..lineTo(12.0, 14.6)
+          ..moveTo(8.4, 11.2)
+          ..lineTo(12.0, 14.8)
+          ..lineTo(15.6, 11.2);
+        canvas.drawPath(dlArr, accentStroke);
+
+      case FounderIconGlyph.duressEmergencyShield:
+        final eShield = Path()
+          ..moveTo(12.0, 3.4)
+          ..lineTo(19.0, 6.2)
+          ..lineTo(19.0, 11.6)
+          ..cubicTo(19.0, 16.0, 15.8, 19.3, 12.0, 20.8)
+          ..cubicTo(8.2, 19.3, 5.0, 16.0, 5.0, 11.6)
+          ..lineTo(5.0, 6.2)
+          ..close();
+        canvas.drawPath(eShield, duoPaint);
+        canvas.drawPath(eShield, mainStroke);
+        canvas.drawLine(
+          const Offset(12.0, 8.4),
+          const Offset(12.0, 12.8),
+          accentStroke,
+        );
+        canvas.drawCircle(const Offset(12.0, 15.6), 1.1, accentFill);
+
+      case FounderIconGlyph.screenCaptureShield:
+        final scr = rr(4.5, 4.5, 19.5, 19.5, 3.0);
+        canvas.drawRRect(scr, duoPaint);
+        canvas.drawRRect(scr, mainStroke);
+        canvas.drawCircle(const Offset(12.0, 12.0), 2.8, accentStroke);
+
+      case FounderIconGlyph.userClient:
+        canvas.drawCircle(const Offset(12.0, 8.6), 3.4, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 8.6), 3.4, mainStroke);
+        final uArc = Path()
+          ..moveTo(5.2, 19.4)
+          ..cubicTo(5.2, 15.0, 18.8, 15.0, 18.8, 19.4);
+        canvas.drawPath(uArc, mainStroke);
+
+      case FounderIconGlyph.userProvider:
+        canvas.drawCircle(const Offset(10.6, 8.6), 3.2, duoPaint);
+        canvas.drawCircle(const Offset(10.6, 8.6), 3.2, mainStroke);
+        final pArc = Path()
+          ..moveTo(4.4, 19.4)
+          ..cubicTo(4.4, 15.2, 16.8, 15.2, 16.8, 19.4);
+        canvas.drawPath(pArc, mainStroke);
+        final badgeChk = Path()
+          ..moveTo(16.0, 11.6)
+          ..lineTo(17.5, 13.1)
+          ..lineTo(20.2, 10.2);
+        canvas.drawPath(badgeChk, accentStroke);
+
+      case FounderIconGlyph.dualModeVenn:
+        canvas.drawCircle(const Offset(9.4, 12.0), 5.6, duoPaint);
+        canvas.drawCircle(const Offset(14.6, 12.0), 5.6, duoPaint);
+        canvas.drawCircle(const Offset(9.4, 12.0), 5.6, mainStroke);
+        canvas.drawCircle(const Offset(14.6, 12.0), 5.6, accentStroke);
+
+      case FounderIconGlyph.starRating:
+        final star = Path();
+        for (var i = 0; i < 10; i++) {
+          final r = i.isEven ? 8.6 : 4.0;
+          final a = -math.pi / 2 + (math.pi / 5) * i;
+          final pt = Offset(12.0 + math.cos(a) * r, 12.2 + math.sin(a) * r);
+          if (i == 0) {
+            star.moveTo(pt.dx, pt.dy);
+          } else {
+            star.lineTo(pt.dx, pt.dy);
+          }
+        }
+        star.close();
+        canvas.drawPath(star, duoPaint);
+        canvas.drawPath(star, accentStroke);
+
+      case FounderIconGlyph.warningTriangle:
+        final tri = Path()
+          ..moveTo(12.0, 4.2)
+          ..lineTo(20.2, 18.8)
+          ..lineTo(3.8, 18.8)
+          ..close();
+        canvas.drawPath(tri, duoPaint);
+        canvas.drawPath(tri, mainStroke);
+        canvas.drawLine(
+          const Offset(12.0, 10.0),
+          const Offset(12.0, 14.0),
+          accentStroke,
+        );
+        canvas.drawCircle(const Offset(12.0, 16.5), 1.0, accentFill);
+
+      case FounderIconGlyph.checkValid:
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.6, duoPaint);
+        canvas.drawCircle(const Offset(12.0, 12.0), 8.6, mainStroke);
+        final ok = Path()
+          ..moveTo(8.4, 12.2)
+          ..lineTo(10.9, 14.7)
+          ..lineTo(15.8, 9.6);
+        canvas.drawPath(ok, accentStroke);
+
+      case FounderIconGlyph.ringPending:
+        canvas.drawCircle(
+          const Offset(12.0, 12.0),
+          7.6,
+          Paint()
+            ..isAntiAlias = true
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = sw * 0.85
+            ..color = primaryColor.withValues(alpha: 0.42),
+        );
+
+      case FounderIconGlyph.sparkBolt:
+        final bolt = Path()
+          ..moveTo(13.2, 3.5)
+          ..lineTo(5.8, 13.2)
+          ..lineTo(11.6, 13.2)
+          ..lineTo(10.8, 20.5)
+          ..lineTo(18.2, 10.8)
+          ..lineTo(12.4, 10.8)
+          ..close();
+        canvas.drawPath(bolt, duoPaint);
+        canvas.drawPath(bolt, accentStroke);
+
+      case FounderIconGlyph.copilotAiStar:
+        final spk = Path()
+          ..moveTo(12.0, 3.6)
+          ..quadraticBezierTo(12.6, 11.4, 20.4, 12.0)
+          ..quadraticBezierTo(12.6, 12.6, 12.0, 20.4)
+          ..quadraticBezierTo(11.4, 12.6, 3.6, 12.0)
+          ..quadraticBezierTo(11.4, 11.4, 12.0, 3.6)
+          ..close();
+        canvas.drawPath(spk, duoPaint);
+        canvas.drawPath(spk, accentStroke);
+        canvas.drawCircle(const Offset(18.2, 6.0), 1.2, accentFill);
+
+      case FounderIconGlyph.sendVector:
+        final plane = Path()
+          ..moveTo(3.8, 11.4)
+          ..lineTo(20.0, 4.6)
+          ..lineTo(13.6, 20.0)
+          ..lineTo(11.0, 13.4)
+          ..close();
+        canvas.drawPath(plane, duoPaint);
+        canvas.drawPath(plane, mainStroke);
+        canvas.drawLine(
+          const Offset(11.0, 13.4),
+          const Offset(19.6, 4.9),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.refreshArc:
+        canvas.drawArc(
+          Rect.fromCircle(center: const Offset(12.0, 12.0), radius: 7.4),
+          -math.pi * 0.78,
+          math.pi * 1.52,
+          false,
+          mainStroke,
+        );
+        final rHead = Path()
+          ..moveTo(15.8, 4.6)
+          ..lineTo(19.2, 5.4)
+          ..lineTo(18.2, 8.8);
+        canvas.drawPath(rHead, accentStroke);
+
+      case FounderIconGlyph.closeCross:
+        canvas.drawLine(
+          const Offset(6.8, 6.8),
+          const Offset(17.2, 17.2),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(17.2, 6.8),
+          const Offset(6.8, 17.2),
+          mainStroke,
+        );
+
+      case FounderIconGlyph.signOutDoor:
+        final door = Path()
+          ..moveTo(13.5, 4.5)
+          ..lineTo(6.8, 4.5)
+          ..quadraticBezierTo(5.0, 4.5, 5.0, 6.3)
+          ..lineTo(5.0, 17.7)
+          ..quadraticBezierTo(5.0, 19.5, 6.8, 19.5)
+          ..lineTo(13.5, 19.5);
+        canvas.drawPath(door, mainStroke);
+        final outArr = Path()
+          ..moveTo(10.2, 12.0)
+          ..lineTo(19.6, 12.0)
+          ..moveTo(16.4, 8.8)
+          ..lineTo(19.8, 12.0)
+          ..lineTo(16.4, 15.2);
+        canvas.drawPath(outArr, accentStroke);
+
+      case FounderIconGlyph.trashDelete:
+        final bin = rr(6.8, 7.6, 17.2, 19.8, 2.0);
+        canvas.drawRRect(bin, duoPaint);
+        canvas.drawRRect(bin, mainStroke);
+        canvas.drawLine(
+          const Offset(4.8, 7.6),
+          const Offset(19.2, 7.6),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(9.6, 4.8),
+          const Offset(14.4, 4.8),
+          mainStroke,
+        );
+        canvas.drawLine(
+          const Offset(10.4, 11.0),
+          const Offset(10.4, 16.4),
+          accentStroke,
+        );
+        canvas.drawLine(
+          const Offset(13.6, 11.0),
+          const Offset(13.6, 16.4),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.searchGlass:
+        canvas.drawCircle(const Offset(10.8, 10.8), 6.0, duoPaint);
+        canvas.drawCircle(const Offset(10.8, 10.8), 6.0, mainStroke);
+        canvas.drawLine(
+          const Offset(15.2, 15.2),
+          const Offset(19.8, 19.8),
+          accentStroke,
+        );
+
+      case FounderIconGlyph.chevronLeft:
+        final p = Path()
+          ..moveTo(14.6, 6.4)
+          ..lineTo(9.0, 12.0)
+          ..lineTo(14.6, 17.6);
+        canvas.drawPath(p, mainStroke);
+
+      case FounderIconGlyph.chevronRight:
+        final p = Path()
+          ..moveTo(9.4, 6.4)
+          ..lineTo(15.0, 12.0)
+          ..lineTo(9.4, 17.6);
+        canvas.drawPath(p, mainStroke);
+
+      case FounderIconGlyph.chevronDown:
+        final p = Path()
+          ..moveTo(6.4, 9.6)
+          ..lineTo(12.0, 15.2)
+          ..lineTo(17.6, 9.6);
+        canvas.drawPath(p, mainStroke);
+
+      case FounderIconGlyph.chevronUp:
+        final p = Path()
+          ..moveTo(6.4, 14.4)
+          ..lineTo(12.0, 8.8)
+          ..lineTo(17.6, 14.4);
+        canvas.drawPath(p, mainStroke);
+
+      case FounderIconGlyph.arrowBack:
+        final p = Path()
+          ..moveTo(19.2, 12.0)
+          ..lineTo(5.2, 12.0)
+          ..moveTo(10.8, 6.4)
+          ..lineTo(5.0, 12.0)
+          ..lineTo(10.8, 17.6);
+        canvas.drawPath(p, mainStroke);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _FounderPrecisionIconPainter oldDelegate) {
+    return oldDelegate.glyph != glyph ||
+        oldDelegate.primaryColor != primaryColor ||
+        oldDelegate.accentColor != accentColor ||
+        oldDelegate.isActive != isActive ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.duotoneAlpha != duotoneAlpha;
   }
 }

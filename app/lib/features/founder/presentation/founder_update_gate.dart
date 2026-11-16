@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -679,7 +680,9 @@ class _FounderUpdateGateState extends State<FounderUpdateGate>
 
   void _dismissForThisBuild(FounderUpdateInfo info) {
     unawaited(_persistDismissedBuild(info.build));
-    _installer.reset();
+    if (!_installer.progressNotifier.value.isBusy) {
+      _installer.reset();
+    }
     setState(() {
       _dismissedBuild = info.build;
       _manualOverrideVisible = false;
@@ -693,6 +696,10 @@ class _FounderUpdateGateState extends State<FounderUpdateGate>
         (_manualOverrideVisible ||
             _dismissedBuild == null ||
             info.build > _dismissedBuild!);
+    final mediaPadding = MediaQuery.paddingOf(context);
+    final safeTop = FounderSovereignTokens.safeTopInset(context) + 8.0;
+    final safeLeft = math.max(12.0, mediaPadding.left + 12.0);
+    final safeRight = math.max(12.0, mediaPadding.right + 12.0);
 
     return _FounderUpdateScope(
       controller: this,
@@ -701,9 +708,9 @@ class _FounderUpdateGateState extends State<FounderUpdateGate>
           widget.child,
           if (showCard)
             Positioned(
-              top: MediaQuery.paddingOf(context).top + 8,
-              left: 12,
-              right: 12,
+              top: safeTop,
+              left: safeLeft,
+              right: safeRight,
               child: Align(
                 alignment: Alignment.topCenter,
                 child: ConstrainedBox(
@@ -786,6 +793,13 @@ class _FounderFloatingUpdateCard extends StatelessWidget {
       FounderOtaInstallPhase.idle => metaParts.join(' · '),
     };
 
+    final dismissLabel = busy
+        ? 'Ocultar'
+        : (phase == FounderOtaInstallPhase.installerLaunched ||
+                phase == FounderOtaInstallPhase.browserFallbackLaunched
+            ? 'Fechar'
+            : 'Depois');
+
     return Semantics(
       liveRegion: true,
       label: 'Nova atualização direta do Desperrengue CEO disponível',
@@ -821,24 +835,17 @@ class _FounderFloatingUpdateCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: FounderSovereignTokens.imperialGoldSoft,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: FounderSovereignTokens.imperialGold
-                            .withValues(alpha: 0.5),
-                      ),
-                    ),
-                    child: Icon(
-                      phase == FounderOtaInstallPhase.installerLaunched
-                          ? Icons.verified_rounded
-                          : Icons.system_update_rounded,
-                      size: 19,
-                      color: FounderSovereignTokens.imperialGoldBright,
-                    ),
+                  FounderPrecisionBadge(
+                    phase == FounderOtaInstallPhase.installerLaunched
+                        ? FounderIconGlyph.shieldVerified
+                        : FounderIconGlyph.otaDirectUpdate,
+                    boxSize: 36,
+                    iconSize: 18,
+                    tintColor: phase == FounderOtaInstallPhase.error
+                        ? FounderSovereignTokens.crimsonAlert
+                        : phase == FounderOtaInstallPhase.installerLaunched
+                            ? FounderSovereignTokens.solvencyEmerald
+                            : FounderSovereignTokens.imperialGoldBright,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -908,28 +915,22 @@ class _FounderFloatingUpdateCard extends StatelessWidget {
                   alignment: WrapAlignment.end,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: <Widget>[
-                    if (!busy)
-                      TextButton(
-                        key: const ValueKey<String>('founder-ota-later-btn'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: FounderSovereignTokens.mutedInk,
-                          minimumSize: const Size(0, 34),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                        ),
-                        onPressed: onDismiss,
-                        child: Text(
-                          phase == FounderOtaInstallPhase.installerLaunched ||
-                                  phase ==
-                                      FounderOtaInstallPhase
-                                          .browserFallbackLaunched
-                              ? 'Fechar'
-                              : 'Depois',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
+                    TextButton(
+                      key: const ValueKey<String>('founder-ota-later-btn'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: FounderSovereignTokens.mutedInk,
+                        minimumSize: const Size(0, 34),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
+                      onPressed: onDismiss,
+                      child: Text(
+                        dismissLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                    ),
                     if (phase == FounderOtaInstallPhase.idle ||
                         phase == FounderOtaInstallPhase.error)
                       FilledButton.icon(
@@ -944,7 +945,13 @@ class _FounderFloatingUpdateCard extends StatelessWidget {
                           ),
                         ),
                         onPressed: onInstallNow,
-                        icon: const Icon(Icons.download_done_rounded, size: 16),
+                        icon: const FounderPrecisionIcon(
+                          FounderIconGlyph.otaDirectUpdate,
+                          size: 16,
+                          color: Color(0xFF111827),
+                          accentColor: Color(0xFF111827),
+                          duotoneAlpha: 0.14,
+                        ),
                         label: Text(
                           phase == FounderOtaInstallPhase.error
                               ? 'Tentar novamente'
