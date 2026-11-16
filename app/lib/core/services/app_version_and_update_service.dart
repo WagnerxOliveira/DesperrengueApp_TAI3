@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/env.dart';
 import '../state/anti_bypass_fintech_controller.dart';
 import '../state/smart_triage_controller.dart';
 import '../ui/app_tokens.dart';
+import 'public_ota_installer.dart';
 import 'pwa_cache_buster_stub.dart'
     if (dart.library.js_interop) 'pwa_cache_buster_web.dart';
 import 'update_service.dart';
@@ -31,24 +32,40 @@ class UpdateActionOutcome {
   final String message;
 }
 
-/// Serviço Multiplataforma de Atualização Rápida ("Botão Atualizar App" + Cache Busting PWA/Mobile).
+/// Serviço Multiplataforma de Atualização Sem Dor de Cabeça do aplicativo
+/// `Desperrengue` (Cache Busting PWA na Web + Download Direto, Verificação de
+/// Assinatura Digital e Instalador Nativo no Android, sem abrir navegador).
 class AppVersionAndUpdateService {
   const AppVersionAndUpdateService({this.updateService});
 
   final UpdateService? updateService;
 
-  static const String currentVersion = 'v2.14.1';
-  static const String currentBuild = 'Build 2026.11.14.6';
+  static const String currentVersion = 'v2.17.0';
+  static const String currentBuild = 'Build 2026.11.16.1';
   static const String fullVersionBadge = '$currentVersion • $currentBuild';
 
-  static const String prefAcknowledgedVersionKey = 'dsp_acknowledged_version_badge';
-  static const String prefAcknowledgedBuildKey = 'dsp_acknowledged_build_number';
+  static const String prefAcknowledgedVersionKey =
+      'dsp_acknowledged_version_badge';
+  static const String prefAcknowledgedBuildKey =
+      'dsp_acknowledged_build_number';
 
-  /// Notificador global para esconder imediatamente todos os botões de atualização após o clique.
-  static final ValueNotifier<bool> updateAcknowledgedNotifier = ValueNotifier<bool>(false);
+  /// Notificador global para sincronizar os indicadores discretos de atualização.
+  static final ValueNotifier<bool> updateAcknowledgedNotifier =
+      ValueNotifier<bool>(false);
 
   static String get directBetaApkUrl =>
-      'https://github.com/${Env.updateRepo}/releases/download/${UpdateService.releaseTag}/desperrengue.apk';
+      'https://github.com/${Env.updateRepo}/releases/download/${UpdateService.releaseTag}/${UpdateService.publicApkAssetName}';
+
+  /// Invalida controladores reativos para garantir dados frescos de sessão.
+  static bool invalidateCoreProviders(BuildContext? context) {
+    if (context == null) return false;
+    final container = maybeProviderContainer(context);
+    if (container == null) return false;
+    container.invalidate(antiBypassFintechControllerProvider);
+    container.invalidate(smartTriageControllerProvider);
+    container.invalidate(jobTriageRegistryProvider);
+    return true;
+  }
 
   /// Marca a versão/build atual como já atualizada para não exibir novamente o botão.
   static Future<void> markUpdateAcknowledged({int? remoteBuild}) async {
@@ -69,8 +86,6 @@ class AppVersionAndUpdateService {
       final prefs = await SharedPreferences.getInstance();
       final ackBadge = prefs.getString(prefAcknowledgedVersionKey);
       if (kIsWeb) {
-        // Na Web/PWA, quando o bundle novo já foi carregado, marca automaticamente como atualizado
-        // para não exibir o botão "Atualizar Aplicativo" repetidamente.
         if (ackBadge != fullVersionBadge) {
           await prefs.setString(prefAcknowledgedVersionKey, fullVersionBadge);
         }
@@ -87,44 +102,35 @@ class AppVersionAndUpdateService {
     }
   }
 
-  /// Executa a atualização imediata:
+  /// Executa a atualização imediata sem navegador externo:
   /// - Invalida providers de estado (Riverpod) para recarregar dados frescos;
-  /// - Persiste que a atualização já foi acionada para ocultar o botão;
-  /// - Na Web/PWA: busca `version.json`/`manifest.json?t=...`, desregistra Service Workers,
-  ///   limpa `CacheStorage` e recarrega a página;
-  /// - No Mobile Nativo (Android/iOS): consulta o release `beta-latest` no GitHub
-  ///   (`WagnerxOliveira/DesperrengueApp_TAI3`) e oferece download direto do APK atualizado.
+  /// - Na Web/PWA: desregistra Service Workers, limpa `CacheStorage` e recarrega;
+  /// - No Android: consulta `beta-latest` e aciona o instalador direto in-app com
+  ///   verificação de `SHA-256` e assinatura digital X.509.
   Future<UpdateActionOutcome> performQuickUpdate({
     BuildContext? context,
     bool reloadWebWindow = true,
   }) async {
-    var invalidated = false;
-    if (context != null) {
-      final container = maybeProviderContainer(context);
-      if (container != null) {
-        container.invalidate(antiBypassFintechControllerProvider);
-        container.invalidate(smartTriageControllerProvider);
-        container.invalidate(jobTriageRegistryProvider);
-        invalidated = true;
-      }
-    }
+    final invalidated = invalidateCoreProviders(context);
 
     if (kIsWeb) {
       await markUpdateAcknowledged();
-      final purged = await purgeWebCachesAndReload(reloadWindow: reloadWebWindow);
+      final purged =
+          await purgeWebCachesAndReload(reloadWindow: reloadWebWindow);
       return UpdateActionOutcome(
         versionBadge: fullVersionBadge,
         wasWebCachePurged: purged,
         providersInvalidated: invalidated,
         directApkDownloadUrl: directBetaApkUrl,
-        message:
-            'Aplicativo atualizado com sucesso ($fullVersionBadge)!',
+        message: 'Aplicativo atualizado com sucesso ($fullVersionBadge)!',
       );
     }
 
     final checker = updateService ?? UpdateService(enabled: true);
-    final info = await checker.check();
-    await markUpdateAcknowledged(remoteBuild: info?.build);
+    final info = await checker.check(forceManualCheck: true);
+    if (info == null) {
+      await markUpdateAcknowledged();
+    }
 
     return UpdateActionOutcome(
       versionBadge: fullVersionBadge,
@@ -133,24 +139,35 @@ class AppVersionAndUpdateService {
       remoteUpdateInfo: info,
       directApkDownloadUrl: info?.apkUrl ?? directBetaApkUrl,
       message: info != null
-          ? 'Nova versão ${info.version} (build ${info.build}) encontrada! Abrindo instalador...'
-          : 'Aplicativo já está na versão mais recente ($fullVersionBadge).',
+          ? 'Baixando versão ${info.version} com verificação de segurança…'
+          : 'Seu Desperrengue já está na versão mais recente ($fullVersionBadge).',
     );
   }
 }
 
-/// Botão de atualização em 1 toque ("Atualizar App") que só aparece quando há
-/// atualização pendente (ou em modo de teste quando `reloadWebOnTap == false`),
-/// desaparecendo imediatamente após o usuário clicar e atualizar.
+/// Botão elegante e discreto de atualização rápida em 1 toque ("Atualizar").
+///
+/// - Aparece silenciosamente apenas quando existe uma versão mais nova disponível
+///   (ou em modo de teste determinístico quando `reloadWebOnTap == false`);
+/// - No cabeçalho (`compact: true`), recolhe-se automaticamente enquanto o cartão
+///   flutuante de entrada (`UpdateGate`) já estiver visível no topo, evitando
+///   duplicidade visual;
+/// - Ao tocar, aciona diretamente o download em streaming dentro do próprio app,
+///   confere `SHA-256` + assinatura digital e abre o instalador nativo do Android
+///   sozinho — sem abrir navegador nem exigir busca em pastas.
 class AppQuickUpdateButton extends StatefulWidget {
   const AppQuickUpdateButton({
     super.key,
     this.compact = true,
     this.reloadWebOnTap = true,
+    this.updateService,
+    this.otaInstaller,
   });
 
   final bool compact;
   final bool reloadWebOnTap;
+  final UpdateService? updateService;
+  final PublicNativeOtaInstaller? otaInstaller;
 
   @override
   State<AppQuickUpdateButton> createState() => _AppQuickUpdateButtonState();
@@ -160,17 +177,22 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
   bool _busy = false;
   bool _hasPendingUpdate = false;
   bool _checked = false;
+  UpdateInfo? _pendingInfo;
+  PublicNativeOtaInstaller? _standaloneInstaller;
 
   @override
   void initState() {
     super.initState();
-    AppVersionAndUpdateService.updateAcknowledgedNotifier.addListener(_onAckChanged);
+    AppVersionAndUpdateService.updateAcknowledgedNotifier
+        .addListener(_onAckChanged);
     _checkAvailability();
   }
 
   @override
   void dispose() {
-    AppVersionAndUpdateService.updateAcknowledgedNotifier.removeListener(_onAckChanged);
+    AppVersionAndUpdateService.updateAcknowledgedNotifier
+        .removeListener(_onAckChanged);
+    _standaloneInstaller?.dispose();
     super.dispose();
   }
 
@@ -182,53 +204,103 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
   }
 
   Future<void> _checkAvailability() async {
-    // Em testes de widget (`reloadWebOnTap == false`), permite renderizar o botão se ainda não clicado.
-    if (!widget.reloadWebOnTap) {
+    if (!widget.reloadWebOnTap && widget.updateService == null) {
       if (mounted) {
         setState(() {
-          _hasPendingUpdate = !AppVersionAndUpdateService.updateAcknowledgedNotifier.value;
+          _hasPendingUpdate =
+              !AppVersionAndUpdateService.updateAcknowledgedNotifier.value;
           _checked = true;
         });
       }
       return;
     }
-    final pending = await const AppVersionAndUpdateService().checkPendingUpdate();
+    final pending = await AppVersionAndUpdateService(
+      updateService: widget.updateService,
+    ).checkPendingUpdate();
     if (!mounted) return;
     setState(() {
-      _hasPendingUpdate = pending != null && !AppVersionAndUpdateService.updateAcknowledgedNotifier.value;
+      _pendingInfo = pending;
+      _hasPendingUpdate = pending != null &&
+          !AppVersionAndUpdateService.updateAcknowledgedNotifier.value;
       _checked = true;
     });
   }
 
   Future<void> _handleTap() async {
     if (_busy) return;
+    HapticFeedback.selectionClick();
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.maybeOf(context);
-    messenger?.hideCurrentSnackBar();
-    messenger?.showSnackBar(
-      const SnackBar(
-        content: Text('Atualizando aplicativo para a versão mais recente...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
 
     try {
-      final service = const AppVersionAndUpdateService();
-      final outcome = await service.performQuickUpdate(
-        context: context,
-        reloadWebWindow: widget.reloadWebOnTap,
-      );
-      if (!mounted) return;
-      setState(() => _hasPendingUpdate = false);
+      AppVersionAndUpdateService.invalidateCoreProviders(context);
 
-      if (!kIsWeb && outcome.remoteUpdateInfo != null) {
-        await _showMobileUpdateSheet(context, outcome);
-      } else {
+      if (kIsWeb) {
+        final service = AppVersionAndUpdateService(
+          updateService: widget.updateService,
+        );
+        final outcome = await service.performQuickUpdate(
+          context: context,
+          reloadWebWindow: widget.reloadWebOnTap,
+        );
+        if (!mounted) return;
+        setState(() => _hasPendingUpdate = false);
         messenger?.hideCurrentSnackBar();
         messenger?.showSnackBar(
           SnackBar(
             content: Text(outcome.message),
             duration: const Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      final gate = PublicUpdateGateScope.maybeOf(context);
+      if (gate != null) {
+        final found = await gate.checkNowAndPrompt(autoStartInstall: true);
+        if (!mounted) return;
+        if (found == null) {
+          await AppVersionAndUpdateService.markUpdateAcknowledged();
+          if (!mounted) return;
+          setState(() => _hasPendingUpdate = false);
+          messenger?.hideCurrentSnackBar();
+          messenger?.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Seu Desperrengue já está na versão mais recente.',
+              ),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Modo autônomo (quando montado fora de um UpdateGate, ex.: testes isolados):
+      final info = _pendingInfo ??
+          await (widget.updateService ?? UpdateService(enabled: true))
+              .check(forceManualCheck: true);
+      if (info != null) {
+        final installer = widget.otaInstaller ??
+            (_standaloneInstaller ??= PublicNativeOtaInstaller());
+        await installer.downloadAndInstall(info);
+        await AppVersionAndUpdateService.markUpdateAcknowledged(
+          remoteBuild: info.build,
+        );
+        if (mounted) {
+          setState(() => _hasPendingUpdate = false);
+        }
+      } else {
+        await AppVersionAndUpdateService.markUpdateAcknowledged();
+        if (!mounted) return;
+        setState(() => _hasPendingUpdate = false);
+        messenger?.hideCurrentSnackBar();
+        messenger?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Seu Desperrengue já está na versão mais recente.',
+            ),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -237,83 +309,208 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
     }
   }
 
-  Future<void> _showMobileUpdateSheet(
-    BuildContext context,
-    UpdateActionOutcome outcome,
-  ) async {
+  Widget _buildContent(BuildContext context) {
     final tk = context.tk;
-    final info = outcome.remoteUpdateInfo;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor: tk.infoSoft,
-                    child: Icon(Icons.system_update_alt_rounded, color: tk.info),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          info != null ? 'Nova Atualização Disponível!' : 'Atualização Rápida Desperrengue',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 17,
-                            color: tk.text,
-                          ),
-                        ),
-                        Text(
-                          outcome.versionBadge,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: tk.textMuted,
-                          ),
-                        ),
-                      ],
+    final cs = Theme.of(context).colorScheme;
+
+    if (widget.compact) {
+      return Semantics(
+        button: true,
+        label: 'Atualizar aplicativo',
+        child: Material(
+          key: const ValueKey<String>('public-discreet-update-pill'),
+          color: cs.primary.withValues(alpha: tk.isDark ? 0.13 : 0.08),
+          shape: StadiumBorder(
+            side: BorderSide(
+              color: cs.primary.withValues(alpha: tk.isDark ? 0.28 : 0.18),
+            ),
+          ),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: _busy ? null : _handleTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9.5, vertical: 5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (_busy)
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.8,
+                        color: cs.primary,
+                      ),
+                    )
+                  else
+                    Icon(
+                      Icons.system_update_rounded,
+                      size: 13.5,
+                      color: cs.primary,
+                    ),
+                  const SizedBox(width: 4.5),
+                  Flexible(
+                    child: Text(
+                      'Atualizar',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.1,
+                        color: cs.primary,
+                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Text(
-                info != null
-                    ? 'Build ${info.build} disponível no repositório oficial (${Env.updateRepo}).${info.notes.isNotEmpty ? "\nNovidades: ${info.notes}" : ""}'
-                    : 'Os dados da sessão foram sincronizados com sucesso. Se você acabou de enviar alterações para o GitHub, toque abaixo para baixar e instalar o APK mais recente (beta-latest).',
-                style: TextStyle(fontSize: 13.5, height: 1.4, color: tk.text),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final info = _pendingInfo;
+    final subtitleText = info != null && info.version.isNotEmpty
+        ? [
+            'Versão ${info.version}',
+            if (info.sizeLabel.isNotEmpty) info.sizeLabel,
+            'Instalação segura no app',
+          ].join(' · ')
+        : 'Baixa, verifica a segurança e instala sem sair do app';
+
+    final actionButton = FilledButton(
+      key: const ValueKey<String>('public-discreet-update-card-btn'),
+      onPressed: _busy ? null : _handleTap,
+      style: FilledButton.styleFrom(
+        backgroundColor: cs.primary.withValues(alpha: tk.isDark ? 0.18 : 0.11),
+        foregroundColor: cs.primary,
+        disabledBackgroundColor:
+            cs.primary.withValues(alpha: tk.isDark ? 0.10 : 0.06),
+        elevation: 0,
+        visualDensity: VisualDensity.compact,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+        shape: const StadiumBorder(),
+        textStyle: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (_busy) ...<Widget>[
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.8,
+                color: cs.primary,
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    Navigator.pop(ctx);
-                    final uri = Uri.parse(outcome.directApkDownloadUrl);
-                    try {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } catch (_) {}
-                  },
-                  icon: const Icon(Icons.download_rounded),
-                  label: Text(
-                    info != null
-                        ? 'Baixar e Instalar Versão ${info.version}'
-                        : 'Baixar Último APK Oficial (beta-latest)',
-                  ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          const Text(
+            'Atualizar',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+
+    return Container(
+      key: const ValueKey<String>('public-discreet-update-card'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: tk.isDark ? tk.raised : tk.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tk.border),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+          final stacked = constraints.maxWidth < 290 || textScale > 1.3;
+
+          final leadingIcon = Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: tk.isDark ? 0.15 : 0.09),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              Icons.system_update_rounded,
+              size: 18,
+              color: cs.primary,
+            ),
+          );
+
+          final textColumn = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Nova versão disponível',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13.5,
+                  letterSpacing: -0.1,
+                  color: tk.text,
+                ),
+              ),
+              const SizedBox(height: 1.5),
+              Text(
+                subtitleText,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.25,
+                  color: tk.textMuted,
                 ),
               ),
             ],
-          ),
-        ),
+          );
+
+          if (!stacked) {
+            return Row(
+              children: <Widget>[
+                leadingIcon,
+                const SizedBox(width: 12),
+                Expanded(child: textColumn),
+                const SizedBox(width: 10),
+                actionButton,
+              ],
+            );
+          }
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  leadingIcon,
+                  const SizedBox(width: 12),
+                  Expanded(child: textColumn),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: actionButton,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -323,115 +520,18 @@ class _AppQuickUpdateButtonState extends State<AppQuickUpdateButton> {
     if (!_checked || !_hasPendingUpdate) {
       return const SizedBox.shrink();
     }
-    final tk = context.tk;
-    final cs = Theme.of(context).colorScheme;
-    if (widget.compact) {
-      return Semantics(
-        button: true,
-        label: 'Atualizar App ${AppVersionAndUpdateService.fullVersionBadge}',
-        child: Material(
-          color: cs.primaryContainer.withValues(alpha: tk.isDark ? 0.35 : 0.65),
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: _handleTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_busy)
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: cs.primary,
-                      ),
-                    )
-                  else
-                    Icon(
-                      Icons.system_update_alt_rounded,
-                      size: 15,
-                      color: cs.primary,
-                    ),
-                  const SizedBox(width: 5),
-                  Flexible(
-                    child: Text(
-                      'Atualizar App',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: cs.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+    final gate = PublicUpdateGateScope.maybeOf(context);
+    if (widget.compact && widget.reloadWebOnTap && gate != null) {
+      return ValueListenableBuilder<bool>(
+        valueListenable: gate.floatingCardVisibleListenable,
+        builder: (context, gateCardVisible, _) {
+          if (gateCardVisible) {
+            return const SizedBox.shrink();
+          }
+          return _buildContent(context);
+        },
       );
     }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tk.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.primary.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: cs.primary.withValues(alpha: 0.14),
-            child: Icon(Icons.system_update_alt_rounded, color: cs.primary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Atualizar Aplicativo (1 Toque)',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 14.5,
-                    color: tk.text,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  AppVersionAndUpdateService.fullVersionBadge,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: tk.textMuted,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton.icon(
-            onPressed: _busy ? null : _handleTap,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 38),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-            icon: _busy
-                ? const SizedBox(
-                    width: 15,
-                    height: 15,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.refresh_rounded, size: 17),
-            label: const Text('Atualizar'),
-          ),
-        ],
-      ),
-    );
+    return _buildContent(context);
   }
 }

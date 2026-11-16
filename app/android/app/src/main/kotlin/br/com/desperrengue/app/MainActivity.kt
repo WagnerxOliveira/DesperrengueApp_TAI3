@@ -3,6 +3,9 @@ package br.com.desperrengue.app
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
@@ -28,7 +31,8 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-private const val FOUNDER_OTA_SUBDIR = "ota"
+private const val OTA_CACHE_SUBDIR = "ota"
+private const val PUBLIC_APK_FILE_NAME = "desperrengue.apk"
 private const val FOUNDER_APK_FILE_NAME = "desperrengue-founder-ceo.apk"
 private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
 
@@ -51,17 +55,26 @@ class MainActivity : FlutterActivity() {
     private val isFounderCeoBuild: Boolean
         get() = applicationContext.packageName.endsWith(".founder")
 
+    private val expectedApkFileName: String
+        get() = if (isFounderCeoBuild) FOUNDER_APK_FILE_NAME else PUBLIC_APK_FILE_NAME
+
+    private val otaChannelName: String
+        get() = if (isFounderCeoBuild) {
+            "br.com.desperrengue.app.founder/ota"
+        } else {
+            "br.com.desperrengue.app/ota"
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (isFounderCeoBuild) {
             applyFlagSecureProtection(enable = true)
-            cleanupStaleOtaArtifactsAsync()
         }
+        cleanupStaleOtaArtifactsAsync()
     }
 
     override fun onResume() {
         super.onResume()
-        if (!isFounderCeoBuild) return
         val waitingApk = pendingPermissionApkFile
         if (waitingApk != null && canInstallPackagesNow()) {
             pendingPermissionApkFile = null
@@ -80,51 +93,61 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        if (!isFounderCeoBuild) return
 
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "br.com.desperrengue.app.founder/security"
-        ).setMethodCallHandler { call, result ->
-            when (call.method) {
-                "getScreenProtectionStatus" -> {
-                    result.success(
-                        mapOf(
-                            "flagSecureActive" to flagSecureActive,
-                            "bypassExpiresAtEpochMs" to bypassExpiresAtEpochMs
+        if (isFounderCeoBuild) {
+            MethodChannel(
+                flutterEngine.dartExecutor.binaryMessenger,
+                "br.com.desperrengue.app.founder/security"
+            ).setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getScreenProtectionStatus" -> {
+                        result.success(
+                            mapOf(
+                                "flagSecureActive" to flagSecureActive,
+                                "bypassExpiresAtEpochMs" to bypassExpiresAtEpochMs
+                            )
                         )
-                    )
-                }
-                "setTemporaryCaptureAllowed" -> {
-                    val allow = call.argument<Boolean>("allow") ?: false
-                    val minutes = (call.argument<Int>("minutes") ?: 5).coerceIn(1, 5)
-                    mainHandler.removeCallbacks(relockRunnable)
-                    if (allow) {
-                        val durationMs = minutes * 60_000L
-                        bypassExpiresAtEpochMs = System.currentTimeMillis() + durationMs
-                        applyFlagSecureProtection(enable = false)
-                        mainHandler.postDelayed(relockRunnable, durationMs)
-                    } else {
-                        bypassExpiresAtEpochMs = 0L
-                        applyFlagSecureProtection(enable = true)
                     }
-                    result.success(
-                        mapOf(
-                            "flagSecureActive" to flagSecureActive,
-                            "bypassExpiresAtEpochMs" to bypassExpiresAtEpochMs
+                    "setTemporaryCaptureAllowed" -> {
+                        val allow = call.argument<Boolean>("allow") ?: false
+                        val durationSec = call.argument<Int>("durationSeconds")
+                        val minutes = (call.argument<Int>("minutes") ?: 5).coerceIn(1, 5)
+                        val durationMs = if (durationSec != null) {
+                            durationSec.coerceIn(30, 300) * 1000L
+                        } else {
+                            minutes * 60_000L
+                        }
+                        mainHandler.removeCallbacks(relockRunnable)
+                        if (allow) {
+                            bypassExpiresAtEpochMs = System.currentTimeMillis() + durationMs
+                            applyFlagSecureProtection(enable = false)
+                            mainHandler.postDelayed(relockRunnable, durationMs)
+                        } else {
+                            bypassExpiresAtEpochMs = 0L
+                            applyFlagSecureProtection(enable = true)
+                        }
+                        val remainingMs = (bypassExpiresAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L)
+                        result.success(
+                            mapOf(
+                                "flagSecureActive" to flagSecureActive,
+                                "temporaryCaptureAllowed" to !flagSecureActive,
+                                "remainingCaptureMs" to remainingMs,
+                                "bypassExpiresAtEpochMs" to bypassExpiresAtEpochMs
+                            )
                         )
-                    )
+                    }
+                    else -> result.notImplemented()
                 }
-                else -> result.notImplemented()
             }
         }
 
         val channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "br.com.desperrengue.app.founder/ota"
+            otaChannelName
         )
         otaChannel = channel
         channel.setMethodCallHandler { call, result ->
+            val targetApkName = expectedApkFileName
             when (call.method) {
                 "canInstallPackages" -> {
                     result.success(canInstallPackagesNow())
@@ -133,7 +156,7 @@ class MainActivity : FlutterActivity() {
                     result.success(openUnknownAppSourcesSettings())
                 }
                 "triggerPendingInstall" -> {
-                    val otaFile = File(File(applicationContext.cacheDir, FOUNDER_OTA_SUBDIR), FOUNDER_APK_FILE_NAME)
+                    val otaFile = File(File(applicationContext.cacheDir, OTA_CACHE_SUBDIR), targetApkName)
                     if (!otaFile.exists() || otaFile.length() <= 0L) {
                         result.success(mapOf("status" to "missing_file"))
                     } else if (!canInstallPackagesNow()) {
@@ -151,9 +174,7 @@ class MainActivity : FlutterActivity() {
                 "downloadAndInstallApk" -> {
                     val apkUrl = call.argument<String>("apkUrl")?.trim().orEmpty()
                     val expectedSha256 = call.argument<String>("expectedSha256")?.trim()?.lowercase(Locale.ROOT)
-                    if (!isTrustedGithubHttpsUrl(apkUrl) ||
-                        !apkUrl.lowercase(Locale.ROOT).contains(FOUNDER_APK_FILE_NAME)
-                    ) {
+                    if (!isAuthorizedFlavorApkUrl(apkUrl)) {
                         result.error(
                             "ERR_UNTRUSTED_OTA_URL",
                             "URL de atualização rejeitada pela política Zero-Trust.",
@@ -171,7 +192,11 @@ class MainActivity : FlutterActivity() {
                     }
                     otaExecutor.execute {
                         try {
-                            val outcome = performStreamingOtaDownload(apkUrl, expectedSha256)
+                            val outcome = performStreamingOtaDownload(
+                                initialUrl = apkUrl,
+                                targetFileName = targetApkName,
+                                expectedSha256 = expectedSha256
+                            )
                             mainHandler.post {
                                 val apkFile = outcome.file
                                 if (!canInstallPackagesNow()) {
@@ -227,16 +252,17 @@ class MainActivity : FlutterActivity() {
                             }
                         } catch (e: SecurityException) {
                             mainHandler.post {
+                                val secCode = e.message ?: "ERR_OTA_SECURITY"
                                 emitOtaProgress(
                                     phase = "error",
                                     receivedBytes = 0L,
                                     totalBytes = 0L,
                                     progress = 0.0,
-                                    errorCode = e.message ?: "ERR_OTA_SECURITY"
+                                    errorCode = secCode
                                 )
                                 result.error(
-                                    "ERR_OTA_SECURITY",
-                                    e.message ?: "Falha de integridade criptográfica do APK.",
+                                    secCode,
+                                    "Verificação de segurança bloqueou o pacote ($secCode).",
                                     null
                                 )
                             }
@@ -273,6 +299,16 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
     }
 
+    private fun isAuthorizedFlavorApkUrl(rawUrl: String): Boolean {
+        if (!isTrustedGithubHttpsUrl(rawUrl)) return false
+        val lower = rawUrl.lowercase(Locale.ROOT)
+        return if (isFounderCeoBuild) {
+            lower.endsWith("/$FOUNDER_APK_FILE_NAME")
+        } else {
+            !lower.contains("founder") && lower.endsWith("/$PUBLIC_APK_FILE_NAME")
+        }
+    }
+
     private data class DownloadedApkResult(
         val file: File,
         val bytesWritten: Long,
@@ -281,11 +317,12 @@ class MainActivity : FlutterActivity() {
 
     private fun performStreamingOtaDownload(
         initialUrl: String,
+        targetFileName: String,
         expectedSha256: String?
     ): DownloadedApkResult {
-        val otaDir = File(applicationContext.cacheDir, FOUNDER_OTA_SUBDIR).apply { mkdirs() }
-        val partFile = File(otaDir, "$FOUNDER_APK_FILE_NAME.part")
-        val finalFile = File(otaDir, FOUNDER_APK_FILE_NAME)
+        val otaDir = File(applicationContext.cacheDir, OTA_CACHE_SUBDIR).apply { mkdirs() }
+        val partFile = File(otaDir, "$targetFileName.part")
+        val finalFile = File(otaDir, targetFileName)
         if (partFile.exists()) partFile.delete()
 
         var currentUrl = initialUrl
@@ -296,12 +333,17 @@ class MainActivity : FlutterActivity() {
                 if (!isTrustedGithubHttpsUrl(currentUrl)) {
                     throw SecurityException("ERR_UNTRUSTED_REDIRECT_HOST")
                 }
+                val userAgent = if (isFounderCeoBuild) {
+                    "DesperrengueCEO-OTA/2.17"
+                } else {
+                    "Desperrengue-OTA/2.17"
+                }
                 val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = false
                     connectTimeout = 15_000
                     readTimeout = 30_000
                     requestMethod = "GET"
-                    setRequestProperty("User-Agent", "DesperrengueCEO-OTA/2.13")
+                    setRequestProperty("User-Agent", userAgent)
                     setRequestProperty("Accept", "application/octet-stream")
                 }
                 val code = conn.responseCode
@@ -378,6 +420,7 @@ class MainActivity : FlutterActivity() {
                 progress = 1.0
             )
 
+            // Camada 1: Verificação criptográfica do hash SHA-256 contra o release oficial
             val computedSha256 = digest.digest().joinToString("") { "%02x".format(it) }
             if (!expectedSha256.isNullOrBlank() &&
                 !computedSha256.equals(expectedSha256, ignoreCase = true)
@@ -385,6 +428,9 @@ class MainActivity : FlutterActivity() {
                 partFile.delete()
                 throw SecurityException("ERR_OTA_SHA256_MISMATCH")
             }
+
+            // Camada 2: Verificação nativa do applicationId e da assinatura digital X.509 do APK
+            verifyDownloadedApkSignature(partFile, applicationContext.packageName)
 
             if (finalFile.exists()) {
                 finalFile.delete()
@@ -407,6 +453,79 @@ class MainActivity : FlutterActivity() {
         } finally {
             connection?.disconnect()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun verifyDownloadedApkSignature(apkFile: File, expectedPackageName: String) {
+        val pm = applicationContext.packageManager
+        val rawArchiveInfo: PackageInfo? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageArchiveInfo(
+                apkFile.absolutePath,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
+        }
+        val archiveInfo: PackageInfo = rawArchiveInfo
+            ?: throw SecurityException("ERR_OTA_INVALID_APK_ARCHIVE")
+
+        if (archiveInfo.packageName != expectedPackageName) {
+            throw SecurityException("ERR_OTA_PACKAGE_MISMATCH")
+        }
+
+        val archiveSignerDigests = extractSignerCertSha256Set(archiveInfo, apkFile.absolutePath)
+        val installedInfo: PackageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageInfo(
+                expectedPackageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            pm.getPackageInfo(expectedPackageName, PackageManager.GET_SIGNING_CERTIFICATES)
+        } else {
+            pm.getPackageInfo(expectedPackageName, PackageManager.GET_SIGNATURES)
+        }
+        val installedSignerDigests = extractSignerCertSha256Set(installedInfo, null)
+
+        if (archiveSignerDigests.isEmpty() ||
+            installedSignerDigests.isEmpty() ||
+            archiveSignerDigests.intersect(installedSignerDigests).isEmpty()
+        ) {
+            throw SecurityException("ERR_OTA_SIGNATURE_MISMATCH")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun extractSignerCertSha256Set(pkgInfo: PackageInfo, archivePathFallback: String?): Set<String> {
+        val digests = HashSet<String>()
+        fun addSignatures(sigs: Array<Signature>?) {
+            sigs?.forEach { sig ->
+                val hash = MessageDigest.getInstance("SHA-256")
+                    .digest(sig.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                digests.add(hash)
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signingInfo = pkgInfo.signingInfo
+            if (signingInfo != null) {
+                addSignatures(signingInfo.apkContentsSigners)
+                addSignatures(signingInfo.signingCertificateHistory)
+            }
+        }
+        if (digests.isEmpty()) {
+            addSignatures(pkgInfo.signatures)
+        }
+        if (digests.isEmpty() && archivePathFallback != null) {
+            val legacyInfo = applicationContext.packageManager.getPackageArchiveInfo(
+                archivePathFallback,
+                PackageManager.GET_SIGNATURES
+            )
+            addSignatures(legacyInfo?.signatures)
+        }
+        return digests
     }
 
     private fun emitOtaProgressOnMain(
@@ -474,11 +593,17 @@ class MainActivity : FlutterActivity() {
 
     private fun launchNativePackageInstaller(apkFile: File): Boolean {
         if (!apkFile.exists() || apkFile.length() <= 0L) return false
+        try {
+            verifyDownloadedApkSignature(apkFile, applicationContext.packageName)
+        } catch (_: SecurityException) {
+            runCatching { apkFile.delete() }
+            return false
+        }
         val authority = "${applicationContext.packageName}.ota.provider"
         val contentUri = Uri.Builder()
             .scheme("content")
             .authority(authority)
-            .appendPath(FOUNDER_APK_FILE_NAME)
+            .appendPath(expectedApkFileName)
             .build()
         val installIntent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(contentUri, APK_MIME_TYPE)
@@ -496,7 +621,7 @@ class MainActivity : FlutterActivity() {
     private fun cleanupStaleOtaArtifactsAsync() {
         otaExecutor.execute {
             runCatching {
-                val otaDir = File(applicationContext.cacheDir, FOUNDER_OTA_SUBDIR)
+                val otaDir = File(applicationContext.cacheDir, OTA_CACHE_SUBDIR)
                 if (!otaDir.exists()) return@execute
                 val cutoff = System.currentTimeMillis() - 30 * 60_000L
                 otaDir.listFiles()?.forEach { f ->
@@ -540,25 +665,26 @@ class MainActivity : FlutterActivity() {
     }
 }
 
-/**
- * Provider isolado exclusivamente no manifesto `src/founder/AndroidManifest.xml`
- * (`br.com.desperrengue.app.founder.ota.provider`, `exported=false`).
- * Entrega somente o binário verificado `cacheDir/ota/desperrengue-founder-ceo.apk`
- * ao PackageInstaller nativo do sistema Android, eliminando qualquer navegador externo.
- */
-class FounderOtaFileProvider : ContentProvider() {
+abstract class BaseVerifiedOtaFileProvider internal constructor(
+    private val expectedFileName: String,
+    private val requireFounderPackage: Boolean
+) : ContentProvider() {
     override fun onCreate(): Boolean = true
 
-    private fun resolveVerifiedFounderApk(uri: Uri): File {
+    private fun resolveVerifiedApk(uri: Uri): File {
         val ctx = context ?: throw FileNotFoundException("Contexto indisponível.")
-        if (!ctx.packageName.endsWith(".founder")) {
+        val isFounderPkg = ctx.packageName.endsWith(".founder")
+        if (requireFounderPackage && !isFounderPkg) {
             throw SecurityException("Provider exclusivo do binário soberano CEO.")
         }
-        if (uri.lastPathSegment != FOUNDER_APK_FILE_NAME) {
+        if (!requireFounderPackage && isFounderPkg) {
+            throw SecurityException("Provider exclusivo do aplicativo público Desperrengue.")
+        }
+        if (uri.lastPathSegment != expectedFileName) {
             throw SecurityException("Artefato não autorizado.")
         }
-        val otaDir = File(ctx.cacheDir, FOUNDER_OTA_SUBDIR).canonicalFile
-        val candidate = File(otaDir, FOUNDER_APK_FILE_NAME).canonicalFile
+        val otaDir = File(ctx.cacheDir, OTA_CACHE_SUBDIR).canonicalFile
+        val candidate = File(otaDir, expectedFileName).canonicalFile
         if (candidate.parentFile != otaDir || !candidate.exists() || !candidate.isFile) {
             throw FileNotFoundException("Pacote OTA não encontrado em cache.")
         }
@@ -574,7 +700,7 @@ class FounderOtaFileProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
         sortOrder: String?
     ): Cursor {
-        val apkFile = resolveVerifiedFounderApk(uri)
+        val apkFile = resolveVerifiedApk(uri)
         val requested = projection ?: arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
         val cols = ArrayList<String>(requested.size)
         val values = ArrayList<Any?>(requested.size)
@@ -582,7 +708,7 @@ class FounderOtaFileProvider : ContentProvider() {
             when (col) {
                 OpenableColumns.DISPLAY_NAME -> {
                     cols.add(OpenableColumns.DISPLAY_NAME)
-                    values.add(FOUNDER_APK_FILE_NAME)
+                    values.add(expectedFileName)
                 }
                 OpenableColumns.SIZE -> {
                     cols.add(OpenableColumns.SIZE)
@@ -599,7 +725,7 @@ class FounderOtaFileProvider : ContentProvider() {
         if (mode != "r") {
             throw SecurityException("Somente leitura permitida.")
         }
-        val apkFile = resolveVerifiedFounderApk(uri)
+        val apkFile = resolveVerifiedApk(uri)
         return ParcelFileDescriptor.open(apkFile, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 
@@ -616,3 +742,24 @@ class FounderOtaFileProvider : ContentProvider() {
         selectionArgs: Array<out String>?
     ): Int = throw UnsupportedOperationException("Somente leitura.")
 }
+
+/**
+ * Provider isolado no manifesto `src/beta/AndroidManifest.xml`
+ * (`br.com.desperrengue.app.ota.provider`, `exported=false`).
+ * Entrega somente o binário verificado `cacheDir/ota/desperrengue.apk` ao instalador nativo do Android.
+ */
+class PublicOtaFileProvider : BaseVerifiedOtaFileProvider(
+    expectedFileName = PUBLIC_APK_FILE_NAME,
+    requireFounderPackage = false
+)
+
+/**
+ * Provider isolado exclusivamente no manifesto `src/founder/AndroidManifest.xml`
+ * (`br.com.desperrengue.app.founder.ota.provider`, `exported=false`).
+ * Entrega somente o binário verificado `cacheDir/ota/desperrengue-founder-ceo.apk`
+ * ao PackageInstaller nativo do sistema Android, eliminando qualquer navegador externo.
+ */
+class FounderOtaFileProvider : BaseVerifiedOtaFileProvider(
+    expectedFileName = FOUNDER_APK_FILE_NAME,
+    requireFounderPackage = true
+)

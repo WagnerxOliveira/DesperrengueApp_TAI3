@@ -154,6 +154,201 @@ List<String> get kCanonicalServiceCategoryNames =>
     List<String>.unmodifiable(kCategories.map((c) => c.name));
 
 // ============================================================================
+// 0. CALENDÁRIO FISCAL BRASILEIRO DETERMINÍSTICO (SIMPLES NACIONAL & FEBRABAN)
+// ============================================================================
+
+/// Motor puro de feriados bancários nacionais (FEBRABAN + Lei 14.759/2023) e
+/// vencimentos oficiais do Simples Nacional (Resolução CGSN nº 140/2018, Art. 40 e 72).
+///
+/// Espelha 1:1 as funções `IMMUTABLE` do PostgreSQL (`private.ceo_das_due_date_for_competence`
+/// e `private.ceo_defis_due_date_for_year`) sem qualquer valor monetário fictício.
+class CeoBrazilFiscalCalendar {
+  const CeoBrazilFiscalCalendar._();
+
+  static const List<String> _shortMonthNamesPt = <String>[
+    'Jan',
+    'Fev',
+    'Mar',
+    'Abr',
+    'Mai',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Set',
+    'Out',
+    'Nov',
+    'Dez',
+  ];
+
+  /// Converte um instante UTC para a data civil oficial de Brasília (`UTC-3`).
+  static DateTime todayBrasilia([DateTime? nowUtc]) {
+    final brt = (nowUtc ?? DateTime.now().toUtc())
+        .toUtc()
+        .subtract(const Duration(hours: 3));
+    return DateTime(brt.year, brt.month, brt.day);
+  }
+
+  static String formatDayIso(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  static String formatDayPtBr(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}/'
+      '${date.year.toString().padLeft(4, '0')}';
+
+  static String formatShortDayPtBr(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/'
+      '${date.month.toString().padLeft(2, '0')}';
+
+  static String formatCompetenceLabelPt(String competenceYm) {
+    final parts = competenceYm.trim().split('-');
+    if (parts.length == 2) {
+      final y = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      if (y != null && m != null && m >= 1 && m <= 12) {
+        return '${_shortMonthNamesPt[m - 1]}/$y';
+      }
+    }
+    return competenceYm;
+  }
+
+  /// Extrai `YYYY-MM-DD` quando `windowKey` está no formato `'day:YYYY-MM-DD'`.
+  static String? extractSingleDayIsoFromWindowKey(String windowKey) {
+    final clean = windowKey.trim().toLowerCase();
+    if (!clean.startsWith('day:')) return null;
+    final iso = clean.substring(4).trim();
+    final parsed = tryParseDayIso(iso);
+    if (parsed == null) return null;
+    return formatDayIso(parsed);
+  }
+
+  static DateTime? tryParseDayIso(String raw) {
+    var clean = raw.trim();
+    if (clean.toLowerCase().startsWith('day:')) {
+      clean = clean.substring(4).trim();
+    }
+    if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(clean)) return null;
+    final parts = clean.split('-');
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null) return null;
+    if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) {
+      return null;
+    }
+    final candidate = DateTime(y, m, d);
+    if (candidate.year != y || candidate.month != m || candidate.day != d) {
+      return null;
+    }
+    return candidate;
+  }
+
+  /// Algoritmo de Meeus/Jones/Butcher para o Domingo de Páscoa Gregoriano.
+  static DateTime easterSunday(int year) {
+    final a = year % 19;
+    final b = year ~/ 100;
+    final c = year % 100;
+    final d = b ~/ 4;
+    final e = b % 4;
+    final f = (b + 8) ~/ 25;
+    final g = (b - f + 1) ~/ 3;
+    final h = (19 * a + b - d - g + 15) % 30;
+    final i = c ~/ 4;
+    final k = c % 4;
+    final l = (32 + 2 * e + 2 * i - h - k) % 7;
+    final m = (a + 11 * h + 22 * l) ~/ 451;
+    final month = (h + l - 7 * m + 114) ~/ 31;
+    final day = ((h + l - 7 * m + 114) % 31) + 1;
+    return DateTime(year, month, day);
+  }
+
+  /// Verifica se a data é feriado bancário nacional (fixos + Lei 14.759/2023 + móveis FEBRABAN).
+  static bool isBrazilBankHoliday(DateTime date) {
+    final y = date.year;
+    final m = date.month;
+    final d = date.day;
+
+    if ((m == 1 && d == 1) ||
+        (m == 4 && d == 21) ||
+        (m == 5 && d == 1) ||
+        (m == 9 && d == 7) ||
+        (m == 10 && d == 12) ||
+        (m == 11 && d == 2) ||
+        (m == 11 && d == 15) ||
+        (m == 12 && d == 25) ||
+        (y >= 2024 && m == 11 && d == 20)) {
+      return true;
+    }
+
+    final easter = easterSunday(y);
+    bool sameDay(DateTime a, DateTime b) =>
+        a.year == b.year && a.month == b.month && a.day == b.day;
+
+    final target = DateTime(y, m, d);
+    final carnavalMon = DateTime(easter.year, easter.month, easter.day - 48);
+    final carnavalTue = DateTime(easter.year, easter.month, easter.day - 47);
+    final goodFriday = DateTime(easter.year, easter.month, easter.day - 2);
+    final corpusChristi = DateTime(easter.year, easter.month, easter.day + 60);
+
+    return sameDay(target, carnavalMon) ||
+        sameDay(target, carnavalTue) ||
+        sameDay(target, goodFriday) ||
+        sameDay(target, corpusChristi);
+  }
+
+  static bool isBusinessDay(DateTime date) {
+    if (date.weekday == DateTime.saturday || date.weekday == DateTime.sunday) {
+      return false;
+    }
+    return !isBrazilBankHoliday(date);
+  }
+
+  static DateTime nextBusinessDay(DateTime date) {
+    var cur = DateTime(date.year, date.month, date.day);
+    var guard = 0;
+    while (guard < 15 && !isBusinessDay(cur)) {
+      cur = DateTime(cur.year, cur.month, cur.day + 1);
+      guard++;
+    }
+    return cur;
+  }
+
+  /// Vencimento legal do DAS (dia 20 do mês subsequente prorrogado para o próximo dia útil).
+  static DateTime dasDueDateForCompetence(int competenceYear, int competenceMonth) {
+    final nextMonthYear =
+        competenceMonth == 12 ? competenceYear + 1 : competenceYear;
+    final nextMonth = competenceMonth == 12 ? 1 : competenceMonth + 1;
+    return nextBusinessDay(DateTime(nextMonthYear, nextMonth, 20));
+  }
+
+  /// Se `date` for exatamente a data legal de vencimento do DAS da competência anterior,
+  /// retorna `(year, month)` daquela competência; caso contrário, `null`.
+  static ({int year, int month})? competenceForDasDueDate(DateTime date) {
+    final normalized = DateTime(date.year, date.month, date.day);
+    final compYear = normalized.month == 1 ? normalized.year - 1 : normalized.year;
+    final compMonth = normalized.month == 1 ? 12 : normalized.month - 1;
+    final officialDue = dasDueDateForCompetence(compYear, compMonth);
+    if (officialDue.year == normalized.year &&
+        officialDue.month == normalized.month &&
+        officialDue.day == normalized.day) {
+      return (year: compYear, month: compMonth);
+    }
+    return null;
+  }
+
+  /// Prazo anual da DEFIS do Simples Nacional no ano-calendário informado (`31/03` útil).
+  static DateTime defisDueDateInCalendarYear(int calendarYear) =>
+      nextBusinessDay(DateTime(calendarYear, 3, 31));
+
+  static bool isDefisDueDate(DateTime date) {
+    final d = defisDueDateInCalendarYear(date.year);
+    return d.year == date.year && d.month == date.month && d.day == date.day;
+  }
+}
+
+// ============================================================================
 // 1. METADADOS CRIPTOGRÁFICOS DO COFRE MONOCRÁTICO CEO (`SHA-256`)
 // ============================================================================
 
@@ -397,6 +592,8 @@ class CeoLiveOperationsPulse {
     required this.completedAllTimeCount,
     required this.canceledInWindowCount,
     required this.disputedJobsCount,
+    this.openMediationsCount = 0,
+    this.openSupportTicketsCount = 0,
     required this.quotesInWindowCount,
     required this.quotesPendingCount,
     required this.quotesAcceptedInWindowCount,
@@ -414,6 +611,8 @@ class CeoLiveOperationsPulse {
   final int completedAllTimeCount;
   final int canceledInWindowCount;
   final int disputedJobsCount;
+  final int openMediationsCount;
+  final int openSupportTicketsCount;
   final int quotesInWindowCount;
   final int quotesPendingCount;
   final int quotesAcceptedInWindowCount;
@@ -430,6 +629,9 @@ class CeoLiveOperationsPulse {
 
   int get inExecutionPipelineCount =>
       scheduledJobsCount + inProgressJobsCount + awaitingApprovalCount;
+
+  int get totalOpenMediationsAndTicketsCount =>
+      openMediationsCount + openSupportTicketsCount;
 
   int get activeOrdersTotalCount =>
       openJobsCount +
@@ -448,6 +650,8 @@ class CeoLiveOperationsPulse {
         completedAllTimeCount: 0,
         canceledInWindowCount: 0,
         disputedJobsCount: 0,
+        openMediationsCount: 0,
+        openSupportTicketsCount: 0,
         quotesInWindowCount: 0,
         quotesPendingCount: 0,
         quotesAcceptedInWindowCount: 0,
@@ -467,6 +671,8 @@ class CeoLiveOperationsPulse {
       completedAllTimeCount: _asInt(json['completed_all_time_count']),
       canceledInWindowCount: _asInt(json['canceled_in_window_count']),
       disputedJobsCount: _asInt(json['disputed_jobs_count']),
+      openMediationsCount: _asInt(json['open_mediations_count']),
+      openSupportTicketsCount: _asInt(json['open_support_tickets_count']),
       quotesInWindowCount: _asInt(json['quotes_in_window_count']),
       quotesPendingCount: _asInt(json['quotes_pending_count']),
       quotesAcceptedInWindowCount:
@@ -487,6 +693,8 @@ class CeoLiveOperationsPulse {
         'completed_all_time_count': completedAllTimeCount,
         'canceled_in_window_count': canceledInWindowCount,
         'disputed_jobs_count': disputedJobsCount,
+        'open_mediations_count': openMediationsCount,
+        'open_support_tickets_count': openSupportTicketsCount,
         'quotes_in_window_count': quotesInWindowCount,
         'quotes_pending_count': quotesPendingCount,
         'quotes_accepted_in_window_count': quotesAcceptedInWindowCount,
@@ -1669,6 +1877,8 @@ class CeoRealExpenseEntry {
     required this.category,
     required this.description,
     required this.amountCents,
+    this.paymentStatus = 'PAID',
+    this.paidAt,
     required this.createdAt,
   });
 
@@ -1678,7 +1888,15 @@ class CeoRealExpenseEntry {
   final String category;
   final String description;
   final int amountCents;
+  final String paymentStatus;
+  final DateTime? paidAt;
   final DateTime createdAt;
+
+  bool get isScheduled => paymentStatus.trim().toUpperCase() == 'SCHEDULED';
+
+  bool get isPaid => !isScheduled;
+
+  String get statusLabelPt => isScheduled ? 'Agendado' : 'Pago';
 
   String get kindLabelPt {
     switch (expenseKind) {
@@ -1692,6 +1910,8 @@ class CeoRealExpenseEntry {
   }
 
   factory CeoRealExpenseEntry.fromJson(Map<String, dynamic> json) {
+    final rawStatus =
+        _asString(json['payment_status'], 'PAID').trim().toUpperCase();
     return CeoRealExpenseEntry(
       id: _asString(json['id']),
       competenceDateIso: _asString(json['competence_date']),
@@ -1699,6 +1919,8 @@ class CeoRealExpenseEntry {
       category: _asString(json['category'], 'Infraestrutura'),
       description: _asString(json['description']),
       amountCents: _asInt(json['amount_cents']),
+      paymentStatus: rawStatus == 'SCHEDULED' ? 'SCHEDULED' : 'PAID',
+      paidAt: _asNullableDateTimeUtc(json['paid_at']),
       createdAt: _asDateTimeUtc(json['created_at']),
     );
   }
@@ -1710,7 +1932,410 @@ class CeoRealExpenseEntry {
         'category': category,
         'description': description,
         'amount_cents': amountCents,
+        'payment_status': paymentStatus,
+        'paid_at': paidAt?.toUtc().toIso8601String(),
         'created_at': createdAt.toUtc().toIso8601String(),
+      };
+}
+
+/// Linha oficial do cronograma de obrigações fiscais (`tax_obligations_schedule` — DAS Simples Anexo III).
+class CeoTaxObligationScheduleItem {
+  const CeoTaxObligationScheduleItem({
+    required this.competenceYm,
+    required this.dueDateIso,
+    required this.settledOrdersCount,
+    required this.scheduledOrdersCount,
+    required this.settledRevenueCents,
+    required this.scheduledRevenueCents,
+    required this.settledDasCents,
+    required this.projectedDasCents,
+    required this.totalEstimatedDasCents,
+    required this.paidCents,
+    required this.remainingDueCents,
+    required this.status,
+  });
+
+  final String competenceYm;
+  final String dueDateIso;
+  final int settledOrdersCount;
+  final int scheduledOrdersCount;
+  final int settledRevenueCents;
+  final int scheduledRevenueCents;
+  final int settledDasCents;
+  final int projectedDasCents;
+  final int totalEstimatedDasCents;
+  final int paidCents;
+  final int remainingDueCents;
+  final String status;
+
+  String get competenceLabelPt =>
+      CeoBrazilFiscalCalendar.formatCompetenceLabelPt(competenceYm);
+
+  String get dueDateFormattedPt {
+    final dt = CeoBrazilFiscalCalendar.tryParseDayIso(dueDateIso);
+    return dt != null ? CeoBrazilFiscalCalendar.formatDayPtBr(dt) : dueDateIso;
+  }
+
+  String get statusLabelPt {
+    switch (status) {
+      case 'PAID':
+        return 'Quitado';
+      case 'DUE_CONFIRMED':
+        return 'Apurado (a pagar)';
+      case 'PROJECTED_FROM_SCHEDULED':
+        return 'Previsto (serviços agendados)';
+      default:
+        return 'Sem imposto apurado (R\$ 0,00)';
+    }
+  }
+
+  factory CeoTaxObligationScheduleItem.fromJson(Map<String, dynamic> json) {
+    return CeoTaxObligationScheduleItem(
+      competenceYm: _asString(json['competence_ym']),
+      dueDateIso: _asString(json['due_date_iso']),
+      settledOrdersCount: _asInt(json['settled_orders_count']),
+      scheduledOrdersCount: _asInt(json['scheduled_orders_count']),
+      settledRevenueCents: _asInt(json['settled_revenue_cents']),
+      scheduledRevenueCents: _asInt(json['scheduled_revenue_cents']),
+      settledDasCents: _asInt(json['settled_das_cents']),
+      projectedDasCents: _asInt(json['projected_das_cents']),
+      totalEstimatedDasCents: _asInt(json['total_estimated_das_cents']),
+      paidCents: _asInt(json['paid_cents']),
+      remainingDueCents: _asInt(json['remaining_due_cents']),
+      status: _asString(json['status'], 'ZERO_NO_REVENUE'),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'competence_ym': competenceYm,
+        'due_date_iso': dueDateIso,
+        'settled_orders_count': settledOrdersCount,
+        'scheduled_orders_count': scheduledOrdersCount,
+        'settled_revenue_cents': settledRevenueCents,
+        'scheduled_revenue_cents': scheduledRevenueCents,
+        'settled_das_cents': settledDasCents,
+        'projected_das_cents': projectedDasCents,
+        'total_estimated_das_cents': totalEstimatedDasCents,
+        'paid_cents': paidCents,
+        'remaining_due_cents': remainingDueCents,
+        'status': status,
+      };
+}
+
+/// Mediação ou disputa real unificada (`job_mediations` 6h + `support_tickets` 24h).
+class CeoUnifiedMediationItem {
+  const CeoUnifiedMediationItem({
+    required this.id,
+    required this.sourceKind,
+    required this.protocolCode,
+    this.jobId,
+    required this.orderCode,
+    required this.categoryName,
+    required this.phaseOrStatus,
+    required this.isOpen,
+    required this.reasonOrCategory,
+    required this.description,
+    required this.frozenAmountCents,
+    required this.openedAt,
+    this.slaDeadlineAt,
+    required this.openedDayIso,
+    this.deadlineDayIso,
+    required this.clientName,
+    required this.providerName,
+  });
+
+  final String id;
+  final String sourceKind;
+  final String protocolCode;
+  final String? jobId;
+  final String orderCode;
+  final String categoryName;
+  final String phaseOrStatus;
+  final bool isOpen;
+  final String reasonOrCategory;
+  final String description;
+  final int frozenAmountCents;
+  final DateTime openedAt;
+  final DateTime? slaDeadlineAt;
+  final String openedDayIso;
+  final String? deadlineDayIso;
+  final String clientName;
+  final String providerName;
+
+  bool get hasLinkedOrder => jobId != null && jobId!.trim().isNotEmpty;
+
+  String get sourceLabelPt => sourceKind == 'WARRANTY_MEDIATION'
+      ? 'Mediação de garantia (90 dias)'
+      : 'Chamado de mediação e suporte';
+
+  String get phaseLabelPt {
+    switch (phaseOrStatus) {
+      case 'PHASE_1_AI_TRIAGE':
+        return 'Triagem inicial (prazo 6h)';
+      case 'PHASE_2_ORIGINAL_PROVIDER_RIGHT_TO_CURE':
+        return 'Direito de reparo do profissional (6h)';
+      case 'PHASE_3_POOL_COVERAGE_DISPATCH':
+        return 'Acionamento da Reserva de Garantia';
+      case 'PHASE_4_REWORK_IN_PROGRESS':
+        return 'Retrabalho assistido em andamento';
+      case 'PHASE_5_SETTLED_AND_CERTIFIED':
+        return 'Concluída e certificada';
+      case 'open':
+      case 'OPEN':
+        return 'Aguardando análise (prazo 24h)';
+      case 'in_review':
+      case 'IN_REVIEW':
+        return 'Em análise';
+      case 'resolved':
+      case 'RESOLVED':
+        return 'Resolvida';
+      default:
+        return phaseOrStatus;
+    }
+  }
+
+  factory CeoUnifiedMediationItem.fromJson(Map<String, dynamic> json) {
+    return CeoUnifiedMediationItem(
+      id: _asString(json['id']),
+      sourceKind: _asString(json['source_kind'], 'SUPPORT_DISPUTE_TICKET'),
+      protocolCode: _asString(json['protocol_code'], '#MED'),
+      jobId: _asNullableString(json['job_id']),
+      orderCode: _asString(json['order_code'], '#DESP'),
+      categoryName: _asString(json['category_name'], 'Serviço'),
+      phaseOrStatus: _asString(json['phase_or_status'], 'open'),
+      isOpen: _asBool(json['is_open'], true),
+      reasonOrCategory: _asString(json['reason_or_category'], 'Mediação'),
+      description: _asString(json['description']),
+      frozenAmountCents: _asInt(json['frozen_amount_cents']),
+      openedAt: _asDateTimeUtc(json['opened_at']),
+      slaDeadlineAt: _asNullableDateTimeUtc(json['sla_deadline_at']),
+      openedDayIso: _asString(json['opened_day_iso']),
+      deadlineDayIso: _asNullableString(json['deadline_day_iso']),
+      clientName: _asString(json['client_name'], 'Cliente'),
+      providerName: _asString(json['provider_name']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'source_kind': sourceKind,
+        'protocol_code': protocolCode,
+        'job_id': jobId,
+        'order_code': orderCode,
+        'category_name': categoryName,
+        'phase_or_status': phaseOrStatus,
+        'is_open': isOpen,
+        'reason_or_category': reasonOrCategory,
+        'description': description,
+        'frozen_amount_cents': frozenAmountCents,
+        'opened_at': openedAt.toUtc().toIso8601String(),
+        'sla_deadline_at': slaDeadlineAt?.toUtc().toIso8601String(),
+        'opened_day_iso': openedDayIso,
+        'deadline_day_iso': deadlineDayIso,
+        'client_name': clientName,
+        'provider_name': providerName,
+      };
+}
+
+/// Resumo diário consolidado do Calendário Executivo (`calendar_agenda_days` — Passado, Hoje e Futuro).
+class CeoCalendarDayAgendaSummary {
+  const CeoCalendarDayAgendaSummary({
+    required this.dayIso,
+    required this.isFuture,
+    this.completedOrdersCount = 0,
+    this.realizedGmvCents = 0,
+    this.realizedNetProfitCents = 0,
+    this.scheduledOrdersCount = 0,
+    this.scheduledGmvCents = 0,
+    this.scheduledExpectedNetCents = 0,
+    this.activeMediationsOpenedCount = 0,
+    this.mediationsSlaDueCount = 0,
+    this.mediationsTotalEventsCount = 0,
+    this.dasDueCents = 0,
+    this.hasDasMarker = false,
+    this.dasStatus = 'NONE',
+    this.dasLabel = '',
+    this.hasDefisMarker = false,
+    this.expensesPaidCents = 0,
+    this.expensesScheduledCents = 0,
+    this.expensesCount = 0,
+    this.maturationReleaseCount = 0,
+    this.maturationReleaseCents = 0,
+    this.sefazAuditDueCount = 0,
+    this.warrantyExpiringCount = 0,
+  });
+
+  final String dayIso;
+  final bool isFuture;
+  final int completedOrdersCount;
+  final int realizedGmvCents;
+  final int realizedNetProfitCents;
+  final int scheduledOrdersCount;
+  final int scheduledGmvCents;
+  final int scheduledExpectedNetCents;
+  final int activeMediationsOpenedCount;
+  final int mediationsSlaDueCount;
+  final int mediationsTotalEventsCount;
+  final int dasDueCents;
+  final bool hasDasMarker;
+  final String dasStatus;
+  final String dasLabel;
+  final bool hasDefisMarker;
+  final int expensesPaidCents;
+  final int expensesScheduledCents;
+  final int expensesCount;
+  final int maturationReleaseCount;
+  final int maturationReleaseCents;
+  final int sefazAuditDueCount;
+  final int warrantyExpiringCount;
+
+  bool get hasActiveMediationAlert =>
+      activeMediationsOpenedCount > 0 || mediationsSlaDueCount > 0;
+
+  bool get hasFiscalOrBillAlert =>
+      hasDasMarker ||
+      hasDefisMarker ||
+      expensesScheduledCents > 0 ||
+      sefazAuditDueCount > 0;
+
+  bool get hasScheduledOrMaturationActivity =>
+      scheduledOrdersCount > 0 || maturationReleaseCount > 0;
+
+  int get totalPayablesOnDayCents => dasDueCents + expensesScheduledCents;
+
+  int get totalExpensesAndDasOnDayCents =>
+      dasDueCents + expensesPaidCents + expensesScheduledCents;
+
+  factory CeoCalendarDayAgendaSummary.fromJson(Map<String, dynamic> json) {
+    return CeoCalendarDayAgendaSummary(
+      dayIso: _asString(json['day_iso']),
+      isFuture: _asBool(json['is_future']),
+      completedOrdersCount: _asInt(json['completed_orders_count']),
+      realizedGmvCents: _asInt(json['realized_gmv_cents']),
+      realizedNetProfitCents: _asInt(json['realized_net_profit_cents']),
+      scheduledOrdersCount: _asInt(json['scheduled_orders_count']),
+      scheduledGmvCents: _asInt(json['scheduled_gmv_cents']),
+      scheduledExpectedNetCents: _asInt(json['scheduled_expected_net_cents']),
+      activeMediationsOpenedCount:
+          _asInt(json['active_mediations_opened_count']),
+      mediationsSlaDueCount: _asInt(json['mediations_sla_due_count']),
+      mediationsTotalEventsCount: _asInt(json['mediations_total_events_count']),
+      dasDueCents: _asInt(json['das_due_cents']),
+      hasDasMarker: _asBool(json['has_das_marker']),
+      dasStatus: _asString(json['das_status'], 'NONE'),
+      dasLabel: _asString(json['das_label']),
+      hasDefisMarker: _asBool(json['has_defis_marker']),
+      expensesPaidCents: _asInt(json['expenses_paid_cents']),
+      expensesScheduledCents: _asInt(json['expenses_scheduled_cents']),
+      expensesCount: _asInt(json['expenses_count']),
+      maturationReleaseCount: _asInt(json['maturation_release_count']),
+      maturationReleaseCents: _asInt(json['maturation_release_cents']),
+      sefazAuditDueCount: _asInt(json['sefaz_audit_due_count']),
+      warrantyExpiringCount: _asInt(json['warranty_expiring_count']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'day_iso': dayIso,
+        'is_future': isFuture,
+        'completed_orders_count': completedOrdersCount,
+        'realized_gmv_cents': realizedGmvCents,
+        'realized_net_profit_cents': realizedNetProfitCents,
+        'scheduled_orders_count': scheduledOrdersCount,
+        'scheduled_gmv_cents': scheduledGmvCents,
+        'scheduled_expected_net_cents': scheduledExpectedNetCents,
+        'active_mediations_opened_count': activeMediationsOpenedCount,
+        'mediations_sla_due_count': mediationsSlaDueCount,
+        'mediations_total_events_count': mediationsTotalEventsCount,
+        'das_due_cents': dasDueCents,
+        'has_das_marker': hasDasMarker,
+        'das_status': dasStatus,
+        'das_label': dasLabel,
+        'has_defis_marker': hasDefisMarker,
+        'expenses_paid_cents': expensesPaidCents,
+        'expenses_scheduled_cents': expensesScheduledCents,
+        'expenses_count': expensesCount,
+        'maturation_release_count': maturationReleaseCount,
+        'maturation_release_cents': maturationReleaseCents,
+        'sefaz_audit_due_count': sefazAuditDueCount,
+        'warranty_expiring_count': warrantyExpiringCount,
+      };
+}
+
+/// Evento individual clicável de uma data no Calendário Executivo (`calendar_agenda_events`).
+class CeoCalendarAgendaEvent {
+  const CeoCalendarAgendaEvent({
+    required this.dayIso,
+    required this.eventKind,
+    required this.severity,
+    required this.refId,
+    this.jobId,
+    required this.codeLabel,
+    required this.title,
+    required this.subtitle,
+    required this.grossCents,
+    required this.netImpactCents,
+    required this.occurredOrDueAt,
+    required this.statusCode,
+  });
+
+  final String dayIso;
+  final String eventKind;
+  final String severity;
+  final String refId;
+  final String? jobId;
+  final String codeLabel;
+  final String title;
+  final String subtitle;
+  final int grossCents;
+  final int netImpactCents;
+  final DateTime occurredOrDueAt;
+  final String statusCode;
+
+  bool get hasLinkedOrder => jobId != null && jobId!.trim().isNotEmpty;
+
+  bool get isScheduledExpense =>
+      eventKind == 'COMPANY_EXPENSE' && statusCode == 'SCHEDULED';
+
+  bool get isMediationOrDispute =>
+      eventKind == 'MEDIATION_OPENED' ||
+      eventKind == 'MEDIATION_SLA_DUE' ||
+      eventKind == 'SUPPORT_DISPUTE_OPENED' ||
+      eventKind == 'SUPPORT_DISPUTE_SLA_DUE';
+
+  bool get isTaxEvent =>
+      eventKind == 'TAX_DAS_DUE' || eventKind == 'FISCAL_DEFIS_DECLARATION';
+
+  factory CeoCalendarAgendaEvent.fromJson(Map<String, dynamic> json) {
+    return CeoCalendarAgendaEvent(
+      dayIso: _asString(json['day_iso']),
+      eventKind: _asString(json['event_kind'], 'COMPLETED_ORDER'),
+      severity: _asString(json['severity'], 'INFO'),
+      refId: _asString(json['ref_id']),
+      jobId: _asNullableString(json['job_id']),
+      codeLabel: _asString(json['code_label']),
+      title: _asString(json['title']),
+      subtitle: _asString(json['subtitle']),
+      grossCents: _asInt(json['gross_cents']),
+      netImpactCents: _asInt(json['net_impact_cents']),
+      occurredOrDueAt: _asDateTimeUtc(json['occurred_or_due_at']),
+      statusCode: _asString(json['status_code']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'day_iso': dayIso,
+        'event_kind': eventKind,
+        'severity': severity,
+        'ref_id': refId,
+        'job_id': jobId,
+        'code_label': codeLabel,
+        'title': title,
+        'subtitle': subtitle,
+        'gross_cents': grossCents,
+        'net_impact_cents': netImpactCents,
+        'occurred_or_due_at': occurredOrDueAt.toUtc().toIso8601String(),
+        'status_code': statusCode,
       };
 }
 
@@ -2011,6 +2636,7 @@ class CeoOrderForensicsDossier {
     required this.maturationEntries,
     required this.fiscalDocuments,
     required this.mediations,
+    this.supportTickets = const <Map<String, dynamic>>[],
     required this.reviews,
   });
 
@@ -2025,6 +2651,7 @@ class CeoOrderForensicsDossier {
   final List<Map<String, dynamic>> maturationEntries;
   final List<Map<String, dynamic>> fiscalDocuments;
   final List<Map<String, dynamic>> mediations;
+  final List<Map<String, dynamic>> supportTickets;
   final List<Map<String, dynamic>> reviews;
 
   String get jobId => _asString(job['job_id']);
@@ -2068,6 +2695,9 @@ class CeoOrderForensicsDossier {
       ),
       mediations: List<Map<String, dynamic>>.unmodifiable(
         _asMapList(json['mediations']),
+      ),
+      supportTickets: List<Map<String, dynamic>>.unmodifiable(
+        _asMapList(json['support_tickets']),
       ),
       reviews: List<Map<String, dynamic>>.unmodifiable(
         _asMapList(json['reviews']),
@@ -2467,6 +3097,10 @@ class FounderDashboardSnapshot {
     this.timezone = 'America/Sao_Paulo',
     this.windowKey = '30d',
     required this.daysWindow,
+    this.isSingleDay = false,
+    this.isFutureWindow = false,
+    this.windowStartIso,
+    this.windowEndIso,
     this.latestEventSeq = 0,
     required this.vaultMetadata,
     required this.demographics,
@@ -2486,6 +3120,10 @@ class FounderDashboardSnapshot {
     required this.realMonthlyCohorts,
     required this.recentReviews,
     required this.realExpenses,
+    this.taxObligationsSchedule = const <CeoTaxObligationScheduleItem>[],
+    this.activeMediations = const <CeoUnifiedMediationItem>[],
+    this.calendarAgendaDays = const <CeoCalendarDayAgendaSummary>[],
+    this.calendarAgendaEvents = const <CeoCalendarAgendaEvent>[],
     required this.trustedDevices,
     required this.recentAuditLog,
     required this.liveEvents,
@@ -2499,6 +3137,10 @@ class FounderDashboardSnapshot {
   final String timezone;
   final String windowKey;
   final int daysWindow;
+  final bool isSingleDay;
+  final bool isFutureWindow;
+  final String? windowStartIso;
+  final String? windowEndIso;
   final int latestEventSeq;
   final CeoVaultMetadata vaultMetadata;
   final FounderDemographicsSummary demographics;
@@ -2518,6 +3160,10 @@ class FounderDashboardSnapshot {
   final List<CeoMonthlyCohortRow> realMonthlyCohorts;
   final List<CeoReviewItem> recentReviews;
   final List<CeoRealExpenseEntry> realExpenses;
+  final List<CeoTaxObligationScheduleItem> taxObligationsSchedule;
+  final List<CeoUnifiedMediationItem> activeMediations;
+  final List<CeoCalendarDayAgendaSummary> calendarAgendaDays;
+  final List<CeoCalendarAgendaEvent> calendarAgendaEvents;
   final List<CeoTrustedDeviceItem> trustedDevices;
   final List<CeoWormAuditItem> recentAuditLog;
   final List<CeoLiveEventItem> liveEvents;
@@ -2525,6 +3171,229 @@ class FounderDashboardSnapshot {
   final List<CohortRetentionRow> cohortRetention;
   final FounderKycFinOpsSummary kycFinOps;
   final FounderTieredWaterfallSummary tieredWaterfall;
+
+  /// Data civil única (`YYYY-MM-DD`) quando o CEO está consultando uma data específica.
+  DateTime? get consultedSingleDate {
+    final fromKey =
+        CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(windowKey);
+    if (fromKey != null) {
+      return CeoBrazilFiscalCalendar.tryParseDayIso(fromKey);
+    }
+    if (isSingleDay && windowStartIso != null) {
+      return CeoBrazilFiscalCalendar.tryParseDayIso(windowStartIso!);
+    }
+    return null;
+  }
+
+  /// Retorna o resumo 100% real para qualquer data (passada, hoje ou futura),
+  /// mesclando `calendarAgendaDays`, `dailySeries` e a regra legal oficial do DAS/DEFIS (`0` centavos se sem receita).
+  CeoCalendarDayAgendaSummary agendaForDay(
+    DateTime date, {
+    DateTime? todayBrasilia,
+  }) {
+    final dayNorm = DateTime(date.year, date.month, date.day);
+    final iso = CeoBrazilFiscalCalendar.formatDayIso(dayNorm);
+    final todayNorm = todayBrasilia != null
+        ? DateTime(todayBrasilia.year, todayBrasilia.month, todayBrasilia.day)
+        : CeoBrazilFiscalCalendar.todayBrasilia(generatedAt);
+    final isFuture = dayNorm.isAfter(todayNorm);
+
+    CeoCalendarDayAgendaSummary? fromAgenda;
+    for (final item in calendarAgendaDays) {
+      if (item.dayIso == iso) {
+        fromAgenda = item;
+        break;
+      }
+    }
+
+    FounderDailyMetricPoint? fromDaily;
+    for (final pt in dailySeries) {
+      if (pt.dayIso == iso) {
+        fromDaily = pt;
+        break;
+      }
+    }
+
+    CeoTaxObligationScheduleItem? matchingTax;
+    for (final tx in taxObligationsSchedule) {
+      if (tx.dueDateIso == iso) {
+        matchingTax = tx;
+        break;
+      }
+    }
+
+    final legalDasComp = CeoBrazilFiscalCalendar.competenceForDasDueDate(dayNorm);
+    final isLegalDefis = CeoBrazilFiscalCalendar.isDefisDueDate(dayNorm);
+
+    if (fromAgenda != null) {
+      if ((legalDasComp != null && !fromAgenda.hasDasMarker) ||
+          (isLegalDefis && !fromAgenda.hasDefisMarker)) {
+        final compYm = legalDasComp != null
+            ? '${legalDasComp.year.toString().padLeft(4, '0')}-${legalDasComp.month.toString().padLeft(2, '0')}'
+            : '';
+        return CeoCalendarDayAgendaSummary(
+          dayIso: iso,
+          isFuture: fromAgenda.isFuture,
+          completedOrdersCount: fromAgenda.completedOrdersCount,
+          realizedGmvCents: fromAgenda.realizedGmvCents,
+          realizedNetProfitCents: fromAgenda.realizedNetProfitCents,
+          scheduledOrdersCount: fromAgenda.scheduledOrdersCount,
+          scheduledGmvCents: fromAgenda.scheduledGmvCents,
+          scheduledExpectedNetCents: fromAgenda.scheduledExpectedNetCents,
+          activeMediationsOpenedCount: fromAgenda.activeMediationsOpenedCount,
+          mediationsSlaDueCount: fromAgenda.mediationsSlaDueCount,
+          mediationsTotalEventsCount: fromAgenda.mediationsTotalEventsCount,
+          dasDueCents: fromAgenda.dasDueCents > 0
+              ? fromAgenda.dasDueCents
+              : (matchingTax?.remainingDueCents ?? 0),
+          hasDasMarker: fromAgenda.hasDasMarker || legalDasComp != null,
+          dasStatus: fromAgenda.hasDasMarker
+              ? fromAgenda.dasStatus
+              : (matchingTax?.status ??
+                  (legalDasComp != null ? 'ZERO_NO_REVENUE' : 'NONE')),
+          dasLabel: fromAgenda.dasLabel.isNotEmpty
+              ? fromAgenda.dasLabel
+              : (compYm.isNotEmpty ? 'DAS $compYm' : ''),
+          hasDefisMarker: fromAgenda.hasDefisMarker || isLegalDefis,
+          expensesPaidCents: fromAgenda.expensesPaidCents,
+          expensesScheduledCents: fromAgenda.expensesScheduledCents,
+          expensesCount: fromAgenda.expensesCount,
+          maturationReleaseCount: fromAgenda.maturationReleaseCount,
+          maturationReleaseCents: fromAgenda.maturationReleaseCents,
+          sefazAuditDueCount: fromAgenda.sefazAuditDueCount,
+          warrantyExpiringCount: fromAgenda.warrantyExpiringCount,
+        );
+      }
+      return fromAgenda;
+    }
+
+    // Fallback determinístico quando a data está fora do range pré-agregado ou em fixture parcial:
+    var expPaid = 0;
+    var expScheduled = 0;
+    var expCount = 0;
+    for (final e in realExpenses) {
+      if (e.competenceDateIso == iso) {
+        expCount++;
+        if (e.isScheduled) {
+          expScheduled += e.amountCents;
+        } else {
+          expPaid += e.amountCents;
+        }
+      }
+    }
+
+    var medOpened = 0;
+    var medSla = 0;
+    var medTotal = 0;
+    for (final m in activeMediations) {
+      if (m.openedDayIso == iso) {
+        medTotal++;
+        if (m.isOpen) medOpened++;
+      }
+      if (m.isOpen && m.deadlineDayIso == iso) {
+        medTotal++;
+        medSla++;
+      }
+    }
+
+    final compYm = legalDasComp != null
+        ? '${legalDasComp.year.toString().padLeft(4, '0')}-${legalDasComp.month.toString().padLeft(2, '0')}'
+        : (matchingTax?.competenceYm ?? '');
+
+    return CeoCalendarDayAgendaSummary(
+      dayIso: iso,
+      isFuture: isFuture,
+      completedOrdersCount: fromDaily?.ordersCount ?? 0,
+      realizedGmvCents: fromDaily?.gmvCents ?? 0,
+      realizedNetProfitCents: (fromDaily?.netProfitCents ?? 0) -
+          (fromDaily == null ? expPaid : 0),
+      dasDueCents: matchingTax?.remainingDueCents ?? 0,
+      hasDasMarker: matchingTax != null || legalDasComp != null,
+      dasStatus: matchingTax?.status ??
+          (legalDasComp != null ? 'ZERO_NO_REVENUE' : 'NONE'),
+      dasLabel: compYm.isNotEmpty ? 'DAS $compYm' : '',
+      hasDefisMarker: isLegalDefis,
+      activeMediationsOpenedCount: medOpened,
+      mediationsSlaDueCount: medSla,
+      mediationsTotalEventsCount: medTotal,
+      expensesPaidCents: expPaid,
+      expensesScheduledCents: expScheduled,
+      expensesCount: expCount,
+    );
+  }
+
+  /// Lista todos os compromissos e eventos reais de `date` (incluindo o marco legal
+  /// do DAS/DEFIS com `0` centavos caso não haja receita real na competência).
+  List<CeoCalendarAgendaEvent> eventsForDay(DateTime date) {
+    final dayNorm = DateTime(date.year, date.month, date.day);
+    final iso = CeoBrazilFiscalCalendar.formatDayIso(dayNorm);
+    final items = <CeoCalendarAgendaEvent>[
+      for (final ev in calendarAgendaEvents)
+        if (ev.dayIso == iso) ev,
+    ];
+
+    final hasDasItem = items.any((e) => e.eventKind == 'TAX_DAS_DUE');
+    final legalDas = CeoBrazilFiscalCalendar.competenceForDasDueDate(dayNorm);
+    if (!hasDasItem && legalDas != null) {
+      final compYm =
+          '${legalDas.year.toString().padLeft(4, '0')}-${legalDas.month.toString().padLeft(2, '0')}';
+      CeoTaxObligationScheduleItem? tx;
+      for (final candidate in taxObligationsSchedule) {
+        if (candidate.competenceYm == compYm || candidate.dueDateIso == iso) {
+          tx = candidate;
+          break;
+        }
+      }
+      final dueCents = tx?.remainingDueCents ?? 0;
+      final status = tx?.status ?? 'ZERO_NO_REVENUE';
+      final compPt = CeoBrazilFiscalCalendar.formatCompetenceLabelPt(compYm);
+      final subtitle = status == 'PAID'
+          ? 'Imposto da competência quitado integralmente'
+          : (dueCents > 0
+              ? '6% sobre a comissão real da plataforma na competência $compPt'
+              : 'Marco fiscal oficial (dia 20 útil) · R\$ 0,00 apurado até agora');
+      items.add(
+        CeoCalendarAgendaEvent(
+          dayIso: iso,
+          eventKind: 'TAX_DAS_DUE',
+          severity: status == 'PAID'
+              ? 'SUCCESS'
+              : (dueCents > 0 ? 'WARN' : 'INFO'),
+          refId: 'das:$compYm',
+          codeLabel: 'DAS $compPt',
+          title: 'Vencimento Imposto Simples Nacional ($compPt)',
+          subtitle: subtitle,
+          grossCents: dueCents,
+          netImpactCents: -dueCents,
+          occurredOrDueAt: DateTime.utc(dayNorm.year, dayNorm.month, dayNorm.day, 15),
+          statusCode: status,
+        ),
+      );
+    }
+
+    final hasDefisItem =
+        items.any((e) => e.eventKind == 'FISCAL_DEFIS_DECLARATION');
+    if (!hasDefisItem && CeoBrazilFiscalCalendar.isDefisDueDate(dayNorm)) {
+      final baseYear = dayNorm.year - 1;
+      items.add(
+        CeoCalendarAgendaEvent(
+          dayIso: iso,
+          eventKind: 'FISCAL_DEFIS_DECLARATION',
+          severity: 'INFO',
+          refId: 'defis:${dayNorm.year}',
+          codeLabel: 'DEFIS ${dayNorm.year}',
+          title: 'Declaração Anual Simples Nacional (Ano-Base $baseYear)',
+          subtitle: 'Prazo legal anual em 31/03 útil (Art. 72 CGSN nº 140/2018)',
+          grossCents: 0,
+          netImpactCents: 0,
+          occurredOrDueAt: DateTime.utc(dayNorm.year, dayNorm.month, dayNorm.day, 15),
+          statusCode: 'INFO',
+        ),
+      );
+    }
+
+    return items;
+  }
 
   /// Snapshot inicial zerado e 100% honesto (exibido apenas antes da primeira resposta do banco
   /// ou quando o banco real possui `0` registros). Jamais inventa um único número.
@@ -2546,11 +3415,16 @@ class FounderDashboardSnapshot {
       ),
     );
     final demoZero = FounderDemographicsSummary.emptyZero();
+    final singleDayIso =
+        CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(windowKey);
 
     return FounderDashboardSnapshot(
       generatedAt: (generatedAt ?? DateTime.now().toUtc()).toUtc(),
       windowKey: windowKey,
-      daysWindow: daysWindow,
+      daysWindow: singleDayIso != null ? 1 : daysWindow,
+      isSingleDay: singleDayIso != null || windowKey.trim().toLowerCase() == 'today',
+      windowStartIso: singleDayIso,
+      windowEndIso: singleDayIso,
       latestEventSeq: 0,
       vaultMetadata: CeoVaultMetadata.empty(),
       demographics: demoZero,
@@ -2589,6 +3463,17 @@ class FounderDashboardSnapshot {
     final timezone = _asString(json['timezone'], 'America/Sao_Paulo');
     final windowKey = _asString(json['window_key'], '30d');
     final daysWindow = _asInt(json['days_window'], 30).clamp(1, 3650);
+    final singleDayFromKey =
+        CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(windowKey);
+    final isSingleDay = _asBool(
+      json['is_single_day'],
+      singleDayFromKey != null || windowKey.trim().toLowerCase() == 'today',
+    );
+    final isFutureWindow = _asBool(json['is_future_window']);
+    final windowStartIso =
+        _asNullableString(json['window_start_iso']) ?? singleDayFromKey;
+    final windowEndIso =
+        _asNullableString(json['window_end_iso']) ?? singleDayFromKey;
     final latestEventSeq = _asInt(json['latest_event_seq']);
 
     final vaultMeta = CeoVaultMetadata.fromJson(
@@ -2694,6 +3579,22 @@ class FounderDashboardSnapshot {
         .map(CeoRealExpenseEntry.fromJson)
         .toList(growable: false);
 
+    final taxSchedule = _asMapList(json['tax_obligations_schedule'])
+        .map(CeoTaxObligationScheduleItem.fromJson)
+        .toList(growable: false);
+
+    final activeMediations = _asMapList(json['active_mediations'])
+        .map(CeoUnifiedMediationItem.fromJson)
+        .toList(growable: false);
+
+    final calendarAgendaDays = _asMapList(json['calendar_agenda_days'])
+        .map(CeoCalendarDayAgendaSummary.fromJson)
+        .toList(growable: false);
+
+    final calendarAgendaEvents = _asMapList(json['calendar_agenda_events'])
+        .map(CeoCalendarAgendaEvent.fromJson)
+        .toList(growable: false);
+
     final trustedDevices = _asMapList(json['trusted_devices'])
         .map(CeoTrustedDeviceItem.fromJson)
         .toList(growable: false);
@@ -2739,6 +3640,10 @@ class FounderDashboardSnapshot {
       timezone: timezone,
       windowKey: windowKey,
       daysWindow: daysWindow,
+      isSingleDay: isSingleDay,
+      isFutureWindow: isFutureWindow,
+      windowStartIso: windowStartIso,
+      windowEndIso: windowEndIso,
       latestEventSeq: latestEventSeq,
       vaultMetadata: vaultMeta,
       demographics: demographics,
@@ -2764,6 +3669,14 @@ class FounderDashboardSnapshot {
           List<CeoMonthlyCohortRow>.unmodifiable(realCohorts),
       recentReviews: List<CeoReviewItem>.unmodifiable(recentReviews),
       realExpenses: List<CeoRealExpenseEntry>.unmodifiable(realExpenses),
+      taxObligationsSchedule:
+          List<CeoTaxObligationScheduleItem>.unmodifiable(taxSchedule),
+      activeMediations:
+          List<CeoUnifiedMediationItem>.unmodifiable(activeMediations),
+      calendarAgendaDays:
+          List<CeoCalendarDayAgendaSummary>.unmodifiable(calendarAgendaDays),
+      calendarAgendaEvents:
+          List<CeoCalendarAgendaEvent>.unmodifiable(calendarAgendaEvents),
       trustedDevices: List<CeoTrustedDeviceItem>.unmodifiable(trustedDevices),
       recentAuditLog: List<CeoWormAuditItem>.unmodifiable(recentAuditLog),
       liveEvents: List<CeoLiveEventItem>.unmodifiable(liveEvents),
@@ -2800,6 +3713,10 @@ class FounderDashboardSnapshot {
         'timezone': timezone,
         'window_key': windowKey,
         'days_window': daysWindow,
+        'is_single_day': isSingleDay,
+        'is_future_window': isFutureWindow,
+        'window_start_iso': windowStartIso,
+        'window_end_iso': windowEndIso,
         'latest_event_seq': latestEventSeq,
         'vault_metadata': vaultMetadata.toJson(),
         'user_demographics': demographics.toJson(),
@@ -2825,6 +3742,13 @@ class FounderDashboardSnapshot {
             realMonthlyCohorts.map((c) => c.toJson()).toList(),
         'recent_reviews': recentReviews.map((r) => r.toJson()).toList(),
         'real_expenses': realExpenses.map((e) => e.toJson()).toList(),
+        'tax_obligations_schedule':
+            taxObligationsSchedule.map((t) => t.toJson()).toList(),
+        'active_mediations': activeMediations.map((m) => m.toJson()).toList(),
+        'calendar_agenda_days':
+            calendarAgendaDays.map((d) => d.toJson()).toList(),
+        'calendar_agenda_events':
+            calendarAgendaEvents.map((e) => e.toJson()).toList(),
         'trusted_devices': trustedDevices.map((d) => d.toJson()).toList(),
         'recent_audit_log': recentAuditLog.map((a) => a.toJson()).toList(),
         'live_events': liveEvents.map((e) => e.toJson()).toList(),
@@ -2839,6 +3763,10 @@ class FounderDashboardSnapshot {
     String? timezone,
     String? windowKey,
     int? daysWindow,
+    bool? isSingleDay,
+    bool? isFutureWindow,
+    String? windowStartIso,
+    String? windowEndIso,
     int? latestEventSeq,
     CeoVaultMetadata? vaultMetadata,
     FounderDemographicsSummary? demographics,
@@ -2858,6 +3786,10 @@ class FounderDashboardSnapshot {
     List<CeoMonthlyCohortRow>? realMonthlyCohorts,
     List<CeoReviewItem>? recentReviews,
     List<CeoRealExpenseEntry>? realExpenses,
+    List<CeoTaxObligationScheduleItem>? taxObligationsSchedule,
+    List<CeoUnifiedMediationItem>? activeMediations,
+    List<CeoCalendarDayAgendaSummary>? calendarAgendaDays,
+    List<CeoCalendarAgendaEvent>? calendarAgendaEvents,
     List<CeoTrustedDeviceItem>? trustedDevices,
     List<CeoWormAuditItem>? recentAuditLog,
     List<CeoLiveEventItem>? liveEvents,
@@ -2871,6 +3803,10 @@ class FounderDashboardSnapshot {
       timezone: timezone ?? this.timezone,
       windowKey: windowKey ?? this.windowKey,
       daysWindow: daysWindow ?? this.daysWindow,
+      isSingleDay: isSingleDay ?? this.isSingleDay,
+      isFutureWindow: isFutureWindow ?? this.isFutureWindow,
+      windowStartIso: windowStartIso ?? this.windowStartIso,
+      windowEndIso: windowEndIso ?? this.windowEndIso,
       latestEventSeq: latestEventSeq ?? this.latestEventSeq,
       vaultMetadata: vaultMetadata ?? this.vaultMetadata,
       demographics: demographics ?? this.demographics,
@@ -2891,6 +3827,11 @@ class FounderDashboardSnapshot {
       realMonthlyCohorts: realMonthlyCohorts ?? this.realMonthlyCohorts,
       recentReviews: recentReviews ?? this.recentReviews,
       realExpenses: realExpenses ?? this.realExpenses,
+      taxObligationsSchedule:
+          taxObligationsSchedule ?? this.taxObligationsSchedule,
+      activeMediations: activeMediations ?? this.activeMediations,
+      calendarAgendaDays: calendarAgendaDays ?? this.calendarAgendaDays,
+      calendarAgendaEvents: calendarAgendaEvents ?? this.calendarAgendaEvents,
       trustedDevices: trustedDevices ?? this.trustedDevices,
       recentAuditLog: recentAuditLog ?? this.recentAuditLog,
       liveEvents: liveEvents ?? this.liveEvents,

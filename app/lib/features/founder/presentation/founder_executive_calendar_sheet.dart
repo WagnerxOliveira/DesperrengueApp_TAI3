@@ -55,12 +55,7 @@ const List<_CalendarWindowChoice> _kCalendarWindows = <_CalendarWindowChoice>[
   _CalendarWindowChoice('all', 'Tudo'),
 ];
 
-String _toIsoDay(DateTime d) {
-  final y = d.year.toString().padLeft(4, '0');
-  final m = d.month.toString().padLeft(2, '0');
-  final day = d.day.toString().padLeft(2, '0');
-  return '$y-$m-$day';
-}
+String _toIsoDay(DateTime d) => CeoBrazilFiscalCalendar.formatDayIso(d);
 
 bool _isSameCalendarDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
@@ -73,13 +68,92 @@ String _formatFullDayPt(DateTime d, DateTime today) {
   return '$prefix${d.day} de $monthName de ${d.year}';
 }
 
-/// Calendário Executivo *Luxo Silencioso* (Obsidiana & Ouro Champagne Acetinado).
-///
-/// Oferece dois modos de alto padrão:
-/// 1. [showExecutiveOverview]: Calendário financeiro interativo com indicadores diários reais
-///    de pedidos e lucro líquido (extraídos de `snapshot.dailySeries`) + atalhos de período.
-/// 2. [pickSingleDate]: Seletor tátil de data única para lançamento de gastos da empresa,
-///    substituindo o seletor padrão do sistema por uma experiência executiva coesa.
+String _humanizeAgendaBadgeLabel(CeoCalendarAgendaEvent ev) {
+  final raw = ev.codeLabel.trim();
+  if (raw.toUpperCase() == 'FIXED_OPEX') return 'GASTO FIXO';
+  if (raw.toUpperCase() == 'VARIABLE_PSP_CLOUD') return 'TAXA PIX';
+  if (raw.toUpperCase() == 'TAX_EXTRA') return 'IMPOSTO';
+  return raw;
+}
+
+IconData _iconForAgendaEvent(CeoCalendarAgendaEvent ev) {
+  switch (ev.eventKind) {
+    case 'COMPLETED_ORDER':
+      return Icons.check_circle_rounded;
+    case 'SCHEDULED_ORDER':
+      return Icons.event_available_rounded;
+    case 'MEDIATION_OPENED':
+    case 'MEDIATION_SLA_DUE':
+    case 'SUPPORT_DISPUTE_OPENED':
+    case 'SUPPORT_DISPUTE_SLA_DUE':
+      return Icons.gavel_rounded;
+    case 'TAX_DAS_DUE':
+    case 'FISCAL_DEFIS_DECLARATION':
+      return Icons.account_balance_rounded;
+    case 'COMPANY_EXPENSE':
+      return ev.isScheduledExpense
+          ? Icons.receipt_long_rounded
+          : Icons.task_alt_rounded;
+    case 'ESCROW_MATURATION_RELEASE':
+      return Icons.payments_rounded;
+    case 'SEFAZ_AUDIT_DEADLINE':
+      return Icons.description_rounded;
+    default:
+      return Icons.verified_user_rounded;
+  }
+}
+
+Color _colorForAgendaEvent(CeoCalendarAgendaEvent ev) {
+  switch (ev.eventKind) {
+    case 'COMPLETED_ORDER':
+      return FounderSovereignTokens.solvencyEmerald;
+    case 'SCHEDULED_ORDER':
+      return FounderSovereignTokens.imperialGoldBright;
+    case 'MEDIATION_OPENED':
+    case 'MEDIATION_SLA_DUE':
+    case 'SUPPORT_DISPUTE_OPENED':
+    case 'SUPPORT_DISPUTE_SLA_DUE':
+      return ev.severity == 'CRITICAL'
+          ? FounderSovereignTokens.crimsonAlert
+          : FounderSovereignTokens.warmAmber;
+    case 'TAX_DAS_DUE':
+    case 'FISCAL_DEFIS_DECLARATION':
+      return ev.statusCode == 'PAID'
+          ? FounderSovereignTokens.solvencyEmerald
+          : (ev.grossCents > 0
+              ? FounderSovereignTokens.warmAmber
+              : FounderSovereignTokens.imperialGoldBright);
+    case 'COMPANY_EXPENSE':
+      return ev.isScheduledExpense
+          ? FounderSovereignTokens.warmAmber
+          : FounderSovereignTokens.secondaryInk;
+    case 'ESCROW_MATURATION_RELEASE':
+      return FounderSovereignTokens.imperialGoldBright;
+    case 'SEFAZ_AUDIT_DEADLINE':
+      return FounderSovereignTokens.warmAmber;
+    default:
+      return FounderSovereignTokens.secondaryInk;
+  }
+}
+
+/// Resultado tipado retornado ao confirmar `Concluir consulta` no Calendário Executivo.
+class FounderCalendarSelectionResult {
+  const FounderCalendarSelectionResult({
+    required this.windowKey,
+    required this.isSingleDay,
+    required this.selectedDate,
+  });
+
+  /// Chave canônica para `ceo_get_live_cockpit_snapshot`:
+  /// - `'day:YYYY-MM-DD'` quando uma data específica (passada, hoje ou futura) foi escolhida;
+  /// - `'today' | '7d' | '30d' | '90d' | '365d' | 'all'` quando um período agregado está ativo.
+  final String windowKey;
+  final bool isSingleDay;
+  final DateTime selectedDate;
+}
+
+/// Calendário Executivo *Luxo Silencioso* (Obsidiana & Ouro Champagne Acetinado)
+/// com sincronização em tempo real (`Desperrengue` <-> `Desperrengue CEO`) e agenda futura real.
 class FounderExecutiveCalendarSheet extends StatefulWidget {
   const FounderExecutiveCalendarSheet._({
     super.key,
@@ -88,8 +162,12 @@ class FounderExecutiveCalendarSheet extends StatefulWidget {
     this.firstDate,
     this.lastDate,
     this.snapshot,
+    this.liveSnapshotStream,
     this.selectedWindowKey = '30d',
     this.onSelectWindow,
+    this.onInspectOrder,
+    this.onAddExpenseForDate,
+    this.onToggleExpensePaid,
     this.privacyBlurActive = false,
   });
 
@@ -98,31 +176,50 @@ class FounderExecutiveCalendarSheet extends StatefulWidget {
   final DateTime? firstDate;
   final DateTime? lastDate;
   final FounderDashboardSnapshot? snapshot;
+  final Stream<FounderDashboardSnapshot>? liveSnapshotStream;
   final String selectedWindowKey;
   final ValueChanged<String>? onSelectWindow;
+  final void Function(String jobId, String? orderCode)? onInspectOrder;
+  final Future<void> Function(DateTime initialDate)? onAddExpenseForDate;
+  final Future<void> Function(String expenseId, bool paid)? onToggleExpensePaid;
   final bool privacyBlurActive;
 
-  /// Abre o Calendário Executivo completo com visão diária real de lucro e pedidos.
-  static Future<void> showExecutiveOverview(
+  /// Abre o Calendário Executivo completo (passado, hoje e datas futuras reais:
+  /// impostos DAS previstos, mediações/chamados, serviços agendados, custódia e contas)
+  /// e devolve a seleção confirmada em `Concluir consulta`.
+  static Future<FounderCalendarSelectionResult?> showExecutiveOverview(
     BuildContext context, {
     required FounderDashboardSnapshot snapshot,
     required String selectedWindowKey,
-    required ValueChanged<String> onSelectWindow,
+    ValueChanged<String>? onSelectWindow,
+    Stream<FounderDashboardSnapshot>? liveSnapshotStream,
+    void Function(String jobId, String? orderCode)? onInspectOrder,
+    Future<void> Function(DateTime initialDate)? onAddExpenseForDate,
+    Future<void> Function(String expenseId, bool paid)? onToggleExpensePaid,
     bool privacyBlurActive = false,
   }) {
-    final nowBrt = DateTime.now().toUtc().subtract(const Duration(hours: 3));
-    final today = DateTime(nowBrt.year, nowBrt.month, nowBrt.day);
-    return showModalBottomSheet<void>(
+    final today = CeoBrazilFiscalCalendar.todayBrasilia();
+    final parsedSingleDay =
+        CeoBrazilFiscalCalendar.tryParseDayIso(selectedWindowKey);
+    final initial = parsedSingleDay ?? today;
+
+    return showModalBottomSheet<FounderCalendarSelectionResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => FounderExecutiveCalendarSheet._(
         key: const ValueKey<String>('ceo-executive-calendar-sheet'),
         isSingleDatePicker: false,
-        initialDate: today,
+        initialDate: initial,
+        firstDate: DateTime(2024, 1, 1),
+        lastDate: DateTime(today.year + 2, 12, 31),
         snapshot: snapshot,
+        liveSnapshotStream: liveSnapshotStream,
         selectedWindowKey: selectedWindowKey,
         onSelectWindow: onSelectWindow,
+        onInspectOrder: onInspectOrder,
+        onAddExpenseForDate: onAddExpenseForDate,
+        onToggleExpensePaid: onToggleExpensePaid,
         privacyBlurActive: privacyBlurActive,
       ),
     );
@@ -169,31 +266,29 @@ class _FounderExecutiveCalendarSheetState
   late DateTime _displayedMonth;
   late DateTime _selectedDate;
   late String _activeWindowKey;
+  late bool _selectionModeIsSingleDay;
+  String? _lastNotifiedWindowKey;
   int _monthSlideDirection = 1;
-
-  late final Map<String, FounderDailyMetricPoint> _dailyByIso;
 
   @override
   void initState() {
     super.initState();
-    final nowBrt = DateTime.now().toUtc().subtract(const Duration(hours: 3));
-    _todayBrt = DateTime(nowBrt.year, nowBrt.month, nowBrt.day);
+    _todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
     _selectedDate = DateTime(
       widget.initialDate.year,
       widget.initialDate.month,
       widget.initialDate.day,
     );
     _displayedMonth = DateTime(_selectedDate.year, _selectedDate.month, 1);
-    _activeWindowKey = widget.selectedWindowKey;
-
-    final map = <String, FounderDailyMetricPoint>{};
-    final series = widget.snapshot?.dailySeries ?? const <FounderDailyMetricPoint>[];
-    for (final pt in series) {
-      if (pt.dayIso.trim().isNotEmpty) {
-        map[pt.dayIso.trim()] = pt;
-      }
-    }
-    _dailyByIso = map;
+    _activeWindowKey = widget.selectedWindowKey.trim().isEmpty
+        ? '30d'
+        : widget.selectedWindowKey.trim();
+    _lastNotifiedWindowKey = _activeWindowKey;
+    _selectionModeIsSingleDay = widget.isSingleDatePicker ||
+        CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(
+              _activeWindowKey,
+            ) !=
+            null;
   }
 
   bool _isDateEnabled(DateTime day) {
@@ -233,14 +328,35 @@ class _FounderExecutiveCalendarSheetState
     });
   }
 
-  void _jumpToDate(DateTime d) {
+  void _selectSpecificDay(DateTime d) {
     final clean = DateTime(d.year, d.month, d.day);
     if (!_isDateEnabled(clean)) return;
     HapticFeedback.selectionClick();
     setState(() {
       _selectedDate = clean;
       _displayedMonth = DateTime(clean.year, clean.month, 1);
+      if (!widget.isSingleDatePicker) {
+        _selectionModeIsSingleDay = true;
+        _activeWindowKey = 'day:${_toIsoDay(clean)}';
+      }
     });
+  }
+
+  DateTime _nextOfficialDasDueDate() {
+    final prevMonthYear =
+        _todayBrt.month == 1 ? _todayBrt.year - 1 : _todayBrt.year;
+    final prevMonth = _todayBrt.month == 1 ? 12 : _todayBrt.month - 1;
+    final currentMonthDue = CeoBrazilFiscalCalendar.dasDueDateForCompetence(
+      prevMonthYear,
+      prevMonth,
+    );
+    if (!currentMonthDue.isBefore(_todayBrt)) {
+      return currentMonthDue;
+    }
+    return CeoBrazilFiscalCalendar.dasDueDateForCompetence(
+      _todayBrt.year,
+      _todayBrt.month,
+    );
   }
 
   String _maskOrFormatCents(int cents) {
@@ -248,10 +364,56 @@ class _FounderExecutiveCalendarSheetState
     return Money.formatBrl(cents);
   }
 
+  void _confirmOverviewSelection() {
+    HapticFeedback.lightImpact();
+    final effectiveKey = _selectionModeIsSingleDay
+        ? 'day:${_toIsoDay(_selectedDate)}'
+        : _activeWindowKey;
+    final result = FounderCalendarSelectionResult(
+      windowKey: effectiveKey,
+      isSingleDay: _selectionModeIsSingleDay || effectiveKey == 'today',
+      selectedDate: _selectedDate,
+    );
+    if (_lastNotifiedWindowKey != result.windowKey) {
+      _lastNotifiedWindowKey = result.windowKey;
+      widget.onSelectWindow?.call(result.windowKey);
+    }
+    Navigator.of(context).pop(result);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.liveSnapshotStream != null && !widget.isSingleDatePicker) {
+      return StreamBuilder<FounderDashboardSnapshot>(
+        stream: widget.liveSnapshotStream,
+        initialData: widget.snapshot,
+        builder: (context, streamSnap) {
+          final liveSnap = streamSnap.data ??
+              widget.snapshot ??
+              FounderDashboardSnapshot.emptyZero();
+          return _buildSheetContainer(context, liveSnap);
+        },
+      );
+    }
+    final fallbackSnap =
+        widget.snapshot ?? FounderDashboardSnapshot.emptyZero();
+    return _buildSheetContainer(context, fallbackSnap);
+  }
+
+  Widget _buildSheetContainer(
+    BuildContext context,
+    FounderDashboardSnapshot liveSnapshot,
+  ) {
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-    final maxHeight = MediaQuery.sizeOf(context).height * 0.90;
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.92;
+    final dailyByIso = <String, FounderDailyMetricPoint>{
+      for (final pt in liveSnapshot.dailySeries)
+        if (pt.dayIso.trim().isNotEmpty) pt.dayIso.trim(): pt,
+    };
+
+    final confirmLabel = _selectionModeIsSingleDay
+        ? 'Concluir consulta · ${CeoBrazilFiscalCalendar.formatShortDayPtBr(_selectedDate)}'
+        : 'Concluir consulta';
 
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: maxHeight),
@@ -274,7 +436,7 @@ class _FounderExecutiveCalendarSheetState
           top: false,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
+              constraints: const BoxConstraints(maxWidth: 540),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -298,19 +460,19 @@ class _FounderExecutiveCalendarSheetState
                           ),
                           const SizedBox(height: 16),
                           _buildSheetHeader(context),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 14),
                           if (widget.isSingleDatePicker)
                             _buildSingleDateQuickShortcuts()
                           else
-                            _buildPeriodQuickPills(),
-                          const SizedBox(height: 16),
+                            _buildPeriodAndAgendaShortcuts(liveSnapshot),
+                          const SizedBox(height: 14),
                           FounderGlassCard(
-                            padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+                            padding: const EdgeInsets.fromLTRB(14, 15, 14, 13),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: <Widget>[
                                 _buildMonthHeader(),
-                                const SizedBox(height: 14),
+                                const SizedBox(height: 12),
                                 _buildWeekdayHeaderRow(),
                                 const SizedBox(height: 8),
                                 AnimatedSwitcher(
@@ -335,7 +497,10 @@ class _FounderExecutiveCalendarSheetState
                                     key: ValueKey<String>(
                                       '${_displayedMonth.year}-${_displayedMonth.month}',
                                     ),
-                                    child: _buildMonthGrid(),
+                                    child: _buildMonthGrid(
+                                      liveSnapshot,
+                                      dailyByIso,
+                                    ),
                                   ),
                                 ),
                                 if (!widget.isSingleDatePicker) ...<Widget>[
@@ -349,7 +514,10 @@ class _FounderExecutiveCalendarSheetState
                           if (widget.isSingleDatePicker)
                             _buildSingleDateSummaryBox()
                           else
-                            _buildExecutiveDaySummaryCard(),
+                            _buildExecutiveDaySummaryCard(
+                              liveSnapshot,
+                              dailyByIso,
+                            ),
                         ],
                       ),
                     ),
@@ -407,12 +575,13 @@ class _FounderExecutiveCalendarSheetState
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                              onPressed: () {
-                                HapticFeedback.lightImpact();
-                                Navigator.of(context).pop();
-                              },
+                              onPressed: _confirmOverviewSelection,
                               icon: const Icon(Icons.check_rounded, size: 19),
-                              label: const Text('Concluir consulta'),
+                              label: Text(
+                                confirmLabel,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                     ),
                   ),
@@ -430,8 +599,8 @@ class _FounderExecutiveCalendarSheetState
         ? 'Escolher data'
         : 'Calendário Executivo';
     final subtitle = widget.isSingleDatePicker
-        ? 'Selecione o dia exato do lançamento'
-        : 'Toque em qualquer dia para conferir pedidos e lucro';
+        ? 'Selecione o dia exato do lançamento ou vencimento'
+        : 'Passado, hoje e datas futuras reais (impostos, mediações e serviços)';
 
     return Row(
       children: <Widget>[
@@ -442,7 +611,8 @@ class _FounderExecutiveCalendarSheetState
             color: FounderSovereignTokens.imperialGoldSoft,
             borderRadius: BorderRadius.circular(13),
             border: Border.all(
-              color: FounderSovereignTokens.imperialGold.withValues(alpha: 0.42),
+              color:
+                  FounderSovereignTokens.imperialGold.withValues(alpha: 0.42),
             ),
           ),
           child: const Icon(
@@ -460,7 +630,7 @@ class _FounderExecutiveCalendarSheetState
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: FounderSovereignTokens.subtitleStyle(fontSize: 12),
+                style: FounderSovereignTokens.subtitleStyle(fontSize: 11.5),
               ),
             ],
           ),
@@ -483,68 +653,135 @@ class _FounderExecutiveCalendarSheetState
     );
   }
 
-  Widget _buildPeriodQuickPills() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: _kCalendarWindows.map((choice) {
-          final active = _activeWindowKey == choice.key;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              key: ValueKey<String>('ceo-calendar-window-${choice.key}'),
-              borderRadius: BorderRadius.circular(99),
-              onTap: () {
-                HapticFeedback.selectionClick();
-                setState(() => _activeWindowKey = choice.key);
-                widget.onSelectWindow?.call(choice.key);
-                if (choice.key == 'today') {
-                  _jumpToDate(_todayBrt);
-                }
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: active
-                      ? FounderSovereignTokens.imperialGoldSoft
-                      : FounderSovereignTokens.obsidianCard,
+  Widget _buildPeriodAndAgendaShortcuts(FounderDashboardSnapshot snap) {
+    final nextDasDate = _nextOfficialDasDueDate();
+    final nextDasShort = CeoBrazilFiscalCalendar.formatShortDayPtBr(nextDasDate);
+
+    CeoUnifiedMediationItem? firstOpenMediation;
+    for (final m in snap.activeMediations) {
+      if (m.isOpen) {
+        firstOpenMediation = m;
+        break;
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: _kCalendarWindows.map((choice) {
+              final active =
+                  !_selectionModeIsSingleDay && _activeWindowKey == choice.key;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  key: ValueKey<String>('ceo-calendar-window-${choice.key}'),
                   borderRadius: BorderRadius.circular(99),
-                  border: Border.all(
-                    color: active
-                        ? FounderSovereignTokens.imperialGold
-                        : FounderSovereignTokens.crispBorder,
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _selectionModeIsSingleDay = false;
+                      _activeWindowKey = choice.key;
+                      if (choice.key == 'today') {
+                        _selectedDate = _todayBrt;
+                        _displayedMonth =
+                            DateTime(_todayBrt.year, _todayBrt.month, 1);
+                      }
+                    });
+                    _lastNotifiedWindowKey = choice.key;
+                    widget.onSelectWindow?.call(choice.key);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8.5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: active
+                          ? FounderSovereignTokens.imperialGoldSoft
+                          : FounderSovereignTokens.obsidianCard,
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(
+                        color: active
+                            ? FounderSovereignTokens.imperialGold
+                            : FounderSovereignTokens.crispBorder,
+                      ),
+                    ),
+                    child: Text(
+                      choice.label,
+                      style: TextStyle(
+                        color: active
+                            ? FounderSovereignTokens.imperialGoldBright
+                            : FounderSovereignTokens.secondaryInk,
+                        fontSize: 12.5,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ),
-                child: Text(
-                  choice.label,
-                  style: TextStyle(
-                    color: active
-                        ? FounderSovereignTokens.imperialGoldBright
-                        : FounderSovereignTokens.secondaryInk,
-                    fontSize: 12.5,
-                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
+              );
+            }).toList(growable: false),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: <Widget>[
+              _QuickAgendaMilestonePill(
+                pillKey:
+                    const ValueKey<String>('ceo-calendar-jump-next-das-btn'),
+                icon: Icons.account_balance_rounded,
+                label: 'Próximo DAS ($nextDasShort)',
+                accent: FounderSovereignTokens.warmAmber,
+                active: _selectionModeIsSingleDay &&
+                    _isSameCalendarDay(_selectedDate, nextDasDate),
+                onTap: () => _selectSpecificDay(nextDasDate),
               ),
-            ),
-          );
-        }).toList(growable: false),
-      ),
+              if (firstOpenMediation != null) ...<Widget>[
+                const SizedBox(width: 8),
+                _QuickAgendaMilestonePill(
+                  pillKey: const ValueKey<String>(
+                    'ceo-calendar-jump-active-mediation-btn',
+                  ),
+                  icon: Icons.gavel_rounded,
+                  label:
+                      'Mediação ativa (${firstOpenMediation.protocolCode})',
+                  accent: FounderSovereignTokens.crimsonAlert,
+                  active: false,
+                  onTap: () {
+                    final targetIso = firstOpenMediation!.deadlineDayIso ??
+                        firstOpenMediation.openedDayIso;
+                    final parsed =
+                        CeoBrazilFiscalCalendar.tryParseDayIso(targetIso);
+                    if (parsed != null) {
+                      _selectSpecificDay(parsed);
+                    }
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildSingleDateQuickShortcuts() {
-    final yesterday = _todayBrt.subtract(const Duration(days: 1));
-    final firstOfMonth = DateTime(_todayBrt.year, _todayBrt.month, 1);
+    final yesterday = DateTime(
+      _todayBrt.year,
+      _todayBrt.month,
+      _todayBrt.day - 1,
+    );
+    final nextDas = _nextOfficialDasDueDate();
 
     final shortcuts = <(String, DateTime)>[
       ('Hoje', _todayBrt),
       ('Ontem', yesterday),
-      ('Dia 1 deste mês', firstOfMonth),
+      ('Próximo DAS (${CeoBrazilFiscalCalendar.formatShortDayPtBr(nextDas)})', nextDas),
     ];
 
     return SingleChildScrollView(
@@ -561,7 +798,7 @@ class _FounderExecutiveCalendarSheetState
               opacity: enabled ? 1.0 : 0.4,
               child: InkWell(
                 borderRadius: BorderRadius.circular(99),
-                onTap: enabled ? () => _jumpToDate(target) : null,
+                onTap: enabled ? () => _selectSpecificDay(target) : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(
@@ -623,8 +860,8 @@ class _FounderExecutiveCalendarSheetState
               if (!isCurrentMonth && _isDateEnabled(_todayBrt)) ...<Widget>[
                 const SizedBox(height: 3),
                 GestureDetector(
-                  onTap: () => _jumpToDate(_todayBrt),
-                  child: Text(
+                  onTap: () => _selectSpecificDay(_todayBrt),
+                  child: const Text(
                     'Voltar para hoje',
                     style: TextStyle(
                       color: FounderSovereignTokens.imperialGoldBright,
@@ -667,7 +904,10 @@ class _FounderExecutiveCalendarSheetState
     );
   }
 
-  Widget _buildMonthGrid() {
+  Widget _buildMonthGrid(
+    FounderDashboardSnapshot snap,
+    Map<String, FounderDailyMetricPoint> dailyByIso,
+  ) {
     final year = _displayedMonth.year;
     final month = _displayedMonth.month;
     final firstOfMonth = DateTime(year, month, 1);
@@ -683,10 +923,14 @@ class _FounderExecutiveCalendarSheetState
         final idx = r * 7 + c;
         final dayNum = idx - leadingEmpty + 1;
         if (dayNum < 1 || dayNum > daysInMonth) {
-          cells.add(const Expanded(child: SizedBox(height: 44)));
+          cells.add(const Expanded(child: SizedBox(height: 46)));
         } else {
           final date = DateTime(year, month, dayNum);
-          cells.add(Expanded(child: _buildDayCell(date)));
+          cells.add(
+            Expanded(
+              child: _buildDayCell(date, snap, dailyByIso),
+            ),
+          );
         }
       }
       rows.add(
@@ -700,41 +944,63 @@ class _FounderExecutiveCalendarSheetState
     return Column(children: rows);
   }
 
-  Widget _buildDayCell(DateTime date) {
-    final isSelected = _isSameCalendarDay(date, _selectedDate);
+  Widget _buildDayCell(
+    DateTime date,
+    FounderDashboardSnapshot snap,
+    Map<String, FounderDailyMetricPoint> dailyByIso,
+  ) {
+    final isSelected = (widget.isSingleDatePicker || _selectionModeIsSingleDay) &&
+        _isSameCalendarDay(date, _selectedDate);
+    final isPreviewedDay = !isSelected && _isSameCalendarDay(date, _selectedDate);
     final isToday = _isSameCalendarDay(date, _todayBrt);
     final enabled = _isDateEnabled(date);
     final iso = _toIsoDay(date);
-    final point = _dailyByIso[iso];
 
-    Color? dotColor;
-    if (point != null) {
-      if (point.netProfitCents > 0) {
-        dotColor = FounderSovereignTokens.solvencyEmerald;
-      } else if (point.ordersCount > 0 || point.gmvCents > 0) {
-        dotColor = FounderSovereignTokens.imperialGoldBright;
+    final dots = <Color>[];
+    if (!widget.isSingleDatePicker) {
+      final agenda = snap.agendaForDay(date, todayBrasilia: _todayBrt);
+      final point = dailyByIso[iso];
+      final netProfit = point?.netProfitCents ?? agenda.realizedNetProfitCents;
+      final completedCount =
+          point?.ordersCount ?? agenda.completedOrdersCount;
+
+      if (agenda.hasActiveMediationAlert || (!agenda.isFuture && netProfit < 0)) {
+        dots.add(FounderSovereignTokens.crimsonAlert);
+      }
+      if (!agenda.isFuture && netProfit > 0) {
+        dots.add(FounderSovereignTokens.solvencyEmerald);
+      }
+      if (agenda.hasFiscalOrBillAlert) {
+        dots.add(FounderSovereignTokens.warmAmber);
+      }
+      if (dots.length < 3 &&
+          (agenda.hasScheduledOrMaturationActivity ||
+              (!agenda.isFuture && completedCount > 0 && netProfit == 0))) {
+        dots.add(FounderSovereignTokens.imperialGoldBright);
       }
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 1.5),
       child: Opacity(
         opacity: enabled ? 1.0 : 0.28,
         child: InkWell(
+          key: ValueKey<String>('ceo-calendar-day-$iso'),
           borderRadius: BorderRadius.circular(12),
-          onTap: enabled ? () => _jumpToDate(date) : null,
+          onTap: enabled ? () => _selectSpecificDay(date) : null,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
-            height: 44,
+            height: 46,
             decoration: BoxDecoration(
-              gradient: isSelected
-                  ? FounderSovereignTokens.imperialGoldGradient
-                  : null,
+              gradient:
+                  isSelected ? FounderSovereignTokens.imperialGoldGradient : null,
               color: isSelected
                   ? null
                   : (isToday
                       ? FounderSovereignTokens.imperialGoldSoft
-                      : Colors.transparent),
+                      : (isPreviewedDay
+                          ? FounderSovereignTokens.obsidianSurface
+                          : Colors.transparent)),
               borderRadius: BorderRadius.circular(12),
               border: isSelected
                   ? null
@@ -743,7 +1009,11 @@ class _FounderExecutiveCalendarSheetState
                           color: FounderSovereignTokens.imperialGold
                               .withValues(alpha: 0.65),
                         )
-                      : null),
+                      : (isPreviewedDay
+                          ? Border.all(
+                              color: FounderSovereignTokens.crispBorderStrong,
+                            )
+                          : null)),
               boxShadow: isSelected
                   ? <BoxShadow>[
                       BoxShadow(
@@ -765,7 +1035,9 @@ class _FounderExecutiveCalendarSheetState
                         ? const Color(0xFF0B0E13)
                         : (isToday
                             ? FounderSovereignTokens.imperialGoldBright
-                            : FounderSovereignTokens.primaryInk),
+                            : (date.isAfter(_todayBrt)
+                                ? FounderSovereignTokens.secondaryInk
+                                : FounderSovereignTokens.primaryInk)),
                     fontSize: 13.5,
                     fontWeight: isSelected || isToday
                         ? FontWeight.w800
@@ -774,17 +1046,28 @@ class _FounderExecutiveCalendarSheetState
                   ),
                 ),
                 const SizedBox(height: 3),
-                Container(
-                  width: 5,
+                SizedBox(
                   height: 5,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: dotColor == null
-                        ? Colors.transparent
-                        : (isSelected
-                            ? const Color(0xFF0B0E13)
-                            : dotColor),
-                  ),
+                  child: dots.isEmpty
+                      ? const SizedBox.shrink()
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            for (var i = 0; i < dots.length && i < 3; i++) ...<Widget>[
+                              if (i > 0) const SizedBox(width: 2.5),
+                              Container(
+                                width: 4.5,
+                                height: 4.5,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: isSelected
+                                      ? const Color(0xFF0B0E13)
+                                      : dots[i],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -796,85 +1079,288 @@ class _FounderExecutiveCalendarSheetState
 
   Widget _buildHeatLegend() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: FounderSovereignTokens.obsidianSurface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: FounderSovereignTokens.crispBorder),
       ),
       child: Wrap(
-        spacing: 16,
+        spacing: 12,
         runSpacing: 6,
         alignment: WrapAlignment.center,
         children: const <Widget>[
           _CalendarLegendChip(
             color: FounderSovereignTokens.solvencyEmerald,
-            label: 'Dia com lucro líquido',
+            label: 'Lucro líquido',
           ),
           _CalendarLegendChip(
             color: FounderSovereignTokens.imperialGoldBright,
-            label: 'Dia com pedidos movimentados',
+            label: 'Serviços / liberações',
+          ),
+          _CalendarLegendChip(
+            color: FounderSovereignTokens.warmAmber,
+            label: 'Imposto (DAS) / contas',
+          ),
+          _CalendarLegendChip(
+            color: FounderSovereignTokens.crimsonAlert,
+            label: 'Mediações / atenção',
           ),
         ],
       ),
     );
   }
 
-  Widget _buildExecutiveDaySummaryCard() {
+  Widget _buildExecutiveDaySummaryCard(
+    FounderDashboardSnapshot snap,
+    Map<String, FounderDailyMetricPoint> dailyByIso,
+  ) {
     final iso = _toIsoDay(_selectedDate);
-    final pt = _dailyByIso[iso];
-    final netCents = pt?.netProfitCents ?? 0;
-    final ordersCount = pt?.ordersCount ?? 0;
+    final agenda = snap.agendaForDay(_selectedDate, todayBrasilia: _todayBrt);
+    final events = snap.eventsForDay(_selectedDate);
+    final pt = dailyByIso[iso];
+
+    final isFuture = agenda.isFuture;
+    final netCents = pt?.netProfitCents ?? agenda.realizedNetProfitCents;
+    final ordersCount = pt?.ordersCount ?? agenda.completedOrdersCount;
     final feeCents = pt?.platformRevenueCents ?? 0;
-    final gmvCents = pt?.gmvCents ?? 0;
+    final gmvCents = pt?.gmvCents ?? agenda.realizedGmvCents;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
       child: FounderGlassCard(
-        key: ValueKey<String>('day-summary-$iso'),
+        key: ValueKey<String>('day-summary-$iso-${snap.latestEventSeq}'),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: <Widget>[
-                const Icon(
-                  Icons.insights_rounded,
-                  size: 16,
-                  color: FounderSovereignTokens.imperialGoldBright,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      isFuture
+                          ? Icons.upcoming_rounded
+                          : Icons.insights_rounded,
+                      size: 16,
+                      color: isFuture
+                          ? FounderSovereignTokens.warmAmber
+                          : FounderSovereignTokens.imperialGoldBright,
+                    ),
+                    const SizedBox(width: 7),
+                    Flexible(
+                      child: Text(
+                        _formatFullDayPt(_selectedDate, _todayBrt),
+                        style: FounderSovereignTokens.titleStyle(fontSize: 13.5),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 7),
-                Expanded(
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isFuture
+                        ? FounderSovereignTokens.warmAmberSoft
+                        : FounderSovereignTokens.imperialGoldSoft,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                   child: Text(
-                    _formatFullDayPt(_selectedDate, _todayBrt),
-                    style: FounderSovereignTokens.titleStyle(fontSize: 13.5),
+                    isFuture
+                        ? 'AGENDA FUTURA REAL'
+                        : (_selectionModeIsSingleDay
+                            ? 'DATA SELECIONADA'
+                            : 'TOQUE NUM DIA P/ FILTRAR'),
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                      color: isFuture
+                          ? FounderSovereignTokens.warmAmber
+                          : FounderSovereignTokens.imperialGoldBright,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 12),
+            if (isFuture)
+              _buildResponsiveFourMetrics(
+                box1: _DayMiniMetricBox(
+                  label: 'Impostos e contas no dia',
+                  value: _maskOrFormatCents(agenda.totalPayablesOnDayCents),
+                  accent: agenda.totalPayablesOnDayCents > 0
+                      ? FounderSovereignTokens.warmAmber
+                      : FounderSovereignTokens.secondaryInk,
+                ),
+                box2: _DayMiniMetricBox(
+                  label: 'Serviços agendados',
+                  value: '${agenda.scheduledOrdersCount}',
+                  suffix:
+                      agenda.scheduledOrdersCount == 1 ? 'serviço' : 'serviços',
+                  accent: FounderSovereignTokens.imperialGoldBright,
+                ),
+                box3: _DayMiniMetricBox(
+                  label: 'Mediações / prazos',
+                  value: '${agenda.mediationsTotalEventsCount}',
+                  suffix: agenda.mediationsTotalEventsCount == 1
+                      ? 'item'
+                      : 'itens',
+                  accent: agenda.hasActiveMediationAlert
+                      ? FounderSovereignTokens.crimsonAlert
+                      : FounderSovereignTokens.secondaryInk,
+                ),
+                box4: _DayMiniMetricBox(
+                  label: 'Liberação a profissionais',
+                  value: _maskOrFormatCents(agenda.maturationReleaseCents),
+                  accent: agenda.maturationReleaseCents > 0
+                      ? FounderSovereignTokens.solvencyEmerald
+                      : FounderSovereignTokens.secondaryInk,
+                ),
+              )
+            else
+              _buildResponsiveFourMetrics(
+                box1: _DayMiniMetricBox(
+                  label: 'Seu lucro no dia',
+                  value: _maskOrFormatCents(netCents),
+                  accent: netCents > 0
+                      ? FounderSovereignTokens.solvencyEmerald
+                      : (netCents < 0
+                          ? FounderSovereignTokens.crimsonAlert
+                          : FounderSovereignTokens.primaryInk),
+                ),
+                box2: _DayMiniMetricBox(
+                  label: 'Pedidos no dia',
+                  value: '$ordersCount',
+                  suffix: agenda.scheduledOrdersCount > 0
+                      ? '+${agenda.scheduledOrdersCount} agend.'
+                      : (ordersCount == 1 ? 'pedido' : 'pedidos'),
+                  accent: FounderSovereignTokens.imperialGoldBright,
+                ),
+                box3: _DayMiniMetricBox(
+                  label: 'Faturamento (13,5%)',
+                  value: _maskOrFormatCents(feeCents),
+                  accent: FounderSovereignTokens.secondaryInk,
+                ),
+                box4: _DayMiniMetricBox(
+                  label: 'Total movimentado',
+                  value: _maskOrFormatCents(gmvCents),
+                  accent: FounderSovereignTokens.secondaryInk,
+                ),
+              ),
+            const SizedBox(height: 12),
+            if (events.isEmpty)
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: FounderSovereignTokens.obsidianSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: FounderSovereignTokens.crispBorder),
+                ),
+                child: Text(
+                  isFuture
+                      ? 'Nenhum imposto previsto, mediação ativa, conta a pagar ou serviço agendado para esta data até o momento.'
+                      : 'Nenhuma movimentação registrada nesta data.',
+                  style: FounderSovereignTokens.subtitleStyle(fontSize: 11.5),
+                ),
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    isFuture
+                        ? 'Compromissos e agenda real do dia (${events.length})'
+                        : 'Movimentações reais registradas no dia (${events.length})',
+                    style: const TextStyle(
+                      color: FounderSovereignTokens.secondaryInk,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final ev in events.take(8))
+                    _buildDayEventTile(ev),
+                ],
+              ),
+            if (widget.onAddExpenseForDate != null) ...<Widget>[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                key: const ValueKey<String>(
+                  'ceo-calendar-schedule-expense-btn',
+                ),
+                onPressed: () async {
+                  await widget.onAddExpenseForDate!(_selectedDate);
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: FounderSovereignTokens.imperialGoldBright,
+                  side: BorderSide(
+                    color: FounderSovereignTokens.imperialGold
+                        .withValues(alpha: 0.45),
+                  ),
+                  minimumSize: const Size.fromHeight(40),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.add_card_rounded, size: 17),
+                label: Text(
+                  isFuture
+                      ? 'Agendar conta ou imposto para ${CeoBrazilFiscalCalendar.formatShortDayPtBr(_selectedDate)}'
+                      : 'Registrar gasto em ${CeoBrazilFiscalCalendar.formatShortDayPtBr(_selectedDate)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResponsiveFourMetrics({
+    required Widget box1,
+    required Widget box2,
+    required Widget box3,
+    required Widget box4,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 255) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              box1,
+              const SizedBox(height: 8),
+              box2,
+              const SizedBox(height: 8),
+              box3,
+              const SizedBox(height: 8),
+              box4,
+            ],
+          );
+        }
+        return Column(
+          children: <Widget>[
             IntrinsicHeight(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Expanded(
-                    child: _DayMiniMetricBox(
-                      label: 'Seu lucro no dia',
-                      value: _maskOrFormatCents(netCents),
-                      accent: netCents > 0
-                          ? FounderSovereignTokens.solvencyEmerald
-                          : FounderSovereignTokens.primaryInk,
-                    ),
-                  ),
+                  Expanded(child: box1),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: _DayMiniMetricBox(
-                      label: 'Pedidos no dia',
-                      value: '$ordersCount',
-                      suffix: ordersCount == 1 ? 'pedido' : 'pedidos',
-                      accent: FounderSovereignTokens.imperialGoldBright,
-                    ),
-                  ),
+                  Expanded(child: box2),
                 ],
               ),
             ),
@@ -883,25 +1369,125 @@ class _FounderExecutiveCalendarSheetState
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Expanded(
-                    child: _DayMiniMetricBox(
-                      label: 'Faturamento (13,5%)',
-                      value: _maskOrFormatCents(feeCents),
-                      accent: FounderSovereignTokens.secondaryInk,
-                    ),
-                  ),
+                  Expanded(child: box3),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: _DayMiniMetricBox(
-                      label: 'Total movimentado',
-                      value: _maskOrFormatCents(gmvCents),
-                      accent: FounderSovereignTokens.secondaryInk,
-                    ),
-                  ),
+                  Expanded(child: box4),
                 ],
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDayEventTile(CeoCalendarAgendaEvent ev) {
+    final accent = _colorForAgendaEvent(ev);
+    final icon = _iconForAgendaEvent(ev);
+    final canOpenOrder = ev.hasLinkedOrder && widget.onInspectOrder != null;
+    final canMarkPaid =
+        ev.isScheduledExpense && widget.onToggleExpensePaid != null;
+    final cleanCode = _humanizeAgendaBadgeLabel(ev);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Material(
+        color: FounderSovereignTokens.obsidianSurface,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: canOpenOrder
+              ? () {
+                  HapticFeedback.selectionClick();
+                  widget.onInspectOrder!(ev.jobId!, cleanCode);
+                }
+              : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: ev.isMediationOrDispute
+                    ? accent.withValues(alpha: 0.48)
+                    : FounderSovereignTokens.crispBorder,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Icon(icon, size: 16, color: accent),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        ev.title,
+                        style: const TextStyle(
+                          color: FounderSovereignTokens.primaryInk,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (ev.subtitle.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          ev.subtitle,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.mutedInk,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (ev.grossCents > 0) ...<Widget>[
+                  const SizedBox(width: 8),
+                  Text(
+                    _maskOrFormatCents(ev.grossCents),
+                    style: FounderSovereignTokens.monoMetric(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: accent,
+                    ),
+                  ),
+                ],
+                if (canMarkPaid) ...<Widget>[
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Marcar como pago',
+                    visualDensity: VisualDensity.compact,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                    padding: EdgeInsets.zero,
+                    onPressed: () =>
+                        widget.onToggleExpensePaid!(ev.refId, true),
+                    icon: const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 18,
+                      color: FounderSovereignTokens.solvencyEmerald,
+                    ),
+                  ),
+                ] else if (canOpenOrder) ...<Widget>[
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 17,
+                    color: FounderSovereignTokens.mutedInk,
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -944,6 +1530,60 @@ class _FounderExecutiveCalendarSheetState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _QuickAgendaMilestonePill extends StatelessWidget {
+  const _QuickAgendaMilestonePill({
+    required this.pillKey,
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.active,
+    required this.onTap,
+  });
+
+  final Key pillKey;
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: pillKey,
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6.5),
+        decoration: BoxDecoration(
+          color: active
+              ? accent.withValues(alpha: 0.22)
+              : accent.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: accent.withValues(alpha: active ? 0.80 : 0.38),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 13.5, color: accent),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: accent,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1009,11 +1649,11 @@ class _CalendarLegendChip extends StatelessWidget {
           height: 7,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 6),
+        const SizedBox(width: 5),
         Text(
           label,
           style: FounderSovereignTokens.subtitleStyle(
-            fontSize: 11.5,
+            fontSize: 11,
             color: FounderSovereignTokens.secondaryInk,
           ),
         ),
@@ -1063,18 +1703,22 @@ class _DayMiniMetricBox extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: FounderSovereignTokens.monoMetric(
-                    fontSize: 14.5,
+                    fontSize: 14,
                     color: accent,
                   ),
                 ),
               ),
               if (suffix != null) ...<Widget>[
                 const SizedBox(width: 5),
-                Text(
-                  suffix!,
-                  style: FounderSovereignTokens.subtitleStyle(
-                    fontSize: 11.5,
-                    color: FounderSovereignTokens.mutedInk,
+                Flexible(
+                  child: Text(
+                    suffix!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: FounderSovereignTokens.subtitleStyle(
+                      fontSize: 11,
+                      color: FounderSovereignTokens.mutedInk,
+                    ),
                   ),
                 ),
               ],

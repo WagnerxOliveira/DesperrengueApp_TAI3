@@ -187,8 +187,9 @@ begin
     )::text,
     true
   );
-  v_snap := public.ceo_get_live_cockpit_snapshot(v_stepup_login, v_dev_ok, 30);
-  perform pg_temp.t((v_snap -> 'security_posture' ->> 'owner_email') = 'wagneroliveira2395@gmail.com', 'snapshot deve carregar telemetria real para sessão v1 válida');
+  v_snap := public.ceo_get_live_cockpit_snapshot(v_stepup_login, v_dev_ok, '30d');
+  perform set_config('transaction_read_only', 'off', true);
+  perform pg_temp.t((v_snap -> 'vault_metadata' ->> 'owner_email') = 'wagneroliveira2395@gmail.com', 'snapshot deve carregar telemetria real para sessão v1 válida');
 
   -- 6. Cerimônia de Perfil: 1º E-mail (OTP 6d) -> 2º E-mail (Deep-Link idempotente no GET + Device-Bound no POST)
   delete from private.ceo_rate_limits;

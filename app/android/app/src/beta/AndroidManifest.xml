@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Aplicado exclusivamente quando o APK publico de distribuicao direta e compilado
+         com BETA_UPDATES=true (propriedade betaUpdates=true ou dart-define BETA_UPDATES=true).
+         Permite baixar a atualizacao dentro do proprio Desperrengue, validar SHA-256 e
+         assinatura digital X.509 do APK e abrir diretamente o instalador nativo do Android
+         sem navegador externo e sem procurar arquivos em pastas.
+         Fica 100% fora do bundle da Google Play Store (quando BETA_UPDATES esta ausente/false). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <provider
+            android:name="br.com.desperrengue.app.PublicOtaFileProvider"
+            android:authorities="${applicationId}.ota.provider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

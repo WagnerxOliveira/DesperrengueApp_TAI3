@@ -15,29 +15,35 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Detecção determinística Dual-APK (Público vs. Founder Sovereign Cockpit CEO):
-// Ativada tanto por `-PfounderApp=true` quanto pelo fallback Base64 de `dart-defines`
-// (`--dart-define=FOUNDER_APP=true`), garantindo isolamento side-by-side sem colisão.
+// Detecção determinística Dual-APK (Público vs. Founder Sovereign Cockpit CEO)
+// e Canal Beta Direto (`BETA_UPDATES=true` para auto-update nativo sem Play Store):
+fun hasDartDefineFlag(expectedPair: String): Boolean {
+    if (!project.hasProperty("dart-defines")) return false
+    return project.property("dart-defines")
+        .toString()
+        .split(",")
+        .filter { it.isNotBlank() }
+        .any { encoded ->
+            val decoded = runCatching {
+                String(Base64.getDecoder().decode(encoded.trim()), Charsets.UTF_8)
+            }.getOrElse {
+                runCatching {
+                    String(Base64.getUrlDecoder().decode(encoded.trim()), Charsets.UTF_8)
+                }.getOrDefault("")
+            }
+            decoded.equals(expectedPair, ignoreCase = true)
+        }
+}
+
 val isFounderBuild: Boolean = (
     project.hasProperty("founderApp") &&
         project.property("founderApp").toString().toBoolean()
-) || (
-    project.hasProperty("dart-defines") &&
-        project.property("dart-defines")
-            .toString()
-            .split(",")
-            .filter { it.isNotBlank() }
-            .any { encoded ->
-                val decoded = runCatching {
-                    String(Base64.getDecoder().decode(encoded.trim()), Charsets.UTF_8)
-                }.getOrElse {
-                    runCatching {
-                        String(Base64.getUrlDecoder().decode(encoded.trim()), Charsets.UTF_8)
-                    }.getOrDefault("")
-                }
-                decoded.equals("FOUNDER_APP=true", ignoreCase = true)
-            }
-)
+) || hasDartDefineFlag("FOUNDER_APP=true")
+
+val isBetaUpdatesBuild: Boolean = (
+    project.hasProperty("betaUpdates") &&
+        project.property("betaUpdates").toString().toBoolean()
+) || hasDartDefineFlag("BETA_UPDATES=true")
 
 android {
     namespace = "br.com.desperrengue.app"
@@ -103,6 +109,12 @@ android {
             .configureEach {
                 res.srcDirs("src/$name/res", "src/founder/res")
                 manifest.srcFile("src/founder/AndroidManifest.xml")
+            }
+    } else if (isBetaUpdatesBuild) {
+        sourceSets
+            .matching { it.name in setOf("debug", "profile", "release") }
+            .configureEach {
+                manifest.srcFile("src/beta/AndroidManifest.xml")
             }
     }
 }

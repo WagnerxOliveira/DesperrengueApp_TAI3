@@ -1605,7 +1605,7 @@ FounderMonteCarloResult runMonteCarloSimulationSync(
 
   terminalIcas.sort();
   int? medianBreakEven;
-  if (firstBreakEvenMonths.length * 2 >= runs) {
+  if (firstBreakEvenMonths.length > runs ~/ 2) {
     firstBreakEvenMonths.sort();
     medianBreakEven = firstBreakEvenMonths[runs ~/ 2];
   }

@@ -1437,6 +1437,7 @@ class FounderCockpitRepository {
     required String category,
     required String description,
     required int amountCents,
+    String? paymentStatus,
   }) async {
     final session = _requireActiveSession();
     final dateIso =
@@ -1451,6 +1452,25 @@ class FounderCockpitRepository {
         'p_category': category.trim(),
         'p_description': description.trim(),
         'p_amount_cents': amountCents,
+        if (paymentStatus != null && paymentStatus.trim().isNotEmpty)
+          'p_payment_status': paymentStatus.trim().toUpperCase(),
+      },
+    );
+    await fetchLiveSnapshot();
+  }
+
+  Future<void> toggleExpensePaidStatus({
+    required String expenseId,
+    required bool paid,
+  }) async {
+    final session = _requireActiveSession();
+    await _gateway.callRpc(
+      'ceo_toggle_expense_paid_status',
+      <String, dynamic>{
+        'p_stepup_token': session.stepUpCredentialHex,
+        'p_device_hash': session.deviceHashHex,
+        'p_expense_id': expenseId.trim(),
+        'p_paid': paid,
       },
     );
     await fetchLiveSnapshot();

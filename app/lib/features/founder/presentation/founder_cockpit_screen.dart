@@ -215,6 +215,17 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   bool _checkingOta = false;
 
   String get _currentPeriodUpperBadge {
+    final singleIso =
+        CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(
+          _selectedWindowKey,
+        );
+    if (singleIso != null) {
+      final dt = CeoBrazilFiscalCalendar.tryParseDayIso(singleIso);
+      if (dt != null) {
+        final isFuture = dt.isAfter(CeoBrazilFiscalCalendar.todayBrasilia());
+        return '${isFuture ? "AGENDA" : "DIA"} ${CeoBrazilFiscalCalendar.formatDayPtBr(dt)}';
+      }
+    }
     for (final opt in _kPeriodOptions) {
       if (opt.key == _selectedWindowKey) return opt.upperBadge;
     }
@@ -522,15 +533,32 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     );
   }
 
-  void _openExecutiveCalendar() {
+  Future<void> _openExecutiveCalendar() async {
     HapticFeedback.selectionClick();
-    FounderExecutiveCalendarSheet.showExecutiveOverview(
+    final result = await FounderExecutiveCalendarSheet.showExecutiveOverview(
       context,
       snapshot: _snapshot,
       selectedWindowKey: _selectedWindowKey,
+      liveSnapshotStream: _repo.snapshotChanges,
       privacyBlurActive: _privacyBlurActive,
       onSelectWindow: (key) => _refreshLiveSnapshot(windowKey: key),
+      onInspectOrder: (jobId, code) => _openOrderForensics(jobId, code),
+      onAddExpenseForDate: (initialDate) async {
+        await FounderRealExpenseModal.show(
+          context,
+          repository: _repo,
+          initialDate: initialDate,
+        );
+      },
+      onToggleExpensePaid: (expenseId, paid) => _repo.toggleExpensePaidStatus(
+        expenseId: expenseId,
+        paid: paid,
+      ),
     );
+    if (!mounted || result == null) return;
+    if (result.windowKey != _selectedWindowKey) {
+      await _refreshLiveSnapshot(windowKey: result.windowKey);
+    }
   }
 
   void _jumpToPeopleFilter(String roleFilter) {
@@ -1104,6 +1132,16 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
   }
 
   Widget _buildContextualPeriodBar() {
+    final singleDayIso =
+        CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(
+          _selectedWindowKey,
+        );
+    final singleDate = singleDayIso != null
+        ? CeoBrazilFiscalCalendar.tryParseDayIso(singleDayIso)
+        : null;
+    final isFutureSingleDate = singleDate != null &&
+        singleDate.isAfter(CeoBrazilFiscalCalendar.todayBrasilia());
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -1152,6 +1190,71 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               ),
             ),
           ),
+          if (singleDate != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Material(
+                color: isFutureSingleDate
+                    ? FounderSovereignTokens.warmAmberSoft
+                    : FounderSovereignTokens.imperialGoldSoft,
+                borderRadius: BorderRadius.circular(999),
+                child: InkWell(
+                  key: const ValueKey<String>('ceo-active-single-day-chip'),
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    _refreshLiveSnapshot(windowKey: '30d');
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7.5,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: isFutureSingleDate
+                            ? FounderSovereignTokens.warmAmber
+                            : FounderSovereignTokens.imperialGold,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          isFutureSingleDate
+                              ? Icons.upcoming_rounded
+                              : Icons.event_available_rounded,
+                          size: 14,
+                          color: isFutureSingleDate
+                              ? FounderSovereignTokens.warmAmber
+                              : FounderSovereignTokens.imperialGoldBright,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${isFutureSingleDate ? "Agenda" : "Dia"} ${CeoBrazilFiscalCalendar.formatDayPtBr(singleDate)}',
+                          style: TextStyle(
+                            color: isFutureSingleDate
+                                ? FounderSovereignTokens.warmAmber
+                                : FounderSovereignTokens.imperialGoldBright,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.close_rounded,
+                          size: 14,
+                          color: isFutureSingleDate
+                              ? FounderSovereignTokens.warmAmber
+                              : FounderSovereignTokens.imperialGoldBright,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           for (final opt in _kPeriodOptions)
             Padding(
               padding: const EdgeInsets.only(right: 6),
@@ -1410,6 +1513,13 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
           text: '${p.disputedJobsCount} pedido(s) aguardando solução de disputa',
           targetTab: 2,
           critical: true,
+        )
+      else if (p.totalOpenMediationsAndTicketsCount > 0)
+        (
+          text:
+              '${p.totalOpenMediationsAndTicketsCount} mediação(ões) ou chamado(s) em aberto',
+          targetTab: 2,
+          critical: true,
         ),
       if (demo.kycPendingCount > 0)
         (
@@ -1427,6 +1537,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     return <Widget>[
       _buildContextualPeriodBar(),
       const SizedBox(height: 14),
+      if (_snapshot.consultedSingleDate != null) ...<Widget>[
+        _buildSingleDayConsultedAgendaCard(_snapshot.consultedSingleDate!),
+        const SizedBox(height: 14),
+      ],
       StaggeredRevealItem(
         animation: anim,
         stageIndex: 0,
@@ -2165,6 +2279,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     return <Widget>[
       _buildContextualPeriodBar(),
       const SizedBox(height: 14),
+      if (_snapshot.consultedSingleDate != null) ...<Widget>[
+        _buildSingleDayConsultedAgendaCard(_snapshot.consultedSingleDate!),
+        const SizedBox(height: 14),
+      ],
       StaggeredRevealItem(
         animation: anim,
         stageIndex: 0,
@@ -2334,14 +2452,18 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text(
-                        _showReconciliationProof
-                            ? 'Ocultar conferência dos 3 saldos'
-                            : 'Conferir prova dos 3 saldos',
-                        style: const TextStyle(
-                          color: FounderSovereignTokens.imperialGoldBright,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          _showReconciliationProof
+                              ? 'Ocultar conferência dos 3 saldos'
+                              : 'Conferir prova dos 3 saldos',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.imperialGoldBright,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -2556,7 +2678,7 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
               if (_snapshot.realExpenses.isNotEmpty) ...<Widget>[
                 const SizedBox(height: 16),
                 Text(
-                  'Gastos registrados no período (${_snapshot.realExpenses.length})',
+                  'Gastos e contas registradas (${_snapshot.realExpenses.length})',
                   style: FounderSovereignTokens.titleStyle(fontSize: 14),
                 ),
                 const SizedBox(height: 8),
@@ -2570,21 +2692,70 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                     decoration: BoxDecoration(
                       color: FounderSovereignTokens.obsidianSurface,
                       borderRadius: BorderRadius.circular(12),
-                      border:
-                          Border.all(color: FounderSovereignTokens.crispBorder),
+                      border: Border.all(
+                        color: exp.isScheduled
+                            ? FounderSovereignTokens.warmAmber
+                                .withValues(alpha: 0.42)
+                            : FounderSovereignTokens.crispBorder,
+                      ),
                     ),
                     child: Row(
                       children: <Widget>[
                         Expanded(
-                          child: Text(
-                            '${exp.competenceDateIso} · ${exp.kindLabelPt} · ${exp.category}'
-                            '${exp.description.isNotEmpty ? " (${exp.description})" : ""}',
-                            style: const TextStyle(
-                              color: FounderSovereignTokens.primaryInk,
-                              fontSize: 12,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: <Widget>[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: exp.isScheduled
+                                          ? FounderSovereignTokens.warmAmberSoft
+                                          : FounderSovereignTokens
+                                              .solvencyEmeraldSoft,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      exp.statusLabelPt,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: exp.isScheduled
+                                            ? FounderSovereignTokens.warmAmber
+                                            : FounderSovereignTokens
+                                                .solvencyEmerald,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${exp.competenceDateIso} · ${exp.kindLabelPt}',
+                                    style: const TextStyle(
+                                      color: FounderSovereignTokens.mutedInk,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${exp.category}${exp.description.isNotEmpty ? " (${exp.description})" : ""}',
+                                style: const TextStyle(
+                                  color: FounderSovereignTokens.primaryInk,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
+                        const SizedBox(width: 8),
                         AnimatedMoneyOdometer(
                           cents: exp.amountCents,
                           prefix: '- ',
@@ -2592,7 +2763,31 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
                           style: FounderSovereignTokens.monoMetric(
                             fontSize: 12.5,
                             fontWeight: FontWeight.w800,
-                            color: FounderSovereignTokens.warmAmber,
+                            color: exp.isScheduled
+                                ? FounderSovereignTokens.warmAmber
+                                : FounderSovereignTokens.secondaryInk,
+                          ),
+                        ),
+                        IconButton(
+                          key: ValueKey<String>(
+                            'ceo-toggle-expense-paid-${exp.id}',
+                          ),
+                          tooltip: exp.isScheduled
+                              ? 'Marcar como pago'
+                              : 'Voltar para agendado',
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => _repo.toggleExpensePaidStatus(
+                            expenseId: exp.id,
+                            paid: exp.isScheduled,
+                          ),
+                          icon: Icon(
+                            exp.isScheduled
+                                ? Icons.check_circle_outline_rounded
+                                : Icons.task_alt_rounded,
+                            size: 18,
+                            color: exp.isScheduled
+                                ? FounderSovereignTokens.warmAmber
+                                : FounderSovereignTokens.solvencyEmerald,
                           ),
                         ),
                         IconButton(
@@ -2613,6 +2808,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
           ),
         ),
       ),
+      if (_snapshot.taxObligationsSchedule.isNotEmpty) ...<Widget>[
+        const SizedBox(height: 14),
+        _buildTaxScheduleCard(),
+      ],
       const SizedBox(height: 14),
       StaggeredRevealItem(
         animation: anim,
@@ -2771,6 +2970,573 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     );
   }
 
+  Widget _buildSingleDayConsultedAgendaCard(DateTime consultedDate) {
+    final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+    final agenda = _snapshot.agendaForDay(
+      consultedDate,
+      todayBrasilia: todayBrt,
+    );
+    final events = _snapshot.eventsForDay(consultedDate);
+    final dateFormatted = CeoBrazilFiscalCalendar.formatDayPtBr(consultedDate);
+    final isFuture = agenda.isFuture;
+
+    return FounderGlassCard(
+      key: const ValueKey<String>('ceo-consulted-date-agenda-card'),
+      showTopAccentBar: true,
+      accentTopBarColor: isFuture
+          ? FounderSovereignTokens.warmAmber
+          : FounderSovereignTokens.imperialGold,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    isFuture
+                        ? Icons.upcoming_rounded
+                        : Icons.event_available_rounded,
+                    size: 18,
+                    color: isFuture
+                        ? FounderSovereignTokens.warmAmber
+                        : FounderSovereignTokens.imperialGoldBright,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      isFuture
+                          ? 'Agenda prevista em $dateFormatted'
+                          : 'Consulta exata do dia $dateFormatted',
+                      style: FounderSovereignTokens.titleStyle(fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+              TextButton.icon(
+                key: const ValueKey<String>('ceo-reset-single-day-btn'),
+                onPressed: () => _refreshLiveSnapshot(windowKey: '30d'),
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  foregroundColor: FounderSovereignTokens.imperialGoldBright,
+                ),
+                icon: const Icon(Icons.restore_rounded, size: 15),
+                label: const Text(
+                  'Voltar p/ 30 dias',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isFuture
+                ? 'Obrigações fiscais oficiais, contas agendadas, mediações ativas e serviços marcados em tempo real para esta data futura.'
+                : 'Todos os números e pedidos do painel estão filtrados exclusivamente para $dateFormatted.',
+            style: FounderSovereignTokens.subtitleStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: <Widget>[
+              _ConsultedDayStatPill(
+                label: 'Impostos e contas',
+                value: _privacyBlurActive
+                    ? 'R\$ ••••'
+                    : Money.formatBrl(
+                        isFuture
+                            ? agenda.totalPayablesOnDayCents
+                            : agenda.totalExpensesAndDasOnDayCents,
+                      ),
+                accent: (isFuture
+                            ? agenda.totalPayablesOnDayCents
+                            : agenda.totalExpensesAndDasOnDayCents) >
+                        0
+                    ? FounderSovereignTokens.warmAmber
+                    : FounderSovereignTokens.secondaryInk,
+              ),
+              _ConsultedDayStatPill(
+                label: 'Serviços agendados',
+                value: '${agenda.scheduledOrdersCount}',
+                accent: FounderSovereignTokens.imperialGoldBright,
+              ),
+              _ConsultedDayStatPill(
+                label: 'Mediações / prazos',
+                value: '${agenda.mediationsTotalEventsCount}',
+                accent: agenda.hasActiveMediationAlert
+                    ? FounderSovereignTokens.crimsonAlert
+                    : FounderSovereignTokens.secondaryInk,
+              ),
+              if (agenda.maturationReleaseCents > 0)
+                _ConsultedDayStatPill(
+                  label: 'Liberações profissionais',
+                  value: _privacyBlurActive
+                      ? 'R\$ ••••'
+                      : Money.formatBrl(agenda.maturationReleaseCents),
+                  accent: FounderSovereignTokens.solvencyEmerald,
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (events.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: FounderSovereignTokens.crispBorder),
+              ),
+              child: Text(
+                isFuture
+                    ? 'Nenhum imposto previsto, mediação ativa, conta ou serviço agendado nesta data até agora.'
+                    : 'Nenhuma movimentação registrada em $dateFormatted.',
+                style: FounderSovereignTokens.subtitleStyle(fontSize: 12),
+              ),
+            )
+          else
+            Column(
+              children: <Widget>[
+                for (final ev in events.take(12))
+                  _buildConsultedAgendaEventRow(ev),
+              ],
+            ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey<String>(
+                'ceo-consulted-date-add-expense-btn',
+              ),
+              onPressed: () async {
+                await FounderRealExpenseModal.show(
+                  context,
+                  repository: _repo,
+                  initialDate: consultedDate,
+                );
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: FounderSovereignTokens.imperialGoldBright,
+                side: BorderSide(
+                  color:
+                      FounderSovereignTokens.imperialGold.withValues(alpha: 0.4),
+                ),
+                visualDensity: VisualDensity.compact,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.add_card_rounded, size: 16),
+              label: Text(
+                isFuture
+                    ? 'Agendar conta ou imposto para $dateFormatted'
+                    : 'Lançar gasto em $dateFormatted',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConsultedAgendaEventRow(CeoCalendarAgendaEvent ev) {
+    final Color accent;
+    final IconData icon;
+    if (ev.isMediationOrDispute) {
+      accent = ev.severity == 'CRITICAL'
+          ? FounderSovereignTokens.crimsonAlert
+          : FounderSovereignTokens.warmAmber;
+      icon = Icons.gavel_rounded;
+    } else if (ev.isTaxEvent) {
+      accent = ev.statusCode == 'PAID'
+          ? FounderSovereignTokens.solvencyEmerald
+          : FounderSovereignTokens.warmAmber;
+      icon = Icons.account_balance_rounded;
+    } else if (ev.eventKind == 'COMPANY_EXPENSE') {
+      accent = ev.isScheduledExpense
+          ? FounderSovereignTokens.warmAmber
+          : FounderSovereignTokens.secondaryInk;
+      icon = Icons.receipt_long_rounded;
+    } else if (ev.eventKind == 'COMPLETED_ORDER') {
+      accent = FounderSovereignTokens.solvencyEmerald;
+      icon = Icons.check_circle_rounded;
+    } else {
+      accent = FounderSovereignTokens.imperialGoldBright;
+      icon = Icons.event_available_rounded;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: FounderSovereignTokens.obsidianSurface,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: ev.hasLinkedOrder
+              ? () => _openOrderForensics(ev.jobId!)
+              : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: ev.isMediationOrDispute
+                    ? accent.withValues(alpha: 0.48)
+                    : FounderSovereignTokens.crispBorder,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(icon, size: 17, color: accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        ev.title,
+                        style: const TextStyle(
+                          color: FounderSovereignTokens.primaryInk,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (ev.subtitle.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 2),
+                        Text(
+                          ev.subtitle,
+                          style: const TextStyle(
+                            color: FounderSovereignTokens.mutedInk,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (ev.grossCents > 0) ...<Widget>[
+                  const SizedBox(width: 8),
+                  AnimatedMoneyOdometer(
+                    cents: ev.grossCents,
+                    privacyBlurActive: _privacyBlurActive,
+                    style: FounderSovereignTokens.monoMetric(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: accent,
+                    ),
+                  ),
+                ],
+                if (ev.isScheduledExpense) ...<Widget>[
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Marcar conta como paga',
+                    visualDensity: VisualDensity.compact,
+                    constraints:
+                        const BoxConstraints(minWidth: 32, minHeight: 32),
+                    padding: EdgeInsets.zero,
+                    onPressed: () => _repo.toggleExpensePaidStatus(
+                      expenseId: ev.refId,
+                      paid: true,
+                    ),
+                    icon: const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 18,
+                      color: FounderSovereignTokens.solvencyEmerald,
+                    ),
+                  ),
+                ] else if (ev.hasLinkedOrder) ...<Widget>[
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 17,
+                    color: FounderSovereignTokens.mutedInk,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTaxScheduleCard() {
+    final todayIso = CeoBrazilFiscalCalendar.formatDayIso(
+      CeoBrazilFiscalCalendar.todayBrasilia(),
+    );
+    final upcoming = _snapshot.taxObligationsSchedule
+        .where((t) => t.dueDateIso.compareTo(todayIso) >= 0 || t.remainingDueCents > 0)
+        .take(4)
+        .toList(growable: false);
+    if (upcoming.isEmpty) return const SizedBox.shrink();
+
+    return FounderGlassCard(
+      key: const ValueKey<String>('ceo-tax-schedule-card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(
+                Icons.account_balance_rounded,
+                size: 18,
+                color: FounderSovereignTokens.warmAmber,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Calendário de Impostos (Simples Nacional · DAS)',
+                  style: FounderSovereignTokens.titleStyle(fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Vencimentos oficiais no dia 20 útil subsequente (6% calculado apenas sobre a comissão real da plataforma). Toque numa data para abrir a consulta do dia.',
+            style: FounderSovereignTokens.subtitleStyle(fontSize: 11.5),
+          ),
+          const SizedBox(height: 12),
+          for (final item in upcoming)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  key: ValueKey<String>(
+                    'ceo-tax-schedule-row-${item.dueDateIso}',
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () => _refreshLiveSnapshot(
+                    windowKey: 'day:${item.dueDateIso}',
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: item.remainingDueCents > 0
+                            ? FounderSovereignTokens.warmAmber
+                                .withValues(alpha: 0.40)
+                            : FounderSovereignTokens.crispBorder,
+                      ),
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                'Vencimento ${item.dueDateFormattedPt} · Competência ${item.competenceLabelPt}',
+                                style: const TextStyle(
+                                  color: FounderSovereignTokens.primaryInk,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.statusLabelPt,
+                                style: TextStyle(
+                                  color: item.status == 'PAID'
+                                      ? FounderSovereignTokens.solvencyEmerald
+                                      : (item.remainingDueCents > 0
+                                          ? FounderSovereignTokens.warmAmber
+                                          : FounderSovereignTokens.mutedInk),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        AnimatedMoneyOdometer(
+                          cents: item.remainingDueCents,
+                          privacyBlurActive: _privacyBlurActive,
+                          style: FounderSovereignTokens.monoMetric(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: item.remainingDueCents > 0
+                                ? FounderSovereignTokens.warmAmber
+                                : FounderSovereignTokens.secondaryInk,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 17,
+                          color: FounderSovereignTokens.mutedInk,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveMediationsLiveCard() {
+    final openMeds = _snapshot.activeMediations
+        .where((m) => m.isOpen)
+        .toList(growable: false);
+    final displayed =
+        openMeds.isNotEmpty ? openMeds : _snapshot.activeMediations.take(4).toList();
+
+    return FounderGlassCard(
+      key: const ValueKey<String>('ceo-active-mediations-card'),
+      showTopAccentBar: openMeds.isNotEmpty,
+      accentTopBarColor: FounderSovereignTokens.crimsonAlert,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Icon(
+                    Icons.gavel_rounded,
+                    size: 18,
+                    color: openMeds.isNotEmpty
+                        ? FounderSovereignTokens.crimsonAlert
+                        : FounderSovereignTokens.solvencyEmerald,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      openMeds.isNotEmpty
+                          ? 'Mediações e chamados ativos (${openMeds.length})'
+                          : 'Histórico recente de mediações (${displayed.length})',
+                      style: FounderSovereignTokens.titleStyle(fontSize: 15.5),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final m in displayed.take(8))
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: FounderSovereignTokens.obsidianSurface,
+                borderRadius: BorderRadius.circular(12),
+                child: InkWell(
+                  key: ValueKey<String>('ceo-mediation-row-${m.id}'),
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: m.hasLinkedOrder
+                      ? () => _openOrderForensics(m.jobId!, m.orderCode)
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: m.isOpen
+                            ? FounderSovereignTokens.crimsonAlert
+                                .withValues(alpha: 0.45)
+                            : FounderSovereignTokens.crispBorder,
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                '${m.protocolCode} · ${m.orderCode} · ${m.categoryName}',
+                                style: const TextStyle(
+                                  color: FounderSovereignTokens.primaryInk,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${m.phaseLabelPt} · ${m.reasonOrCategory}',
+                                style: TextStyle(
+                                  color: m.isOpen
+                                      ? FounderSovereignTokens.warmAmber
+                                      : FounderSovereignTokens.solvencyEmerald,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              if (m.description.isNotEmpty) ...<Widget>[
+                                const SizedBox(height: 2),
+                                Text(
+                                  m.description,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: FounderSovereignTokens.mutedInk,
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        if (m.frozenAmountCents > 0) ...<Widget>[
+                          const SizedBox(width: 8),
+                          AnimatedMoneyOdometer(
+                            cents: m.frozenAmountCents,
+                            privacyBlurActive: _privacyBlurActive,
+                            style: FounderSovereignTokens.monoMetric(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: FounderSovereignTokens.crimsonAlert,
+                            ),
+                          ),
+                        ],
+                        if (m.hasLinkedOrder)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Icon(
+                              Icons.chevron_right_rounded,
+                              size: 18,
+                              color: FounderSovereignTokens.mutedInk,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDreLine(
     String label,
     int signedCents,
@@ -2872,6 +3638,8 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
     );
 
     return <Widget>[
+      _buildContextualPeriodBar(),
+      const SizedBox(height: 12),
       AnimatedSlidingPillSwitch(
         labels: const <String>['Pedidos e Mapa', 'Bairros e Profissões'],
         icons: const <IconData>[Icons.map_rounded, Icons.grid_view_rounded],
@@ -2880,6 +3648,10 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
       ),
       const SizedBox(height: 14),
       if (_operationsSubView == 0) ...<Widget>[
+        if (_snapshot.activeMediations.isNotEmpty) ...<Widget>[
+          _buildActiveMediationsLiveCard(),
+          const SizedBox(height: 14),
+        ],
         StaggeredRevealItem(
           animation: anim,
           stageIndex: 0,
@@ -4356,6 +5128,52 @@ class _SecurityCheckRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ConsultedDayStatPill extends StatelessWidget {
+  const _ConsultedDayStatPill({
+    required this.label,
+    required this.value,
+    required this.accent,
+  });
+
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: FounderSovereignTokens.obsidianSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: FounderSovereignTokens.crispBorder),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: <InlineSpan>[
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(
+                color: FounderSovereignTokens.mutedInk,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            TextSpan(
+              text: value,
+              style: FounderSovereignTokens.monoMetric(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: accent,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

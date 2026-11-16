@@ -279,21 +279,53 @@ void main() {
     expect(mainActivity, contains('FLAG_SECURE'));
     expect(mainActivity, contains('br.com.desperrengue.app.founder/security'));
     expect(mainActivity, contains('br.com.desperrengue.app.founder/ota'));
+    expect(mainActivity, contains('br.com.desperrengue.app/ota'));
     expect(mainActivity, contains('FounderOtaFileProvider'));
+    expect(mainActivity, contains('PublicOtaFileProvider'));
+    expect(mainActivity, contains('verifyDownloadedApkSignature'));
     expect(mainActivity, contains('ERR_OTA_SHA256_MISMATCH'));
+    expect(mainActivity, contains('ERR_OTA_SIGNATURE_MISMATCH'));
+    expect(mainActivity, contains('ERR_OTA_PACKAGE_MISMATCH'));
 
     final manifest = _repoFile('app/android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(manifest, contains('android:roundIcon="@mipmap/ic_launcher_round"'));
     expect(
       manifest.contains('REQUEST_INSTALL_PACKAGES'),
       isFalse,
-      reason: 'APK público jamais pode declarar REQUEST_INSTALL_PACKAGES (conformidade Google Play)',
+      reason: 'Manifesto base (Play Store) jamais pode declarar REQUEST_INSTALL_PACKAGES',
     );
     expect(
       manifest.contains('FounderOtaFileProvider'),
       isFalse,
       reason: 'Provider de auto-update CEO jamais pode existir no manifesto público',
     );
+    expect(
+      manifest.contains('PublicOtaFileProvider'),
+      isFalse,
+      reason: 'Provider OTA beta fica isolado em src/beta/AndroidManifest.xml (fora do AAB da Play Store)',
+    );
+
+    final betaManifest = _repoFile('app/android/app/src/beta/AndroidManifest.xml').readAsStringSync();
+    expect(betaManifest, contains('android.permission.REQUEST_INSTALL_PACKAGES'));
+    expect(betaManifest, contains('br.com.desperrengue.app.PublicOtaFileProvider'));
+    expect(betaManifest, contains('android:authorities="\${applicationId}.ota.provider"'));
+    expect(betaManifest, contains('android:exported="false"'));
+
+    // XML 1.0 (Seção 2.5): comentários `<!-- ... -->` jamais podem conter `--` interno (quebra ManifestMerger2):
+    for (final manifestRel in <String>[
+      'app/android/app/src/main/AndroidManifest.xml',
+      'app/android/app/src/beta/AndroidManifest.xml',
+      'app/android/app/src/founder/AndroidManifest.xml',
+    ]) {
+      final xmlText = _repoFile(manifestRel).readAsStringSync();
+      for (final commentMatch in RegExp(r'<!--([\s\S]*?)-->').allMatches(xmlText)) {
+        expect(
+          commentMatch.group(1)!.contains('--'),
+          isFalse,
+          reason: '$manifestRel contém "--" proibido dentro de comentário XML (quebra ManifestMerger2)',
+        );
+      }
+    }
 
     final founderManifest = _repoFile('app/android/app/src/founder/AndroidManifest.xml').readAsStringSync();
     expect(founderManifest, contains('android.permission.REQUEST_INSTALL_PACKAGES'));
@@ -310,8 +342,11 @@ void main() {
 
     final gradle = _repoFile('app/android/app/build.gradle.kts').readAsStringSync();
     expect(gradle, contains('manifest.srcFile("src/founder/AndroidManifest.xml")'));
+    expect(gradle, contains('isBetaUpdatesBuild'));
+    expect(gradle, contains('manifest.srcFile("src/beta/AndroidManifest.xml")'));
 
     final workflow = _repoFile('.github/workflows/beta-release.yml').readAsStringSync();
+    expect(workflow, contains('-PbetaUpdates=true'));
     expect(workflow, contains('--dart-define=BETA_UPDATES=true'));
   });
 

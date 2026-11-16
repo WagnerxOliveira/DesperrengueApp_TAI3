@@ -1739,47 +1739,53 @@ class _SelectedMapOrderDock extends StatelessWidget {
                 runSpacing: 4,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: <Widget>[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Text(
-                        'Total: ',
-                        style: TextStyle(
-                          color: FounderSovereignTokens.mutedInk,
-                          fontSize: 12,
-                        ),
-                      ),
-                      AnimatedMoneyOdometer(
-                        cents: point.amountCents,
-                        privacyBlurActive: privacyBlurActive,
-                        style: FounderSovereignTokens.monoMetric(
-                          fontSize: 14,
-                          color: FounderSovereignTokens.primaryInk,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (estNetCents > 0)
-                    Row(
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         const Text(
-                          'Seu lucro est.: +',
+                          'Total: ',
                           style: TextStyle(
-                            color: FounderSovereignTokens.solvencyEmerald,
+                            color: FounderSovereignTokens.mutedInk,
                             fontSize: 12,
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         AnimatedMoneyOdometer(
-                          cents: estNetCents,
+                          cents: point.amountCents,
                           privacyBlurActive: privacyBlurActive,
                           style: FounderSovereignTokens.monoMetric(
-                            fontSize: 13.5,
-                            color: FounderSovereignTokens.solvencyEmerald,
+                            fontSize: 14,
+                            color: FounderSovereignTokens.primaryInk,
                           ),
                         ),
                       ],
+                    ),
+                  ),
+                  if (estNetCents > 0)
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          const Text(
+                            'Seu lucro est.: +',
+                            style: TextStyle(
+                              color: FounderSovereignTokens.solvencyEmerald,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          AnimatedMoneyOdometer(
+                            cents: estNetCents,
+                            privacyBlurActive: privacyBlurActive,
+                            style: FounderSovereignTokens.monoMetric(
+                              fontSize: 13.5,
+                              color: FounderSovereignTokens.solvencyEmerald,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                 ],
               ),
@@ -2513,15 +2519,16 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'Notas fiscais e avaliações',
+            'Notas fiscais, mediações e avaliações',
             style: FounderSovereignTokens.titleStyle(fontSize: 15),
           ),
           const SizedBox(height: 8),
           if (d.fiscalDocuments.isEmpty &&
               d.mediations.isEmpty &&
+              d.supportTickets.isEmpty &&
               d.reviews.isEmpty)
             const Text(
-              'Sem notas fiscais ou avaliações registradas até o momento.',
+              'Sem notas fiscais, mediações ou avaliações registradas até o momento.',
               style: TextStyle(
                 color: FounderSovereignTokens.mutedInk,
                 fontSize: 12.5,
@@ -2531,10 +2538,34 @@ class _FounderOrderForensicSheetState extends State<FounderOrderForensicSheet> {
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'Nota fiscal de peças: ${f['nfe_access_key'] ?? "—"}',
+                'Nota fiscal de peças: ${f['access_key_44'] ?? f['nfe_access_key'] ?? "—"} (${f['verification_status'] ?? "conferência"})',
                 style: FounderSovereignTokens.monoMetric(
                   fontSize: 11.5,
                   color: FounderSovereignTokens.imperialGoldBright,
+                ),
+              ),
+            ),
+          for (final m in d.mediations)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Mediação de garantia: ${m['claim_category'] ?? "Garantia 90d"} — ${m['defect_description'] ?? ""}',
+                style: const TextStyle(
+                  color: FounderSovereignTokens.crimsonAlert,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          for (final t in d.supportTickets)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Chamado ${t['protocol_code'] ?? "#DSP"}: ${t['reason'] ?? "Mediação"}${(t['description'] ?? "").toString().trim().isNotEmpty ? " — ${t['description']}" : ""}',
+                style: const TextStyle(
+                  color: FounderSovereignTokens.warmAmber,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -2703,13 +2734,16 @@ class FounderRealExpenseModal extends StatefulWidget {
   const FounderRealExpenseModal({
     super.key,
     required this.repository,
+    this.initialDate,
   });
 
   final FounderCockpitRepository repository;
+  final DateTime? initialDate;
 
   static Future<bool?> show(
     BuildContext context, {
     required FounderCockpitRepository repository,
+    DateTime? initialDate,
   }) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -2719,7 +2753,10 @@ class FounderRealExpenseModal extends StatefulWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
       ),
-      builder: (_) => FounderRealExpenseModal(repository: repository),
+      builder: (_) => FounderRealExpenseModal(
+        repository: repository,
+        initialDate: initialDate,
+      ),
     );
   }
 
@@ -2735,8 +2772,8 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
   final TextEditingController _amountBrlCtrl = TextEditingController();
 
   String _expenseKind = 'FIXED_OPEX';
-  DateTime _competenceDate =
-      DateTime.now().toUtc().subtract(const Duration(hours: 3));
+  String _paymentStatus = 'PAID';
+  late DateTime _competenceDate;
   bool _saving = false;
   String? _errorMsg;
 
@@ -2744,8 +2781,23 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
     'Servidor e nuvem',
     'Contabilidade',
     'Marketing e anúncios',
-    'Impostos e taxas',
+    'Imposto Simples Nacional (DAS)',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+    final base = widget.initialDate != null
+        ? DateTime(
+            widget.initialDate!.year,
+            widget.initialDate!.month,
+            widget.initialDate!.day,
+          )
+        : todayBrt;
+    _competenceDate = base;
+    _paymentStatus = base.isAfter(todayBrt) ? 'SCHEDULED' : 'PAID';
+  }
 
   @override
   void dispose() {
@@ -2794,6 +2846,7 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
         category: cat,
         description: desc,
         amountCents: cents,
+        paymentStatus: _paymentStatus,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -2855,6 +2908,60 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                 _buildKindChip('FIXED_OPEX', 'Gasto fixo mensal'),
                 _buildKindChip('VARIABLE_PSP_CLOUD', 'Taxa de PIX e sistema'),
                 _buildKindChip('TAX_EXTRA', 'Imposto ou taxa extra'),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                ChoiceChip(
+                  key: const ValueKey<String>('ceo-expense-status-paid-chip'),
+                  label: const Text('Já pago'),
+                  selected: _paymentStatus == 'PAID',
+                  onSelected: (_) => setState(() => _paymentStatus = 'PAID'),
+                  selectedColor: FounderSovereignTokens.solvencyEmeraldSoft,
+                  backgroundColor: FounderSovereignTokens.obsidianSurface,
+                  side: BorderSide(
+                    color: _paymentStatus == 'PAID'
+                        ? FounderSovereignTokens.solvencyEmerald
+                        : FounderSovereignTokens.crispBorder,
+                  ),
+                  labelStyle: TextStyle(
+                    color: _paymentStatus == 'PAID'
+                        ? FounderSovereignTokens.solvencyEmerald
+                        : FounderSovereignTokens.mutedInk,
+                    fontSize: 12,
+                    fontWeight: _paymentStatus == 'PAID'
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
+                ChoiceChip(
+                  key: const ValueKey<String>(
+                    'ceo-expense-status-scheduled-chip',
+                  ),
+                  label: const Text('Agendado (a pagar)'),
+                  selected: _paymentStatus == 'SCHEDULED',
+                  onSelected: (_) =>
+                      setState(() => _paymentStatus = 'SCHEDULED'),
+                  selectedColor: FounderSovereignTokens.warmAmberSoft,
+                  backgroundColor: FounderSovereignTokens.obsidianSurface,
+                  side: BorderSide(
+                    color: _paymentStatus == 'SCHEDULED'
+                        ? FounderSovereignTokens.warmAmber
+                        : FounderSovereignTokens.crispBorder,
+                  ),
+                  labelStyle: TextStyle(
+                    color: _paymentStatus == 'SCHEDULED'
+                        ? FounderSovereignTokens.warmAmber
+                        : FounderSovereignTokens.mutedInk,
+                    fontSize: 12,
+                    fontWeight: _paymentStatus == 'SCHEDULED'
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -2950,10 +3057,16 @@ class _FounderRealExpenseModalState extends State<FounderRealExpenseModal> {
                   context,
                   initialDate: _competenceDate,
                   firstDate: DateTime(2024, 1, 1),
-                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                  lastDate: DateTime.now().add(const Duration(days: 730)),
                 );
                 if (picked != null && mounted) {
-                  setState(() => _competenceDate = picked);
+                  final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+                  setState(() {
+                    _competenceDate = picked;
+                    if (picked.isAfter(todayBrt)) {
+                      _paymentStatus = 'SCHEDULED';
+                    }
+                  });
                 }
               },
               child: Container(

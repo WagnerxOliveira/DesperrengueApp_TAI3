@@ -733,6 +733,7 @@ check('14. Varredura cumulativa de catálogo PL/pgSQL: zero função ativa refer
     /\bphash_hamming_distance\b/i,
     /\bcheckin_phash_64\b/i,
     /\bescrow_state\b/i,
+    /\bpay\.payment_method\b/i,
   ];
 
   for (const [sig, { file, body }] of activeFns.entries()) {
@@ -826,6 +827,40 @@ check('17. Hardening OTP v2.14.1 (`20261115010000` + `ceo-vault-authority`): Jan
   assert.match(edgeFn, /white-space:\s*nowrap/i);
   assert.match(edgeFn, /PROTOCOLO #/);
   assert.doesNotMatch(edgeFn, /otpCode\.slice\(0,\s*3\)[\s\S]{0,40}&nbsp;/, 'Proibido separar OTP com &nbsp; que causa quebra mobile 686 41\\n5');
+});
+
+check('18. Calendário Executivo & Ponte Realtime Integral (`20261116120000` + `ceo_calendar_agenda_and_realtime_smoke.sql`): `day:YYYY-MM-DD`, DAS dia 20 útil (Lei 14.759/2023 + FEBRABAN), Mediações Unificadas, Contas Agendadas e Forense `pay.method`', () => {
+  const migCalPath = path.join(MIGRATIONS_DIR, '20261116120000_ceo_executive_calendar_agenda_and_realtime_bridge.sql');
+  const testCalPath = path.join(TESTS_DIR, 'ceo_calendar_agenda_and_realtime_smoke.sql');
+  assert.ok(fs.existsSync(migCalPath), 'Migration 20261116120000_ceo_executive_calendar_agenda_and_realtime_bridge.sql obrigatória');
+  assert.ok(fs.existsSync(testCalPath), 'Suíte ceo_calendar_agenda_and_realtime_smoke.sql obrigatória');
+
+  const migCal = fs.readFileSync(migCalPath, 'utf8');
+  const testCal = fs.readFileSync(testCalPath, 'utf8');
+  const strippedCal = lexSql(migCal, '20261116120000_ceo_executive_calendar_agenda_and_realtime_bridge.sql');
+  const strippedTestCal = lexSql(testCal, 'ceo_calendar_agenda_and_realtime_smoke.sql');
+
+  assert.match(strippedCal, /^\s*begin\s*;/i, '20261116120000 deve abrir com begin;');
+  assert.match(strippedCal, /commit\s*;\s*$/i, '20261116120000 deve encerrar com commit;');
+  assert.match(strippedTestCal, /^\s*begin\s*;/i, 'ceo_calendar_agenda_and_realtime_smoke.sql deve abrir com begin;');
+  assert.match(strippedTestCal, /rollback\s*;\s*$/i, 'ceo_calendar_agenda_and_realtime_smoke.sql deve encerrar com rollback;');
+  assert.doesNotMatch(strippedCal, /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i);
+
+  assert.match(migCal, /create\s+or\s+replace\s+function\s+private\.ceo_das_due_date_for_competence/i);
+  assert.match(migCal, /create\s+or\s+replace\s+function\s+private\.ceo_defis_due_date_for_year/i);
+  assert.match(migCal, /create\s+or\s+replace\s+function\s+public\.ceo_toggle_expense_paid_status/i);
+  assert.match(migCal, /create\s+trigger\s+zz_ceo_live_support_tickets/i);
+  assert.match(migCal, /create\s+trigger\s+zz_ceo_live_payments/i);
+  assert.match(migCal, /create\s+trigger\s+zz_ceo_live_withdrawals/i);
+  assert.match(migCal, /create\s+trigger\s+zz_ceo_live_expenses_aiud/i);
+  assert.match(migCal, /tax_obligations_schedule/);
+  assert.match(migCal, /active_mediations/);
+  assert.match(migCal, /calendar_agenda_days/);
+  assert.match(migCal, /calendar_agenda_events/);
+  assert.doesNotMatch(migCal, /\bpay\.payment_method\b/i);
+
+  const calAssertions = (testCal.match(/perform\s+pg_temp\.t\s*\(/gi) ?? []).length;
+  assert.ok(calAssertions >= 14, `Esperado >= 14 asserções em ceo_calendar_agenda_and_realtime_smoke.sql (encontradas: ${calAssertions})`);
 });
 
 const failed = results.filter((r) => !r.ok);

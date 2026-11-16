@@ -46,6 +46,7 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
       StreamController<String?>.broadcast();
 
   FounderDashboardSnapshot snapshotToReturn;
+  final List<String> requestedWindowKeys = <String>[];
   final List<String> recordedCanaryCodes = <String>[];
   final List<String> dispatchedEmailKinds = <String>[];
   final List<CeoLiveEventItem> missedEventsQueue = <CeoLiveEventItem>[];
@@ -592,8 +593,51 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
 
     if (functionName == 'ceo_get_live_cockpit_snapshot') {
       final win = params['p_window_key']?.toString() ?? '30d';
+      requestedWindowKeys.add(win);
+      final singleIso =
+          CeoBrazilFiscalCalendar.extractSingleDayIsoFromWindowKey(win);
+      if (singleIso != null) {
+        final dayDt = CeoBrazilFiscalCalendar.tryParseDayIso(singleIso);
+        final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+        final isFuture = dayDt != null && dayDt.isAfter(todayBrt);
+
+        FounderDailyMetricPoint? pt;
+        for (final d in snapshotToReturn.dailySeries) {
+          if (d.dayIso == singleIso) {
+            pt = d;
+            break;
+          }
+        }
+        final dayExpenses = snapshotToReturn.realExpenses
+            .where((e) => e.competenceDateIso == singleIso)
+            .toList(growable: false);
+        final paidFixed = dayExpenses
+            .where((e) => e.isPaid && e.expenseKind == 'FIXED_OPEX')
+            .fold<int>(0, (acc, e) => acc + e.amountCents);
+        final singleDre = FounderDreCents.computeFromComponents(
+          laborGrossCents: pt?.laborCents ?? 0,
+          materialsExemptCents: pt?.materialsExemptCents ?? 0,
+          sosFeeRevenueCents: 0,
+          completedOrdersCount: pt?.ordersCount ?? 0,
+          fixedOpexCents: paidFixed,
+        );
+        final tailored = snapshotToReturn.copyWith(
+          windowKey: win,
+          daysWindow: 1,
+          isSingleDay: true,
+          isFutureWindow: isFuture,
+          windowStartIso: singleIso,
+          windowEndIso: singleIso,
+          dreCents: singleDre,
+          realExpenses: dayExpenses,
+        );
+        return tailored.toJson();
+      }
+
       final json = snapshotToReturn.toJson();
       json['window_key'] = win;
+      json['is_single_day'] = win.trim().toLowerCase() == 'today';
+      json['is_future_window'] = false;
       return json;
     }
 
@@ -659,6 +703,15 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
         'maturation_entries': const <Map<String, dynamic>>[],
         'fiscal_documents': const <Map<String, dynamic>>[],
         'mediations': const <Map<String, dynamic>>[],
+        'support_tickets': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'ticket_id': 'tk-real-1',
+            'protocol_code': '#DSP-REAL',
+            'reason': 'Garantia de atendimento',
+            'description': 'Solicitação aberta no app Desperrengue',
+            'status': 'open',
+          },
+        ],
         'reviews': const <Map<String, dynamic>>[],
       };
     }
@@ -690,14 +743,30 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
     }
 
     if (functionName == 'ceo_record_real_expense') {
+      final compIso = params['p_competence_date']?.toString() ?? '2026-11-14';
+      final compDt = CeoBrazilFiscalCalendar.tryParseDayIso(compIso);
+      final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+      final explicitStatus =
+          params['p_payment_status']?.toString().trim().toUpperCase();
+      final resolvedStatus = (explicitStatus == 'SCHEDULED' ||
+              explicitStatus == 'PAID')
+          ? explicitStatus!
+          : ((compDt != null && compDt.isAfter(todayBrt))
+              ? 'SCHEDULED'
+              : 'PAID');
+      final cents = (params['p_amount_cents'] as num?)?.toInt() ?? 0;
+      final cat = params['p_category']?.toString() ?? 'Infraestrutura';
+      final desc = params['p_description']?.toString() ?? '';
+
       final newEntry = CeoRealExpenseEntry(
         id: 'exp-${snapshotToReturn.realExpenses.length + 1}',
-        competenceDateIso:
-            params['p_competence_date']?.toString() ?? '2026-11-14',
+        competenceDateIso: compIso,
         expenseKind: params['p_expense_kind']?.toString() ?? 'FIXED_OPEX',
-        category: params['p_category']?.toString() ?? 'Cloud',
-        description: params['p_description']?.toString() ?? '',
-        amountCents: (params['p_amount_cents'] as num?)?.toInt() ?? 0,
+        category: cat,
+        description: desc,
+        amountCents: cents,
+        paymentStatus: resolvedStatus,
+        paidAt: resolvedStatus == 'PAID' ? DateTime.now().toUtc() : null,
         createdAt: DateTime.now().toUtc(),
       );
       final updatedExpenses = <CeoRealExpenseEntry>[
@@ -705,7 +774,7 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
         ...snapshotToReturn.realExpenses,
       ];
       final fixedSum = updatedExpenses
-          .where((e) => e.expenseKind == 'FIXED_OPEX')
+          .where((e) => e.isPaid && e.expenseKind == 'FIXED_OPEX')
           .fold<int>(0, (acc, e) => acc + e.amountCents);
       final newDre = FounderDreCents.computeFromComponents(
         laborGrossCents: snapshotToReturn.dreCents.laborGrossCents,
@@ -714,11 +783,85 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
         completedOrdersCount: snapshotToReturn.dreCents.completedOrdersCount,
         fixedOpexCents: fixedSum,
       );
+      final newEvent = CeoCalendarAgendaEvent(
+        dayIso: compIso,
+        eventKind: 'COMPANY_EXPENSE',
+        severity: resolvedStatus == 'SCHEDULED' ? 'WARN' : 'INFO',
+        refId: newEntry.id,
+        codeLabel: 'GASTO FIXO',
+        title:
+            '${resolvedStatus == "SCHEDULED" ? "Conta a pagar" : "Gasto quitado"} · $cat',
+        subtitle: desc.isNotEmpty ? desc : 'Despesa corporativa registrada',
+        grossCents: cents,
+        netImpactCents: -cents,
+        occurredOrDueAt: DateTime.now().toUtc(),
+        statusCode: resolvedStatus,
+      );
       snapshotToReturn = snapshotToReturn.copyWith(
         dreCents: newDre,
         realExpenses: updatedExpenses,
+        calendarAgendaEvents: <CeoCalendarAgendaEvent>[
+          newEvent,
+          ...snapshotToReturn.calendarAgendaEvents,
+        ],
       );
-      return <String, dynamic>{'ok': true};
+      return <String, dynamic>{
+        'ok': true,
+        'expense_id': newEntry.id,
+        'payment_status': resolvedStatus,
+      };
+    }
+
+    if (functionName == 'ceo_toggle_expense_paid_status') {
+      final expId = params['p_expense_id']?.toString() ?? '';
+      final markPaid = params['p_paid'] != false;
+      final newStatus = markPaid ? 'PAID' : 'SCHEDULED';
+      final updatedExpenses = snapshotToReturn.realExpenses.map((e) {
+        if (e.id != expId) return e;
+        return CeoRealExpenseEntry(
+          id: e.id,
+          competenceDateIso: e.competenceDateIso,
+          expenseKind: e.expenseKind,
+          category: e.category,
+          description: e.description,
+          amountCents: e.amountCents,
+          paymentStatus: newStatus,
+          paidAt: markPaid ? DateTime.now().toUtc() : null,
+          createdAt: e.createdAt,
+        );
+      }).toList(growable: false);
+      final fixedSum = updatedExpenses
+          .where((e) => e.isPaid && e.expenseKind == 'FIXED_OPEX')
+          .fold<int>(0, (acc, e) => acc + e.amountCents);
+      final newDre = FounderDreCents.computeFromComponents(
+        laborGrossCents: snapshotToReturn.dreCents.laborGrossCents,
+        materialsExemptCents: snapshotToReturn.dreCents.materialsExemptCents,
+        sosFeeRevenueCents: snapshotToReturn.dreCents.sosFeeRevenueCents,
+        completedOrdersCount: snapshotToReturn.dreCents.completedOrdersCount,
+        fixedOpexCents: fixedSum,
+      );
+      final updatedEvents = snapshotToReturn.calendarAgendaEvents.map((ev) {
+        if (ev.refId != expId || ev.eventKind != 'COMPANY_EXPENSE') return ev;
+        return CeoCalendarAgendaEvent(
+          dayIso: ev.dayIso,
+          eventKind: ev.eventKind,
+          severity: markPaid ? 'INFO' : 'WARN',
+          refId: ev.refId,
+          codeLabel: ev.codeLabel,
+          title: ev.title.replaceFirst('Conta a pagar', 'Gasto quitado'),
+          subtitle: ev.subtitle,
+          grossCents: ev.grossCents,
+          netImpactCents: ev.netImpactCents,
+          occurredOrDueAt: ev.occurredOrDueAt,
+          statusCode: newStatus,
+        );
+      }).toList(growable: false);
+      snapshotToReturn = snapshotToReturn.copyWith(
+        dreCents: newDre,
+        realExpenses: updatedExpenses,
+        calendarAgendaEvents: updatedEvents,
+      );
+      return <String, dynamic>{'ok': true, 'payment_status': newStatus};
     }
 
     if (functionName == 'ceo_lock_sovereign_vault') {
@@ -1897,6 +2040,619 @@ void main() {
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
+    });
+
+    test('CeoBrazilFiscalCalendar computes exact Brazilian DAS & DEFIS business days + Monte Carlo boundary safety', () {
+      expect(
+        CeoBrazilFiscalCalendar.easterSunday(2026),
+        equals(DateTime(2026, 4, 5)),
+      );
+      // 20/11 é feriado nacional (Lei 14.759/2023) -> sexta 20/11/2026 prorroga para segunda 23/11/2026
+      expect(
+        CeoBrazilFiscalCalendar.isBrazilBankHoliday(DateTime(2026, 11, 20)),
+        isTrue,
+      );
+      expect(
+        CeoBrazilFiscalCalendar.dasDueDateForCompetence(2026, 10),
+        equals(DateTime(2026, 11, 23)),
+      );
+      // Competência Nov/2026 -> domingo 20/12/2026 prorroga para segunda 21/12/2026
+      expect(
+        CeoBrazilFiscalCalendar.dasDueDateForCompetence(2026, 11),
+        equals(DateTime(2026, 12, 21)),
+      );
+      expect(
+        CeoBrazilFiscalCalendar.defisDueDateInCalendarYear(2027),
+        equals(DateTime(2026 + 1, 3, 31)),
+      );
+
+      // Zero-Fake Policy: snapshot vazio reconhece a data legal do DAS com R$ 0,00 (zero centavos inventados)
+      final zeroSnap = FounderDashboardSnapshot.emptyZero(
+        generatedAt: DateTime.utc(2026, 11, 16, 15, 0),
+      );
+      final nov23Agenda = zeroSnap.agendaForDay(
+        DateTime(2026, 11, 23),
+        todayBrasilia: DateTime(2026, 11, 16),
+      );
+      expect(nov23Agenda.isFuture, isTrue);
+      expect(nov23Agenda.hasDasMarker, isTrue);
+      expect(nov23Agenda.dasDueCents, equals(0));
+
+      // Regressão Monte Carlo: runs pares nunca lançam RangeError em firstBreakEvenMonths[runs ~/ 2]
+      for (var seed = 1; seed <= 25; seed++) {
+        final sim = runMonteCarloSimulationSync(
+          FounderMonteCarloParams.fromSnapshot(zeroSnap).copyWith(
+            initialMonthlyOrders: 8,
+            fixedMonthlyOpexCents: 22000,
+            orderGrowthVolatilityBps: 3500,
+            trajectoriesCount: 10,
+            seed: seed,
+          ),
+        );
+        expect(sim.trajectoriesCount, equals(10));
+        expect(sim.breakEvenProbabilityBps, inInclusiveRange(0, 10000));
+      }
+    });
+
+    testWidgets('Executive Calendar Concluir Consulta applies past & future dates (DAS taxes, mediations, scheduled orders) + real-time WebSocket updates', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await tester.binding.setSurfaceSize(const Size(390, 844));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+      final pastDate = DateTime(todayBrt.year, todayBrt.month, todayBrt.day - 1);
+      final pastIso = CeoBrazilFiscalCalendar.formatDayIso(pastDate);
+
+      // Escolhe o próximo vencimento legal do DAS como data futura real de teste
+      final prevCompYear =
+          todayBrt.month == 1 ? todayBrt.year - 1 : todayBrt.year;
+      final prevCompMonth = todayBrt.month == 1 ? 12 : todayBrt.month - 1;
+      final candidateDas = CeoBrazilFiscalCalendar.dasDueDateForCompetence(
+        prevCompYear,
+        prevCompMonth,
+      );
+      final futureDasDate = candidateDas.isAfter(todayBrt)
+          ? candidateDas
+          : CeoBrazilFiscalCalendar.dasDueDateForCompetence(
+              todayBrt.year,
+              todayBrt.month,
+            );
+      final futureDasIso = CeoBrazilFiscalCalendar.formatDayIso(futureDasDate);
+
+      final seededSnapshot = _buildSampleRealSnapshot().copyWith(
+        dailySeries: <FounderDailyMetricPoint>[
+          FounderDailyMetricPoint(
+            dayIso: pastIso,
+            ordersCount: 3,
+            gmvCents: 90000,
+            laborCents: 70000,
+            materialsExemptCents: 20000,
+            platformRevenueCents: 9450,
+            poolCarveoutCents: 1050,
+            taxDasCents: 567,
+            variableCostCents: 0,
+            netProfitCents: 8883,
+            warrantyClaimsCents: 0,
+          ),
+        ],
+        taxObligationsSchedule: <CeoTaxObligationScheduleItem>[
+          CeoTaxObligationScheduleItem(
+            competenceYm:
+                '${prevCompYear.toString().padLeft(4, "0")}-${prevCompMonth.toString().padLeft(2, "0")}',
+            dueDateIso: futureDasIso,
+            settledOrdersCount: 4,
+            scheduledOrdersCount: 1,
+            settledRevenueCents: 15500,
+            scheduledRevenueCents: 4050,
+            settledDasCents: 930,
+            projectedDasCents: 243,
+            totalEstimatedDasCents: 1173,
+            paidCents: 0,
+            remainingDueCents: 1173,
+            status: 'DUE_CONFIRMED',
+          ),
+        ],
+        activeMediations: <CeoUnifiedMediationItem>[
+          CeoUnifiedMediationItem(
+            id: 'med-live-1',
+            sourceKind: 'WARRANTY_MEDIATION',
+            protocolCode: '#MED-9001',
+            jobId: 'job-real-1',
+            orderCode: '#DESP-REAL1',
+            categoryName: 'Encanador',
+            phaseOrStatus: 'PHASE_2_ORIGINAL_PROVIDER_RIGHT_TO_CURE',
+            isOpen: true,
+            reasonOrCategory: 'Reajuste de vedação',
+            description: 'Cliente acionou garantia de 90 dias no app Desperrengue',
+            frozenAmountCents: 25000,
+            openedAt: DateTime.now().toUtc(),
+            slaDeadlineAt: DateTime.utc(
+              futureDasDate.year,
+              futureDasDate.month,
+              futureDasDate.day,
+              18,
+            ),
+            openedDayIso: CeoBrazilFiscalCalendar.formatDayIso(todayBrt),
+            deadlineDayIso: futureDasIso,
+            clientName: 'Marina Real',
+            providerName: 'Carlos Mestre',
+          ),
+        ],
+        calendarAgendaDays: <CeoCalendarDayAgendaSummary>[
+          CeoCalendarDayAgendaSummary(
+            dayIso: pastIso,
+            isFuture: false,
+            completedOrdersCount: 3,
+            realizedGmvCents: 90000,
+            realizedNetProfitCents: 8883,
+          ),
+          CeoCalendarDayAgendaSummary(
+            dayIso: futureDasIso,
+            isFuture: true,
+            scheduledOrdersCount: 1,
+            scheduledGmvCents: 40000,
+            scheduledExpectedNetCents: 3807,
+            mediationsSlaDueCount: 1,
+            mediationsTotalEventsCount: 1,
+            dasDueCents: 1173,
+            hasDasMarker: true,
+            dasStatus: 'DUE_CONFIRMED',
+            dasLabel: 'DAS',
+          ),
+        ],
+        calendarAgendaEvents: <CeoCalendarAgendaEvent>[
+          CeoCalendarAgendaEvent(
+            dayIso: futureDasIso,
+            eventKind: 'TAX_DAS_DUE',
+            severity: 'WARN',
+            refId: 'das:next',
+            codeLabel: 'DAS',
+            title: 'Vencimento DAS Simples Nacional',
+            subtitle: '6% apurado sobre serviços reais concluídos e agendados',
+            grossCents: 1173,
+            netImpactCents: -1173,
+            occurredOrDueAt: DateTime.utc(
+              futureDasDate.year,
+              futureDasDate.month,
+              futureDasDate.day,
+              15,
+            ),
+            statusCode: 'DUE_CONFIRMED',
+          ),
+          CeoCalendarAgendaEvent(
+            dayIso: futureDasIso,
+            eventKind: 'SCHEDULED_ORDER',
+            severity: 'INFO',
+            refId: 'job-future-1',
+            jobId: 'job-real-1',
+            codeLabel: '#DESP-FUT1',
+            title: 'Serviço agendado · Eletricista',
+            subtitle: 'Marina Real · 14:00 · Pinheiros',
+            grossCents: 40000,
+            netImpactCents: 3807,
+            occurredOrDueAt: DateTime.utc(
+              futureDasDate.year,
+              futureDasDate.month,
+              futureDasDate.day,
+              17,
+            ),
+            statusCode: 'SCHEDULED',
+          ),
+          CeoCalendarAgendaEvent(
+            dayIso: futureDasIso,
+            eventKind: 'MEDIATION_SLA_DUE',
+            severity: 'CRITICAL',
+            refId: 'med-live-1:sla',
+            jobId: 'job-real-1',
+            codeLabel: '#MED-9001',
+            title: 'Prazo SLA Mediação (6h) · #DESP-REAL1',
+            subtitle: 'Reajuste de vedação',
+            grossCents: 25000,
+            netImpactCents: 0,
+            occurredOrDueAt: DateTime.utc(
+              futureDasDate.year,
+              futureDasDate.month,
+              futureDasDate.day,
+              18,
+            ),
+            statusCode: 'PHASE_2_ORIGINAL_PROVIDER_RIGHT_TO_CURE',
+          ),
+        ],
+      );
+
+      final gw = FakeCeoBackendGateway(
+        pbkdf2Iterations: 1200,
+        initialSnapshot: seededSnapshot,
+      );
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1200,
+      );
+      addTearDown(repo.dispose);
+      await tester.runAsync(() async {
+        await gw.preSealAndUnlockForTest(repo: repo);
+      });
+
+      final noopLinks = FounderDeepLinkCoordinator(
+        getInitialLinkOverride: () async => null,
+        uriStreamOverride: const Stream<Uri>.empty(),
+      );
+      addTearDown(noopLinks.dispose);
+
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          child: FounderCockpitScreen(
+            repository: repo,
+            deepLinkCoordinator: noopLinks,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      // 1. Abre o Calendário Executivo e seleciona a data passada (ontem)
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-open-executive-calendar-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      if (pastDate.month != todayBrt.month || pastDate.year != todayBrt.year) {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-calendar-prev-month-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 260));
+      }
+
+      await tester.tap(
+        find.byKey(ValueKey<String>('ceo-calendar-day-$pastIso')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 220));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-calendar-apply-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(gw.requestedWindowKeys.last, equals('day:$pastIso'));
+      expect(
+        find.byKey(const ValueKey<String>('ceo-active-single-day-chip')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('ceo-consulted-date-agenda-card')),
+        findsOneWidget,
+      );
+
+      // 2. Abre o Calendário novamente, salta para o Próximo DAS (data futura real) e conclui consulta
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-open-executive-calendar-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-calendar-jump-next-das-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 260));
+
+      expect(find.text('AGENDA FUTURA REAL'), findsOneWidget);
+      expect(find.textContaining('Vencimento DAS Simples Nacional'), findsOneWidget);
+      expect(find.textContaining('Prazo SLA Mediação'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-calendar-apply-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(gw.requestedWindowKeys.last, equals('day:$futureDasIso'));
+      expect(
+        find.textContaining(
+          'Agenda ${CeoBrazilFiscalCalendar.formatDayPtBr(futureDasDate)}',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Vencimento DAS Simples Nacional'), findsOneWidget);
+      expect(find.textContaining('Serviço agendado · Eletricista'), findsOneWidget);
+      expect(find.textContaining('Prazo SLA Mediação'), findsOneWidget);
+
+      // 3. Chegada em TEMPO REAL via WebSocket do app Desperrengue enquanto a data futura está aberta!
+      gw.snapshotToReturn = gw.snapshotToReturn.copyWith(
+        latestEventSeq: 25,
+        calendarAgendaEvents: <CeoCalendarAgendaEvent>[
+          CeoCalendarAgendaEvent(
+            dayIso: futureDasIso,
+            eventKind: 'SUPPORT_DISPUTE_OPENED',
+            severity: 'CRITICAL',
+            refId: 'tk-realtime-99',
+            jobId: 'job-real-1',
+            codeLabel: '#DSP-9900',
+            title: 'Chamado de mediação · Atraso na chegada',
+            subtitle: 'Aberto agora em tempo real no aplicativo Desperrengue',
+            grossCents: 25000,
+            netImpactCents: 0,
+            occurredOrDueAt: DateTime.now().toUtc(),
+            statusCode: 'OPEN',
+          ),
+          ...gw.snapshotToReturn.calendarAgendaEvents,
+        ],
+      );
+      gw.emitLiveRealtimeEvent(
+        CeoLiveEventItem(
+          eventSeq: 25,
+          eventType: 'SUPPORT_TICKET_OPENED',
+          severity: 'CRITICAL',
+          title: 'Chamado aberto #DSP-9900',
+          subtitle: 'Cliente abriu mediação no Desperrengue',
+          entityTable: 'support_tickets',
+          entityId: 'tk-realtime-99',
+          amountCents: 25000,
+          metadata: const <String, dynamic>{'job_id': 'job-real-1'},
+          occurredAt: DateTime.now().toUtc(),
+        ),
+      );
+
+      // Aguarda debounce de 350ms do repositório em tempo real
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(
+        find.textContaining('Chamado de mediação · Atraso na chegada'),
+        findsOneWidget,
+      );
+      expect(gw.requestedWindowKeys.last, equals('day:$futureDasIso'));
+
+      // 4. Valida responsividade estreita 320x640 @ 1.35x sem overflow e zero jargão proibido
+      await tester.binding.setSurfaceSize(const Size(320, 640));
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          textScaler: const TextScaler.linear(1.35),
+          child: FounderCockpitScreen(
+            repository: repo,
+            deepLinkCoordinator: noopLinks,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('CPC 47'), findsNothing);
+      expect(find.textContaining('OPEX'), findsNothing);
+      expect(find.textContaining('WSS'), findsNothing);
+
+      // Limpa o Timer transitório de 5s do banner ao vivo antes de encerrar o teste
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('Open Calendar updates live on WebSocket arrival + future scheduled expense 1-tap settlement + mediation forensics', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await tester.binding.setSurfaceSize(const Size(412, 915));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final todayBrt = CeoBrazilFiscalCalendar.todayBrasilia();
+      final futureTarget =
+          DateTime(todayBrt.year, todayBrt.month, todayBrt.day + 5);
+      final futureIso = CeoBrazilFiscalCalendar.formatDayIso(futureTarget);
+
+      final gw = FakeCeoBackendGateway(
+        pbkdf2Iterations: 1200,
+        initialSnapshot: _buildSampleRealSnapshot().copyWith(
+          activeMediations: <CeoUnifiedMediationItem>[
+            CeoUnifiedMediationItem(
+              id: 'tk-live-1',
+              sourceKind: 'SUPPORT_DISPUTE_TICKET',
+              protocolCode: '#DSP-REAL',
+              jobId: 'job-real-1',
+              orderCode: '#DESP-REAL1',
+              categoryName: 'Encanador',
+              phaseOrStatus: 'open',
+              isOpen: true,
+              reasonOrCategory: 'Garantia de atendimento',
+              description: 'Solicitação aberta no app Desperrengue',
+              frozenAmountCents: 25000,
+              openedAt: DateTime.now().toUtc(),
+              slaDeadlineAt: DateTime.utc(
+                futureTarget.year,
+                futureTarget.month,
+                futureTarget.day,
+                16,
+              ),
+              openedDayIso: CeoBrazilFiscalCalendar.formatDayIso(todayBrt),
+              deadlineDayIso: futureIso,
+              clientName: 'Marina Real',
+              providerName: 'Carlos Mestre',
+            ),
+          ],
+        ),
+      );
+      final repo = FounderCockpitRepository(
+        gateway: gw,
+        pbkdf2Iterations: 1200,
+      );
+      addTearDown(repo.dispose);
+      await tester.runAsync(() async {
+        await gw.preSealAndUnlockForTest(repo: repo);
+      });
+
+      final noopLinks = FounderDeepLinkCoordinator(
+        getInitialLinkOverride: () async => null,
+        uriStreamOverride: const Stream<Uri>.empty(),
+      );
+      addTearDown(noopLinks.dispose);
+
+      await tester.pumpWidget(
+        _wrapFounderTestApp(
+          child: FounderCockpitScreen(
+            repository: repo,
+            deepLinkCoordinator: noopLinks,
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 350));
+
+      // 1. Abre o Calendário e navega até `futureTarget` (+5 dias)
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-open-executive-calendar-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      if (futureTarget.month != todayBrt.month ||
+          futureTarget.year != todayBrt.year) {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('ceo-calendar-next-month-btn')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 250));
+      }
+
+      await tester.ensureVisible(
+        find.byKey(ValueKey<String>('ceo-calendar-day-$futureIso')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(ValueKey<String>('ceo-calendar-day-$futureIso')),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // 2. Com o Calendário ABERTO, chega um novo serviço agendado em tempo real do Desperrengue!
+      gw.snapshotToReturn = gw.snapshotToReturn.copyWith(
+        latestEventSeq: 40,
+        calendarAgendaDays: <CeoCalendarDayAgendaSummary>[
+          CeoCalendarDayAgendaSummary(
+            dayIso: futureIso,
+            isFuture: true,
+            scheduledOrdersCount: 1,
+            scheduledGmvCents: 35000,
+            scheduledExpectedNetCents: 3330,
+          ),
+        ],
+        calendarAgendaEvents: <CeoCalendarAgendaEvent>[
+          CeoCalendarAgendaEvent(
+            dayIso: futureIso,
+            eventKind: 'SCHEDULED_ORDER',
+            severity: 'INFO',
+            refId: 'job-live-5d',
+            jobId: 'job-real-1',
+            codeLabel: '#DESP-5D',
+            title: 'Serviço agendado · Ar-Condicionado',
+            subtitle: 'Chegou ao vivo com o calendário aberto',
+            grossCents: 35000,
+            netImpactCents: 3330,
+            occurredOrDueAt: DateTime.now().toUtc(),
+            statusCode: 'SCHEDULED',
+          ),
+        ],
+      );
+      gw.emitLiveRealtimeEvent(
+        CeoLiveEventItem(
+          eventSeq: 40,
+          eventType: 'JOB_SCHEDULED',
+          severity: 'INFO',
+          title: 'Novo agendamento #DESP-5D',
+          subtitle: 'Ar-Condicionado',
+          entityTable: 'jobs',
+          entityId: 'job-real-1',
+          amountCents: 35000,
+          metadata: const <String, dynamic>{'job_id': 'job-real-1'},
+          occurredAt: DateTime.now().toUtc(),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 450));
+      await tester.pump(const Duration(milliseconds: 220));
+
+      // O StreamBuilder do Calendário atualiza em tempo real sem fechar o modal!
+      expect(
+        find.textContaining('Serviço agendado · Ar-Condicionado'),
+        findsOneWidget,
+      );
+
+      // 3. Agenda uma conta futura diretamente pela data futura do Calendário
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('ceo-calendar-schedule-expense-btn')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-calendar-schedule-expense-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(
+        find.byKey(const ValueKey<String>('ceo-real-expense-modal')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ceo-expense-category-input')),
+        'Contabilidade Mensal',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('ceo-expense-amount-input')),
+        '299,90',
+      );
+      await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('ceo-expense-save-btn')),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-expense-save-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      // Confirma a consulta da data futura
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-calendar-apply-btn')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+
+      // 4. Na Aba Financeiro, a conta futura aparece como "Agendado" e pode ser baixada em 1 toque
+      await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-1')));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('ceo-toggle-expense-paid-exp-1')),
+        220,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      expect(find.text('Agendado'), findsWidgets);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-toggle-expense-paid-exp-1')),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Pago'), findsWidgets);
+
+      // 5. Na Aba Pedidos, o card de Mediações e Chamados em Tempo Real abre o Dossiê Forense com support_tickets
+      await tester.tap(find.byKey(const ValueKey<String>('ceo-nav-tab-2')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.byKey(const ValueKey<String>('ceo-active-mediations-card')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('ceo-mediation-row-tk-live-1')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(
+        find.byKey(const ValueKey<String>('ceo-order-forensic-sheet')),
+        findsOneWidget,
+      );
+      await tester.scrollUntilVisible(
+        find.textContaining('Chamado #DSP-REAL'),
+        220,
+        scrollable: find.byType(Scrollable).last,
+      );
+      expect(find.textContaining('Chamado #DSP-REAL'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.pump(const Duration(seconds: 6));
     });
   });
 }
