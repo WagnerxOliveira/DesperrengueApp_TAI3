@@ -564,6 +564,84 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
   }
 
   @override
+  Future<Map<String, dynamic>> invokeTreasuryAuthority(
+    Map<String, dynamic> body,
+  ) async {
+    const allowedKeys = <String>{
+      'action',
+      'stepup_token',
+      'device_hash',
+      'idempotency_key',
+      'distribution_kind',
+      'requested_cents',
+    };
+    for (final k in body.keys) {
+      if (!allowedKeys.contains(k)) {
+        recordedCanaryCodes.add('EDGE_FORBIDDEN_DESTINATION_OVERRIDE');
+        return <String, dynamic>{
+          'ok': false,
+          'error_code': 'ERR_FORBIDDEN_DESTINATION_OVERRIDE',
+        };
+      }
+    }
+    if (_currentEmail != kMonocraticCeoEmail ||
+        body['stepup_token'] != _activeStepUpTokenHex) {
+      return <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_MONOCRATIC_OWNER_ONLY_42501',
+      };
+    }
+    final requested = (body['requested_cents'] as num?)?.toInt() ?? 0;
+    if (requested <= 0 || requested > 1000000000) {
+      return <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_INVALID_REQUESTED_CENTS',
+      };
+    }
+    final bt = snapshotToReturn.bivalentTreasury;
+    if (bt.isDuressFrozen) {
+      recordedCanaryCodes.add('CEO_TREASURY_DURESS_DECOY_ISSUED');
+      return <String, dynamic>{
+        'ok': true,
+        'distribution_id': 'decoy-dist-1',
+        'operating_mode': bt.operatingMode,
+        'settlement_status': 'COMPLETED',
+        'beneficiary_name': bt.beneficiaryFullName,
+        'amount_cents': requested,
+        'transfer_reference': 'E631940020261116DECOY001',
+        'receipt_sha256': List<String>.filled(64, 'a').join(),
+        'processed_at': DateTime.now().toUtc().toIso8601String(),
+      };
+    }
+    if (requested > bt.withdrawableProfitCents) {
+      return <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_SAFE_CEILING_EXCEEDED',
+      };
+    }
+    final nextPrior = bt.priorDistributionsCents + requested;
+    final nextCeiling = bt.withdrawableProfitCents - requested;
+    snapshotToReturn = snapshotToReturn.copyWith(
+      bivalentTreasury: CeoBivalentTreasuryState.fromJson(<String, dynamic>{
+        ...bt.toJson(),
+        'prior_distributions_cents': nextPrior,
+        'withdrawable_profit_cents': nextCeiling,
+      }),
+    );
+    return <String, dynamic>{
+      'ok': true,
+      'distribution_id': 'sandbox-dist-1',
+      'operating_mode': bt.operatingMode,
+      'settlement_status': 'COMPLETED',
+      'beneficiary_name': bt.beneficiaryFullName,
+      'amount_cents': requested,
+      'transfer_reference': 'SANDBOX-PIX-OK-001',
+      'receipt_sha256': List<String>.filled(64, 'b').join(),
+      'processed_at': DateTime.now().toUtc().toIso8601String(),
+    };
+  }
+
+  @override
   Future<Map<String, dynamic>> callRpc(
     String functionName,
     Map<String, dynamic> params,
@@ -866,6 +944,41 @@ class FakeCeoBackendGateway implements CeoBackendGateway {
 
     if (functionName == 'ceo_lock_sovereign_vault') {
       _activeStepUpTokenHex = null;
+      return <String, dynamic>{'ok': true};
+    }
+
+    if (functionName == 'ceo_configure_treasury_parameters') {
+      final bt = snapshotToReturn.bivalentTreasury;
+      final sem = snapshotToReturn.sluGoLiveSemaphore;
+      final nextBuf =
+          (params['p_safety_buffer_cents'] as num?)?.toInt() ?? bt.safetyBufferCents;
+      final nextRes = (params['p_takeoff_reserve_saved_cents'] as num?)?.toInt() ??
+          sem.takeoffReserveSavedCents;
+      final nextDuress =
+          params['p_duress_mode_status']?.toString() ?? bt.duressModeStatus;
+      final rawSurplus = bt.cumulativePlatformRevenue135Cents -
+          bt.das6PctUnpaidProvisionCents -
+          bt.das6PctPaidCents -
+          bt.corporateExpensesPaidCents -
+          bt.corporateExpensesScheduledCents -
+          bt.priorDistributionsCents -
+          nextBuf;
+      final nextWithdrawable = nextDuress == 'FROZEN_UNDER_DURESS'
+          ? 0
+          : (rawSurplus > 0 ? rawSurplus : 0);
+      snapshotToReturn = snapshotToReturn.copyWith(
+        bivalentTreasury: CeoBivalentTreasuryState.fromJson(<String, dynamic>{
+          ...bt.toJson(),
+          'safety_buffer_cents': nextBuf,
+          'duress_mode_status': nextDuress,
+          'withdrawable_profit_cents': nextWithdrawable,
+        }),
+        sluGoLiveSemaphore: CeoSluGoLiveSemaphore.fromJson(<String, dynamic>{
+          ...sem.toJson(),
+          'takeoff_reserve_saved_cents': nextRes,
+          'criterion_4_takeoff_reserve_ok': nextRes >= 100000,
+        }),
+      );
       return <String, dynamic>{'ok': true};
     }
 

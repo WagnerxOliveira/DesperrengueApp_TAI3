@@ -130,7 +130,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
   Widget build(BuildContext context) {
     final job = widget.job;
     final price = job.agreedPrice ?? 0;
-    final net = price - price * 0.12;
+    final net = price - price * 0.15;
     final clientName = (_client?['full_name'] as String?) ?? 'Cliente';
     final me = Supabase.instance.client.auth.currentUser!.id;
     return AppScaffold(

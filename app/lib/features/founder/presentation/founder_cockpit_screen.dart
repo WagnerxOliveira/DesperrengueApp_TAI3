@@ -18,6 +18,7 @@ import 'founder_deep_link_coordinator.dart';
 import 'founder_executive_calendar_sheet.dart';
 import 'founder_innovations_widgets.dart';
 import 'founder_live_sheets_and_radar.dart';
+import 'founder_treasury_and_slu_widgets.dart';
 import 'founder_update_gate.dart';
 
 class _PeriodOption {
@@ -3070,6 +3071,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
         _buildTaxScheduleCard(),
       ],
       const SizedBox(height: 14),
+      FounderBivalentTreasuryCard(
+        repository: _repo,
+        treasuryState: _snapshot.bivalentTreasury,
+        privacyBlurActive: _privacyBlurActive,
+      ),
+      const SizedBox(height: 14),
       StaggeredRevealItem(
         animation: anim,
         stageIndex: 2,
@@ -4616,6 +4623,12 @@ class _FounderCockpitScreenState extends State<FounderCockpitScreen>
             });
           },
         ),
+      ),
+      const SizedBox(height: 14),
+      FounderSluGoLiveSemaphoreCard(
+        repository: _repo,
+        semaphore: _snapshot.sluGoLiveSemaphore,
+        privacyBlurActive: _privacyBlurActive,
       ),
       const SizedBox(height: 14),
       StaggeredRevealItem(

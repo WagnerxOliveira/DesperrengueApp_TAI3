@@ -26,7 +26,7 @@ jobs:
         run: node scripts/check-md-links.mjs
 
   functions:
-    name: Dossiê de Despedida (PDF)
+    name: Dossiê de Despedida & Guardas Zero-Trust (Node)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -36,6 +36,10 @@ jobs:
           node-version: "24"
       - name: Testar a geração do PDF (pdf-lib, sem Deno)
         run: node scripts/test-dossie.mjs
+      - name: Zero-Trust Geo-Privacy, RLS & Lexical SQL Gate
+        run: node scripts/test-geo-privacy-sql.mjs
+      - name: Suíte Red Team 12 Rodadas — Tesouraria Bivalente, mTLS & Anti-Coação
+        run: node scripts/test-red-team-treasury-12x.mjs --ci-offline
 
   kyc_engine:
     name: Zero-Trust KYC Engine (Python)

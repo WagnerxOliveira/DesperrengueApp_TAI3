@@ -164,14 +164,24 @@ class FounderNativeOtaInstaller {
     if (code == null || code.isEmpty) {
       return 'Falha ao baixar a atualização direta. Toque para tentar novamente.';
     }
-    if (code.contains('SHA256_MISMATCH')) {
-      return 'Pacote inválido ou corrompido. Instalação bloqueada por segurança.';
+    final upper = code.toUpperCase();
+    if (upper.contains('SHA256_MISMATCH') ||
+        upper.contains('MISSING_SHA256') ||
+        upper.contains('SIGNATURE_MISMATCH') ||
+        upper.contains('PACKAGE_MISMATCH') ||
+        upper.contains('INVALID_APK')) {
+      return 'Assinatura digital ou integridade inválida. Instalação bloqueada por segurança.';
     }
-    if (code.contains('UNTRUSTED')) {
+    if (upper.contains('UNTRUSTED')) {
       return 'Origem de atualização bloqueada por segurança.';
+    }
+    if (upper.contains('ALREADY_RUNNING')) {
+      return 'A atualização já está em andamento neste instante.';
     }
     return 'Oscilação de rede ao baixar o pacote ($code). Toque para repetir.';
   }
+
+  static final RegExp _sha256HexPattern = RegExp(r'^[0-9a-f]{64}$');
 
   Future<void> downloadAndInstall(FounderUpdateInfo info) async {
     if (!UpdateService.isTrustedDownloadUrl(info.apkUrl) ||
@@ -181,6 +191,17 @@ class FounderNativeOtaInstaller {
       progressNotifier.value = const FounderOtaProgress(
         phase: FounderOtaInstallPhase.error,
         errorMessage: 'URL de atualização inválida ou não confiável.',
+      );
+      return;
+    }
+    final normalizedSha = info.sha256?.trim().toLowerCase();
+    if (normalizedSha != null &&
+        normalizedSha.isNotEmpty &&
+        !_sha256HexPattern.hasMatch(normalizedSha)) {
+      progressNotifier.value = const FounderOtaProgress(
+        phase: FounderOtaInstallPhase.error,
+        errorMessage:
+            'Assinatura digital ou integridade inválida. Instalação bloqueada por segurança.',
       );
       return;
     }
@@ -618,6 +639,14 @@ class _FounderUpdateGateState extends State<FounderUpdateGate>
       final prefs = await SharedPreferences.getInstance();
       final saved =
           prefs.getInt(FounderUpdateService.acknowledgedBuildPrefKey);
+      // Limpa eventual marca legada da escala 202.6M pré-unificação monotônica >= 210M
+      if (saved != null && saved >= 200000000 && saved < 210000000) {
+        await prefs.remove(FounderUpdateService.acknowledgedBuildPrefKey);
+        if (mounted) {
+          setState(() => _dismissedBuild = null);
+        }
+        return;
+      }
       if (saved != null && mounted) {
         setState(() => _dismissedBuild = saved);
       }

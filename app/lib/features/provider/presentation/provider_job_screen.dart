@@ -274,7 +274,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
   final _hours = TextEditingController();
   final _note = TextEditingController();
   bool _busy = false;
-  static const _feePct = 12.0;
+  static const _feePct = 15.0; // 13,5% intermediação + 1,5% reserva de garantia 90d = 85% líquido
 
   @override
   void dispose() {

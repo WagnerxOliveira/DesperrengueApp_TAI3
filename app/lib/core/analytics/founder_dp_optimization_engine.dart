@@ -268,7 +268,7 @@ class KnapsackGrowthAndBoosterOptimizer {
   }
 
   /// Deriva candidatos acionáveis reais a partir da malha bivariada de bairros do snapshot
-  /// combinada com canais táticos hiperlocais.
+  /// combinada com canais táticos hiperlocais quando há tração real na operação.
   static List<KnapsackActionCandidate> buildCandidatesFromSnapshot(
     FounderDashboardSnapshot snapshot,
   ) {
@@ -289,9 +289,17 @@ class KnapsackGrowthAndBoosterOptimizer {
           expectedNetProfitCents: cell.expectedIncrementalNetCents,
           expectedGrossReturnCents:
               cell.suggestedBoosterCents + cell.expectedIncrementalNetCents,
-          expectedNewOrders: math.max(3, cell.unmetOrdersCount),
+          expectedNewOrders: math.max(1, cell.unmetOrdersCount),
         ),
       );
+    }
+
+    // Sem dados sintéticos em banco zerado: canais complementares só aparecem quando há histórico real.
+    final hasRealOperation = snapshot.neighborhoodHeatmap.isNotEmpty ||
+        snapshot.dreCents.completedOrdersCount > 0 ||
+        snapshot.dreCents.gmvTotalCents > 0;
+    if (!hasRealOperation) {
+      return out;
     }
 
     out.addAll(const <KnapsackActionCandidate>[
@@ -307,7 +315,7 @@ class KnapsackGrowthAndBoosterOptimizer {
       ),
       KnapsackActionCandidate(
         id: 'channel_dual_mode_bridge',
-        title: ' Incentivo Migração Prestador -> Cliente Dual-Mode',
+        title: 'Incentivo Migração Prestador -> Cliente Dual-Mode',
         neighborhoodOrChannel: 'Carteira Interna (CAC R\$ 0)',
         kind: KnapsackActionKind.retentionAutomation,
         costCents: 15000,
@@ -337,12 +345,12 @@ class KnapsackGrowthAndBoosterOptimizer {
     int stepCents = 1000,
   }) {
     final safeBudget = math.max(0, budgetCents);
-    if (safeBudget == 0 || candidates.isEmpty) {
+    if (candidates.isEmpty) {
       return KnapsackAllocationPlan(
         budgetCents: safeBudget,
         discretizationStepCents: math.max(1, stepCents),
         selectedActions: const <KnapsackActionCandidate>[],
-        rejectedActions: List<KnapsackActionCandidate>.unmodifiable(candidates),
+        rejectedActions: const <KnapsackActionCandidate>[],
         totalCostCents: 0,
         unallocatedBudgetCents: safeBudget,
         totalExpectedNetProfitCents: 0,
@@ -357,16 +365,18 @@ class KnapsackGrowthAndBoosterOptimizer {
     final eligible = <KnapsackActionCandidate>[];
 
     for (final c in candidates) {
-      if (c.expectedNetProfitCents <= 0 || c.costCents > safeBudget) {
+      if (c.expectedNetProfitCents <= 0 ||
+          c.costCents < 0 ||
+          c.costCents > safeBudget) {
         preRejected.add(c);
-      } else if (c.costCents <= 0) {
+      } else if (c.costCents == 0) {
         autoSelectedZeroCost.add(c);
       } else {
         eligible.add(c);
       }
     }
 
-    if (eligible.isEmpty) {
+    if (eligible.isEmpty || safeBudget == 0) {
       final zeroNet = autoSelectedZeroCost.fold<int>(
         0,
         (sum, a) => sum + a.expectedNetProfitCents,
@@ -384,7 +394,10 @@ class KnapsackGrowthAndBoosterOptimizer {
         discretizationStepCents: math.max(1, stepCents),
         selectedActions:
             List<KnapsackActionCandidate>.unmodifiable(autoSelectedZeroCost),
-        rejectedActions: List<KnapsackActionCandidate>.unmodifiable(preRejected),
+        rejectedActions: List<KnapsackActionCandidate>.unmodifiable(<KnapsackActionCandidate>[
+          ...eligible,
+          ...preRejected,
+        ]),
         totalCostCents: 0,
         unallocatedBudgetCents: safeBudget,
         totalExpectedNetProfitCents: zeroNet,
@@ -404,7 +417,7 @@ class KnapsackGrowthAndBoosterOptimizer {
     if (n * (safeBudget ~/ effectiveStep) > 200000) {
       effectiveStep = math.max(1, stepCents);
       if (n * (safeBudget ~/ effectiveStep) > 200000) {
-        effectiveStep = math.max(1, (safeBudget * n) ~/ 200000);
+        effectiveStep = math.max(1, ((safeBudget * n) + 199999) ~/ 200000);
       }
     }
 
@@ -419,6 +432,7 @@ class KnapsackGrowthAndBoosterOptimizer {
       // Teto na discretização garante estritamente sum(costCents) <= budgetCents.
       final itemWeight =
           (item.costCents + effectiveStep - 1) ~/ effectiveStep;
+      if (itemWeight > maxWeight) continue;
       final val = item.expectedNetProfitCents;
       final rowOffset = i * stride;
       for (var w = maxWeight; w >= itemWeight; w--) {
@@ -438,7 +452,9 @@ class KnapsackGrowthAndBoosterOptimizer {
       final item = eligible[i];
       final itemWeight =
           (item.costCents + effectiveStep - 1) ~/ effectiveStep;
-      if (remW >= itemWeight && take[i * stride + remW] == 1) {
+      if (itemWeight <= maxWeight &&
+          remW >= itemWeight &&
+          take[i * stride + remW] == 1) {
         chosenReversed.add(item);
         remW -= itemWeight;
       } else {
@@ -446,12 +462,37 @@ class KnapsackGrowthAndBoosterOptimizer {
       }
     }
 
+    var dpChosen = chosenReversed.reversed.toList(growable: false);
+    var dpRejected = rejectedFromDp.reversed.toList(growable: false);
+
+    // Guarda exata contra perda de item único por arredondamento de teto em orçamentos gigantes.
+    final dpNet = dpChosen.fold<int>(
+      0,
+      (sum, item) => sum + item.expectedNetProfitCents,
+    );
+    KnapsackActionCandidate? bestSingleFitting;
+    for (final item in eligible) {
+      if (item.costCents <= safeBudget &&
+          (bestSingleFitting == null ||
+              item.expectedNetProfitCents >
+                  bestSingleFitting.expectedNetProfitCents)) {
+        bestSingleFitting = item;
+      }
+    }
+    if (bestSingleFitting != null &&
+        bestSingleFitting.expectedNetProfitCents > dpNet) {
+      dpChosen = <KnapsackActionCandidate>[bestSingleFitting];
+      dpRejected = eligible
+          .where((item) => !identical(item, bestSingleFitting))
+          .toList(growable: false);
+    }
+
     final selected = <KnapsackActionCandidate>[
       ...autoSelectedZeroCost,
-      ...chosenReversed.reversed,
+      ...dpChosen,
     ];
     final rejected = <KnapsackActionCandidate>[
-      ...rejectedFromDp.reversed,
+      ...dpRejected,
       ...preRejected,
     ];
 
@@ -1304,7 +1345,7 @@ class _Mulberry32Rng {
   double nextUnitDouble() {
     _state = (_state + 0x6D2B79F5) & 0xFFFFFFFF;
     var t = _imul32(_state ^ (_state >>> 15), 1 | _state);
-    t = (t + _imul32(t ^ (t >>> 7), 61 | t)) ^ t;
+    t = (((t + _imul32(t ^ (t >>> 7), 61 | t)) & 0xFFFFFFFF) ^ t) & 0xFFFFFFFF;
     final unsigned = (t ^ (t >>> 14)) & 0xFFFFFFFF;
     return (unsigned + 0.5) / 4294967296.0;
   }
@@ -1374,16 +1415,30 @@ class FounderMonteCarloParams {
   ) {
     final timeline = PrefixSumFinancialTimeline(snapshot.dailySeries);
     final last30 = timeline.queryLastDays(30);
-    final monthlyOrders =
-        last30.ordersCount > 0 ? last30.ordersCount : 120;
-    final avgTicket =
-        last30.avgTicketCents > 0 ? last30.avgTicketCents : 32000;
+    final hasRealOrders =
+        last30.ordersCount > 0 || snapshot.dreCents.completedOrdersCount > 0;
+    final monthlyOrders = last30.ordersCount > 0
+        ? last30.ordersCount
+        : snapshot.dreCents.completedOrdersCount;
+    final avgTicket = last30.avgTicketCents > 0
+        ? last30.avgTicketCents
+        : (snapshot.dreCents.completedOrdersCount > 0
+            ? (snapshot.dreCents.gmvTotalCents ~/
+                snapshot.dreCents.completedOrdersCount)
+            : 25000);
     final laborShare = last30.gmvCents > 0
-        ? ((last30.laborCents * 10000) ~/ last30.gmvCents).clamp(4000, 8500)
-        : 6000;
+        ? ((last30.laborCents * 10000) ~/ last30.gmvCents).clamp(4000, 10000)
+        : (snapshot.dreCents.gmvTotalCents > 0
+            ? ((snapshot.dreCents.laborGrossCents * 10000) ~/
+                    snapshot.dreCents.gmvTotalCents)
+                .clamp(4000, 10000)
+            : 8000);
+    // Jamais mistura custódia de terceiros (`availableWalletsCents`) com caixa próprio da empresa!
+    final ownCorporateCash = math.max(0, snapshot.dreCents.netProfitEbitdaCents);
+    final realFixedExpenses = snapshot.dreCents.fixedOpexCents;
 
     return FounderMonteCarloParams(
-      initialCashCents: math.max(1500000, snapshot.treasury.availableWalletsCents ~/ 2),
+      initialCashCents: ownCorporateCash,
       initialMonthlyOrders: monthlyOrders,
       monthlyOrderGrowthBps: 1150, // +11,5% a.m.
       avgGrossTicketCents: avgTicket,
@@ -1392,13 +1447,12 @@ class FounderMonteCarloParams {
       poolCarveoutOnLaborBps: 150, // 1,5%
       cacCents: snapshot.aarrrFunnel.cacCents > 0
           ? snapshot.aarrrFunnel.cacCents
-          : 2850,
-      newPaidUsersPerMonth: 42,
+          : 2500,
+      newPaidUsersPerMonth:
+          hasRealOrders ? math.max(1, snapshot.demographics.newUsersInWindowCount) : 0,
       warrantyClaimRateBps: 90, // 0,90% da exposição de mão de obra
-      fixedMonthlyOpexCents: 180000, // R$ 1.800,00/mês
-      initialPoolBalanceCents: snapshot.actuarialPool.runningBalanceCents > 0
-          ? snapshot.actuarialPool.runningBalanceCents
-          : 1894000,
+      fixedMonthlyOpexCents: realFixedExpenses,
+      initialPoolBalanceCents: math.max(0, snapshot.actuarialPool.runningBalanceCents),
     );
   }
 
@@ -1510,10 +1564,19 @@ FounderMonteCarloResult runMonteCarloSimulationSync(
   final baseGrowth = params.monthlyOrderGrowthBps / 10000.0;
   final growthSigma = params.orderGrowthVolatilityBps / 10000.0;
 
+  final safeInitialOrders = math.max(0, params.initialMonthlyOrders);
+  final safeTicket = math.max(0, params.avgGrossTicketCents);
+  final safeLaborShare = params.laborShareBps.clamp(0, 10000);
+  final safeTakeRate = params.effectiveTakeRateOnLaborBps.clamp(0, 5000);
+  final safePoolCarveout = params.poolCarveoutOnLaborBps.clamp(0, 2000);
+  final safeCac = math.max(0, params.cacCents);
+  final safeNewUsers = math.max(0, params.newPaidUsersPerMonth);
+  final safeFixedOpex = math.max(0, params.fixedMonthlyOpexCents);
+
   for (var r = 0; r < runs; r++) {
     var cash = params.initialCashCents;
-    var poolBalance = params.initialPoolBalanceCents;
-    var currentOrders = params.initialMonthlyOrders.toDouble();
+    var poolBalance = math.max(0, params.initialPoolBalanceCents);
+    var currentOrders = safeInitialOrders.toDouble();
     int? reachedBreakEvenAt;
 
     for (var m = 0; m < months; m++) {
@@ -1521,26 +1584,30 @@ FounderMonteCarloResult runMonteCarloSimulationSync(
       final zClaim = rng.nextStandardNormal();
 
       final stepGrowth = (baseGrowth + growthSigma * zGrowth).clamp(-0.35, 0.65);
-      currentOrders = math.max(1.0, currentOrders * (1.0 + stepGrowth));
+      currentOrders = currentOrders <= 0.0
+          ? 0.0
+          : math.max(0.0, currentOrders * (1.0 + stepGrowth));
       final ordersInt = currentOrders.round();
 
-      final monthGmv = ordersInt * params.avgGrossTicketCents;
-      final monthLabor = Money.percentOfCents(monthGmv, params.laborShareBps);
+      final monthGmv = ordersInt * safeTicket;
+      final monthLabor = Money.percentOfCents(monthGmv, safeLaborShare);
       final platformRev = Money.percentOfCents(
         monthLabor,
-        params.effectiveTakeRateOnLaborBps,
+        safeTakeRate,
       );
       final poolInflow = Money.percentOfCents(
         monthLabor,
-        params.poolCarveoutOnLaborBps,
+        safePoolCarveout,
       );
       final simplesTax = Money.percentOfCents(platformRev, 600);
-      final pspCloudVarCost = (ordersInt * 34 + 5) ~/ 10;
-      final marketingSpend = params.newPaidUsersPerMonth * params.cacCents;
+      final pspCloudVarCost = ordersInt == 0 ? 0 : ((ordersInt * 34 + 5) ~/ 10);
+      final marketingSpend = safeNewUsers * safeCac;
 
       final shockMultiplier = (1.0 + 0.25 * zClaim).clamp(0.25, 2.50);
       final effectiveClaimBps =
-          (params.warrantyClaimRateBps * shockMultiplier).round().clamp(0, 5000);
+          (params.warrantyClaimRateBps.clamp(0, 5000) * shockMultiplier)
+              .round()
+              .clamp(0, 5000);
       final claimsOutflow = Money.percentOfCents(monthLabor, effectiveClaimBps);
 
       poolBalance += poolInflow - claimsOutflow;
@@ -1555,7 +1622,7 @@ FounderMonteCarloResult runMonteCarloSimulationSync(
           simplesTax -
           pspCloudVarCost -
           marketingSpend -
-          params.fixedMonthlyOpexCents -
+          safeFixedOpex -
           emergencyTopup;
       cash += monthNetProfit;
 
@@ -1568,8 +1635,10 @@ FounderMonteCarloResult runMonteCarloSimulationSync(
 
       if (m == months - 1) {
         if (monthNetProfit >= 0) terminalBreakEvenSuccess++;
-        final activeExposure = math.max(1, Money.percentOfCents(monthLabor, 3500));
-        final icaBps = (poolBalance * 10000) ~/ activeExposure;
+        final activeExposure = Money.percentOfCents(monthLabor, 3500);
+        final icaBps = activeExposure <= 0
+            ? (poolBalance >= 0 ? 15000 : 0)
+            : ((poolBalance * 10000) ~/ activeExposure);
         terminalIcas[r] = icaBps;
         if (icaBps >= 15000) terminalPoolSolventCount++;
       }
@@ -1605,9 +1674,9 @@ FounderMonteCarloResult runMonteCarloSimulationSync(
 
   terminalIcas.sort();
   int? medianBreakEven;
-  if (firstBreakEvenMonths.length > runs ~/ 2) {
+  if (firstBreakEvenMonths.length >= (runs + 1) ~/ 2) {
     firstBreakEvenMonths.sort();
-    medianBreakEven = firstBreakEvenMonths[runs ~/ 2];
+    medianBreakEven = firstBreakEvenMonths[firstBreakEvenMonths.length ~/ 2];
   }
 
   return FounderMonteCarloResult(

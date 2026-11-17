@@ -24,9 +24,9 @@ void main() {
         addTearDown(t.view.resetViewInsets);
         await t.pumpWidget(_host(const EarningsSimulatorSheet()));
         await t.pump();
-        // mão de obra 250 → taxa 12% (30) → 220; peças 150 sem taxa → R$ 370,00
+        // mão de obra 250 → taxa 15% (13,5% + 1,5% garantia = 37,50) → 212,50; peças 150 sem taxa → R$ 362,50
         expect(find.byKey(const ValueKey('smart-split-net-result')), findsOneWidget);
-        expect(t.widget<Text>(find.byKey(const ValueKey('smart-split-net-result'))).data, contains('370,00'));
+        expect(t.widget<Text>(find.byKey(const ValueKey('smart-split-net-result'))).data, contains('362,50'));
         expect(t.takeException(), isNull);
       });
     }
@@ -37,8 +37,8 @@ void main() {
       await t.enterText(find.byKey(const ValueKey('smart-split-labor-input')), '1.000,00');
       await t.enterText(find.byKey(const ValueKey('smart-split-materials-input')), '1.250,50');
       await t.pump();
-      // 1000 - 12% = 880 + 1250,50 = 2130,50
-      expect(t.widget<Text>(find.byKey(const ValueKey('smart-split-net-result'))).data, contains('2.130,50'));
+      // 1000 - 15% = 850 + 1250,50 = 2100,50
+      expect(t.widget<Text>(find.byKey(const ValueKey('smart-split-net-result'))).data, contains('2.100,50'));
     });
   });
 

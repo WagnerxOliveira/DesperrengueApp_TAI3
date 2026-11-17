@@ -86,7 +86,7 @@ flowchart TB
 
 ### 2. Evolução `v2.13.0`: Cofre Monocrático de Titular Único (`wagneroliveira2395@gmail.com`), Código de 6 Dígitos por E-mail, PIN Pessoal `SHA-256` e Ponte Criptografada em Tempo Real (`Zero-Fake`)
 
-Na migração [`20261114180000_ceo_monocratic_vault_and_realtime_truth.sql`](../../supabase/migrations/20261114180000_ceo_monocratic_vault_and_realtime_truth.sql) e na Edge Function [`ceo-sovereign-auth`](../../supabase/functions/ceo-sovereign-auth/index.ts), o modelo inicial de `v2.12.0` (que admitia até 3 delegados e exibia constantes sintéticas `deterministicDemo` em modo fallback) foi **integralmente substituído por governança monocrática absoluta e verdade operacional 100% verídica em tempo real**:
+Na migração [`20261114180000_ceo_monocratic_vault_and_realtime_truth.sql`](../../supabase/migrations/20261114180000_ceo_monocratic_vault_and_realtime_truth.sql) e na autoridade soberana (evoluída e consolidada em [`ceo-vault-authority`](../../supabase/functions/ceo-vault-authority/index.ts)), o modelo inicial de `v2.12.0` (que admitia até 3 delegados e exibia constantes sintéticas `deterministicDemo` em modo fallback) foi **integralmente substituído por governança monocrática absoluta e verdade operacional 100% verídica em tempo real**:
 
 | Invariante `v2.13.0` | Implementação no PostgreSQL 17 / Deno Edge / Flutter | Garantias Criptográficas e Operacionais |
 | :--- | :--- | :--- |

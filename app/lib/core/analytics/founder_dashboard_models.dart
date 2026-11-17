@@ -3131,6 +3131,8 @@ class FounderDashboardSnapshot {
     required this.cohortRetention,
     required this.kycFinOps,
     required this.tieredWaterfall,
+    this.bivalentTreasury = const CeoBivalentTreasuryState.emptyZero(),
+    this.sluGoLiveSemaphore = const CeoSluGoLiveSemaphore.emptyZero(),
   });
 
   final DateTime generatedAt;
@@ -3171,6 +3173,8 @@ class FounderDashboardSnapshot {
   final List<CohortRetentionRow> cohortRetention;
   final FounderKycFinOpsSummary kycFinOps;
   final FounderTieredWaterfallSummary tieredWaterfall;
+  final CeoBivalentTreasuryState bivalentTreasury;
+  final CeoSluGoLiveSemaphore sluGoLiveSemaphore;
 
   /// Data civil única (`YYYY-MM-DD`) quando o CEO está consultando uma data específica.
   DateTime? get consultedSingleDate {
@@ -3635,6 +3639,16 @@ class FounderDashboardSnapshot {
             ),
           );
 
+    final bivalentTreasuryJson = _asMap(json['bivalent_treasury']);
+    final bivalentTreasury = bivalentTreasuryJson.isNotEmpty
+        ? CeoBivalentTreasuryState.fromJson(bivalentTreasuryJson)
+        : const CeoBivalentTreasuryState.emptyZero();
+
+    final sluSemaphoreJson = _asMap(json['slu_go_live_semaphore']);
+    final sluGoLiveSemaphore = sluSemaphoreJson.isNotEmpty
+        ? CeoSluGoLiveSemaphore.fromJson(sluSemaphoreJson)
+        : const CeoSluGoLiveSemaphore.emptyZero();
+
     return FounderDashboardSnapshot(
       generatedAt: generatedAt,
       timezone: timezone,
@@ -3684,6 +3698,8 @@ class FounderDashboardSnapshot {
       cohortRetention: List<CohortRetentionRow>.unmodifiable(cohorts),
       kycFinOps: kycFinOps,
       tieredWaterfall: waterfall,
+      bivalentTreasury: bivalentTreasury,
+      sluGoLiveSemaphore: sluGoLiveSemaphore,
     );
   }
 
@@ -3756,6 +3772,8 @@ class FounderDashboardSnapshot {
         'cohort_retention': cohortRetention.map((c) => c.toJson()).toList(),
         'kyc_finops': kycFinOps.toJson(),
         'tiered_waterfall': tieredWaterfall.toJson(),
+        'bivalent_treasury': bivalentTreasury.toJson(),
+        'slu_go_live_semaphore': sluGoLiveSemaphore.toJson(),
       };
 
   FounderDashboardSnapshot copyWith({
@@ -3797,6 +3815,8 @@ class FounderDashboardSnapshot {
     List<CohortRetentionRow>? cohortRetention,
     FounderKycFinOpsSummary? kycFinOps,
     FounderTieredWaterfallSummary? tieredWaterfall,
+    CeoBivalentTreasuryState? bivalentTreasury,
+    CeoSluGoLiveSemaphore? sluGoLiveSemaphore,
   }) {
     return FounderDashboardSnapshot(
       generatedAt: generatedAt ?? this.generatedAt,
@@ -3839,6 +3859,395 @@ class FounderDashboardSnapshot {
       cohortRetention: cohortRetention ?? this.cohortRetention,
       kycFinOps: kycFinOps ?? this.kycFinOps,
       tieredWaterfall: tieredWaterfall ?? this.tieredWaterfall,
+      bivalentTreasury: bivalentTreasury ?? this.bivalentTreasury,
+      sluGoLiveSemaphore: sluGoLiveSemaphore ?? this.sluGoLiveSemaphore,
     );
   }
+}
+
+// ============================================================================
+// 8. TESOURARIA BIVALENTE (`SANDBOX_PRE_CNPJ` vs `PRODUCTION_SLU`) E
+//    SEMÁFORO DOS 4 CRITÉRIOS DO SINAL VERDE SLU (POÇOS DE CALDAS - MG)
+// ============================================================================
+
+class CeoProfitDistributionItem {
+  const CeoProfitDistributionItem({
+    required this.id,
+    required this.distributionKind,
+    required this.operatingMode,
+    required this.pspProvider,
+    required this.requestedCents,
+    required this.settledCents,
+    required this.status,
+    this.pspTransferId,
+    required this.receiptSha256,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String distributionKind;
+  final String operatingMode;
+  final String pspProvider;
+  final int requestedCents;
+  final int settledCents;
+  final String status;
+  final String? pspTransferId;
+  final String receiptSha256;
+  final DateTime createdAt;
+
+  String get kindLabelPt => switch (distributionKind) {
+        'PRO_LABORE' => 'Pró-labore',
+        'TAX_DAS_SETTLEMENT' => 'Quitação guia de imposto',
+        _ => 'Retirada de lucro',
+      };
+
+  factory CeoProfitDistributionItem.fromJson(Map<String, dynamic> json) {
+    return CeoProfitDistributionItem(
+      id: _asString(json['id']),
+      distributionKind: _asString(
+        json['distribution_kind'],
+        'PROFIT_DISTRIBUTION',
+      ),
+      operatingMode: _asString(json['operating_mode'], 'SANDBOX_PRE_CNPJ'),
+      pspProvider: _asString(json['psp_provider'], 'ASAAS_SANDBOX'),
+      requestedCents: _asInt(json['requested_cents']),
+      settledCents: _asInt(json['settled_cents']),
+      status: _asString(json['status'], 'SETTLED_SANDBOX'),
+      pspTransferId: _asNullableString(json['psp_transfer_id']),
+      receiptSha256: _asString(json['receipt_sha256']),
+      createdAt: _asDateTimeUtc(json['created_at']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'distribution_kind': distributionKind,
+        'operating_mode': operatingMode,
+        'psp_provider': pspProvider,
+        'requested_cents': requestedCents,
+        'settled_cents': settledCents,
+        'status': status,
+        'psp_transfer_id': pspTransferId,
+        'receipt_sha256': receiptSha256,
+        'created_at': createdAt.toUtc().toIso8601String(),
+      };
+}
+
+class CeoBivalentTreasuryState {
+  const CeoBivalentTreasuryState({
+    required this.operatingMode,
+    required this.settlementPsp,
+    required this.sluLegalName,
+    required this.sluCnpjConfigured,
+    required this.solePartnerCpfConfigured,
+    required this.cnaePrimary,
+    required this.cnaeSecondary,
+    required this.beneficiaryFullName,
+    required this.destinationLockMode,
+    required this.allowTypedPixKeys,
+    required this.bankDisplayLabel,
+    required this.duressModeStatus,
+    required this.cumulativePlatformRevenue135Cents,
+    required this.untouchableCustodyTotalCents,
+    required this.providerCustody85Cents,
+    required this.clientEscrowAndWalletsCents,
+    required this.activeExecutionEscrowCents,
+    required this.materialsExempt0PctCents,
+    required this.warrantyPool15Cents,
+    required this.das6PctUnpaidProvisionCents,
+    required this.das6PctPaidCents,
+    required this.corporateExpensesPaidCents,
+    required this.corporateExpensesScheduledCents,
+    required this.priorDistributionsCents,
+    required this.safetyBufferCents,
+    required this.withdrawableProfitCents,
+    required this.reconciliationDiscrepancyCents,
+    required this.blockedReason,
+    this.recentDistributions = const <CeoProfitDistributionItem>[],
+  });
+
+  const CeoBivalentTreasuryState.emptyZero()
+      : operatingMode = 'SANDBOX_PRE_CNPJ',
+        settlementPsp = 'ASAAS_SANDBOX',
+        sluLegalName = 'HOMOLOGACAO PRE-CNPJ (SLU POCOS DE CALDAS - MG)',
+        sluCnpjConfigured = false,
+        solePartnerCpfConfigured = false,
+        cnaePrimary = '6319-4/00',
+        cnaeSecondary = '8211-3/00',
+        beneficiaryFullName = 'Wagner Oliveira',
+        destinationLockMode = 'LOCKED_SOLE_PARTNER_CPF_ACCOUNT',
+        allowTypedPixKeys = false,
+        bankDisplayLabel = 'Conta Pessoa Física Titular Único (Travada por CPF)',
+        duressModeStatus = 'NORMAL',
+        cumulativePlatformRevenue135Cents = 0,
+        untouchableCustodyTotalCents = 0,
+        providerCustody85Cents = 0,
+        clientEscrowAndWalletsCents = 0,
+        activeExecutionEscrowCents = 0,
+        materialsExempt0PctCents = 0,
+        warrantyPool15Cents = 0,
+        das6PctUnpaidProvisionCents = 0,
+        das6PctPaidCents = 0,
+        corporateExpensesPaidCents = 0,
+        corporateExpensesScheduledCents = 0,
+        priorDistributionsCents = 0,
+        safetyBufferCents = 30000,
+        withdrawableProfitCents = 0,
+        reconciliationDiscrepancyCents = 0,
+        blockedReason = 'BELOW_SAFETY_BUFFER',
+        recentDistributions = const <CeoProfitDistributionItem>[];
+
+  final String operatingMode;
+  final String settlementPsp;
+  final String sluLegalName;
+  final bool sluCnpjConfigured;
+  final bool solePartnerCpfConfigured;
+  final String cnaePrimary;
+  final String cnaeSecondary;
+  final String beneficiaryFullName;
+  final String destinationLockMode;
+  final bool allowTypedPixKeys;
+  final String bankDisplayLabel;
+  final String duressModeStatus;
+  final int cumulativePlatformRevenue135Cents;
+  final int untouchableCustodyTotalCents;
+  final int providerCustody85Cents;
+  final int clientEscrowAndWalletsCents;
+  final int activeExecutionEscrowCents;
+  final int materialsExempt0PctCents;
+  final int warrantyPool15Cents;
+  final int das6PctUnpaidProvisionCents;
+  final int das6PctPaidCents;
+  final int corporateExpensesPaidCents;
+  final int corporateExpensesScheduledCents;
+  final int priorDistributionsCents;
+  final int safetyBufferCents;
+  final int withdrawableProfitCents;
+  final int reconciliationDiscrepancyCents;
+  final String blockedReason;
+  final List<CeoProfitDistributionItem> recentDistributions;
+
+  bool get isProductionSlu => operatingMode == 'PRODUCTION_SLU';
+  bool get isDuressFrozen => duressModeStatus == 'FROZEN_UNDER_DURESS';
+
+  factory CeoBivalentTreasuryState.fromJson(Map<String, dynamic> json) {
+    final distList = _asMapList(json['recent_distributions'])
+        .map(CeoProfitDistributionItem.fromJson)
+        .toList(growable: false);
+    return CeoBivalentTreasuryState(
+      operatingMode: _asString(json['operating_mode'], 'SANDBOX_PRE_CNPJ'),
+      settlementPsp: _asString(json['settlement_psp'], 'ASAAS_SANDBOX'),
+      sluLegalName: _asString(
+        json['slu_legal_name'],
+        'HOMOLOGACAO PRE-CNPJ (SLU POCOS DE CALDAS - MG)',
+      ),
+      sluCnpjConfigured: _asBool(json['slu_cnpj_configured']),
+      solePartnerCpfConfigured: _asBool(json['sole_partner_cpf_configured']),
+      cnaePrimary: _asString(json['cnae_primary'], '6319-4/00'),
+      cnaeSecondary: _asString(json['cnae_secondary'], '8211-3/00'),
+      beneficiaryFullName: _asString(
+        json['beneficiary_full_name'],
+        'Wagner Oliveira',
+      ),
+      destinationLockMode: _asString(
+        json['destination_lock_mode'],
+        'LOCKED_SOLE_PARTNER_CPF_ACCOUNT',
+      ),
+      allowTypedPixKeys: _asBool(json['allow_typed_pix_keys'], false),
+      bankDisplayLabel: _asString(
+        json['bank_display_label'],
+        'Conta Pessoa Física Titular Único (Travada por CPF)',
+      ),
+      duressModeStatus: _asString(json['duress_mode_status'], 'NORMAL'),
+      cumulativePlatformRevenue135Cents:
+          _asInt(json['cumulative_platform_revenue_13_5_cents']),
+      untouchableCustodyTotalCents:
+          _asInt(json['untouchable_custody_total_cents']),
+      providerCustody85Cents: _asInt(json['provider_custody_85_cents']),
+      clientEscrowAndWalletsCents:
+          _asInt(json['client_escrow_and_wallets_cents']),
+      activeExecutionEscrowCents:
+          _asInt(json['active_execution_escrow_cents']),
+      materialsExempt0PctCents: _asInt(json['materials_exempt_0pct_cents']),
+      warrantyPool15Cents: _asInt(json['warranty_pool_1_5_cents']),
+      das6PctUnpaidProvisionCents:
+          _asInt(json['das_6pct_unpaid_provision_cents']),
+      das6PctPaidCents: _asInt(json['das_6pct_paid_cents']),
+      corporateExpensesPaidCents:
+          _asInt(json['corporate_expenses_paid_cents']),
+      corporateExpensesScheduledCents:
+          _asInt(json['corporate_expenses_scheduled_cents']),
+      priorDistributionsCents: _asInt(json['prior_distributions_cents']),
+      safetyBufferCents: _asInt(json['safety_buffer_cents'], 30000),
+      withdrawableProfitCents: _asInt(json['withdrawable_profit_cents']),
+      reconciliationDiscrepancyCents:
+          _asInt(json['reconciliation_discrepancy_cents']),
+      blockedReason: _asString(json['blocked_reason'], 'NONE'),
+      recentDistributions:
+          List<CeoProfitDistributionItem>.unmodifiable(distList),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'operating_mode': operatingMode,
+        'settlement_psp': settlementPsp,
+        'slu_legal_name': sluLegalName,
+        'slu_cnpj_configured': sluCnpjConfigured,
+        'sole_partner_cpf_configured': solePartnerCpfConfigured,
+        'cnae_primary': cnaePrimary,
+        'cnae_secondary': cnaeSecondary,
+        'beneficiary_full_name': beneficiaryFullName,
+        'destination_lock_mode': destinationLockMode,
+        'allow_typed_pix_keys': allowTypedPixKeys,
+        'bank_display_label': bankDisplayLabel,
+        'duress_mode_status': duressModeStatus,
+        'cumulative_platform_revenue_13_5_cents':
+            cumulativePlatformRevenue135Cents,
+        'untouchable_custody_total_cents': untouchableCustodyTotalCents,
+        'provider_custody_85_cents': providerCustody85Cents,
+        'client_escrow_and_wallets_cents': clientEscrowAndWalletsCents,
+        'active_execution_escrow_cents': activeExecutionEscrowCents,
+        'materials_exempt_0pct_cents': materialsExempt0PctCents,
+        'warranty_pool_1_5_cents': warrantyPool15Cents,
+        'das_6pct_unpaid_provision_cents': das6PctUnpaidProvisionCents,
+        'das_6pct_paid_cents': das6PctPaidCents,
+        'corporate_expenses_paid_cents': corporateExpensesPaidCents,
+        'corporate_expenses_scheduled_cents': corporateExpensesScheduledCents,
+        'prior_distributions_cents': priorDistributionsCents,
+        'safety_buffer_cents': safetyBufferCents,
+        'withdrawable_profit_cents': withdrawableProfitCents,
+        'reconciliation_discrepancy_cents': reconciliationDiscrepancyCents,
+        'blocked_reason': blockedReason,
+        'recent_distributions':
+            recentDistributions.map((d) => d.toJson()).toList(),
+      };
+}
+
+class CeoSluGoLiveSemaphore {
+  const CeoSluGoLiveSemaphore({
+    required this.operatingMode,
+    required this.allFourCriteriaGreen,
+    required this.criteriaGreenCount,
+    required this.criterion1Stability7dOk,
+    required this.zeroDriftDaysElapsed,
+    required this.zeroDriftTargetDays,
+    required this.sandboxPayoutsTestedCount,
+    required this.criterion2P0P1ZeroedOk,
+    required this.criterion3PocosLiquidityOk,
+    required this.pocosProvidersTotalCount,
+    required this.pocosProvidersActiveCount,
+    required this.pocosProvidersMinTarget,
+    required this.pocosProvidersIdealTarget,
+    required this.criterion4TakeoffReserveOk,
+    required this.takeoffReserveSavedCents,
+    required this.takeoffReserveMinCents,
+    required this.takeoffReserveTargetCents,
+    required this.legalMandateAcceptedUsersCount,
+    required this.legalMandateProvidersCount,
+  });
+
+  const CeoSluGoLiveSemaphore.emptyZero()
+      : operatingMode = 'SANDBOX_PRE_CNPJ',
+        allFourCriteriaGreen = false,
+        criteriaGreenCount = 1,
+        criterion1Stability7dOk = false,
+        zeroDriftDaysElapsed = 0,
+        zeroDriftTargetDays = 7,
+        sandboxPayoutsTestedCount = 0,
+        criterion2P0P1ZeroedOk = true,
+        criterion3PocosLiquidityOk = false,
+        pocosProvidersTotalCount = 0,
+        pocosProvidersActiveCount = 0,
+        pocosProvidersMinTarget = 15,
+        pocosProvidersIdealTarget = 20,
+        criterion4TakeoffReserveOk = false,
+        takeoffReserveSavedCents = 0,
+        takeoffReserveMinCents = 100000,
+        takeoffReserveTargetCents = 130000,
+        legalMandateAcceptedUsersCount = 0,
+        legalMandateProvidersCount = 0;
+
+  final String operatingMode;
+  final bool allFourCriteriaGreen;
+  final int criteriaGreenCount;
+  final bool criterion1Stability7dOk;
+  final int zeroDriftDaysElapsed;
+  final int zeroDriftTargetDays;
+  final int sandboxPayoutsTestedCount;
+  final bool criterion2P0P1ZeroedOk;
+  final bool criterion3PocosLiquidityOk;
+  final int pocosProvidersTotalCount;
+  final int pocosProvidersActiveCount;
+  final int pocosProvidersMinTarget;
+  final int pocosProvidersIdealTarget;
+  final bool criterion4TakeoffReserveOk;
+  final int takeoffReserveSavedCents;
+  final int takeoffReserveMinCents;
+  final int takeoffReserveTargetCents;
+  final int legalMandateAcceptedUsersCount;
+  final int legalMandateProvidersCount;
+
+  factory CeoSluGoLiveSemaphore.fromJson(Map<String, dynamic> json) {
+    return CeoSluGoLiveSemaphore(
+      operatingMode: _asString(json['operating_mode'], 'SANDBOX_PRE_CNPJ'),
+      allFourCriteriaGreen: _asBool(json['all_four_criteria_green']),
+      criteriaGreenCount: _asInt(json['criteria_green_count']),
+      criterion1Stability7dOk: _asBool(json['criterion_1_stability_7d_ok']),
+      zeroDriftDaysElapsed: _asInt(json['zero_drift_days_elapsed']),
+      zeroDriftTargetDays: _asInt(json['zero_drift_target_days'], 7),
+      sandboxPayoutsTestedCount: _asInt(json['sandbox_payouts_tested_count']),
+      criterion2P0P1ZeroedOk: _asBool(
+        json['criterion_2_p0_p1_zeroed_ok'],
+        true,
+      ),
+      criterion3PocosLiquidityOk: _asBool(
+        json['criterion_3_pocos_liquidity_ok'],
+      ),
+      pocosProvidersTotalCount: _asInt(json['pocos_providers_total_count']),
+      pocosProvidersActiveCount: _asInt(json['pocos_providers_active_count']),
+      pocosProvidersMinTarget: _asInt(json['pocos_providers_min_target'], 15),
+      pocosProvidersIdealTarget: _asInt(
+        json['pocos_providers_ideal_target'],
+        20,
+      ),
+      criterion4TakeoffReserveOk: _asBool(
+        json['criterion_4_takeoff_reserve_ok'],
+      ),
+      takeoffReserveSavedCents: _asInt(json['takeoff_reserve_saved_cents']),
+      takeoffReserveMinCents: _asInt(
+        json['takeoff_reserve_min_cents'],
+        100000,
+      ),
+      takeoffReserveTargetCents: _asInt(
+        json['takeoff_reserve_target_cents'],
+        130000,
+      ),
+      legalMandateAcceptedUsersCount: _asInt(
+        json['legal_mandate_accepted_users_count'],
+      ),
+      legalMandateProvidersCount: _asInt(json['legal_mandate_providers_count']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'operating_mode': operatingMode,
+        'all_four_criteria_green': allFourCriteriaGreen,
+        'criteria_green_count': criteriaGreenCount,
+        'criterion_1_stability_7d_ok': criterion1Stability7dOk,
+        'zero_drift_days_elapsed': zeroDriftDaysElapsed,
+        'zero_drift_target_days': zeroDriftTargetDays,
+        'sandbox_payouts_tested_count': sandboxPayoutsTestedCount,
+        'criterion_2_p0_p1_zeroed_ok': criterion2P0P1ZeroedOk,
+        'criterion_3_pocos_liquidity_ok': criterion3PocosLiquidityOk,
+        'pocos_providers_total_count': pocosProvidersTotalCount,
+        'pocos_providers_active_count': pocosProvidersActiveCount,
+        'pocos_providers_min_target': pocosProvidersMinTarget,
+        'pocos_providers_ideal_target': pocosProvidersIdealTarget,
+        'criterion_4_takeoff_reserve_ok': criterion4TakeoffReserveOk,
+        'takeoff_reserve_saved_cents': takeoffReserveSavedCents,
+        'takeoff_reserve_min_cents': takeoffReserveMinCents,
+        'takeoff_reserve_target_cents': takeoffReserveTargetCents,
+        'legal_mandate_accepted_users_count': legalMandateAcceptedUsersCount,
+        'legal_mandate_providers_count': legalMandateProvidersCount,
+      };
 }

@@ -146,9 +146,19 @@ class _UpdateGateState extends State<UpdateGate>
   Future<void> _loadPersistedDismissedBuild() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final gateDismissed = prefs.getInt(UpdateGate.gateDismissedBuildPrefKey);
-      final ackBuild =
+      var gateDismissed = prefs.getInt(UpdateGate.gateDismissedBuildPrefKey);
+      var ackBuild =
           prefs.getInt(AppVersionAndUpdateService.prefAcknowledgedBuildKey);
+      if (gateDismissed != null &&
+          gateDismissed >= 200000000 &&
+          gateDismissed < 210000000) {
+        await prefs.remove(UpdateGate.gateDismissedBuildPrefKey);
+        gateDismissed = null;
+      }
+      if (ackBuild != null && ackBuild >= 200000000 && ackBuild < 210000000) {
+        await prefs.remove(AppVersionAndUpdateService.prefAcknowledgedBuildKey);
+        ackBuild = null;
+      }
       int? effective;
       if (gateDismissed != null && ackBuild != null) {
         effective = gateDismissed > ackBuild ? gateDismissed : ackBuild;

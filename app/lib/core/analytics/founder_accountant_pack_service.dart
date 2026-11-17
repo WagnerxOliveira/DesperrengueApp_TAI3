@@ -122,9 +122,10 @@ class FounderAccountantPackService {
     String csvDelimiter = ';',
   }) {
     final issuedUtc = snapshot.generatedAt.toUtc();
+    final issuedBrt = issuedUtc.subtract(const Duration(hours: 3));
     final competence = (competenceLabel != null && competenceLabel.trim().isNotEmpty)
         ? competenceLabel.trim()
-        : '${issuedUtc.year.toString().padLeft(4, '0')}-${issuedUtc.month.toString().padLeft(2, '0')}';
+        : '${issuedBrt.year.toString().padLeft(4, '0')}-${issuedBrt.month.toString().padLeft(2, '0')}';
     final delim = csvDelimiter == ',' ? ',' : ';';
 
     final dre = snapshot.dreCents;
@@ -267,7 +268,7 @@ class FounderAccountantPackService {
     String? authorizedByEmail,
     DateTime? issuedAtUtc,
   }) {
-    final nowUtc = (issuedAtUtc ?? DateTime.utc(2026, 11, 14, 12, 30)).toUtc();
+    final nowUtc = (issuedAtUtc ?? DateTime.now().toUtc()).toUtc();
     final authorityActor = (authorizedByEmail != null &&
             authorizedByEmail.trim().isNotEmpty)
         ? _maskEmailForForensics(authorizedByEmail.trim())
@@ -450,13 +451,27 @@ class FounderAccountantPackService {
     return buf.toString();
   }
 
+  static final RegExp _signedIntegerCellRegex = RegExp(r'^[+-]?\d+$');
+
   static String _escapeRfc4180Cell(String value, String delimiter) {
-    final needsQuotes = value.contains(delimiter) ||
-        value.contains('"') ||
-        value.contains('\r') ||
-        value.contains('\n');
-    if (!needsQuotes) return value;
-    final doubledQuotes = value.replaceAll('"', '""');
+    var safeValue = value;
+    // Neutraliza Formula Injection (OWASP CSV Injection: =, +, -, @, \t, \r) preservando inteiros contábeis negativos legítimos.
+    if (safeValue.isNotEmpty &&
+        !_signedIntegerCellRegex.hasMatch(safeValue) &&
+        (safeValue.startsWith('=') ||
+            safeValue.startsWith('+') ||
+            safeValue.startsWith('-') ||
+            safeValue.startsWith('@') ||
+            safeValue.startsWith('\t') ||
+            safeValue.startsWith('\r'))) {
+      safeValue = "'$safeValue";
+    }
+    final needsQuotes = safeValue.contains(delimiter) ||
+        safeValue.contains('"') ||
+        safeValue.contains('\r') ||
+        safeValue.contains('\n');
+    if (!needsQuotes) return safeValue;
+    final doubledQuotes = safeValue.replaceAll('"', '""');
     return '"$doubledQuotes"';
   }
 

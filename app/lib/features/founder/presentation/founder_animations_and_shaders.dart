@@ -780,6 +780,14 @@ class _AnimatedMoneyOdometerState extends State<AnimatedMoneyOdometer> {
   }
 
   Widget _buildFormattedText(int currentCents, TextStyle effectiveStyle) {
+    if (widget.privacyBlurActive) {
+      return Text(
+        '${widget.prefix}R\$ •••••${widget.suffix}',
+        maxLines: widget.maxLines,
+        overflow: TextOverflow.ellipsis,
+        style: effectiveStyle,
+      );
+    }
     final rawBrl = Money.formatBrl(currentCents);
     if (!widget.splitCurrencyParts) {
       return Text(

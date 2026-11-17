@@ -1642,6 +1642,96 @@ class _FounderAccountantPackExporterWidgetState
                       color: FounderSovereignTokens.mutedInk,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      OutlinedButton.icon(
+                        key: const ValueKey<String>('copy-accountant-csv-btn'),
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: pack.csvContent),
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Planilha CSV copiada para enviar ao contador.',
+                              ),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor:
+                              FounderSovereignTokens.solvencyEmerald,
+                          side: BorderSide(
+                            color: FounderSovereignTokens.solvencyEmerald
+                                .withValues(alpha: 0.45),
+                          ),
+                          minimumSize: const Size(0, 32),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                        ),
+                        icon: const FounderPrecisionIcon(
+                          FounderIconGlyph.clipboardOtp,
+                          size: 14,
+                          color: FounderSovereignTokens.solvencyEmerald,
+                          accentColor: FounderSovereignTokens.solvencyEmerald,
+                        ),
+                        label: const Text(
+                          'Copiar planilha CSV',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        key: const ValueKey<String>('copy-accountant-seal-btn'),
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: pack.sha256SealHex),
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Selo SHA-256 copiado para a área de transferência.',
+                              ),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: FounderSovereignTokens.secondaryInk,
+                          side: const BorderSide(
+                            color: FounderSovereignTokens.crispBorder,
+                          ),
+                          minimumSize: const Size(0, 32),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                        ),
+                        icon: const FounderPrecisionIcon(
+                          FounderIconGlyph.clipboardOtp,
+                          size: 14,
+                          color: FounderSovereignTokens.secondaryInk,
+                        ),
+                        label: const Text(
+                          'Copiar selo SHA-256',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1852,6 +1942,49 @@ class _FounderSilentDuressWarRoomWidgetState
                     style: FounderSovereignTokens.monoMetric(
                       fontSize: 10,
                       color: FounderSovereignTokens.primaryInk,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey<String>('copy-duress-manifest-btn'),
+                    onPressed: () async {
+                      await Clipboard.setData(
+                        ClipboardData(text: _dossier!.chainOfCustodyJson),
+                      );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Manifesto de custódia copiado com selo SHA-256.',
+                          ),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: FounderSovereignTokens.cyberCyan,
+                      side: BorderSide(
+                        color: FounderSovereignTokens.cyberCyan
+                            .withValues(alpha: 0.45),
+                      ),
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                    ),
+                    icon: const FounderPrecisionIcon(
+                      FounderIconGlyph.clipboardOtp,
+                      size: 14,
+                      color: FounderSovereignTokens.cyberCyan,
+                      accentColor: FounderSovereignTokens.cyberCyan,
+                    ),
+                    label: const Text(
+                      'Copiar dossiê assinado',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],

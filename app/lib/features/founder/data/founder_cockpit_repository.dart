@@ -382,6 +382,14 @@ abstract class CeoBackendGateway {
 
   Future<Map<String, dynamic>> invokeVaultAuthority(Map<String, dynamic> body);
 
+  Future<Map<String, dynamic>> invokeTreasuryAuthority(
+    Map<String, dynamic> body,
+  ) async =>
+      const <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_NOT_IMPLEMENTED',
+      };
+
   Future<Map<String, dynamic>> callRpc(
     String functionName,
     Map<String, dynamic> params,
@@ -512,6 +520,31 @@ class SupabaseCeoBackendGateway implements CeoBackendGateway {
   }
 
   @override
+  Future<Map<String, dynamic>> invokeTreasuryAuthority(
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final res = await _client.functions.invoke(
+        'ceo-treasury-authority',
+        body: body,
+      );
+      final parsed = _tryDecodeMapPayload(res.data);
+      if (parsed != null) return parsed;
+      return const <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_TREASURY_RESPONSE_INVALID',
+      };
+    } on FunctionException catch (e) {
+      final parsedDetails = _tryDecodeMapPayload(e.details);
+      if (parsedDetails != null) return parsedDetails;
+      return <String, dynamic>{
+        'ok': false,
+        'error_code': 'ERR_TREASURY_HTTP_${e.status}',
+      };
+    }
+  }
+
+  @override
   Future<Map<String, dynamic>> callRpc(
     String functionName,
     Map<String, dynamic> params,
@@ -615,6 +648,12 @@ String _translateSecurityError(
   }
   if (msg.contains('ERR_OTP_COOLDOWN_ACTIVE')) {
     return 'Aguarde o intervalo de proteção antes de solicitar um novo código de 6 dígitos.';
+  }
+  if (msg.contains('ERR_SAFE_CEILING_EXCEEDED')) {
+    return 'Valor acima do Teto Seguro disponível. Os 85% dos profissionais, o 1,5% de garantia e o imposto provisionado permanecem 100% protegidos.';
+  }
+  if (msg.contains('ERR_FORBIDDEN_DESTINATION_OVERRIDE')) {
+    return 'Operação bloqueada: o destino de retirada é fisicamente travado à sua conta titular e não aceita digitação de chave PIX.';
   }
   if (msg.contains('ERR_OTP_SUPERSEDED_BY_NEWER_EMAIL')) {
     final refSuffix = cleanRef.isNotEmpty ? ' (Protocolo #$cleanRef)' : '';
@@ -1500,6 +1539,63 @@ class FounderCockpitRepository {
       },
     );
     await fetchLiveSnapshot();
+  }
+
+  /// Atualiza parâmetros da Tesouraria Bivalente e do Semáforo SLU (colchão de segurança,
+  /// reserva de decolagem guardada, meta de profissionais em Poços de Caldas ou modo emergência).
+  Future<void> configureTreasuryParameters({
+    int? safetyBufferCents,
+    int? takeoffReserveSavedCents,
+    int? pocosProvidersTarget,
+    String? duressModeStatus,
+  }) async {
+    final session = _requireActiveSession();
+    await _gateway.callRpc(
+      'ceo_configure_treasury_parameters',
+      <String, dynamic>{
+        'p_stepup_token': session.stepUpCredentialHex,
+        'p_device_hash': session.deviceHashHex,
+        'p_safety_buffer_cents': ?safetyBufferCents,
+        'p_takeoff_reserve_saved_cents': ?takeoffReserveSavedCents,
+        'p_pocos_providers_target': ?pocosProvidersTarget,
+        if (duressModeStatus != null && duressModeStatus.trim().isNotEmpty)
+          'p_duress_mode_status': duressModeStatus.trim().toUpperCase(),
+      },
+    );
+    await fetchLiveSnapshot();
+  }
+
+  /// Solicita retirada de lucro / pró-labore exclusivamente para o destino titular travado
+  /// (Zero digitação de chave PIX), operando em `SANDBOX_PRE_CNPJ` (R$ 0) ou `PRODUCTION_SLU`.
+  Future<Map<String, dynamic>> requestProfitDistribution({
+    required int requestedCents,
+    String distributionKind = 'PROFIT_DISTRIBUTION',
+    String? idempotencyKey,
+  }) async {
+    final session = _requireActiveSession();
+    final idem = (idempotencyKey != null && idempotencyKey.trim().isNotEmpty)
+        ? idempotencyKey.trim()
+        : 'dist_${DateTime.now().toUtc().microsecondsSinceEpoch}_${requestedCents.abs()}';
+
+    final res = await _gateway.invokeTreasuryAuthority(<String, dynamic>{
+      'action': 'request_profit_distribution',
+      'stepup_token': session.stepUpCredentialHex,
+      'device_hash': session.deviceHashHex,
+      'idempotency_key': idem,
+      'distribution_kind': distributionKind.trim().toUpperCase(),
+      'requested_cents': requestedCents,
+    });
+
+    if (res['ok'] != true) {
+      final rawErr = (res['error_code'] ?? 'ERR_TREASURY_REJECTED').toString();
+      throw CeoVaultSecurityException(
+        errorCode: rawErr,
+        userMessagePt: _translateSecurityError(rawErr),
+      );
+    }
+
+    await fetchLiveSnapshot();
+    return res;
   }
 
   Future<void> refreshHeartbeat() async {

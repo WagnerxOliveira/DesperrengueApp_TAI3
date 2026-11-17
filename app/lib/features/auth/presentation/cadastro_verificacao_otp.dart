@@ -4,7 +4,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'cadastro_sucesso_routing.dart';
+import '../../../core/services/legal_mandate_service.dart';
+import 'cadastro_sucesso_routing.dart';
+
 import '../../../core/ui/light_island.dart';
 
 class CadastroVerificacaoOtpScreen extends StatefulWidget {
@@ -127,6 +129,12 @@ class _CadastroVerificacaoOtpScreenState
         email: widget.email,
         token: token,
         type: OtpType.signup,
+      );
+
+      unawaited(
+        LegalMandateService.recordAcceptanceIfAuthenticated(
+          roleScope: 'CLIENT',
+        ),
       );
 
       if (mounted) {

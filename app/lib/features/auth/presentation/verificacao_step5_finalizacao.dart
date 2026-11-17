@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/security/perceptual_hash_guard.dart';
 import '../../../core/services/draft_store.dart';
+import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/utils/image_metadata_stripper.dart';
@@ -93,6 +94,10 @@ class _VerificacaoStep5FinalizacaoScreenState
         selfieExt: _ext(widget.selfie),
         registryType: widget.tipoRegistro,
         registryNumber: widget.numeroRegistro,
+      );
+
+      await LegalMandateService.recordAcceptanceIfAuthenticated(
+        roleScope: 'PROVIDER',
       );
 
       // O AuthGate relê o perfil (agora PENDING) e abre a tela "Em análise".

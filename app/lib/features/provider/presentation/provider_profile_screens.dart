@@ -8,6 +8,7 @@ import '../../../core/models/provider_dossier_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/draft_store.dart';
+import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
@@ -37,6 +38,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
   final _providers = ProviderService();
   final _bio = TextEditingController();
   final _headline = TextEditingController();
+  final _city = TextEditingController();
   final _hourly = TextEditingController();
   final _visit = TextEditingController(text: '30');
   final _specialties = <String>{};
@@ -66,6 +68,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
     _saveTimer?.cancel();
     _bio.dispose();
     _headline.dispose();
+    _city.dispose();
     _hourly.dispose();
     _visit.dispose();
     super.dispose();
@@ -116,6 +119,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
         _name = p?.fullName ?? '';
         _avatarUrl = p?.avatarUrl;
         _bio.text = p?.bio ?? '';
+        _city.text = p?.addressCity ?? '';
         _headline.text = (row?['headline'] as String?) ?? '';
         _specialties.addAll(((row?['specialties'] as List?) ?? const []).cast<String>());
         final h = (row?['hourly_rate'] as num?)?.toDouble();
@@ -160,7 +164,15 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
     }
     setState(() => _saving = true);
     try {
-      await _profiles.updateProfile({'bio': _bio.text.trim()});
+      await _profiles.updateProfile({
+        'bio': _bio.text.trim(),
+        if (_city.text.trim().isNotEmpty) 'address_city': _city.text.trim(),
+      });
+      unawaited(
+        LegalMandateService.recordAcceptanceIfAuthenticated(
+          roleScope: 'PROVIDER',
+        ),
+      );
       await _providers.saveProviderProfile(
         headline: _headline.text.trim().isEmpty ? _specialties.first : _headline.text.trim(),
         specialties: _specialties.toList(),
@@ -236,6 +248,38 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
                 const Text('Título profissional', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                 const SizedBox(height: 8),
                 TextField(controller: _headline, maxLength: 60, decoration: const InputDecoration(hintText: 'Ex: Eletricista residencial', counterText: '')),
+                const SizedBox(height: 16),
+                const Text('Cidade principal de atendimento', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                const SizedBox(height: 8),
+                TextField(
+                  key: const ValueKey('provider-base-city-input'),
+                  controller: _city,
+                  maxLength: 80,
+                  decoration: const InputDecoration(
+                    hintText: 'Ex: Poços de Caldas - MG',
+                    prefixIcon: Icon(Icons.location_city_rounded),
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    for (final suggestedCity in const <String>[
+                      'Poços de Caldas - MG',
+                      'Pouso Alegre - MG',
+                      'Varginha - MG',
+                    ])
+                      ActionChip(
+                        label: Text(suggestedCity, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        onPressed: () {
+                          setState(() => _city.text = suggestedCity);
+                          _scheduleDraft();
+                        },
+                      ),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 const Text('Sobre mim', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                 const SizedBox(height: 8),

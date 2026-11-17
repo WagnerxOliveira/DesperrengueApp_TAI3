@@ -101,9 +101,12 @@ class MainActivity : FlutterActivity() {
             ).setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getScreenProtectionStatus" -> {
+                        val remainingMs = (bypassExpiresAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L)
                         result.success(
                             mapOf(
                                 "flagSecureActive" to flagSecureActive,
+                                "temporaryCaptureAllowed" to (!flagSecureActive && remainingMs > 0L),
+                                "remainingCaptureMs" to remainingMs,
                                 "bypassExpiresAtEpochMs" to bypassExpiresAtEpochMs
                             )
                         )
@@ -334,9 +337,9 @@ class MainActivity : FlutterActivity() {
                     throw SecurityException("ERR_UNTRUSTED_REDIRECT_HOST")
                 }
                 val userAgent = if (isFounderCeoBuild) {
-                    "DesperrengueCEO-OTA/2.18"
+                    "DesperrengueCEO-OTA/2.19"
                 } else {
-                    "Desperrengue-OTA/2.18"
+                    "Desperrengue-OTA/2.19"
                 }
                 val conn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = false
@@ -422,11 +425,18 @@ class MainActivity : FlutterActivity() {
 
             // Camada 1: Verificação criptográfica do hash SHA-256 contra o release oficial
             val computedSha256 = digest.digest().joinToString("") { "%02x".format(it) }
-            if (!expectedSha256.isNullOrBlank() &&
-                !computedSha256.equals(expectedSha256, ignoreCase = true)
-            ) {
+            if (isFounderCeoBuild && expectedSha256.isNullOrBlank()) {
                 partFile.delete()
-                throw SecurityException("ERR_OTA_SHA256_MISMATCH")
+                throw SecurityException("ERR_OTA_MISSING_SHA256")
+            }
+            if (!expectedSha256.isNullOrBlank()) {
+                val shaRegex = Regex("^[0-9a-f]{64}$")
+                if (!shaRegex.matches(expectedSha256.lowercase(Locale.ROOT)) ||
+                    !computedSha256.equals(expectedSha256, ignoreCase = true)
+                ) {
+                    partFile.delete()
+                    throw SecurityException("ERR_OTA_SHA256_MISMATCH")
+                }
             }
 
             // Camada 2: Verificação nativa do applicationId e da assinatura digital X.509 do APK

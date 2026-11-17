@@ -523,7 +523,7 @@ class _EarningsSimulatorSheetState extends State<EarningsSimulatorSheet> {
     final tk = context.tk;
     final labor = parseBrl(_labor.text) ?? 0.0;
     final materials = parseBrl(_materials.text) ?? 0.0;
-    const feeRate = 0.12;
+    const feeRate = 0.15; // 13,5% intermediação + 1,5% reserva de garantia 90d = 85% líquido
     final platformFee = labor * feeRate;
     final netLabor = (labor - platformFee).clamp(0.0, double.infinity);
     final totalNet = netLabor + materials;

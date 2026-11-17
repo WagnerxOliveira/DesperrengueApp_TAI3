@@ -39,6 +39,12 @@ class _StubVaultGateway implements CeoBackendGateway {
       nextResponse;
 
   @override
+  Future<Map<String, dynamic>> invokeTreasuryAuthority(
+    Map<String, dynamic> body,
+  ) async =>
+      nextResponse;
+
+  @override
   Future<void> reportIntrusionCanary({
     required String canaryCode,
     required Map<String, dynamic> meta,

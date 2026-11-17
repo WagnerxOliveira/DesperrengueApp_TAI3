@@ -379,7 +379,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final price = job.agreedPrice ?? 0;
-    final net = price - price * 0.12;
+    final net = price - price * 0.15;
     return AppScaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),

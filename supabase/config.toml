@@ -438,14 +438,32 @@ verify_jwt = false
 import_map = "./functions/pix-webhook/deno.json"
 entrypoint = "./functions/pix-webhook/index.ts"
 
-[functions.ceo-sovereign-auth]
-# O JWT do titular unico (wagneroliveira2395@gmail.com) e validado criptograficamente dentro da funcao via supabaseAdmin.auth.getUser(jwt).
+[functions.kyc-argon-vision-gate]
+# Portao biometrico e documental KYC Zero-Trust (validacao interna de JWT).
 verify_jwt = false
-import_map = "./functions/ceo-sovereign-auth/deno.json"
-entrypoint = "./functions/ceo-sovereign-auth/index.ts"
+import_map = "./functions/kyc-argon-vision-gate/deno.json"
+entrypoint = "./functions/kyc-argon-vision-gate/index.ts"
+
+[functions.kyc-carbon-webhook]
+# Webhook assinado de provedores KYC.
+verify_jwt = false
+import_map = "./functions/kyc-carbon-webhook/deno.json"
+entrypoint = "./functions/kyc-carbon-webhook/index.ts"
 
 [functions.ceo-vault-authority]
 # Autoridade soberana isolada de Senha Mestra Forte (Split-Pepper + AES-256), 2FA 6 digitos e ponte HTTPS -> Deep-Link do Desperrengue CEO.
 verify_jwt = false
 import_map = "./functions/ceo-vault-authority/deno.json"
 entrypoint = "./functions/ceo-vault-authority/index.ts"
+
+[functions.ceo-treasury-authority]
+# Autoridade soberana da Tesouraria Bivalente (SANDBOX_PRE_CNPJ vs PRODUCTION_SLU), Asaas v3 e Adaptador mTLS 1.3 (Inter/Efi) + Comprovante Falso Anti-Coacao.
+verify_jwt = false
+import_map = "./functions/ceo-treasury-authority/deno.json"
+entrypoint = "./functions/ceo-treasury-authority/index.ts"
+
+[functions.asaas-webhook-guard]
+# Guardiao de Saque Asaas (Mecanismo de Seguranca Outbound <50ms + Anti-Coacao FROZEN_UNDER_DURESS + Token Constant-Time).
+verify_jwt = false
+import_map = "./functions/asaas-webhook-guard/deno.json"
+entrypoint = "./functions/asaas-webhook-guard/index.ts"

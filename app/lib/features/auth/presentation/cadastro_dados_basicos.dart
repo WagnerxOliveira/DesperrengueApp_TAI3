@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/env.dart';
-import 'cadastro_verificacao_otp.dart';
+import 'verificacao_step6c_termos.dart';
+import 'cadastro_verificacao_otp.dart';
+
 import '../../../core/ui/light_island.dart';
 
 class CadastroDadosBasicosScreen extends StatefulWidget {
@@ -365,21 +367,44 @@ class _CadastroDadosBasicosScreenState
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: RichText(
-                        text: const TextSpan(
-                          style: TextStyle(color: Colors.black87, fontSize: 14),
-                          children: [
-                            TextSpan(text: 'Li e concordo com os '),
-                            TextSpan(
-                              text: 'Termos de Uso',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(6),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  const VerificacaoStep6cTermosScreen(),
                             ),
-                            TextSpan(text: ' e '),
-                            TextSpan(
-                              text: 'Política de Privacidade',
-                              style: TextStyle(fontWeight: FontWeight.bold),
+                          );
+                        },
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 14,
                             ),
-                          ],
+                            children: [
+                              const TextSpan(text: 'Li e concordo com os '),
+                              TextSpan(
+                                text: 'Termos de Uso e Mandato Legal',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _primaryBlue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                              const TextSpan(text: ' e '),
+                              TextSpan(
+                                text: 'Política de Privacidade',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: _primaryBlue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

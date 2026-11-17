@@ -1,114 +1,122 @@
+import 'package:flutter/material.dart';
+
+import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/ui/app_scaffold.dart';
-import 'package:flutter/material.dart';
 import '../../../core/ui/light_island.dart';
 
-/// Tela informativa 6c: Termos de Prestação de Serviços.
-/// Design focado na legibilidade de textos jurídicos, utilizando
-/// cores confortáveis para os olhos (Slate) e espaçamento generoso.
-/// Otimizado com 'static const' para evitar falhas no Hot Reload.
+/// Tela oficial de Termos de Uso, Política de Privacidade e Cláusula-Mandato
+/// Mercantil Expressa (Art. 653 do Código Civil — Split 85% / 13,5% / 1,5% + 0% Peças NF-e).
 class VerificacaoStep6cTermosScreen extends StatelessWidget {
   const VerificacaoStep6cTermosScreen({super.key});
 
-  // Prática de Engenharia: Modificadores 'static const' garantem performance
-  // e evitam a rejeição de Hot Reload ao alterar classes com construtores constantes.
   static const Color _primaryBlue = Color(0xFF003366);
-  static const Color _textDarkBlue = Color(0xFF001A33); // Título H1
-  static const Color _textSlate = Color(
-    0xFF334155,
-  ); // Corpo do texto (Anti-fadiga)
-  static const Color _textMuted = Color(0xFF64748B); // Tags e Subtítulos
-  static const Color _textHeading = Color(0xFF0F172A); // Títulos das Cláusulas
+  static const Color _textDarkBlue = Color(0xFF001A33);
+  static const Color _textSlate = Color(0xFF334155);
+  static const Color _textMuted = Color(0xFF64748B);
+  static const Color _textHeading = Color(0xFF0F172A);
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
+    final sealHex = LegalMandateService.currentDocumentSha256Hex;
+
+    return LightIsland(
+      child: AppScaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        iconTheme: const IconThemeData(
-          color: _primaryBlue,
-        ), // Seta de voltar padrão
-        title: const Text(
-          'Termos de Serviço',
-          style: TextStyle(
-            color: _primaryBlue,
-            fontWeight: FontWeight.bold, // Destaque extra de fidelidade
-            fontSize: 18,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: const IconThemeData(color: _primaryBlue),
+          title: const Text(
+            'Termos e Mandato Legal',
+            style: TextStyle(
+              color: _primaryBlue,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 24.0,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Tag sutil de Documento Oficial - Polimento visual premium
-                _buildOfficialTag(),
-
-                const SizedBox(height: 16),
-
-                // Cabeçalho do Documento Jurídico
-                const Text(
-                  'Termos de Prestação de Serviços',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: _textDarkBlue,
-                    height: 1.2,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 24.0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildOfficialTag(),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Termos de Uso, Custódia e Cláusula-Mandato',
+                    style: TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.bold,
+                      color: _textDarkBlue,
+                      height: 1.22,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Última atualização: Outubro de 2026', // Data Dinâmica sugerida
-                  style: TextStyle(fontSize: 12, color: _textMuted),
-                ),
-
-                const SizedBox(height: 24), // Respiro antes do conteúdo
-                // Divisor sutil e elegante
-                Divider(
-                  color: Colors.grey.withValues(alpha: 0.15),
-                  thickness: 1,
-                ),
-
-                const SizedBox(height: 24),
-
-                // Cláusula 1
-                _buildClause(
-                  title: '1. Objeto e Validação de Cadastro',
-                  content: 'Estes termos regulam o uso da plataforma Desperrengue por prestadores parceiros. O cadastro exige a verificação de identidade e antecedentes para garantir a segurança.',
-                ),
-
-                // Cláusula 2
-                _buildClause(
-                  title: '2. Uso da Plataforma',
-                  content: 'O profissional declara ser maior de idade e ter plena capacidade técnica para os serviços oferecidos. A aprovação é necessária para atuar.',
-                ),
-
-                // Cláusula 3
-                _buildClause(
-                  title: '3. Pagamentos e Repasses',
-                  content: 'Os repasses de serviços concluídos seguirão as taxas vigentes e prazos acordados na plataforma.',
-                ),
-
-                // Rodapé com mais respiro para não bater no limite da tela
-                const SizedBox(height: 48),
-              ],
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Versão vigente: ${LegalMandateService.currentMandateVersion} · Código Civil Art. 653 e LGPD',
+                    style: TextStyle(fontSize: 12, color: _textMuted),
+                  ),
+                  const SizedBox(height: 20),
+                  Divider(
+                    color: Colors.grey.withValues(alpha: 0.15),
+                    thickness: 1,
+                  ),
+                  const SizedBox(height: 20),
+                  for (final clause in LegalMandateService.canonicalClauses)
+                    _buildClause(
+                      title: clause.title,
+                      content: clause.body,
+                    ),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _primaryBlue.withValues(alpha: 0.14),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Selo Digital de Integridade Contratual (SHA-256)',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: _primaryBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          sealHex,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontFamily: 'monospace',
+                            color: _textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 36),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 
-  /// Badge sutil que confere oficialidade e credibilidade ao documento jurídico
   Widget _buildOfficialTag() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -125,13 +133,15 @@ class VerificacaoStep6cTermosScreen extends StatelessWidget {
         children: [
           Icon(Icons.gavel_rounded, color: _primaryBlue, size: 14),
           SizedBox(width: 6),
-          Text(
-            'DOCUMENTO OFICIAL',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: _primaryBlue,
-              letterSpacing: 1.0,
+          Flexible(
+            child: Text(
+              'DOCUMENTO OFICIAL · MANDATO ART. 653 CC',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                color: _primaryBlue,
+                letterSpacing: 0.8,
+              ),
             ),
           ),
         ],
@@ -139,31 +149,27 @@ class VerificacaoStep6cTermosScreen extends StatelessWidget {
     );
   }
 
-  /// Constrói cada bloco de cláusula do termo de serviço com hierarquia impecável.
   Widget _buildClause({required String title, required String content}) {
     return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 28.0,
-      ), // Maior distanciamento para descanso visual
+      padding: const EdgeInsets.only(bottom: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
             style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold, // Destaca os títulos das seções
+              fontSize: 15.5,
+              fontWeight: FontWeight.bold,
               color: _textHeading,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Text(
             content,
             style: const TextStyle(
               fontSize: 14,
               color: _textSlate,
-              height:
-                  1.55, // Espaçamento entre linhas generoso para leitura fácil
+              height: 1.55,
             ),
           ),
         ],
