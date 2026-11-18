@@ -16,6 +16,7 @@ import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/review_widgets.dart';
 import 'dossie_servico_profissional_screen.dart';
 import 'provider_portfolio_widgets.dart';
@@ -24,18 +25,30 @@ import '../../../core/ui/app_tokens.dart';
 /// Editar Perfil (protótipo P02): foto, título, bio, especialidades, preços.
 /// Em [setupMode] vira o 1º passo do cadastro inicial (botão "Continuar").
 class EditProviderProfileScreen extends StatefulWidget {
-  const EditProviderProfileScreen({super.key, this.setupMode = false, this.onDone});
+  const EditProviderProfileScreen({
+    super.key,
+    this.setupMode = false,
+    this.onDone,
+    @visibleForTesting this.customPhotoPicker,
+    @visibleForTesting this.customAvatarUploader,
+    @visibleForTesting this.initialProfileOverride,
+    @visibleForTesting this.initialProviderRowOverride,
+  });
 
   final bool setupMode;
   final VoidCallback? onDone;
+  final StagedPhotoPicker? customPhotoPicker;
+  final AvatarBinaryUploader? customAvatarUploader;
+  final UserProfile? initialProfileOverride;
+  final Map<String, dynamic>? initialProviderRowOverride;
 
   @override
   State<EditProviderProfileScreen> createState() => _EditProviderProfileScreenState();
 }
 
 class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
-  final _profiles = ProfileService();
-  final _providers = ProviderService();
+  ProfileService get _profiles => ProfileService();
+  ProviderService get _providers => ProviderService();
   final _bio = TextEditingController();
   final _headline = TextEditingController();
   final _city = TextEditingController();
@@ -47,9 +60,10 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
   String _name = '';
   bool _loading = true;
   bool _saving = false;
-  bool _uploading = false;
   Timer? _saveTimer;
   String? _draftKey;
+
+  bool get _hasPhoto => _avatarUrl != null && _avatarUrl!.trim().isNotEmpty;
 
   @override
   void initState() {
@@ -112,8 +126,15 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
 
   Future<void> _load() async {
     try {
-      final p = await _profiles.fetchCurrent();
-      final row = await _providers.myProviderRow();
+      final UserProfile? p;
+      final Map<String, dynamic>? row;
+      if (widget.initialProfileOverride != null || widget.initialProviderRowOverride != null) {
+        p = widget.initialProfileOverride;
+        row = widget.initialProviderRowOverride;
+      } else {
+        p = await _profiles.fetchCurrent();
+        row = await _providers.myProviderRow();
+      }
       if (!mounted) return;
       setState(() {
         _name = p?.fullName ?? '';
@@ -133,23 +154,27 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        showSnack(context, friendlyError(e), error: true);
+        if (widget.customPhotoPicker == null && widget.customAvatarUploader == null) {
+          showSnack(context, friendlyError(e), error: true);
+        }
       }
     }
   }
 
   Future<void> _changePhoto() async {
-    final img = await pickImage(context);
-    if (img == null) return;
-    setState(() => _uploading = true);
     try {
-      final url = await MediaService().uploadPublic(img.bytes, img.ext, prefix: 'avatar');
-      await _profiles.updateProfile({'avatar_url': url});
-      if (mounted) setState(() => _avatarUrl = url);
+      final url = await pickPreviewAndSaveAvatar(
+        context,
+        userName: _name.isEmpty ? 'Profissional' : _name,
+        currentUrl: _avatarUrl,
+        customPicker: widget.customPhotoPicker,
+        customUploader: widget.customAvatarUploader,
+      );
+      if (url != null && mounted) {
+        setState(() => _avatarUrl = url);
+      }
     } catch (e) {
       if (mounted) showSnack(context, friendlyError(e), error: true);
-    } finally {
-      if (mounted) setState(() => _uploading = false);
     }
   }
 
@@ -220,25 +245,51 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
                   const SizedBox(height: 18),
                 ],
                 Center(
-                  child: Stack(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      UserAvatar(url: _avatarUrl, name: _name.isEmpty ? '?' : _name, radius: 62),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: Material(
-                          color: accent,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: _uploading ? null : _changePhoto,
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: _uploading
-                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                  : const Icon(Icons.photo_camera_rounded, color: Colors.white, size: 20),
+                      GestureDetector(
+                        onTap: _changePhoto,
+                        child: Stack(
+                          children: [
+                            UserAvatar(url: _avatarUrl, name: _name.isEmpty ? '?' : _name, radius: 62),
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Material(
+                                color: accent,
+                                shape: const CircleBorder(),
+                                child: InkWell(
+                                  customBorder: const CircleBorder(),
+                                  onTap: _changePhoto,
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(10),
+                                    child: Icon(Icons.photo_camera_rounded, color: Colors.white, size: 20),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        key: const Key('edit-provider-change-photo-btn'),
+                        onPressed: _changePhoto,
+                        style: OutlinedButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          minimumSize: const Size(0, 38),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                        icon: Icon(
+                          _hasPhoto ? Icons.photo_camera_rounded : Icons.add_a_photo_rounded,
+                          size: 18,
+                        ),
+                        label: Text(
+                          _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                         ),
                       ),
                     ],

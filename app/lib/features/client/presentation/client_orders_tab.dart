@@ -16,6 +16,7 @@ import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/order_utils.dart';
+import '../../auth/presentation/verificacao_step6c_termos.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/delete_account_screen.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
@@ -341,14 +342,52 @@ class _List extends StatelessWidget {
 }
 
 /// Aba "Perfil" do cliente.
-class ClientProfileTab extends StatelessWidget {
-  const ClientProfileTab({super.key, required this.profile});
+class ClientProfileTab extends StatefulWidget {
+  const ClientProfileTab({
+    super.key,
+    required this.profile,
+    @visibleForTesting this.customPhotoPicker,
+    @visibleForTesting this.customAvatarUploader,
+  });
 
   final UserProfile profile;
+  final StagedPhotoPicker? customPhotoPicker;
+  final AvatarBinaryUploader? customAvatarUploader;
+
+  @override
+  State<ClientProfileTab> createState() => _ClientProfileTabState();
+}
+
+class _ClientProfileTabState extends State<ClientProfileTab> {
+  late String? _avatarUrl = widget.profile.avatarUrl;
+
+  bool get _hasPhoto => _avatarUrl != null && _avatarUrl!.trim().isNotEmpty;
+
+  @override
+  void didUpdateWidget(covariant ClientProfileTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.avatarUrl != widget.profile.avatarUrl) {
+      _avatarUrl = widget.profile.avatarUrl;
+    }
+  }
+
+  Future<void> _pickAndSavePhoto() async {
+    final url = await pickPreviewAndSaveAvatar(
+      context,
+      userName: widget.profile.officialCivilName,
+      currentUrl: _avatarUrl,
+      customPicker: widget.customPhotoPicker,
+      customUploader: widget.customAvatarUploader,
+    );
+    if (url != null && mounted) {
+      setState(() => _avatarUrl = url);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    EagerImagePrefetcher.prefetchUrls([profile.avatarUrl], context: context);
+    final profile = widget.profile;
+    EagerImagePrefetcher.prefetchUrls([_avatarUrl], context: context);
     final emailSubtitle = profile.emailAddressIfPresent;
     return ListView(
       padding: const EdgeInsets.all(20),
@@ -359,11 +398,17 @@ class ClientProfileTab extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             EditableAvatar(
-              url: profile.avatarUrl,
+              url: _avatarUrl,
               name: profile.officialCivilName,
               radius: 36,
+              customPicker: widget.customPhotoPicker,
+              customUploader: widget.customAvatarUploader,
+              onChanged: (url) {
+                if (mounted) setState(() => _avatarUrl = url);
+              },
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -403,6 +448,38 @@ class ClientProfileTab extends StatelessWidget {
                           color: context.tk.success,
                         ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const Key('client-profile-change-photo-btn'),
+                    onPressed: _pickAndSavePhoto,
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      foregroundColor: context.tk.clientAccent,
+                      side: BorderSide(
+                        color: context.tk.clientAccent.withValues(alpha: 0.45),
+                      ),
+                    ),
+                    icon: Icon(
+                      _hasPhoto
+                          ? Icons.photo_camera_rounded
+                          : Icons.add_a_photo_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _hasPhoto ? 'Alterar foto' : 'Adicionar foto de perfil',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12.5,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -470,6 +547,16 @@ class ClientProfileTab extends StatelessWidget {
           subtitle: 'Fale com a central e acompanhe seus chamados',
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const SupportCenterScreen()),
+          ),
+        ),
+        _Tile(
+          kind: ProfileMenuIconKind.clientPassport,
+          title: 'Termos de Uso e Mandato Legal',
+          subtitle: 'Contrato, custódia e cláusula-mandato oficial',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const VerificacaoStep6cTermosScreen(),
+            ),
           ),
         ),
         AppearanceTile(
