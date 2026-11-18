@@ -9,8 +9,10 @@ import 'package:flutter/services.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/security/kyc_session_anti_swap_guard.dart';
 import '../../../core/services/app_session.dart';
+import '../../../core/services/criminal_background_service.dart';
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/services/draft_store.dart';
+import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/live_camera_frame_bridge.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
@@ -18,6 +20,8 @@ import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
 import '../../../core/ui/widgets.dart';
+import '../../shared/presentation/criminal_background_check_step.dart';
+import '../../shared/presentation/role_terms_acceptance_screen.dart';
 import 'address_form.dart';
 
 /// Assinatura injetável para submissão customizada em testes de widget.
@@ -144,18 +148,26 @@ class ClientSetupScreen extends StatefulWidget {
     super.key,
     required this.profile,
     this.initialStep = 0,
+    this.targetMode = UserMode.client,
+    this.isSixMonthRenewal = false,
+    this.initialTermsAccepted = true,
     @visibleForTesting this.customSubmitter,
     @visibleForTesting this.customCameraCapture,
     @visibleForTesting this.rawOcrFrontTextOverride,
     @visibleForTesting this.rawOcrBackTextOverride,
+    @visibleForTesting this.customCriminalResultOverride,
   });
 
   final UserProfile profile;
   final int initialStep;
+  final UserMode targetMode;
+  final bool isSixMonthRenewal;
+  final bool initialTermsAccepted;
   final ClientKycSubmitter? customSubmitter;
   final Future<Uint8List> Function({required String slot})? customCameraCapture;
   final String? rawOcrFrontTextOverride;
   final String? rawOcrBackTextOverride;
+  final AuditedCriminalRecordResult? customCriminalResultOverride;
 
   @override
   State<ClientSetupScreen> createState() => _ClientSetupScreenState();
@@ -172,9 +184,19 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   final ScrollController _scrollController = ScrollController();
   late final String _draftKey = DraftStore.keyFor('client_setup', userId: widget.profile.id);
 
+  bool get _isLegacyFourStepTestMode =>
+      widget.customSubmitter != null &&
+      widget.customCriminalResultOverride == null;
+
+  int get _maxStepIndex => _isLegacyFourStepTestMode ? 3 : 4;
+  int get _totalSteps => _isLegacyFourStepTestMode ? 4 : 5;
+
   AddressData _address = const AddressData();
   AddressData? _draftAddress;
-  late int _step = widget.initialStep.clamp(0, 3);
+  late int _step = widget.initialStep.clamp(0, _maxStepIndex);
+  late bool _termsAccepted = widget.initialTermsAccepted;
+  late AuditedCriminalRecordResult? _criminalResult =
+      widget.customCriminalResultOverride;
   bool _saving = false;
   bool _restoring = true;
   bool _restored = false;
@@ -271,7 +293,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         }
       }
       if (widget.initialStep == 0) {
-        _step = ((d['step'] as num?)?.toInt() ?? 0).clamp(0, 3);
+        _step = ((d['step'] as num?)?.toInt() ?? 0).clamp(0, _maxStepIndex);
       }
       _restored = name.trim().isNotEmpty ||
           _phone.text.isNotEmpty ||
@@ -301,7 +323,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       });
 
   void _setStep(int s) {
-    final target = s.clamp(0, 3);
+    final target = s.clamp(0, _maxStepIndex);
     if (target != 2) {
       _stopFrontOvalCamera();
     }
@@ -331,6 +353,11 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     if (!DocumentOcrAndLivenessService.isValidCpfMod11(_cpf.text)) {
       setState(() => _error = 'CPF inválido. Verifique os 11 dígitos informados.');
       showSnack(context, 'CPF inválido. Verifique os 11 dígitos.', error: true);
+      return;
+    }
+    if (!_termsAccepted) {
+      setState(() => _error = 'Confirme a leitura e o aceite dos Termos de Uso para continuar.');
+      showSnack(context, 'Confirme o aceite dos Termos de Uso.', error: true);
       return;
     }
     _setStep(1);
@@ -909,6 +936,16 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       setState(() => _error = 'Valide a frente e o verso do seu documento antes de concluir.');
       return;
     }
+    final effectiveCriminal =
+        _criminalResult ?? widget.customCriminalResultOverride;
+    if (!_isLegacyFourStepTestMode &&
+        (effectiveCriminal == null || !effectiveCriminal.passed)) {
+      setState(() {
+        _error =
+            'Valide a Certidão Negativa de Antecedentes Criminais da Polícia Federal antes de concluir.';
+      });
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -938,7 +975,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       } else {
         final savedAddress = await saveProfileAddress(_address);
         final service = ProfileService();
-        await service.submitClientKyc(
+        await service.submitUnifiedKyc(
+          targetMode: widget.targetMode,
+          isRenewal: widget.isSixMonthRenewal,
           cpfRaw: _cpf.text.trim(),
           typedFullName: _name.text.trim(),
           phone: _phone.text.trim(),
@@ -948,9 +987,12 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           longitude: savedAddress.longitude,
           livenessResult: _livenessResult!,
           ocrResult: _ocrResult!,
+          criminalResult: effectiveCriminal!,
           frontImageBytes: _docFrontBytes,
           backImageBytes: _docBackBytes,
           selfieImageBytes: _selfieBytes,
+          termsVersion: LegalMandateService.versionForMode(widget.targetMode),
+          termsSha256: LegalMandateService.sha256ForMode(widget.targetMode),
         );
       }
       _saveTimer?.cancel();
@@ -967,11 +1009,32 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     }
   }
 
+  Future<void> _openFullRoleTermsModal() async {
+    final accepted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => RoleTermsAcceptanceScreen(
+          profile: widget.profile,
+          mode: widget.targetMode,
+          isReuseFastTrack: false,
+        ),
+      ),
+    );
+    if (accepted == true && mounted) {
+      setState(() {
+        _termsAccepted = true;
+        _error = null;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
     final cpfDigits = DocumentOcrAndLivenessService.digitsOnly(_cpf.text);
     final cpfValid = DocumentOcrAndLivenessService.isValidCpfMod11(cpfDigits);
+    final effectiveCriminal =
+        _criminalResult ?? widget.customCriminalResultOverride;
 
     return PopScope(
       canPop: false,
@@ -1007,12 +1070,27 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    StepperBar(total: 4, current: _step + 1),
+                    if (widget.isSixMonthRenewal) ...[
+                      Container(
+                        key: const ValueKey('banner-six-month-renewal'),
+                        margin: const EdgeInsets.only(bottom: 14),
+                        child: const InfoBanner(
+                          'Seus dados cadastrais, histórico e carteira estão preservados. '
+                          'Para manter a segurança de todos dentro das residências, basta revalidar '
+                          'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 6 meses.',
+                          title: 'Renovação Semestral de Segurança (a cada 6 meses)',
+                          tone: BannerTone.security,
+                          icon: Icons.event_repeat_rounded,
+                        ),
+                      ),
+                    ],
+                    StepperBar(total: _totalSteps, current: _step + 1),
                     const SizedBox(height: 18),
                     if (_step == 0) _buildStep0Identity(tk, cpfDigits, cpfValid),
                     if (_step == 1) _buildStep1Address(),
                     if (_step == 2) _buildStep2ActiveLiveness(tk),
                     if (_step == 3) _buildStep3DocumentForensicsAndOcr(tk),
+                    if (_step == 4) _buildStep4CriminalBackground(),
                     if (_error != null) ...[
                       const SizedBox(height: 14),
                       InfoBanner(_error!, tone: BannerTone.danger),
@@ -1042,12 +1120,34 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     ? () => _setStep(3)
                     : null,
               ),
+            3 => _isLegacyFourStepTestMode
+                ? PrimaryButton(
+                    key: const ValueKey('client-setup-step3-submit'),
+                    label: 'Concluir Validação e Entrar no Aplicativo',
+                    loading: _saving,
+                    onPressed: (_ocrResult != null &&
+                            _ocrResult!.isAuthenticAndCrossChecked &&
+                            !_saving)
+                        ? _finish
+                        : null,
+                  )
+                : PrimaryButton(
+                    key: const ValueKey('client-setup-step3-continue'),
+                    label: 'Continuar para Antecedentes Criminais',
+                    trailingArrow: true,
+                    onPressed: (_ocrResult != null &&
+                            _ocrResult!.isAuthenticAndCrossChecked)
+                        ? () => _setStep(4)
+                        : null,
+                  ),
             _ => PrimaryButton(
-                key: const ValueKey('client-setup-step3-submit'),
-                label: 'Concluir Validação e Entrar no Aplicativo',
+                key: const ValueKey('client-setup-step4-submit'),
+                label: widget.isSixMonthRenewal
+                    ? 'Concluir Renovação por Mais 6 Meses'
+                    : 'Concluir Validação e Entrar no Aplicativo',
                 loading: _saving,
-                onPressed: (_ocrResult != null &&
-                        _ocrResult!.isAuthenticAndCrossChecked &&
+                onPressed: (effectiveCriminal != null &&
+                        effectiveCriminal.passed &&
                         !_saving)
                     ? _finish
                     : null,
@@ -1059,9 +1159,14 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // PASSO 1: "Como podemos te chamar?" + "Telefone com DDD" + "CPF do Titular"
+  // PASSO 1: "Como podemos te chamar?" + "Telefone com DDD" + "CPF do Titular" + Termos
   // ---------------------------------------------------------------------------
   Widget _buildStep0Identity(AppTokens tk, String cpfDigits, bool cpfValid) {
+    final isProviderTarget = widget.targetMode == UserMode.provider;
+    final termsTitle = isProviderTarget
+        ? 'Termos de Parceria e Cláusula-Mandato do Profissional'
+        : 'Termos de Uso e Proteção do Cliente';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1071,7 +1176,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
+          isProviderTarget
+              ? 'Vamos configurar sua conta de profissional com validação unificada de identidade, documento e antecedentes criminais (válida por 6 meses também para o modo Cliente).'
+              : 'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
           style: TextStyle(color: tk.textMuted, height: 1.4),
         ),
         const SizedBox(height: 24),
@@ -1121,7 +1228,85 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
           ),
         ),
+        const SizedBox(height: 16),
+        Container(
+          key: const ValueKey('card-initial-role-terms'),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: tk.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: _termsAccepted ? tk.success.withValues(alpha: 0.6) : tk.border,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Checkbox(
+                      key: const ValueKey('checkbox-accept-initial-terms'),
+                      value: _termsAccepted,
+                      onChanged: (v) =>
+                          setState(() => _termsAccepted = v ?? false),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () =>
+                          setState(() => _termsAccepted = !_termsAccepted),
+                      child: Text(
+                        'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: tk.text,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('btn-read-full-terms'),
+                  onPressed: _openFullRoleTermsModal,
+                  icon: const Icon(Icons.description_outlined, size: 16),
+                  label: const Text('Ler termos completos'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // PASSO 5: Certidão Negativa de Antecedentes Criminais da Polícia Federal
+  // ---------------------------------------------------------------------------
+  Widget _buildStep4CriminalBackground() {
+    return CriminalBackgroundCheckStep(
+      expectedFullName: _ocrResult?.extractedFullName.isNotEmpty == true
+          ? _ocrResult!.extractedFullName
+          : _name.text.trim(),
+      expectedCpfRaw: _cpf.text.trim(),
+      initialResult: _criminalResult,
+      isSixMonthRenewal: widget.isSixMonthRenewal,
+      onValidated: (res) {
+        if (!mounted) return;
+        setState(() {
+          _criminalResult = res;
+          _error = null;
+        });
+      },
     );
   }
 

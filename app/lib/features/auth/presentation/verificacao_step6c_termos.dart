@@ -1,23 +1,41 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/models/user_profile.dart';
 import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/light_island.dart';
 
 /// Tela oficial de Termos de Uso, Política de Privacidade e Cláusula-Mandato
-/// Mercantil Expressa (Art. 653 do Código Civil — Split 85% / 13,5% / 1,5% + 0% Peças NF-e).
-class VerificacaoStep6cTermosScreen extends StatelessWidget {
-  const VerificacaoStep6cTermosScreen({super.key});
+/// Mercantil Expressa (Art. 653 do Código Civil — Split 85% / 13,5% / 1,5% + 0% Peças NF-e),
+/// com seletor segmentado **Termos do Cliente** | **Termos do Profissional** para consulta
+/// pública ou autenticada a qualquer momento.
+class VerificacaoStep6cTermosScreen extends StatefulWidget {
+  const VerificacaoStep6cTermosScreen({super.key, this.initialMode});
 
+  final UserMode? initialMode;
+
+  @override
+  State<VerificacaoStep6cTermosScreen> createState() =>
+      _VerificacaoStep6cTermosScreenState();
+}
+
+class _VerificacaoStep6cTermosScreenState
+    extends State<VerificacaoStep6cTermosScreen> {
   static const Color _primaryBlue = Color(0xFF003366);
   static const Color _textDarkBlue = Color(0xFF001A33);
   static const Color _textSlate = Color(0xFF334155);
   static const Color _textMuted = Color(0xFF64748B);
   static const Color _textHeading = Color(0xFF0F172A);
 
+  late UserMode _selectedMode = widget.initialMode ?? UserMode.provider;
+
   @override
   Widget build(BuildContext context) {
-    final sealHex = LegalMandateService.currentDocumentSha256Hex;
+    final canonicalHex = LegalMandateService.currentDocumentSha256Hex;
+    final modeHex = LegalMandateService.sha256ForMode(_selectedMode);
+    final modeVersion = LegalMandateService.versionForMode(_selectedMode);
+    final clauses = LegalMandateService.clausesForMode(_selectedMode);
+    final isClient = _selectedMode == UserMode.client;
 
     return LightIsland(
       child: AppScaffold(
@@ -41,39 +59,40 @@ class VerificacaoStep6cTermosScreen extends StatelessWidget {
             physics: const BouncingScrollPhysics(),
             child: Padding(
               padding: const EdgeInsets.symmetric(
-                horizontal: 24.0,
-                vertical: 24.0,
+                horizontal: 20.0,
+                vertical: 20.0,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildOfficialTag(),
+                  const SizedBox(height: 14),
+                  _buildRoleSegmentSelector(),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Termos de Uso, Custódia e Cláusula-Mandato',
-                    style: TextStyle(
-                      fontSize: 23,
+                  Text(
+                    isClient
+                        ? 'Termos de Uso e Proteção do Cliente Desperrengue'
+                        : 'Termos de Uso, Custódia e Cláusula-Mandato',
+                    style: const TextStyle(
+                      fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: _textDarkBlue,
                       height: 1.22,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Versão vigente: ${LegalMandateService.currentMandateVersion} · Código Civil Art. 653 e LGPD',
-                    style: TextStyle(fontSize: 12, color: _textMuted),
+                  Text(
+                    'Versão vigente: $modeVersion · Código Civil Art. 653 e LGPD · Validação Semestral (6 meses)',
+                    style: const TextStyle(fontSize: 12, color: _textMuted),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
                   Divider(
                     color: Colors.grey.withValues(alpha: 0.15),
                     thickness: 1,
                   ),
-                  const SizedBox(height: 20),
-                  for (final clause in LegalMandateService.canonicalClauses)
-                    _buildClause(
-                      title: clause.title,
-                      content: clause.body,
-                    ),
+                  const SizedBox(height: 18),
+                  for (final clause in clauses)
+                    _buildClause(title: clause.title, content: clause.body),
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(14),
@@ -97,13 +116,24 @@ class VerificacaoStep6cTermosScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          sealHex,
+                          canonicalHex,
                           style: const TextStyle(
                             fontSize: 10.5,
                             fontFamily: 'monospace',
                             color: _textMuted,
                           ),
                         ),
+                        if (modeHex != canonicalHex) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Selo Específico (${isClient ? "Cliente" : "Profissional"}): $modeHex',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'monospace',
+                              color: _textMuted,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -113,6 +143,82 @@ class VerificacaoStep6cTermosScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildRoleSegmentSelector() {
+    final isClient = _selectedMode == UserMode.client;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _primaryBlue.withValues(alpha: 0.12)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final clientTab = InkWell(
+            key: const ValueKey('segment-terms-client'),
+            borderRadius: BorderRadius.circular(9),
+            onTap: () => setState(() => _selectedMode = UserMode.client),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+              decoration: BoxDecoration(
+                color: isClient ? _primaryBlue : Colors.transparent,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                'Termos do Cliente',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: isClient ? Colors.white : _textDarkBlue,
+                ),
+              ),
+            ),
+          );
+
+          final providerTab = InkWell(
+            key: const ValueKey('segment-terms-provider'),
+            borderRadius: BorderRadius.circular(9),
+            onTap: () => setState(() => _selectedMode = UserMode.provider),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+              decoration: BoxDecoration(
+                color: !isClient ? _primaryBlue : Colors.transparent,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                'Termos do Profissional',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: !isClient ? Colors.white : _textDarkBlue,
+                ),
+              ),
+            ),
+          );
+
+          if (constraints.maxWidth < 290) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [clientTab, const SizedBox(height: 4), providerTab],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: clientTab),
+              const SizedBox(width: 6),
+              Expanded(child: providerTab),
+            ],
+          );
+        },
       ),
     );
   }
@@ -151,7 +257,7 @@ class VerificacaoStep6cTermosScreen extends StatelessWidget {
 
   Widget _buildClause({required String title, required String content}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 24.0),
+      padding: const EdgeInsets.only(bottom: 22.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
