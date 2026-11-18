@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/profile_service.dart';
 import '../../../core/services/welcome_cinema_tracker.dart';
 import '../../../core/ui/app_scaffold.dart';
 import 'auth_gate.dart';
@@ -35,6 +38,13 @@ class _CadastroSucessoRoutingScreenState
   /// Ponte cinematográfica O(1) (450ms) sem clarão branco antes do Welcome Cinema.
   Future<void> _processarTransicaoSessao() async {
     await WelcomeCinemaTracker.armForFreshRegistration(_currentAuthUserId());
+    try {
+      unawaited(
+        ProfileService().fetchCurrent().then<void>((_) {}, onError: (_) {}),
+      );
+    } catch (_) {
+      // Ambiente de teste sem Supabase inicializado.
+    }
     await Future.delayed(const Duration(milliseconds: 450));
 
     if (!mounted) return;

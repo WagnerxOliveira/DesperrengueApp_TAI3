@@ -1,6 +1,7 @@
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/services/welcome_cinema_tracker.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
+import 'package:desperrengue_app/features/auth/presentation/cadastro_sucesso_routing.dart';
 import 'package:desperrengue_app/features/auth/presentation/desperrengue_welcome_cinema_screen.dart';
 import 'package:desperrengue_app/features/auth/presentation/role_selection_screen.dart';
 import 'package:flutter/gestures.dart';
@@ -156,6 +157,78 @@ void main() {
           ),
           isFalse,
         );
+      },
+    );
+
+    test(
+      'isLikelyFreshAuthInMemory protege contra flash claro no PostAuthRouter em signup OTP e OAuth recente',
+      () async {
+        final now = DateTime.utc(2026, 11, 18, 18, 0, 0);
+        expect(WelcomeCinemaTracker.isLikelyFreshAuthInMemory(), isFalse);
+
+        await WelcomeCinemaTracker.armForFreshRegistration('uid-fresh-otp');
+        expect(
+          WelcomeCinemaTracker.isLikelyFreshAuthInMemory(
+            userId: 'uid-fresh-otp',
+          ),
+          isTrue,
+        );
+
+        await WelcomeCinemaTracker.markCompleted('uid-fresh-otp');
+        expect(
+          WelcomeCinemaTracker.isLikelyFreshAuthInMemory(
+            userId: 'uid-fresh-otp',
+            authCreatedAt: now.subtract(const Duration(minutes: 1)),
+            referenceNow: now,
+          ),
+          isFalse,
+        );
+
+        WelcomeCinemaTracker.resetMemoryStateForTesting();
+        expect(
+          WelcomeCinemaTracker.isLikelyFreshAuthInMemory(
+            userId: 'uid-fresh-oauth',
+            authCreatedAt: now.subtract(const Duration(minutes: 4)),
+            referenceNow: now,
+          ),
+          isTrue,
+        );
+        expect(
+          WelcomeCinemaTracker.isLikelyFreshAuthInMemory(
+            userId: 'uid-old-oauth',
+            authCreatedAt: now.subtract(const Duration(hours: 2)),
+            referenceNow: now,
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    testWidgets(
+      'CadastroSucessoRoutingScreen em ThemeMode.light mantém fundo Azul-Noite (#0F172A), selo esmeralda e arma WelcomeCinemaTracker',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.resolve(null, Brightness.light),
+            themeMode: ThemeMode.light,
+            home: const CadastroSucessoRoutingScreen(),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.byKey(const Key('cadastro-sucesso-emerald-seal')),
+          findsOneWidget,
+        );
+        expect(find.text('Cadastro confirmado!'), findsOneWidget);
+
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        expect(scaffold.backgroundColor, const Color(0xFF0F172A));
+        expect(WelcomeCinemaTracker.isLikelyFreshAuthInMemory(), isTrue);
+
+        // Desmonta antes do timer de 450ms disparar navegação para AuthGate
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(milliseconds: 500));
       },
     );
   });
