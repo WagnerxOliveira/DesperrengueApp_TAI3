@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/profile_service.dart';
+import '../../../core/services/welcome_cinema_tracker.dart';
 import '../../../core/storage/local_prefs.dart';
 import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/widgets.dart';
@@ -15,6 +16,7 @@ import '../../provider/presentation/provider_setup_screens.dart';
 import '../../provider/presentation/provider_shell.dart';
 import '../../shared/presentation/role_terms_acceptance_screen.dart';
 import 'auth_gate.dart';
+import 'desperrengue_welcome_cinema_screen.dart';
 import 'role_selection_screen.dart';
 import 'verificacao_step6_feedback.dart';
 import 'verificacao_step7_aprovado.dart';
@@ -33,6 +35,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
   final _session = AppSession.instance;
   UserProfile? _profile;
   UserMode? _preferred;
+  bool _showPostSignupCinema = false;
   bool _loading = true;
   int _loadSeq = 0;
 
@@ -56,7 +59,13 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
     // dois refresh seguidos (profileTick + deep link) podiam terminar fora de ordem
     // e a resposta velha sobrescrever o perfil novo.
     final ticket = ++_loadSeq;
-    final uid = Supabase.instance.client.auth.currentUser?.id;
+    User? user;
+    try {
+      user = Supabase.instance.client.auth.currentUser;
+    } catch (_) {
+      user = null;
+    }
+    final uid = user?.id;
     final preferred = uid == null ? null : await LocalPrefs.lastProfile(uid);
     UserProfile? p;
     try {
@@ -64,10 +73,19 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
     } catch (_) {
       p = await ProfileService().cachedProfile();
     }
+    var showCinema = false;
+    if (p != null) {
+      showCinema = await WelcomeCinemaTracker.shouldShowBeforeRoleSelection(
+        profile: p,
+        authCreatedAt: DateTime.tryParse(user?.createdAt ?? ''),
+        forceSelection: _session.forceSelection.value,
+      );
+    }
     if (!mounted || ticket != _loadSeq) return;
     setState(() {
       _profile = p;
       _preferred = preferred;
+      _showPostSignupCinema = showCinema;
       _loading = false;
     });
   }
@@ -142,7 +160,29 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
     }
     switch (dest) {
       case AppDestination.modeSelection:
-        return RoleSelectionScreen(profile: profile);
+        final showCinema =
+            _showPostSignupCinema && !_session.forceSelection.value;
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 450),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: showCinema
+              ? DesperrengueWelcomeCinemaScreen(
+                  key: const ValueKey('post-signup-welcome-cinema'),
+                  userFirstName:
+                      profile.firstName == 'você' ? '' : profile.firstName,
+                  onCompleted: () async {
+                    await WelcomeCinemaTracker.markCompleted(profile.id);
+                    if (mounted) {
+                      setState(() => _showPostSignupCinema = false);
+                    }
+                  },
+                )
+              : RoleSelectionScreen(
+                  key: const ValueKey('post-signup-role-selection'),
+                  profile: profile,
+                ),
+        );
       case AppDestination.clientEnroll:
         return _EnrollRunner(
           mode: UserMode.client,

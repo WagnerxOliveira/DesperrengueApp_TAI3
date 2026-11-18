@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/legal_mandate_service.dart';
+import '../../../core/services/welcome_cinema_tracker.dart';
 import 'cadastro_sucesso_routing.dart';
 
 import '../../../core/ui/light_island.dart';
@@ -129,6 +130,10 @@ class _CadastroVerificacaoOtpScreenState
         email: widget.email,
         token: token,
         type: OtpType.signup,
+      );
+
+      await WelcomeCinemaTracker.armForFreshRegistration(
+        Supabase.instance.client.auth.currentUser?.id,
       );
 
       unawaited(
