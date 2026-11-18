@@ -57,6 +57,7 @@ class _DesperrengueWelcomeCinemaScreenState
   bool _isPaused = false;
   bool _completedDispatched = false;
   int _lastHapticStep = -1;
+  int? _suppressedDissolveBoundary;
 
   @override
   void initState() {
@@ -96,6 +97,12 @@ class _DesperrengueWelcomeCinemaScreenState
   void _onTimelineTick() {
     if (_completedDispatched) return;
     final t = _controller.value;
+    if (_suppressedDissolveBoundary != null) {
+      final suppressedBoundaryT = (_suppressedDissolveBoundary! + 1) * 0.25;
+      if ((t - suppressedBoundaryT).abs() > _kCrossDissolveHalfWindow) {
+        _suppressedDissolveBoundary = null;
+      }
+    }
     for (var i = _lastHapticStep + 1; i < _kHapticMilestones.length; i++) {
       if (t >= _kHapticMilestones[i]) {
         _lastHapticStep = i;
@@ -123,6 +130,7 @@ class _DesperrengueWelcomeCinemaScreenState
     final clampedIndex = chapterIndex.clamp(0, 3);
     final targetT = (clampedIndex * 0.25).clamp(0.0, 0.99);
     _isPaused = false;
+    _suppressedDissolveBoundary = clampedIndex > 0 ? clampedIndex - 1 : null;
     _syncHapticStepForTimeline(targetT);
     HapticFeedback.selectionClick();
     _controller.forward(from: targetT);
@@ -190,6 +198,7 @@ class _DesperrengueWelcomeCinemaScreenState
   ) {
     if (!reduceMotion) {
       for (var k = 0; k < 3; k++) {
+        if (k == _suppressedDissolveBoundary) continue;
         final boundary = (k + 1) * 0.25;
         final dist = t - boundary;
         if (dist.abs() <= _kCrossDissolveHalfWindow) {
@@ -197,6 +206,15 @@ class _DesperrengueWelcomeCinemaScreenState
                   (_kCrossDissolveHalfWindow * 2.0))
               .clamp(0.0, 1.0);
           final blend = Curves.easeInOutCubic.transform(rawU);
+
+          // Curvas assimétricas de opacidade: o ato anterior apaga antes (0.0 -> 0.62)
+          // enquanto o novo ato acende de (0.28 -> 1.0), evitando sobreposição 50%/50% de títulos.
+          final outFade = Curves.easeInCubic.transform(
+            (rawU / 0.62).clamp(0.0, 1.0),
+          );
+          final inFade = Curves.easeOutCubic.transform(
+            ((rawU - 0.28) / 0.72).clamp(0.0, 1.0),
+          );
 
           final outgoingLocalT = ((t - k * 0.25) / 0.25).clamp(0.0, 1.0);
           final incomingLocalT =
@@ -208,7 +226,7 @@ class _DesperrengueWelcomeCinemaScreenState
               localT: outgoingLocalT,
               scale: 1.0 + 0.05 * blend,
               translateY: -12.0 * blend,
-              opacity: (1.0 - blend).clamp(0.0, 1.0),
+              opacity: (1.0 - outFade).clamp(0.0, 1.0),
               includeSemanticActKey: k == dominantAct,
             ),
             _CinemaActRenderLayer(
@@ -216,7 +234,7 @@ class _DesperrengueWelcomeCinemaScreenState
               localT: incomingLocalT,
               scale: 0.95 + 0.05 * blend,
               translateY: 14.0 * (1.0 - blend),
-              opacity: blend.clamp(0.0, 1.0),
+              opacity: inFade.clamp(0.0, 1.0),
               includeSemanticActKey: (k + 1) == dominantAct,
             ),
           ];
@@ -2342,23 +2360,23 @@ class _Act3LiveRouteEscrowPainter extends CustomPainter {
     );
 
     final activeT = reduceMotion ? 0.75 : progress.clamp(0.0, 1.0);
-    // Ponto luminoso do profissional ao longo da curva cúbica
-    final inv = 1.0 - activeT;
-    final bx = inv * inv * inv * start.dx +
-        3 * inv * inv * activeT * c1.dx +
-        3 * inv * activeT * activeT * c2.dx +
-        activeT * activeT * activeT * end.dx;
-    final by = inv * inv * inv * start.dy +
-        3 * inv * inv * activeT * c1.dy +
-        3 * inv * activeT * activeT * c2.dy +
-        activeT * activeT * activeT * end.dy;
+    // Subdivisão analítica de De Casteljau da curva cúbica em [0, activeT] (120 FPS, zero PathMetrics)
+    final p01 = Offset.lerp(start, c1, activeT)!;
+    final p12 = Offset.lerp(c1, c2, activeT)!;
+    final p23 = Offset.lerp(c2, end, activeT)!;
+    final p012 = Offset.lerp(p01, p12, activeT)!;
+    final p123 = Offset.lerp(p12, p23, activeT)!;
+    final beacon = Offset.lerp(p012, p123, activeT)!;
 
-    final beacon = Offset(bx, by);
-    canvas.drawLine(
-      start,
-      beacon,
+    final activeRoutePath = Path()
+      ..moveTo(start.dx, start.dy)
+      ..cubicTo(p01.dx, p01.dy, p012.dx, p012.dy, beacon.dx, beacon.dy);
+
+    canvas.drawPath(
+      activeRoutePath,
       Paint()
-        ..strokeWidth = 2.2
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
         ..strokeCap = StrokeCap.round
         ..shader = ui.Gradient.linear(
           start,
