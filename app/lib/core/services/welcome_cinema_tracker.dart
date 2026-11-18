@@ -93,6 +93,34 @@ class WelcomeCinemaTracker {
     return isArmedForUser || isRecentAuth;
   }
 
+  /// Verificação síncrona em memória para evitar flash claro durante o
+  /// carregamento inicial do `PostAuthRouter` logo após signup OTP ou OAuth.
+  static bool isLikelyFreshAuthInMemory({
+    String? userId,
+    DateTime? authCreatedAt,
+    DateTime? referenceNow,
+  }) {
+    final cleanUid = userId?.trim();
+    if (cleanUid != null &&
+        cleanUid.isNotEmpty &&
+        _completedInMemory.contains(cleanUid)) {
+      return false;
+    }
+    final armed = _armedUidInMemory;
+    if (armed != null && !_completedInMemory.contains(armed)) {
+      return true;
+    }
+    if (cleanUid == null && _completedInMemory.isNotEmpty) {
+      return false;
+    }
+    if (authCreatedAt != null) {
+      final nowUtc = (referenceNow ?? DateTime.now()).toUtc();
+      final diffMinutes = nowUtc.difference(authCreatedAt.toUtc()).inMinutes;
+      return diffMinutes >= -5 && diffMinutes <= 30;
+    }
+    return false;
+  }
+
   @visibleForTesting
   static void resetMemoryStateForTesting() {
     _completedInMemory.clear();
