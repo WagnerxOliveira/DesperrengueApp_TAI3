@@ -70,6 +70,20 @@ class UserProfile {
     this.ocrVerified = false,
     this.kycOcrConfidence = 0.0,
     this.kycVerifiedAt,
+    // Ciclo Semestral Unificado (6 Meses) + Antecedentes Criminais PF + Termos por Papel
+    this.kycExpiresAt,
+    this.kycValidationCycle = 0,
+    this.kycBillingLockUntil,
+    this.criminalRecordVerified = false,
+    this.criminalRecordVerifiedAt,
+    this.criminalRecordExpiresAt,
+    this.criminalCertificateNumberMasked,
+    this.clientTermsAccepted = false,
+    this.clientTermsAcceptedAt,
+    this.clientTermsVersion,
+    this.providerTermsAccepted = false,
+    this.providerTermsAcceptedAt,
+    this.providerTermsVersion,
     this.trustTier = 'STANDARD',
     this.isTrustedAnchor = false,
     this.externalTrustScore = 0.0,
@@ -119,6 +133,21 @@ class UserProfile {
   final double kycOcrConfidence;
   final DateTime? kycVerifiedAt;
 
+  // Ciclo Semestral Unificado (6 Meses), Antecedentes Criminais PF e Termos por Papel
+  final DateTime? kycExpiresAt;
+  final int kycValidationCycle;
+  final DateTime? kycBillingLockUntil;
+  final bool criminalRecordVerified;
+  final DateTime? criminalRecordVerifiedAt;
+  final DateTime? criminalRecordExpiresAt;
+  final String? criminalCertificateNumberMasked;
+  final bool clientTermsAccepted;
+  final DateTime? clientTermsAcceptedAt;
+  final String? clientTermsVersion;
+  final bool providerTermsAccepted;
+  final DateTime? providerTermsAcceptedAt;
+  final String? providerTermsVersion;
+
   // Campos de Governança de Garantia, Marco Zero (Cold-Start) e Carteira Bipartida
   final String trustTier;
   final bool isTrustedAnchor;
@@ -134,6 +163,9 @@ class UserProfile {
   final double availableWalletBalance;
   final double maturingWalletBalance;
   final bool pixKeyCpfMatched;
+
+  static DateTime? _parseOptionalDate(Object? raw) =>
+      raw == null ? null : DateTime.tryParse(raw.toString());
 
   factory UserProfile.fromMap(Map<String, dynamic> map) => UserProfile(
         id: map['id'] as String,
@@ -160,9 +192,7 @@ class UserProfile {
         verifiedFullName: map['verified_full_name'] as String?,
         documentType: map['document_type'] as String?,
         documentNumberMasked: map['document_number_masked'] as String?,
-        birthDate: map['birth_date'] != null
-            ? DateTime.tryParse(map['birth_date'].toString())
-            : null,
+        birthDate: _parseOptionalDate(map['birth_date']),
         issuingAuthority: map['issuing_authority'] as String?,
         clientKycStatus: (map['client_kyc_status'] as String?) ?? 'NOT_STARTED',
         livenessVerified: (map['liveness_verified'] as bool?) ?? false,
@@ -171,9 +201,29 @@ class UserProfile {
         ocrVerified: (map['ocr_verified'] as bool?) ?? false,
         kycOcrConfidence:
             (map['kyc_ocr_confidence'] as num?)?.toDouble() ?? 0.0,
-        kycVerifiedAt: map['kyc_verified_at'] != null
-            ? DateTime.tryParse(map['kyc_verified_at'].toString())
-            : null,
+        kycVerifiedAt: _parseOptionalDate(map['kyc_verified_at']),
+        kycExpiresAt: _parseOptionalDate(map['kyc_expires_at']),
+        kycValidationCycle:
+            (map['kyc_validation_cycle'] as num?)?.toInt() ?? 0,
+        kycBillingLockUntil: _parseOptionalDate(map['kyc_billing_lock_until']),
+        criminalRecordVerified:
+            (map['criminal_record_verified'] as bool?) ?? false,
+        criminalRecordVerifiedAt:
+            _parseOptionalDate(map['criminal_record_verified_at']),
+        criminalRecordExpiresAt:
+            _parseOptionalDate(map['criminal_record_expires_at']),
+        criminalCertificateNumberMasked:
+            map['criminal_certificate_number_masked'] as String?,
+        clientTermsAccepted:
+            (map['client_terms_accepted'] as bool?) ?? false,
+        clientTermsAcceptedAt:
+            _parseOptionalDate(map['client_terms_accepted_at']),
+        clientTermsVersion: map['client_terms_version'] as String?,
+        providerTermsAccepted:
+            (map['provider_terms_accepted'] as bool?) ?? false,
+        providerTermsAcceptedAt:
+            _parseOptionalDate(map['provider_terms_accepted_at']),
+        providerTermsVersion: map['provider_terms_version'] as String?,
         trustTier: (map['trust_tier'] as String?) ?? 'STANDARD',
         isTrustedAnchor: (map['is_trusted_anchor'] as bool?) ?? false,
         externalTrustScore:
@@ -313,6 +363,44 @@ class UserProfile {
       kycBiometricVerified ||
       clientKycStatus == 'APPROVED';
 
+  /// Data efetiva de expiração do ciclo semestral unificado (6 meses) de
+  /// Identidade Civil + Antecedentes Criminais. `null` em perfis legados sem data.
+  DateTime? get effectiveKycExpiresAt {
+    if (kycExpiresAt != null && criminalRecordExpiresAt != null) {
+      return kycExpiresAt!.toUtc().isBefore(criminalRecordExpiresAt!.toUtc())
+          ? kycExpiresAt
+          : criminalRecordExpiresAt;
+    }
+    return kycExpiresAt ?? criminalRecordExpiresAt;
+  }
+
+  /// Retorna `true` se o ciclo de 6 meses venceu (`now >= effectiveKycExpiresAt`).
+  /// Retorna `false` quando `effectiveKycExpiresAt == null` (preserva 100% dos testes legados).
+  bool isKycExpiredAt([DateTime? referenceNow]) {
+    final exp = effectiveKycExpiresAt;
+    if (exp == null) return false;
+    final now = (referenceNow ?? DateTime.now()).toUtc();
+    return !now.isBefore(exp.toUtc());
+  }
+
+  /// Dias restantes até o vencimento do ciclo semestral (`0` quando já expirado, `null` sem data).
+  int? daysUntilKycExpiration([DateTime? referenceNow]) {
+    final exp = effectiveKycExpiresAt;
+    if (exp == null) return null;
+    final now = (referenceNow ?? DateTime.now()).toUtc();
+    final expUtc = exp.toUtc();
+    if (!now.isBefore(expUtc)) return 0;
+    return (expUtc.difference(now).inSeconds / 86400.0).ceil();
+  }
+
+  /// Indica se a conta possui identidade civil + antecedentes criminais válidos e não expirados,
+  /// permitindo ativar o segundo modo (Cliente <-> Profissional) sem reenviar documentos e sem
+  /// nova cobrança de API.
+  bool hasValidReusableKyc([DateTime? referenceNow]) =>
+      !isKycExpiredAt(referenceNow) &&
+      criminalRecordVerified &&
+      hasVerifiedCivilIdentity;
+
   /// Nome civil homologado pelo OCR (ou `displayName` limpo caso ainda não homologado).
   String get officialCivilName =>
       (verifiedFullName != null &&
@@ -346,15 +434,17 @@ class UserProfile {
   }
 
   /// Em que ponto do cadastro o usuário está em cada modo.
-  ModeStage stageOf(UserMode mode) {
+  ModeStage stageOf(UserMode mode, {DateTime? referenceNow}) {
     switch (mode) {
       case UserMode.client:
         if (!isClient) return ModeStage.notEnrolled;
+        if (isKycExpiredAt(referenceNow)) return ModeStage.incomplete;
         return (clientSetupDone && clientKycStatus != 'REJECTED')
             ? ModeStage.ready
             : ModeStage.incomplete;
       case UserMode.provider:
         if (!isProvider) return ModeStage.notEnrolled;
+        if (isKycExpiredAt(referenceNow)) return ModeStage.incomplete;
         switch (verificationStatus) {
           case VerificationStatus.notSubmitted:
           case VerificationStatus.rejected:
@@ -375,23 +465,25 @@ class UserProfile {
   /// [preferred] = último perfil usado neste aparelho (cache local). Com os DOIS
   /// perfis prontos, abre direto nele (sem repetir a seleção a cada abertura);
   /// a seleção continua a um toque em "Trocar de modo".
-  UserMode? autoModeWith(UserMode? preferred) {
-    final auto = autoMode;
+  UserMode? autoModeWith(UserMode? preferred, {DateTime? referenceNow}) {
+    final auto = _autoModeAt(referenceNow);
     if (auto != null || preferred == null) return auto;
-    final stage = stageOf(preferred);
+    final stage = stageOf(preferred, referenceNow: referenceNow);
     return (stage == ModeStage.ready || stage == ModeStage.awaitingReview)
         ? preferred
         : null;
   }
 
-  UserMode? get autoMode {
+  UserMode? get autoMode => _autoModeAt(null);
+
+  UserMode? _autoModeAt(DateTime? referenceNow) {
     final only = (isClient && !isProvider)
         ? UserMode.client
         : (isProvider && !isClient)
             ? UserMode.provider
             : null;
     if (only == null) return null;
-    final stage = stageOf(only);
+    final stage = stageOf(only, referenceNow: referenceNow);
     return (stage == ModeStage.ready || stage == ModeStage.awaitingReview)
         ? only
         : null;
@@ -418,10 +510,13 @@ enum AppDestination {
   adminHome,
   modeSelection,
   clientEnroll,
+  clientTermsGate,
   clientSetup,
   clientHome,
   providerEnroll,
+  providerTermsAndReuseGate,
   kycStart,
+  kycSixMonthRenewal,
   kycInReview,
   kycApproved,
   providerSetup,
@@ -439,23 +534,45 @@ AppDestination destinationFor(
   UserMode? mode,
   bool forceSelection = false,
   UserMode? preferred,
+  DateTime? referenceNow,
 }) {
   if (profile.isAdmin) return AppDestination.adminHome;
 
+  // Se o ciclo semestral (6 meses) expirou em uma conta já cadastrada (ou com modo explícito),
+  // direciona imediatamente para a renovação semestral de segurança.
+  if (profile.isKycExpiredAt(referenceNow) &&
+      (mode != null || (!forceSelection && (profile.isClient || profile.isProvider)))) {
+    return AppDestination.kycSixMonthRenewal;
+  }
+
   var current = mode;
   if (current == null && !forceSelection) {
-    current = profile.autoModeWith(preferred);
+    current = profile.autoModeWith(preferred, referenceNow: referenceNow);
   }
   if (current == null) return AppDestination.modeSelection;
 
+  if (profile.isKycExpiredAt(referenceNow)) {
+    return AppDestination.kycSixMonthRenewal;
+  }
+
   switch (current) {
     case UserMode.client:
+      if ((!profile.isClient || !profile.clientSetupDone) &&
+          profile.hasValidReusableKyc(referenceNow) &&
+          !profile.clientTermsAccepted) {
+        return AppDestination.clientTermsGate;
+      }
       if (!profile.isClient) return AppDestination.clientEnroll;
       if (!profile.clientSetupDone || profile.clientKycStatus == 'REJECTED') {
         return AppDestination.clientSetup;
       }
       return AppDestination.clientHome;
     case UserMode.provider:
+      if ((!profile.isProvider ||
+              profile.verificationStatus == VerificationStatus.notSubmitted) &&
+          profile.hasValidReusableKyc(referenceNow)) {
+        return AppDestination.providerTermsAndReuseGate;
+      }
       if (!profile.isProvider) return AppDestination.providerEnroll;
       switch (profile.verificationStatus) {
         case VerificationStatus.notSubmitted:

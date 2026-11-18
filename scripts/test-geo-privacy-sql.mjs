@@ -890,6 +890,72 @@ check('19. Marco Zero Operacional do Marketplace (`20261116184500` + `marketplac
   assert.doesNotMatch(strippedReset, /delete\s+from\s+private\.founder_audit_log/i);
 });
 
+check('20. Cofre KYC Semestral Unificado (6 Meses) + Antecedentes Criminais PF + Termos Bivalentes + Trava Anti-Recobrança (`20261118150000` + `kyc-argon-vision-gate`)', () => {
+  const migUnifiedPath = path.join(
+    MIGRATIONS_DIR,
+    '20261118150000_unified_6m_kyc_criminal_check_role_terms_and_marketplace_reset.sql'
+  );
+  const visionGatePath = path.join(MIGRATIONS_DIR, '..', 'functions', 'kyc-argon-vision-gate', 'index.ts');
+  assert.ok(fs.existsSync(migUnifiedPath), 'Migration 20261118150000 obrigatória');
+  assert.ok(fs.existsSync(visionGatePath), 'Edge Function kyc-argon-vision-gate/index.ts obrigatória');
+
+  const migUnified = fs.readFileSync(migUnifiedPath, 'utf8');
+  const visionGate = fs.readFileSync(visionGatePath, 'utf8');
+  const strippedUnified = lexSql(
+    migUnified,
+    '20261118150000_unified_6m_kyc_criminal_check_role_terms_and_marketplace_reset.sql'
+  );
+
+  assert.match(strippedUnified, /^\s*begin\s*;/i, '20261118150000 deve abrir com begin;');
+  assert.match(strippedUnified, /commit\s*;\s*$/i, '20261118150000 deve encerrar com commit;');
+  assert.doesNotMatch(strippedUnified, /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i);
+
+  // Idempotência estrita em CREATE TABLE / CREATE INDEX / CREATE POLICY / CREATE TRIGGER
+  const rawCreateTables = strippedUnified.match(/\bcreate\s+table\s+(?!if\s+not\s+exists\b)/gi) ?? [];
+  assert.equal(rawCreateTables.length, 0, '20261118150000: todo CREATE TABLE deve usar IF NOT EXISTS');
+  const rawCreateIndexes = strippedUnified.match(/\bcreate\s+(?:unique\s+)?index\s+(?!if\s+not\s+exists\b)/gi) ?? [];
+  assert.equal(rawCreateIndexes.length, 0, '20261118150000: todo CREATE INDEX deve usar IF NOT EXISTS');
+
+  // Tabela criminal_background_checks + RLS ENABLE & FORCE + Anti-Replay entre contas
+  assert.match(migUnified, /create\s+table\s+if\s+not\s+exists\s+public\.criminal_background_checks/i);
+  assert.match(migUnified, /alter\s+table\s+public\.criminal_background_checks\s+enable\s+row\s+level\s+security/i);
+  assert.match(migUnified, /alter\s+table\s+public\.criminal_background_checks\s+force\s+row\s+level\s+security/i);
+  assert.match(migUnified, /revoke\s+all\s+on\s+table\s+public\.criminal_background_checks\s+from\s+public,\s*anon,\s*authenticated/i);
+  assert.match(migUnified, /ERR_CRIMINAL_CERT_REPLAY_ACROSS_ACCOUNTS/);
+
+  // Proteção das novas colunas em profiles_protect_columns e RPCs de 6 meses / reaproveitamento
+  assert.match(migUnified, /create\s+or\s+replace\s+function\s+public\.profiles_protect_columns/i);
+  assert.match(migUnified, /new\.kyc_expires_at\s+is\s+distinct\s+from\s+old\.kyc_expires_at/i);
+  assert.match(migUnified, /new\.criminal_record_verified\s+is\s+distinct\s+from\s+old\.criminal_record_verified/i);
+  assert.match(migUnified, /new\.client_terms_accepted\s+is\s+distinct\s+from\s+old\.client_terms_accepted/i);
+  assert.match(migUnified, /new\.provider_terms_accepted\s+is\s+distinct\s+from\s+old\.provider_terms_accepted/i);
+
+  assert.match(migUnified, /create\s+or\s+replace\s+function\s+public\.is_kyc_cycle_currently_valid/i);
+  assert.match(migUnified, /create\s+or\s+replace\s+function\s+public\.submit_unified_kyc_v2/i);
+  assert.match(migUnified, /create\s+or\s+replace\s+function\s+public\.activate_role_reusing_valid_kyc/i);
+  assert.match(migUnified, /interval\s+'6 months'/i);
+  assert.match(migUnified, /ERR_KYC_EXPIRED_OR_MISSING/);
+
+  // Limpeza completa do marketplace com preservação soberana CEO
+  assert.match(migUnified, /delete\s+from\s+public\.legal_mandate_acceptances/i);
+  assert.match(migUnified, /delete\s+from\s+public\.criminal_background_checks/i);
+  assert.match(migUnified, /delete\s+from\s+public\.profiles/i);
+  assert.match(migUnified, /private\.ceo_owner_canonical_email\(\)/i);
+  assert.match(migUnified, /ERR_CEO_ACCOUNT_PROTECTION_VIOLATION/);
+  assert.doesNotMatch(strippedUnified, /delete\s+from\s+private\.ceo_sovereign_vault/i);
+  assert.doesNotMatch(strippedUnified, /delete\s+from\s+private\.ceo_crypto_pepper/i);
+  assert.doesNotMatch(strippedUnified, /delete\s+from\s+private\.ceo_password_history/i);
+  assert.doesNotMatch(strippedUnified, /delete\s+from\s+private\.founder_audit_log/i);
+  assert.doesNotMatch(strippedUnified, /delete\s+from\s+public\.app_settings/i);
+
+  // Edge Function kyc-argon-vision-gate: trava anti-recobrança + modo criminal_record
+  assert.match(visionGate, /kyc_billing_lock_until/);
+  assert.match(visionGate, /reused_valid_kyc:\s*true/);
+  assert.match(visionGate, /api_billed:\s*false/);
+  assert.match(visionGate, /mode\s*===\s*"criminal_record"/);
+  assert.match(visionGate, /NOTHING_ON_RECORD/);
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {
