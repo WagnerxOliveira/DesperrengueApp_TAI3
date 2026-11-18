@@ -324,13 +324,17 @@ class _DesperrengueWelcomeCinemaScreenState
                           ),
                         ),
                         const SizedBox(width: 6),
-                        Text(
-                          _chapterLabelFor(actIndex),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.2,
+                        Flexible(
+                          child: Text(
+                            _chapterLabelFor(actIndex),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.2,
+                            ),
                           ),
                         ),
                       ],
@@ -359,12 +363,16 @@ class _DesperrengueWelcomeCinemaScreenState
                             color: Color(0xFFFFB020),
                           ),
                           SizedBox(width: 5),
-                          Text(
-                            'Pausado para leitura',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                          Flexible(
+                            child: Text(
+                              'Pausado para leitura',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ],
@@ -714,12 +722,16 @@ class _DesperrengueWelcomeCinemaScreenState
                                 color: Color(0xFF4ADE80),
                               ),
                               SizedBox(width: 6),
-                              Text(
-                                '1 Conta · 2 Perfis',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
+                              Flexible(
+                                child: Text(
+                                  '1 Conta · 2 Perfis',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ],
@@ -858,12 +870,16 @@ class _DesperrengueWelcomeCinemaScreenState
         children: [
           Icon(icon, size: 13, color: accent),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
