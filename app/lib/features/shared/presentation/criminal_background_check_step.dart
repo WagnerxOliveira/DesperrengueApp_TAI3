@@ -233,6 +233,7 @@ class _CriminalBackgroundCheckStepState
             manualIssuedDate: _issuedDate,
             manualValidationCode: manualCode.isEmpty ? null : manualCode,
             rawExtractedTextOverride: widget.rawExtractedTextOverride,
+            referenceNow: widget.referenceNow,
           );
 
       if (!mounted) return;

@@ -12,7 +12,6 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/criminal_background_service.dart';
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/services/draft_store.dart';
-import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/live_camera_frame_bridge.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
@@ -991,8 +990,6 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           frontImageBytes: _docFrontBytes,
           backImageBytes: _docBackBytes,
           selfieImageBytes: _selfieBytes,
-          termsVersion: LegalMandateService.versionForMode(widget.targetMode),
-          termsSha256: LegalMandateService.sha256ForMode(widget.targetMode),
         );
       }
       _saveTimer?.cancel();
@@ -1251,15 +1248,31 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     child: Checkbox(
                       key: const ValueKey('checkbox-accept-initial-terms'),
                       value: _termsAccepted,
-                      onChanged: (v) =>
-                          setState(() => _termsAccepted = v ?? false),
+                      onChanged: (v) {
+                        final next = v ?? false;
+                        if (next) {
+                          ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+                        }
+                        setState(() {
+                          _termsAccepted = next;
+                          if (next) _error = null;
+                        });
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: GestureDetector(
-                      onTap: () =>
-                          setState(() => _termsAccepted = !_termsAccepted),
+                      onTap: () {
+                        final next = !_termsAccepted;
+                        if (next) {
+                          ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+                        }
+                        setState(() {
+                          _termsAccepted = next;
+                          if (next) _error = null;
+                        });
+                      },
                       child: Text(
                         'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
                         style: TextStyle(

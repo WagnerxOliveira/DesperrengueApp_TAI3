@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/services/criminal_background_service.dart';
+import 'package:desperrengue_app/core/services/document_ocr_and_liveness_service.dart';
 import 'package:desperrengue_app/core/services/legal_mandate_service.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/ui/kyc_human_feedback_translator.dart';
@@ -489,6 +490,192 @@ void main() {
           expect(tester.takeException(), isNull);
           expect(
             find.text('Termos de Uso, Custódia e Cláusula-Mandato'),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets(
+        'Jornada Unificada de 5 Passos (Dados Civis + Termos -> Endereço -> Oval Liveness -> Documento OCR -> Antecedentes PF) e CriminalBackgroundStatusScreen concluem com ZERO overflow em ${vp.label}',
+        (tester) async {
+          await tester.binding.setSurfaceSize(vp.size);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+
+          final selfieBytes =
+              DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+                variantSeed: 7,
+              );
+          final frontDocBytes =
+              DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+                variantSeed: 11,
+                rotateDegrees: 90,
+              );
+          final backDocBytes =
+              DocumentOcrAndLivenessService.createHighContrastForensicSampleBytes(
+                variantSeed: 29,
+              );
+
+          final criminalOverride =
+              await CriminalBackgroundService.analyzeAndValidateCertificate(
+                fileBytes: _buildValidPfNothingOnRecordPdfBytes(),
+                fileName: 'certidao_pf.pdf',
+                expectedFullName: 'Wagner Oliveira',
+                expectedCpfRaw: '119.787.236-10',
+                referenceNow: DateTime.utc(2026, 11, 18, 12),
+              );
+          expect(criminalOverride.passed, isTrue);
+
+          bool completedUnifiedFiveSteps = false;
+
+          await tester.pumpWidget(
+            _buildResponsiveTestApp(
+              mode: UserMode.provider,
+              textScale: vp.scale,
+              home: ClientSetupScreen(
+                profile: UserProfile.fromMap(const <String, dynamic>{
+                  'id': 'provider-unified-5steps',
+                  'full_name': 'Wagner Oliveira',
+                  'phone': '35999887766',
+                  'is_provider': true,
+                }),
+                targetMode: UserMode.provider,
+                initialTermsAccepted: false,
+                customCriminalResultOverride: criminalOverride,
+                customCameraCapture: ({required String slot}) async {
+                  if (slot == 'selfie') return selfieBytes;
+                  if (slot == 'front') return frontDocBytes;
+                  return backDocBytes;
+                },
+                customSubmitter: ({
+                  required cpfRaw,
+                  required typedFullName,
+                  required phone,
+                  required addressLine,
+                  required addressCity,
+                  latitude,
+                  longitude,
+                  required livenessResult,
+                  required ocrResult,
+                }) async {
+                  completedUnifiedFiveSteps = true;
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Passo 1: Digita CPF, tenta avançar sem aceitar termos (bloqueia), aceita termos e avança
+          await tester.enterText(
+            find.byKey(const ValueKey('client-setup-cpf')),
+            '11978723610',
+          );
+          await tester.pump();
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step0-continue')),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.textContaining('Confirme a leitura e o aceite dos Termos de Uso'),
+            findsOneWidget,
+          );
+
+          final termsCheckbox = find.byKey(
+            const ValueKey('checkbox-accept-initial-terms'),
+          );
+          await tester.ensureVisible(termsCheckbox);
+          await tester.tap(termsCheckbox);
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step0-continue')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Passo 2: Preenche endereço base
+          final fields = find.byType(TextField);
+          await tester.enterText(fields.at(1), 'Rua Padre José Geraldi');
+          await tester.enterText(fields.at(2), '203');
+          await tester.enterText(fields.at(4), 'Centro');
+          await tester.enterText(fields.at(5), 'Machado');
+          await tester.enterText(fields.at(6), 'MG');
+          await tester.pump();
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step1-continue')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Passo 3: Prova de Vida no Oval
+          final livenessBtn = find.byKey(const ValueKey('btn-start-liveness'));
+          await tester.ensureVisible(livenessBtn);
+          await tester.tap(livenessBtn);
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step2-continue')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Passo 4: Scanner de Documento Frente e Verso + OCR -> avança para Passo 5
+          final frontBtn = find.byKey(const ValueKey('capture-doc-front'));
+          await tester.ensureVisible(frontBtn);
+          await tester.tap(frontBtn);
+          await tester.pumpAndSettle();
+
+          final backBtn = find.byKey(const ValueKey('capture-doc-back'));
+          await tester.ensureVisible(backBtn);
+          await tester.tap(backBtn);
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('ocr-transcribed-card')),
+            findsOneWidget,
+          );
+
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step3-continue')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Passo 5: Antecedentes Criminais da Polícia Federal
+          expect(
+            find.byKey(const ValueKey('criminal-check-approved-card')),
+            findsOneWidget,
+          );
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step4-submit')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(completedUnifiedFiveSteps, isTrue);
+
+          // Verifica também CriminalBackgroundStatusScreen no mesmo viewport
+          await tester.pumpWidget(
+            _buildResponsiveTestApp(
+              textScale: vp.scale,
+              home: CriminalBackgroundStatusScreen(
+                profile: UserProfile.fromMap(<String, dynamic>{
+                  'id': 'status-screen-user',
+                  'full_name': 'Wagner Oliveira',
+                  'verified_full_name': 'WAGNER OLIVEIRA CLAUDIANO',
+                  'criminal_record_verified': true,
+                  'criminal_certificate_number_masked': 'PF-***1735',
+                  'kyc_verified_at': DateTime.now().toUtc().toIso8601String(),
+                  'kyc_expires_at': DateTime.now()
+                      .toUtc()
+                      .add(const Duration(days: 180))
+                      .toIso8601String(),
+                }),
+                onRequestRenewal: () {},
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(
+            find.text('Ciclo Semestral de Segurança Ativo'),
             findsOneWidget,
           );
         },

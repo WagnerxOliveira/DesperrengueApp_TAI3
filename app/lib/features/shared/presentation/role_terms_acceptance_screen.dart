@@ -123,15 +123,10 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
         ),
         title: Text(
           isClientTarget ? 'Ativar Modo Cliente' : 'Ativar Modo Profissional',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
         ),
-        actions: [
-          if (widget.isReuseFastTrack)
-            TextButton(
-              onPressed: _backToPreviousMode,
-              child: const Text('Voltar ao modo anterior'),
-            ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -139,6 +134,15 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (widget.isReuseFastTrack) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _backToPreviousMode,
+                  icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                  label: const Text('Voltar ao modo anterior'),
+                ),
+              ),
+              const SizedBox(height: 4),
               Container(
                 key: const ValueKey('fast-track-kyc-reused-banner'),
                 padding: const EdgeInsets.all(16),
