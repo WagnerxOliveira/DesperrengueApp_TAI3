@@ -593,7 +593,11 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
 
-          // Passo 2: Preenche endereço base
+          // Passo 2: Verifica cabeçalho específico de Profissional e preenche endereço base
+          expect(
+            find.text('Qual é sua localização base de atendimento?'),
+            findsOneWidget,
+          );
           final fields = find.byType(TextField);
           await tester.enterText(fields.at(1), 'Rua Padre José Geraldi');
           await tester.enterText(fields.at(2), '203');

@@ -291,6 +291,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           _address = a;
         }
       }
+      if (d['termsAccepted'] == true) {
+        _termsAccepted = true;
+      }
       if (widget.initialStep == 0) {
         _step = ((d['step'] as num?)?.toInt() ?? 0).clamp(0, _maxStepIndex);
       }
@@ -319,6 +322,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         'cpf': _cpf.text,
         'address': _address.toJson(),
         'step': _step,
+        'termsAccepted': _termsAccepted,
       });
 
   void _setStep(int s) {
@@ -1324,19 +1328,24 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // PASSO 2: "Onde você precisa do serviço?" (AddressForm mantido integralmente)
+  // PASSO 2: Endereço Residencial (Cliente) ou Localização Base (Profissional)
   // ---------------------------------------------------------------------------
   Widget _buildStep1Address() {
+    final isProviderTarget = widget.targetMode == UserMode.provider;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Onde você precisa do serviço?',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+        Text(
+          isProviderTarget
+              ? 'Qual é sua localização base de atendimento?'
+              : 'Onde você precisa do serviço?',
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 6),
         Text(
-          'O endereço completo só é compartilhado com o profissional contratado.',
+          isProviderTarget
+              ? 'Usamos sua cidade e endereço base para conectar você aos chamados próximos na sua região com total segurança.'
+              : 'O endereço completo só é compartilhado com o profissional contratado.',
           style: TextStyle(color: context.tk.textMuted, height: 1.4),
         ),
         const SizedBox(height: 8),

@@ -181,7 +181,13 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           ),
         );
       case AppDestination.clientSetup:
-        return _themed(UserMode.client, ClientSetupScreen(profile: profile));
+        return _themed(
+          UserMode.client,
+          ClientSetupScreen(
+            profile: profile,
+            initialTermsAccepted: profile.clientTermsAccepted,
+          ),
+        );
       case AppDestination.clientHome:
         return _themed(UserMode.client, ClientShell(profile: profile));
       case AppDestination.kycStart:
@@ -190,6 +196,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           ClientSetupScreen(
             profile: profile,
             targetMode: UserMode.provider,
+            initialTermsAccepted: profile.providerTermsAccepted,
           ),
         );
       case AppDestination.kycInReview:
