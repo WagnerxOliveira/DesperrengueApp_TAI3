@@ -916,13 +916,53 @@ class _OpportunitiesTabState extends State<OpportunitiesTab> {
 
 // ====================================================================== perfil
 
-class ProviderProfileTab extends StatelessWidget {
-  const ProviderProfileTab({super.key, required this.profile});
+class ProviderProfileTab extends StatefulWidget {
+  const ProviderProfileTab({
+    super.key,
+    required this.profile,
+    @visibleForTesting this.customPhotoPicker,
+    @visibleForTesting this.customAvatarUploader,
+  });
 
   final UserProfile profile;
+  final StagedPhotoPicker? customPhotoPicker;
+  final AvatarBinaryUploader? customAvatarUploader;
+
+  @override
+  State<ProviderProfileTab> createState() => _ProviderProfileTabState();
+}
+
+class _ProviderProfileTabState extends State<ProviderProfileTab> {
+  late String? _avatarUrl = widget.profile.avatarUrl;
+
+  bool get _hasPhoto => _avatarUrl != null && _avatarUrl!.trim().isNotEmpty;
+
+  @override
+  void didUpdateWidget(covariant ProviderProfileTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.avatarUrl != widget.profile.avatarUrl) {
+      _avatarUrl = widget.profile.avatarUrl;
+    }
+  }
+
+  Future<void> _pickAndSavePhoto() async {
+    final url = await pickPreviewAndSaveAvatar(
+      context,
+      userName: widget.profile.displayName,
+      currentUrl: _avatarUrl,
+      customPicker: widget.customPhotoPicker,
+      customUploader: widget.customAvatarUploader,
+    );
+    if (url != null && mounted) {
+      setState(() => _avatarUrl = url);
+      AppSession.instance.refreshProfile();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final profile = widget.profile;
+    EagerImagePrefetcher.prefetchUrls([_avatarUrl], context: context);
     Widget tile(ProfileMenuIconKind kind, String title, String subtitle, VoidCallback onTap) => ListTile(
       contentPadding: EdgeInsets.zero,
       leading: ProfileMenuEmblem(kind: kind, size: 42),
@@ -939,8 +979,22 @@ class ProviderProfileTab extends StatelessWidget {
         const Text('Perfil', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
         const SizedBox(height: 18),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            EditableAvatar(url: profile.avatarUrl, name: profile.displayName, radius: 36, verified: true),
+            EditableAvatar(
+              url: _avatarUrl,
+              name: profile.displayName,
+              radius: 36,
+              verified: true,
+              customPicker: widget.customPhotoPicker,
+              customUploader: widget.customAvatarUploader,
+              onChanged: (url) {
+                if (mounted) {
+                  setState(() => _avatarUrl = url);
+                  AppSession.instance.refreshProfile();
+                }
+              },
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -963,6 +1017,28 @@ class ProviderProfileTab extends StatelessWidget {
                   ],
                   const SizedBox(height: 4),
                   StatusChip('Profissional verificado', color: context.tk.success, icon: Icons.verified_rounded),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const Key('provider-profile-change-photo-btn'),
+                    onPressed: _pickAndSavePhoto,
+                    style: OutlinedButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      foregroundColor: context.tk.providerAccent,
+                      side: BorderSide(color: context.tk.providerAccent.withValues(alpha: 0.45)),
+                    ),
+                    icon: Icon(
+                      _hasPhoto ? Icons.photo_camera_rounded : Icons.add_a_photo_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _hasPhoto ? 'Alterar foto' : 'Adicionar foto de perfil',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                    ),
+                  ),
                 ],
               ),
             ),

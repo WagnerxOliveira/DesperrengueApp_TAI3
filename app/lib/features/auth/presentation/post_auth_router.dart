@@ -13,9 +13,9 @@ import '../../client/presentation/client_shell.dart';
 import '../../home/presentation/home_screens.dart';
 import '../../provider/presentation/provider_setup_screens.dart';
 import '../../provider/presentation/provider_shell.dart';
+import '../../shared/presentation/role_terms_acceptance_screen.dart';
 import 'auth_gate.dart';
 import 'role_selection_screen.dart';
-import 'verificacao_step1_frente.dart';
 import 'verificacao_step6_feedback.dart';
 import 'verificacao_step7_aprovado.dart';
 
@@ -118,12 +118,21 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
   }
 
   Widget _screenFor(AppDestination dest, UserProfile profile) {
+    final renewalTargetMode =
+        _session.mode.value ??
+        (profile.isProvider && !profile.isClient
+            ? UserMode.provider
+            : UserMode.client);
     // Sincroniza o tema do MaterialApp com o modo da tela atual.
     final wanted = switch (dest) {
       AppDestination.clientSetup ||
+      AppDestination.clientTermsGate ||
       AppDestination.clientHome => UserMode.client,
       AppDestination.providerSetup ||
+      AppDestination.providerTermsAndReuseGate ||
+      AppDestination.kycStart ||
       AppDestination.providerHome => UserMode.provider,
+      AppDestination.kycSixMonthRenewal => renewalTargetMode,
       _ => null,
     };
     if (_session.theme.value != wanted) {
@@ -144,12 +153,52 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           mode: UserMode.provider,
           key: const ValueKey('enroll-provider'),
         );
+      case AppDestination.clientTermsGate:
+        return _themed(
+          UserMode.client,
+          RoleTermsAcceptanceScreen(
+            profile: profile,
+            mode: UserMode.client,
+            isReuseFastTrack: true,
+          ),
+        );
+      case AppDestination.providerTermsAndReuseGate:
+        return _themed(
+          UserMode.provider,
+          RoleTermsAcceptanceScreen(
+            profile: profile,
+            mode: UserMode.provider,
+            isReuseFastTrack: true,
+          ),
+        );
+      case AppDestination.kycSixMonthRenewal:
+        return _themed(
+          renewalTargetMode,
+          ClientSetupScreen(
+            profile: profile,
+            targetMode: renewalTargetMode,
+            isSixMonthRenewal: true,
+          ),
+        );
       case AppDestination.clientSetup:
-        return _themed(UserMode.client, ClientSetupScreen(profile: profile));
+        return _themed(
+          UserMode.client,
+          ClientSetupScreen(
+            profile: profile,
+            initialTermsAccepted: profile.clientTermsAccepted,
+          ),
+        );
       case AppDestination.clientHome:
         return _themed(UserMode.client, ClientShell(profile: profile));
       case AppDestination.kycStart:
-        return const VerificacaoStep1FrenteScreen();
+        return _themed(
+          UserMode.provider,
+          ClientSetupScreen(
+            profile: profile,
+            targetMode: UserMode.provider,
+            initialTermsAccepted: profile.providerTermsAccepted,
+          ),
+        );
       case AppDestination.kycInReview:
         return const VerificacaoStep6FeedbackScreen();
       case AppDestination.kycApproved:
