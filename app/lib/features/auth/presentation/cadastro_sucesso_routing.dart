@@ -1,8 +1,12 @@
-import '../../../core/ui/app_scaffold.dart';
-import 'package:flutter/material.dart';
+import 'dart:async';
 
-import 'auth_gate.dart';
-import '../../../core/ui/light_island.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/services/profile_service.dart';
+import '../../../core/services/welcome_cinema_tracker.dart';
+import '../../../core/ui/app_scaffold.dart';
+import 'auth_gate.dart';
 
 class CadastroSucessoRoutingScreen extends StatefulWidget {
   const CadastroSucessoRoutingScreen({super.key});
@@ -14,83 +18,129 @@ class CadastroSucessoRoutingScreen extends StatefulWidget {
 
 class _CadastroSucessoRoutingScreenState
     extends State<CadastroSucessoRoutingScreen> {
-  final Color _primaryBlue = const Color(0xFF003366);
+  static const Color _quietLuxuryNavy = Color(0xFF0F172A);
+  static const Color _emeraldAccent = Color(0xFF10B981);
 
   @override
   void initState() {
     super.initState();
-    // Inicia o processo de roteamento seguro assim que a tela é renderizada
     _processarTransicaoSessao();
   }
 
-  /// Motor de Transição O(1) com Limpeza de Pilha (Stack Clearing)
-  Future<void> _processarTransicaoSessao() async {
-    // Buffer Cognitivo: 2 segundos para o utilizador ler a mensagem de sucesso.
-    // Em arquiteturas avançadas, usamos este tempo para fazer fetch (O(1) rede) de permissões de perfil.
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (mounted) {
-      // Segurança: pushAndRemoveUntil desintegra os ecrãs anteriores da memória RAM.
-      // O AuthGate consulta o perfil no servidor e decide a tela (novo usuário -> escolha de papel).
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const AuthGate()),
-        (route) => false,
-      );
+  String? _currentAuthUserId() {
+    try {
+      return Supabase.instance.client.auth.currentUser?.id;
+    } catch (_) {
+      return null;
     }
+  }
+
+  /// Ponte cinematográfica O(1) (450ms) sem clarão branco antes do Welcome Cinema.
+  Future<void> _processarTransicaoSessao() async {
+    await WelcomeCinemaTracker.armForFreshRegistration(_currentAuthUserId());
+    try {
+      unawaited(
+        ProfileService().fetchCurrent().then<void>((_) {}, onError: (_) {}),
+      );
+    } catch (_) {
+      // Ambiente de teste sem Supabase inicializado.
+    }
+    await Future.delayed(const Duration(milliseconds: 450));
+
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 380),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const AuthGate(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            ),
+            child: child,
+          );
+        },
+      ),
+      (route) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // PopScope bloqueia o gesto de voltar (swipe ou botão nativo do Android) durante o carregamento
-    return LightIsland(child: PopScope(
+    return PopScope(
       canPop: false,
       child: AppScaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // Ícone de Sucesso
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.green,
-                  size: 100,
-                ),
-                const SizedBox(height: 32),
-
-                // Mensagem de Confirmação
-                Text(
-                  'Conta criada\ncom sucesso!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: _primaryBlue,
-                    height: 1.2,
+        backgroundColor: _quietLuxuryNavy,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24.0,
+                vertical: 16.0,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    key: const Key('cadastro-sucesso-emerald-seal'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _emeraldAccent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: _emeraldAccent.withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.verified_rounded,
+                          color: _emeraldAccent,
+                          size: 18,
+                        ),
+                        SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'Cadastro confirmado!',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF6EE7B7),
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-
-                // Feedback de Ação
-                const Text(
-                  'Direcionando para a seleção de perfil...',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                const SizedBox(height: 48),
-
-                // Indicador de Carregamento Assíncrono
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(_primaryBlue),
-                  strokeWidth: 3,
-                ),
-              ],
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Preparando sua apresentação...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF94A3B8),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 }

@@ -9,6 +9,7 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_tokens.dart';
 import 'auth_gate.dart';
+import 'desperrengue_welcome_cinema_screen.dart';
 
 /// Seleção de perfil (Módulo 4): visual "clean / glassmorphism".
 ///
@@ -46,11 +47,44 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       _nomeUsuario = p.firstName;
       return;
     }
-    final user = Supabase.instance.client.auth.currentUser;
-    final fullName = user?.userMetadata?['full_name'] as String?;
-    if (fullName != null && fullName.isNotEmpty) {
-      _nomeUsuario = fullName.split(' ')[0];
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      final fullName = user?.userMetadata?['full_name'] as String?;
+      if (fullName != null && fullName.isNotEmpty) {
+        _nomeUsuario = fullName.split(' ')[0];
+      }
+    } catch (_) {
+      // Ambiente de teste sem Supabase inicializado.
     }
+  }
+
+  void _abrirReplayWelcomeCinema() {
+    final firstName = _nomeUsuario == 'você' ? '' : _nomeUsuario;
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 380),
+        reverseTransitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (routeContext, animation, secondaryAnimation) =>
+            DesperrengueWelcomeCinemaScreen(
+              userFirstName: firstName,
+              isReplay: true,
+              onCompleted: () {
+                if (Navigator.of(routeContext).canPop()) {
+                  Navigator.of(routeContext).pop();
+                }
+              },
+            ),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            ),
+            child: child,
+          );
+        },
+      ),
+    );
   }
 
   // O cadastro no modo (enroll_mode) é feito pelo PostAuthRouter; aqui só
@@ -190,77 +224,133 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
           children: [
             Positioned.fill(child: _AmbientBackground(tk: tk)),
             SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: IconButton(
-                        tooltip: 'Voltar',
-                        onPressed: _mostrarModalSair,
-                        icon: Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: tk.text,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+                  final compact =
+                      constraints.maxHeight < 720 || textScale > 1.2;
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      compact ? 16 : 20,
+                      compact ? 2 : 4,
+                      compact ? 16 : 20,
+                      compact ? 10 : 20,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            IconButton(
+                              tooltip: 'Voltar',
+                              onPressed: _mostrarModalSair,
+                              icon: Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: tk.text,
+                              ),
+                            ),
+                            Flexible(
+                              child: TextButton.icon(
+                                key: const Key('btn-replay-welcome-cinema'),
+                                onPressed: _abrirReplayWelcomeCinema,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: tk.textMuted,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(999),
+                                    side: BorderSide(
+                                      color: tk.border.withValues(alpha: 0.65),
+                                    ),
+                                  ),
+                                ),
+                                icon: Icon(
+                                  Icons.play_circle_outline_rounded,
+                                  size: 16,
+                                  color: tk.clientAccent,
+                                ),
+                                label: const Text(
+                                  'Como funciona',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
+                        SizedBox(height: compact ? 2 : 4),
+                        Text(
+                          _nomeUsuario.isEmpty ? 'Olá!' : 'Olá, $_nomeUsuario',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 22 : 32,
+                            fontWeight: FontWeight.w800,
+                            color: tk.text,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        SizedBox(height: compact ? 3 : 6),
+                        Text(
+                          'Como você deseja usar o Desperrengue hoje?',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 14.5 : 18,
+                            fontWeight: FontWeight.w600,
+                            color: tk.textMuted,
+                            height: 1.25,
+                          ),
+                        ),
+                        SizedBox(height: compact ? 4 : 8),
+                        Text(
+                          _intro,
+                          maxLines: compact ? 2 : 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 11.5 : 13,
+                            color: tk.textMuted,
+                            height: 1.3,
+                          ),
+                        ),
+                        SizedBox(height: compact ? 8 : 18),
+                        Expanded(
+                          child: _RoleCard(
+                            mode: UserMode.client,
+                            icon: Icons.manage_search_rounded,
+                            title: 'Preciso de um serviço',
+                            subtitle:
+                                'Encontre profissionais para resolver seu problema',
+                            stage: _stage(UserMode.client),
+                            onTap: () => _escolher(UserMode.client),
+                          ),
+                        ),
+                        SizedBox(height: compact ? 8 : 14),
+                        Expanded(
+                          child: _RoleCard(
+                            mode: UserMode.provider,
+                            icon: Icons.handyman_rounded,
+                            title: 'Quero trabalhar',
+                            subtitle:
+                                'Acesse seu painel, veja pedidos e gerencie ganhos',
+                            stage: _stage(UserMode.provider),
+                            onTap: () => _escolher(UserMode.provider),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _nomeUsuario.isEmpty ? 'Olá!' : 'Olá, $_nomeUsuario',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: tk.text,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Como você deseja usar o Desperrengue hoje?',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: tk.textMuted,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _intro,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: tk.textMuted,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Expanded(
-                      child: _RoleCard(
-                        mode: UserMode.client,
-                        icon: Icons.manage_search_rounded,
-                        title: 'Preciso de um serviço',
-                        subtitle:
-                            'Encontre profissionais para resolver seu problema',
-                        stage: _stage(UserMode.client),
-                        onTap: () => _escolher(UserMode.client),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Expanded(
-                      child: _RoleCard(
-                        mode: UserMode.provider,
-                        icon: Icons.handyman_rounded,
-                        title: 'Quero trabalhar',
-                        subtitle:
-                            'Acesse seu painel, veja pedidos e gerencie ganhos',
-                        stage: _stage(UserMode.provider),
-                        onTap: () => _escolher(UserMode.provider),
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],
@@ -404,86 +494,109 @@ class _RoleCard extends StatelessWidget {
                 color: glass,
                 child: InkWell(
                   onTap: onTap,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: rim,
-                        width: incomplete ? 1.6 : 1.2,
-                      ),
-                    ),
-                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                  child: LayoutBuilder(
+                    builder: (context, cardConstraints) {
+                      final cardCompact = cardConstraints.maxHeight < 235;
+                      return Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: rim,
+                            width: incomplete ? 1.6 : 1.2,
+                          ),
+                        ),
+                        padding: cardCompact
+                            ? const EdgeInsets.fromLTRB(16, 10, 16, 10)
+                            : const EdgeInsets.fromLTRB(22, 20, 22, 18),
+                        child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(18),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    accent,
-                                    Color.lerp(
-                                      accent,
-                                      tk.isDark ? Colors.white : Colors.black,
-                                      0.22,
-                                    )!,
-                                  ],
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: cardCompact ? 40 : 60,
+                                  height: cardCompact ? 40 : 60,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(
+                                      cardCompact ? 12 : 18,
+                                    ),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        accent,
+                                        Color.lerp(
+                                          accent,
+                                          tk.isDark
+                                              ? Colors.white
+                                              : Colors.black,
+                                          0.22,
+                                        )!,
+                                      ],
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    icon,
+                                    size: cardCompact ? 22 : 32,
+                                    color: onAccent,
+                                  ),
                                 ),
-                              ),
-                              child: Icon(icon, size: 32, color: onAccent),
+                                const Spacer(),
+                                _StagePill(stage: stage),
+                              ],
                             ),
                             const Spacer(),
-                            _StagePill(stage: stage),
-                          ],
-                        ),
-                        const Spacer(),
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                            color: tk.text,
-                            height: 1.1,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: tk.textMuted,
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Icon(ctaIcon, size: 18, color: accent),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                cta,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: cardCompact ? 17.5 : 24,
+                                fontWeight: FontWeight.w800,
+                                color: tk.text,
+                                height: 1.1,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                            SizedBox(height: cardCompact ? 3 : 6),
+                            Text(
+                              subtitle,
+                              maxLines: cardCompact ? 1 : 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: cardCompact ? 11.5 : 14,
+                                color: tk.textMuted,
+                                height: 1.25,
+                              ),
+                            ),
+                            SizedBox(height: cardCompact ? 4 : 14),
+                            Row(
+                              children: [
+                                Icon(
+                                  ctaIcon,
+                                  size: cardCompact ? 15 : 18,
                                   color: accent,
                                 ),
-                              ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    cta,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: cardCompact ? 12 : 14,
+                                      fontWeight: FontWeight.w800,
+                                      color: accent,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
               ),
