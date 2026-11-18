@@ -32,13 +32,25 @@ class RoleSelectionScreen extends StatefulWidget {
   State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
-class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
+class _RoleSelectionScreenState extends State<RoleSelectionScreen>
+    with SingleTickerProviderStateMixin {
   String _nomeUsuario = '';
+  late final AnimationController _entryController;
 
   @override
   void initState() {
     super.initState();
     _obterNomeUsuario();
+    _entryController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _entryController.dispose();
+    super.dispose();
   }
 
   void _obterNomeUsuario() {
@@ -212,6 +224,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final disableAnimations = MediaQuery.disableAnimationsOf(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -229,126 +242,176 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
                   final textScale = MediaQuery.textScalerOf(context).scale(1.0);
                   final compact =
                       constraints.maxHeight < 720 || textScale > 1.2;
-                  return Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      compact ? 16 : 20,
-                      compact ? 2 : 4,
-                      compact ? 16 : 20,
-                      compact ? 10 : 20,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  return AnimatedBuilder(
+                    animation: _entryController,
+                    builder: (context, _) {
+                      final rawT = disableAnimations
+                          ? 1.0
+                          : _entryController.value.clamp(0.0, 1.0);
+                      final clientT = disableAnimations
+                          ? 1.0
+                          : const Interval(
+                              0.0,
+                              0.82,
+                              curve: Curves.easeOutCubic,
+                            ).transform(rawT);
+                      final providerT = disableAnimations
+                          ? 1.0
+                          : const Interval(
+                              0.18,
+                              1.0,
+                              curve: Curves.easeOutCubic,
+                            ).transform(rawT);
+
+                      final clientOpacity = 0.92 + 0.08 * clientT;
+                      final clientScale = 0.985 + 0.015 * clientT;
+                      final providerOpacity = 0.92 + 0.08 * providerT;
+                      final providerScale = 0.985 + 0.015 * providerT;
+
+                      return Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          compact ? 16 : 20,
+                          compact ? 2 : 4,
+                          compact ? 16 : 20,
+                          compact ? 10 : 20,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            IconButton(
-                              tooltip: 'Voltar',
-                              onPressed: _mostrarModalSair,
-                              icon: Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                color: tk.text,
-                              ),
-                            ),
-                            Flexible(
-                              child: TextButton.icon(
-                                key: const Key('btn-replay-welcome-cinema'),
-                                onPressed: _abrirReplayWelcomeCinema,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: tk.textMuted,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Voltar',
+                                  onPressed: _mostrarModalSair,
+                                  icon: Icon(
+                                    Icons.arrow_back_ios_new_rounded,
+                                    color: tk.text,
                                   ),
-                                  minimumSize: Size.zero,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(999),
-                                    side: BorderSide(
-                                      color: tk.border.withValues(alpha: 0.65),
+                                ),
+                                Flexible(
+                                  child: TextButton.icon(
+                                    key: const Key('btn-replay-welcome-cinema'),
+                                    onPressed: _abrirReplayWelcomeCinema,
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: tk.text,
+                                      backgroundColor: tk.isDark
+                                          ? tk.surface.withValues(alpha: 0.80)
+                                          : tk.clientSoft
+                                                .withValues(alpha: 0.55),
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: compact ? 10 : 12,
+                                        vertical: compact ? 6 : 8,
+                                      ),
+                                      minimumSize: Size.zero,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                        side: BorderSide(
+                                          color: tk.clientAccent.withValues(
+                                            alpha: tk.isDark ? 0.38 : 0.28,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      Icons.play_circle_outline_rounded,
+                                      size: compact ? 15 : 16,
+                                      color: tk.clientAccent,
+                                    ),
+                                    label: Text(
+                                      'Como funciona',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: compact ? 11.5 : 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: tk.text,
+                                      ),
                                     ),
                                   ),
                                 ),
-                                icon: Icon(
-                                  Icons.play_circle_outline_rounded,
-                                  size: 16,
-                                  color: tk.clientAccent,
+                              ],
+                            ),
+                            SizedBox(height: compact ? 2 : 4),
+                            Text(
+                              _nomeUsuario.isEmpty
+                                  ? 'Olá!'
+                                  : 'Olá, $_nomeUsuario',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 22 : 32,
+                                fontWeight: FontWeight.w800,
+                                color: tk.text,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            SizedBox(height: compact ? 3 : 6),
+                            Text(
+                              'Como você deseja usar o Desperrengue hoje?',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 14.5 : 18,
+                                fontWeight: FontWeight.w600,
+                                color: tk.textMuted,
+                                height: 1.25,
+                              ),
+                            ),
+                            SizedBox(height: compact ? 4 : 8),
+                            Text(
+                              _intro,
+                              maxLines: compact ? 2 : 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: compact ? 11.5 : 13,
+                                color: tk.textMuted,
+                                height: 1.3,
+                              ),
+                            ),
+                            SizedBox(height: compact ? 8 : 18),
+                            Expanded(
+                              child: Opacity(
+                                opacity: clientOpacity,
+                                child: Transform.scale(
+                                  scale: clientScale,
+                                  child: _RoleCard(
+                                    mode: UserMode.client,
+                                    icon: Icons.manage_search_rounded,
+                                    title: 'Preciso de um serviço',
+                                    subtitle:
+                                        'Encontre profissionais para resolver seu problema',
+                                    stage: _stage(UserMode.client),
+                                    onTap: () => _escolher(UserMode.client),
+                                  ),
                                 ),
-                                label: const Text(
-                                  'Como funciona',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SizedBox(height: compact ? 8 : 14),
+                            Expanded(
+                              child: Opacity(
+                                opacity: providerOpacity,
+                                child: Transform.scale(
+                                  scale: providerScale,
+                                  child: _RoleCard(
+                                    mode: UserMode.provider,
+                                    icon: Icons.handyman_rounded,
+                                    title: 'Quero trabalhar',
+                                    subtitle:
+                                        'Acesse seu painel, veja pedidos e gerencie ganhos',
+                                    stage: _stage(UserMode.provider),
+                                    onTap: () => _escolher(UserMode.provider),
                                   ),
                                 ),
                               ),
                             ),
                           ],
                         ),
-                        SizedBox(height: compact ? 2 : 4),
-                        Text(
-                          _nomeUsuario.isEmpty ? 'Olá!' : 'Olá, $_nomeUsuario',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: compact ? 22 : 32,
-                            fontWeight: FontWeight.w800,
-                            color: tk.text,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        SizedBox(height: compact ? 3 : 6),
-                        Text(
-                          'Como você deseja usar o Desperrengue hoje?',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: compact ? 14.5 : 18,
-                            fontWeight: FontWeight.w600,
-                            color: tk.textMuted,
-                            height: 1.25,
-                          ),
-                        ),
-                        SizedBox(height: compact ? 4 : 8),
-                        Text(
-                          _intro,
-                          maxLines: compact ? 2 : 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: compact ? 11.5 : 13,
-                            color: tk.textMuted,
-                            height: 1.3,
-                          ),
-                        ),
-                        SizedBox(height: compact ? 8 : 18),
-                        Expanded(
-                          child: _RoleCard(
-                            mode: UserMode.client,
-                            icon: Icons.manage_search_rounded,
-                            title: 'Preciso de um serviço',
-                            subtitle:
-                                'Encontre profissionais para resolver seu problema',
-                            stage: _stage(UserMode.client),
-                            onTap: () => _escolher(UserMode.client),
-                          ),
-                        ),
-                        SizedBox(height: compact ? 8 : 14),
-                        Expanded(
-                          child: _RoleCard(
-                            mode: UserMode.provider,
-                            icon: Icons.handyman_rounded,
-                            title: 'Quero trabalhar',
-                            subtitle:
-                                'Acesse seu painel, veja pedidos e gerencie ganhos',
-                            stage: _stage(UserMode.provider),
-                            onTap: () => _escolher(UserMode.provider),
-                          ),
-                        ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 },
               ),

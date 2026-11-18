@@ -1,6 +1,7 @@
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/services/welcome_cinema_tracker.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
+import 'package:desperrengue_app/core/ui/desperrengue_brand_logo.dart';
 import 'package:desperrengue_app/features/auth/presentation/cadastro_sucesso_routing.dart';
 import 'package:desperrengue_app/features/auth/presentation/desperrengue_welcome_cinema_screen.dart';
 import 'package:desperrengue_app/features/auth/presentation/role_selection_screen.dart';
@@ -35,7 +36,15 @@ void main() {
     WelcomeCinemaTracker.resetMemoryStateForTesting();
   });
 
-  group('WelcomeCinemaTracker — Governança de Exibição Pós-Cadastro', () {
+  group('WelcomeCinemaTracker — Governança de Exibição Pós-Cadastro (v2.22.0)', () {
+    test('chaves de persistência v2 configuradas para a obra-prima v2.22.0', () {
+      expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v2_seen_');
+      expect(
+        WelcomeCinemaTracker.keyPendingUid,
+        'welcome_cinema_v2_pending_uid',
+      );
+    });
+
     test(
       'dispara true para conta recém-criada armada via OTP e para 1º login OAuth recente',
       () async {
@@ -81,6 +90,9 @@ void main() {
         );
 
         await WelcomeCinemaTracker.markCompleted('uid-1');
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('welcome_cinema_v2_seen_uid-1'), '1');
 
         expect(
           await WelcomeCinemaTracker.shouldShowBeforeRoleSelection(
@@ -205,7 +217,7 @@ void main() {
     );
 
     testWidgets(
-      'CadastroSucessoRoutingScreen em ThemeMode.light mantém fundo Azul-Noite (#0F172A), selo esmeralda e arma WelcomeCinemaTracker',
+      'CadastroSucessoRoutingScreen em ThemeMode.light mantém fundo Azul-Noite (#0F172A), selo esmeralda, monograma DesperrengueBrandLogo e arma WelcomeCinemaTracker',
       (tester) async {
         await tester.pumpWidget(
           MaterialApp(
@@ -221,21 +233,22 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('Cadastro confirmado!'), findsOneWidget);
+        expect(find.byType(DesperrengueBrandLogo), findsOneWidget);
 
         final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
         expect(scaffold.backgroundColor, const Color(0xFF0F172A));
         expect(WelcomeCinemaTracker.isLikelyFreshAuthInMemory(), isTrue);
 
-        // Desmonta antes do timer de 450ms disparar navegação para AuthGate
+        // Desmonta antes do timer de 480ms disparar navegação para AuthGate
         await tester.pumpWidget(const SizedBox.shrink());
-        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump(const Duration(milliseconds: 520));
       },
     );
   });
 
   group('DesperrengueWelcomeCinemaScreen — Coreografia Contínua de 4 Atos', () {
     testWidgets(
-      'progride ininterruptamente pelos 4 Atos e dispara onCompleted exatamente ao final',
+      'progride ininterruptamente pelos 4 Atos, exibe cenas vivas/PIN/estrelas e dispara onCompleted exatamente ao final',
       (tester) async {
         tester.view.physicalSize = const Size(1080, 2400);
         tester.view.devicePixelRatio = 2.75;
@@ -255,31 +268,88 @@ void main() {
         );
         await tester.pump();
 
-        // Ato I (0.00 - 0.25): O que o Desperrengue faz
+        // Ato I (0.00 - 0.25): Catarse Emocional no Lar
         expect(find.byKey(const Key('cinema-act-1-mission')), findsOneWidget);
         expect(
           find.byKey(const Key('welcome-cinema-progress-bar')),
           findsOneWidget,
         );
+        expect(
+          find.textContaining('SUA PAZ EM CASA COMEÇA AQUI'),
+          findsOneWidget,
+        );
         expect(completedCount, 0);
 
-        // Avança para o Ato II (0.25 - 0.50): Para quem é a plataforma
+        // Avança para o Ato II (0.25 - 0.50): Pertencimento & Ponte Biométrica
         await tester.pump(const Duration(milliseconds: 1300));
         expect(find.byKey(const Key('cinema-act-2-audience')), findsOneWidget);
+        expect(find.text('1 Conta · 2 Perfis'), findsOneWidget);
         expect(completedCount, 0);
 
-        // Avança para o Ato III (0.50 - 0.75): Lado do Cliente
-        await tester.pump(const Duration(milliseconds: 1000));
+        // Avança para o Ato III (0.50 - 0.75): Lado do Cliente + PIN 4·8·2·9 + 90 dias
+        await tester.pump(const Duration(milliseconds: 1100));
         expect(find.byKey(const Key('cinema-act-3-client')), findsOneWidget);
+        expect(find.text('4'), findsWidgets);
+        expect(find.text('8'), findsWidgets);
+        expect(find.text('2'), findsWidgets);
+        expect(find.text('9'), findsWidgets);
+        expect(find.textContaining('90 dias de garantia'), findsWidgets);
         expect(completedCount, 0);
 
-        // Avança para o Ato IV (0.75 - 1.00): Lado do Profissional
+        // Avança para o Ato IV (0.75 - 1.00): Lado do Profissional + 5 Estrelas
         await tester.pump(const Duration(milliseconds: 1000));
         expect(find.byKey(const Key('cinema-act-4-provider')), findsOneWidget);
+        expect(find.textContaining('5,0'), findsWidgets);
         expect(completedCount, 0);
 
         // Conclui 100% da linha do tempo e dispara onCompleted automaticamente
-        await tester.pump(const Duration(milliseconds: 900));
+        await tester.pump(const Duration(milliseconds: 800));
+        await tester.pump();
+        expect(completedCount, 1);
+      },
+    );
+
+    testWidgets(
+      'navegação rápida pelos indicadores de capítulo do topo (cinema-chapter-tap-0..3) salta para o ato e continua ininterruptamente',
+      (tester) async {
+        tester.view.physicalSize = const Size(1080, 2400);
+        tester.view.devicePixelRatio = 2.75;
+        addTearDown(tester.view.reset);
+
+        var completedCount = 0;
+        const duration = Duration(milliseconds: 4000);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DesperrengueWelcomeCinemaScreen(
+              userFirstName: 'Ana',
+              totalDuration: duration,
+              onCompleted: () => completedCount++,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.byKey(const Key('cinema-act-1-mission')), findsOneWidget);
+        for (var i = 0; i < 4; i++) {
+          expect(
+            find.byKey(Key('cinema-chapter-tap-$i')),
+            findsOneWidget,
+          );
+        }
+
+        // Toca no indicador do capítulo 3 (índice 2 -> Ato III Cliente)
+        await tester.tap(find.byKey(const Key('cinema-chapter-tap-2')));
+        await tester.pump();
+
+        expect(find.byKey(const Key('cinema-act-3-client')), findsOneWidget);
+        expect(completedCount, 0);
+
+        // Continua ininterruptamente para o Ato IV e conclui
+        await tester.pump(const Duration(milliseconds: 1200));
+        expect(find.byKey(const Key('cinema-act-4-provider')), findsOneWidget);
+
+        await tester.pump(const Duration(milliseconds: 1000));
         await tester.pump();
         expect(completedCount, 1);
       },
@@ -450,7 +520,7 @@ void main() {
     );
 
     testWidgets(
-      'ZERO RenderFlex overflow nos 4 atos em 320x640 @ textScale 1.4x, 360x780, 412x915 e 1080x2400',
+      'Varredura exaustiva de 21 instantes + fronteiras de cross-dissolve (24%, 25%, 26%, 49%, 50%, 51%, 74%, 75%, 76%) em 320x640 @ 1.4x, 360x780, 412x915 e 1080x2400 com ZERO overflow e findsOneWidget limpo',
       (tester) async {
         const viewports = <(Size, double, double)>[
           (Size(320, 640), 1.0, 1.4),
@@ -459,12 +529,51 @@ void main() {
           (Size(1080, 2400), 2.75, 1.0),
         ];
 
+        // 21 instantes (0%, 5%, 10%, ..., 100%) + fronteiras exatas de dissolução cruzada
+        const timelinePercents = <int>[
+          0,
+          5,
+          10,
+          15,
+          20,
+          24,
+          25,
+          26,
+          30,
+          35,
+          40,
+          45,
+          49,
+          50,
+          51,
+          55,
+          60,
+          65,
+          70,
+          74,
+          75,
+          76,
+          80,
+          85,
+          90,
+          95,
+          100,
+        ];
+
+        const actKeys = <Key>[
+          Key('cinema-act-1-mission'),
+          Key('cinema-act-2-audience'),
+          Key('cinema-act-3-client'),
+          Key('cinema-act-4-provider'),
+        ];
+
         addTearDown(tester.view.reset);
 
         for (final (size, dpr, textScale) in viewports) {
           tester.view.physicalSize = size;
           tester.view.devicePixelRatio = dpr;
 
+          const totalMs = 10000;
           await tester.pumpWidget(
             MaterialApp(
               theme: AppTheme.resolve(null, Brightness.light),
@@ -475,46 +584,48 @@ void main() {
                 child: child!,
               ),
               home: DesperrengueWelcomeCinemaScreen(
-                key: ValueKey('cinema-${size.width}x${size.height}'),
+                key: ValueKey('cinema-sweep-${size.width}x${size.height}'),
                 userFirstName: 'Wagner',
-                totalDuration: const Duration(milliseconds: 4000),
+                totalDuration: const Duration(milliseconds: totalMs),
                 isReplay: true,
                 onCompleted: () {},
               ),
             ),
           );
           await tester.pump();
-          expect(
-            tester.takeException(),
-            isNull,
-            reason: 'Ato I sem overflow em $size @ ${textScale}x',
-          );
 
-          // Ato II
-          await tester.pump(const Duration(milliseconds: 1200));
-          expect(
-            tester.takeException(),
-            isNull,
-            reason: 'Ato II sem overflow em $size @ ${textScale}x',
-          );
+          var elapsedPct = 0;
+          for (final pct in timelinePercents) {
+            final deltaPct = pct - elapsedPct;
+            if (deltaPct > 0) {
+              await tester.pump(
+                Duration(milliseconds: (totalMs * deltaPct) ~/ 100),
+              );
+              elapsedPct = pct;
+            }
 
-          // Ato III
-          await tester.pump(const Duration(milliseconds: 1000));
-          expect(
-            tester.takeException(),
-            isNull,
-            reason: 'Ato III sem overflow em $size @ ${textScale}x',
-          );
+            expect(
+              tester.takeException(),
+              isNull,
+              reason:
+                  'Zero RenderFlex overflow em $pct% na resolução $size @ ${textScale}x',
+            );
 
-          // Ato IV
-          await tester.pump(const Duration(milliseconds: 1000));
-          expect(
-            tester.takeException(),
-            isNull,
-            reason: 'Ato IV sem overflow em $size @ ${textScale}x',
-          );
+            final expectedActIndex = pct < 25
+                ? 0
+                : (pct < 50 ? 1 : (pct < 75 ? 2 : 3));
 
-          // Verifica também RoleSelectionScreen na mesma resolução e textScale
+            for (var i = 0; i < actKeys.length; i++) {
+              expect(
+                find.byKey(actKeys[i]),
+                i == expectedActIndex ? findsOneWidget : findsNothing,
+                reason:
+                    'Ato dominante único ($expectedActIndex) em $pct% ($size @ ${textScale}x)',
+              );
+            }
+          }
+
+          // Verifica também RoleSelectionScreen e CadastroSucessoRoutingScreen na mesma resolução e textScale
           await tester.pumpWidget(
             MaterialApp(
               theme: AppTheme.resolve(null, Brightness.light),
@@ -534,6 +645,13 @@ void main() {
             tester.takeException(),
             isNull,
             reason: 'RoleSelectionScreen sem overflow em $size @ ${textScale}x',
+          );
+          await tester.pump(const Duration(milliseconds: 450));
+          expect(
+            tester.takeException(),
+            isNull,
+            reason:
+                'RoleSelectionScreen pós-entrada sem overflow em $size @ ${textScale}x',
           );
         }
       },
