@@ -101,16 +101,61 @@ class WelcomeStoryHeroCard extends StatelessWidget {
             ),
             width: 1.0,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF040812).withValues(alpha: 0.52),
+              blurRadius: 32,
+              offset: const Offset(0, 14),
+            ),
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.08),
+              blurRadius: 32,
+              offset: const Offset(0, 14),
+            ),
+          ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(isCompact ? 20 : 24),
-          child: Padding(
-            padding: EdgeInsets.all(isCompact ? 14 : 20),
-            child: child,
+          child: CustomPaint(
+            foregroundPainter: _HeroCardTopBevelPainter(
+              accentColor: accentColor,
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(isCompact ? 14 : 20),
+              child: child,
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _HeroCardTopBevelPainter extends CustomPainter {
+  const _HeroCardTopBevelPainter({required this.accentColor});
+
+  final Color accentColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 32) return;
+    final bevelRect = Rect.fromLTWH(16, 0, size.width - 32, 1.0);
+    final paint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Colors.white.withValues(alpha: 0.0),
+          Colors.white.withValues(alpha: 0.20),
+          accentColor.withValues(alpha: 0.32),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.35, 0.65, 1.0],
+      ).createShader(bevelRect);
+    canvas.drawRect(bevelRect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _HeroCardTopBevelPainter oldDelegate) {
+    return oldDelegate.accentColor != accentColor;
   }
 }
 
@@ -418,7 +463,11 @@ class _DesperrengueWelcomeCinemaScreenState
         body: Stack(
           fit: StackFit.expand,
           children: [
-            _SharedAmbientCanvas(pageController: _pageController),
+            _SharedAmbientCanvas(
+              pageController: _pageController,
+              activeStoryListenable: _activeStoryNotifier,
+              isProgrammaticJumpGetter: () => _isProgrammaticPageJump,
+            ),
             SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
@@ -683,47 +732,185 @@ const List<_StoryVisualSpec> _kStorySpecs = <_StoryVisualSpec>[
 ];
 
 // =============================================================================
-// FUNDO VIVO CONTÍNUO (_SharedAmbientCanvas) — ESCUTA APENAS O PageController
+// FUNDO VIVO CONTÍNUO (_SharedAmbientCanvas) — SWIPE 1:1 + BRIDGE SUAVE 520ms
 // =============================================================================
 
-class _SharedAmbientCanvas extends StatelessWidget {
-  const _SharedAmbientCanvas({required this.pageController});
+class _SharedAmbientCanvas extends StatefulWidget {
+  const _SharedAmbientCanvas({
+    required this.pageController,
+    required this.activeStoryListenable,
+    required this.isProgrammaticJumpGetter,
+  });
 
   final PageController pageController;
+  final ValueListenable<int> activeStoryListenable;
+  final ValueGetter<bool> isProgrammaticJumpGetter;
+
+  @override
+  State<_SharedAmbientCanvas> createState() => _SharedAmbientCanvasState();
+}
+
+class _SharedAmbientCanvasState extends State<_SharedAmbientCanvas>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bridgeController;
+  final ValueNotifier<double> _ambientPageNotifier = ValueNotifier<double>(0.0);
+
+  double _bridgeFrom = 0.0;
+  double _bridgeTo = 0.0;
+  bool _reduceMotion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.activeStoryListenable.value.toDouble();
+    _ambientPageNotifier.value = initial;
+    _bridgeFrom = initial;
+    _bridgeTo = initial;
+
+    _bridgeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+    )..addListener(_onBridgeTick);
+
+    widget.pageController.addListener(_onPageControllerChanged);
+    widget.activeStoryListenable.addListener(_onActiveStoryChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (_reduceMotion && _bridgeController.isAnimating) {
+      _bridgeController.stop();
+      _ambientPageNotifier.value = _bridgeTo;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _SharedAmbientCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pageController != widget.pageController) {
+      oldWidget.pageController.removeListener(_onPageControllerChanged);
+      widget.pageController.addListener(_onPageControllerChanged);
+    }
+    if (oldWidget.activeStoryListenable != widget.activeStoryListenable) {
+      oldWidget.activeStoryListenable.removeListener(_onActiveStoryChanged);
+      widget.activeStoryListenable.addListener(_onActiveStoryChanged);
+    }
+  }
+
+  double? _tryReadLivePage() {
+    if (!widget.pageController.hasClients) return null;
+    try {
+      final position = widget.pageController.position;
+      if (!position.hasContentDimensions || !position.hasPixels) return null;
+      return widget.pageController.page?.clamp(
+        0.0,
+        (_kStorySpecs.length - 1).toDouble(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _onBridgeTick() {
+    final curved = Curves.easeOutCubic.transform(
+      _bridgeController.value.clamp(0.0, 1.0),
+    );
+    _ambientPageNotifier.value =
+        _bridgeFrom + ((_bridgeTo - _bridgeFrom) * curved);
+  }
+
+  void _onPageControllerChanged() {
+    // Ignora o salto instantâneo de jumpToPage para que o bridge de 520ms
+    // conduza o deslocamento suave sem corte seco.
+    if (widget.isProgrammaticJumpGetter()) return;
+
+    final livePage = _tryReadLivePage();
+    if (livePage == null) return;
+
+    // Durante swipe manual / física de mola do PageView, segue 1:1 (0ms latência)
+    if (_bridgeController.isAnimating) {
+      final isFractionalSwipe =
+          (livePage - livePage.roundToDouble()).abs() > 1e-3;
+      if (!isFractionalSwipe && (livePage - _bridgeTo).abs() < 1e-3) {
+        return;
+      }
+      _bridgeController.stop();
+    }
+    _ambientPageNotifier.value = livePage;
+  }
+
+  void _onActiveStoryChanged() {
+    final target = widget.activeStoryListenable.value
+        .clamp(0, _kStorySpecs.length - 1)
+        .toDouble();
+
+    final livePage = _tryReadLivePage();
+    final isActivelySwiping = livePage != null &&
+        (livePage - livePage.roundToDouble()).abs() > 1e-3;
+
+    // Se a troca de página ocorreu durante um swipe fracionário do PageView,
+    // o próprio PageController já está interpolando 1:1 sem corte seco.
+    if (isActivelySwiping) {
+      return;
+    }
+
+    if (_reduceMotion) {
+      if (_bridgeController.isAnimating) {
+        _bridgeController.stop();
+      }
+      _bridgeFrom = target;
+      _bridgeTo = target;
+      _ambientPageNotifier.value = target;
+      return;
+    }
+
+    final current = _ambientPageNotifier.value;
+    if ((target - current).abs() <= 1e-3) {
+      _ambientPageNotifier.value = target;
+      return;
+    }
+
+    _bridgeFrom = current;
+    _bridgeTo = target;
+    _bridgeController.forward(from: 0.0);
+  }
+
+  @override
+  void dispose() {
+    widget.pageController.removeListener(_onPageControllerChanged);
+    widget.activeStoryListenable.removeListener(_onActiveStoryChanged);
+    _bridgeController.removeListener(_onBridgeTick);
+    _bridgeController.dispose();
+    _ambientPageNotifier.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: CustomPaint(
-        painter: _SharedAmbientPainter(pageController: pageController),
+        painter: _SharedAmbientPainter(
+          ambientPageListenable: _ambientPageNotifier,
+        ),
       ),
     );
   }
 }
 
 class _SharedAmbientPainter extends CustomPainter {
-  _SharedAmbientPainter({required this.pageController})
-      : super(repaint: pageController);
+  _SharedAmbientPainter({required this.ambientPageListenable})
+      : super(repaint: ambientPageListenable);
 
-  final PageController pageController;
-
-  double _resolveFractionalPage() {
-    if (!pageController.hasClients) return 0.0;
-    try {
-      final position = pageController.position;
-      if (!position.hasContentDimensions || !position.hasPixels) {
-        return pageController.initialPage.toDouble();
-      }
-      return (pageController.page ?? pageController.initialPage.toDouble())
-          .clamp(0.0, (_kStorySpecs.length - 1).toDouble());
-    } catch (_) {
-      return 0.0;
-    }
-  }
+  final ValueListenable<double> ambientPageListenable;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final page = _resolveFractionalPage();
+    final page = ambientPageListenable.value.clamp(
+      0.0,
+      (_kStorySpecs.length - 1).toDouble(),
+    );
     final lower = page.floor().clamp(0, _kStorySpecs.length - 1);
     final upper = page.ceil().clamp(0, _kStorySpecs.length - 1);
     final frac = (page - lower).clamp(0.0, 1.0);
@@ -795,7 +982,7 @@ class _SharedAmbientPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SharedAmbientPainter oldDelegate) {
-    return oldDelegate.pageController != pageController;
+    return oldDelegate.ambientPageListenable != ambientPageListenable;
   }
 }
 
@@ -1523,32 +1710,32 @@ class _StorySlidePageState extends State<_StorySlidePage>
     final isCompact = widget.isCompact;
 
     // Ato 1 (0.0s – 0.75s = 0.00 .. 0.242 de 3.10s): cascata sedosa sem quique
-    final tagFade = Tween<double>(begin: 0.35, end: 1.0).animate(
-      _interval(0.00, 0.12),
+    final tagFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      _interval(0.00, 0.14),
     );
     final tagSlide = Tween<Offset>(
       begin: const Offset(0, 0.18),
       end: Offset.zero,
-    ).animate(_interval(0.00, 0.12));
+    ).animate(_interval(0.00, 0.14));
 
-    final titleFade = Tween<double>(begin: 0.35, end: 1.0).animate(
-      _interval(0.03, 0.16),
+    final titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      _interval(0.03, 0.18),
     );
     final titleSlide = Tween<Offset>(
       begin: const Offset(0, 0.14),
       end: Offset.zero,
-    ).animate(_interval(0.03, 0.16));
+    ).animate(_interval(0.03, 0.18));
 
-    final subFade = Tween<double>(begin: 0.35, end: 1.0).animate(
-      _interval(0.06, 0.20),
+    final subFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      _interval(0.06, 0.21),
     );
     final subSlide = Tween<Offset>(
       begin: const Offset(0, 0.14),
       end: Offset.zero,
-    ).animate(_interval(0.06, 0.20));
+    ).animate(_interval(0.06, 0.21));
 
-    final heroOpacity = Tween<double>(begin: 0.32, end: 1.0).animate(
-      _interval(0.07, 0.242),
+    final heroOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
+      _interval(0.08, 0.242),
     );
     final heroRise = Tween<double>(begin: 18.0, end: 0.0).animate(
       _interval(0.08, 0.242),
