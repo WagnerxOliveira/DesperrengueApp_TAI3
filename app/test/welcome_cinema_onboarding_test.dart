@@ -567,8 +567,17 @@ void main() {
           );
 
           // Etapa 1 (0ms..2000ms): Casa Resolvida Sem Dor de Cabeça
-          // Verifica digitação inicial ("Trocar resist...") antes de concluir
+          // Verifica digitação inicial com cursor vertical esmeralda (sem reticências) antes de concluir
           expect(find.textContaining('Trocar resist'), findsOneWidget);
+          expect(find.textContaining('...'), findsNothing);
+          expect(
+            find.byKey(const Key('search-typing-caret')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const Key('search-completed-check')),
+            findsNothing,
+          );
           await tester.pump(const Duration(milliseconds: 1500)); // t = 1500ms
           _expectActiveStory(0);
           expect(
@@ -580,6 +589,11 @@ void main() {
           expect(find.text(_kExpectedStorySubtitles[0]), findsOneWidget);
           expect(
             find.text('Trocar resistência do chuveiro'),
+            findsOneWidget,
+          );
+          expect(find.byKey(const Key('search-typing-caret')), findsNothing);
+          expect(
+            find.byKey(const Key('search-completed-check')),
             findsOneWidget,
           );
           expect(find.byType(CategoryBrandEmblem), findsNWidgets(4));
@@ -774,7 +788,7 @@ void main() {
             label: 'dual-mode-option-provider (Modo Profissional)',
           );
 
-          // No início da Etapa 6 (0.4s < 1.35s): Modo Cliente ativo (#FFFFFF)
+          // Fase 1 da coreografia (0.4s <= 1.10s): Modo Cliente ativo (#FFFFFF sobre Safira Real)
           await tester.pump(const Duration(milliseconds: 400));
           expect(
             tester.widget<Text>(find.text('Modo Cliente')).style!.color,
@@ -785,8 +799,8 @@ void main() {
             const Color(0xFF0F172A),
           );
 
-          // Em repouso (3.5s > 2.45s): cursor auto-deslizou para Modo Profissional (#FFFFFF)
-          await tester.pump(const Duration(milliseconds: 3100));
+          // Fase 2 da coreografia (1.9s em [1.10s..2.10s]): cursor desliza para Modo Profissional (#FFFFFF sobre Esmeralda)
+          await tester.pump(const Duration(milliseconds: 1500));
           expect(
             tester.widget<Text>(find.text('Modo Profissional')).style!.color,
             const Color(0xFFFFFFFF),
@@ -796,12 +810,8 @@ void main() {
             const Color(0xFF0F172A),
           );
 
-          // Toque interativo direto em "Modo Cliente" -> desliza cursor de volta para Cliente SEM sair da Etapa 6!
-          await tester.tap(clientOption);
-          await tester.pump();
-          await tester.pump(const Duration(milliseconds: 300));
-          _expectActiveStory(5);
-          expect(completedCount, 0);
+          // Fase 3 / Repouso (3.5s > 3.00s): retorna suavemente e estaciona em Modo Cliente (#FFFFFF), 1 única pílula ativa
+          await tester.pump(const Duration(milliseconds: 1600));
           expect(
             tester.widget<Text>(find.text('Modo Cliente')).style!.color,
             const Color(0xFFFFFFFF),
@@ -827,8 +837,8 @@ void main() {
             const Color(0xFF0F172A),
           );
 
-          // Também valida toque direto sobre os rótulos textuais dentro de dual-mode-luxury-switch
-          await tester.tap(find.text('Modo Cliente'));
+          // Toque interativo direto em "Modo Cliente" -> desliza cursor de volta para Cliente SEM sair da Etapa 6!
+          await tester.tap(clientOption);
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
           _expectActiveStory(5);
@@ -837,7 +847,12 @@ void main() {
             tester.widget<Text>(find.text('Modo Cliente')).style!.color,
             const Color(0xFFFFFFFF),
           );
+          expect(
+            tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFF0F172A),
+          );
 
+          // Também valida toque direto sobre os rótulos textuais dentro de dual-mode-luxury-switch
           await tester.tap(find.text('Modo Profissional'));
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
@@ -845,6 +860,16 @@ void main() {
           expect(completedCount, 0);
           expect(
             tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+
+          await tester.tap(find.text('Modo Cliente'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          _expectActiveStory(5);
+          expect(completedCount, 0);
+          expect(
+            tester.widget<Text>(find.text('Modo Cliente')).style!.color,
             const Color(0xFFFFFFFF),
           );
 
@@ -1686,10 +1711,12 @@ void main() {
             (Color(0xFF065F46), porcelainBase, 'Serviço aprovado sobre porcelana #F8FAFC'),
             (Color(0xFFFFFFFF), Color(0xFF991B1B), 'Selo PDF branco sobre vermelho #991B1B'),
             (Color(0xFFFFFFFF), Color(0xFF1E3A8A), 'Modo Cliente ativo sobre cursor Safira #1E3A8A'),
-            (Color(0xFFFFFFFF), Color(0xFF1D4ED8), 'Modo Cliente ativo sobre cursor Safira #1D4ED8'),
+            (Color(0xFFFFFFFF), Color(0xFF2563EB), 'Modo Cliente ativo sobre cursor Safira Real #2563EB'),
             (Color(0xFFFFFFFF), Color(0xFF047857), 'Modo Profissional ativo sobre cursor Esmeralda #047857'),
             (Color(0xFFFFFFFF), Color(0xFF0F766E), 'Modo Profissional ativo sobre cursor Oceano #0F766E'),
+            (Color(0xFF0F172A), Color(0xFFDFE7F0), 'Opção inativa sobre sombra interna do trilho #DFE7F0'),
             (Color(0xFF0F172A), Color(0xFFE8EEF5), 'Opção inativa sobre trilho acetinado #E8EEF5'),
+            (Color(0xFF0F172A), Color(0xFFEDF2F8), 'Opção inativa sobre base do trilho acetinado #EDF2F8'),
             (Color(0xFF0F172A), Color(0xFFF8FAFC), 'Botão Próximo (#0F172A sobre #F8FAFC)'),
             (Color(0xFF0B1320), Color(0xFF6EE7B7), 'CTA Começar agora sobre aurora menta #6EE7B7'),
             (Color(0xFF0B1320), Color(0xFFA7F3D0), 'CTA Começar agora sobre aurora menta clara #A7F3D0'),
@@ -1855,6 +1882,13 @@ void main() {
               find.byKey(const Key('dual-mode-option-provider')),
               label: 'dual-mode-option-provider em ${vp.label}',
             );
+            await tester.tap(
+              find.byKey(const Key('dual-mode-option-provider')),
+            );
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 300));
+            expect(tester.takeException(), isNull);
+
             await tester.tap(find.byKey(const Key('dual-mode-option-client')));
             await tester.pump();
             await tester.pump(const Duration(milliseconds: 300));
