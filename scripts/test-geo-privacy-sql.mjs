@@ -1001,6 +1001,9 @@ check('21. Escudo Zero-Trust Anti-Recadastro Duplicado (`20261118220000` + `sign
     migGuard,
     /grant\s+execute\s+on\s+function\s+public\.service_evaluate_signup_email_guard\s*\(\s*text\s*,\s*text\s*\)\s+to\s+service_role/i
   );
+  assert.match(migGuard, /split_part\s*\(/i);
+  assert.match(migGuard, /'ip:'\s*\|\|/i);
+  assert.match(migGuard, /v_ip_hits\s*>\s*20/i);
   assert.match(migGuard, /private\.ceo_owner_canonical_email\(\)/i);
   assert.match(migGuard, /auth\.identities/i);
   assert.match(migGuard, /ALREADY_REGISTERED_CONFIRMED/);
@@ -1023,10 +1026,11 @@ check('21. Escudo Zero-Trust Anti-Recadastro Duplicado (`20261118220000` + `sign
   assert.match(migGuard, /private\.emit_ceo_live_event_safe/i);
   assert.match(migGuard, /exception\s+when\s+others\s+then\s+null/i);
 
-  // Edge Function signup-eligibility-guard: IP + nonce SHA-256, service_role, piso 180ms, HTTP 429
+  // Edge Function signup-eligibility-guard: IP + nonce dual-bucket SHA-256, service_role, piso 180ms, HTTP 429
   assert.match(edgeGuard, /x-forwarded-for/i);
   assert.match(edgeGuard, /cf-connecting-ip/i);
   assert.match(edgeGuard, /SHA-256/);
+  assert.match(edgeGuard, /DSP_SIGNUP_GUARD_IP_V1/);
   assert.match(edgeGuard, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(edgeGuard, /service_evaluate_signup_email_guard/);
   assert.match(edgeGuard, /Math\.max\s*\(\s*0\s*,/);

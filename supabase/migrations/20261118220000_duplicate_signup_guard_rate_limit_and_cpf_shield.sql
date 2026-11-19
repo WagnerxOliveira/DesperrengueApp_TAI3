@@ -51,8 +51,13 @@ set search_path = public, extensions
 as $$
 declare
   v_now                timestamptz := timezone('utc', now());
+  v_raw_rate_key       text;
+  v_session_part       text;
+  v_ip_part            text;
   v_bucket_key         text;
+  v_ip_bucket_key      text;
   v_hits               integer := 0;
+  v_ip_hits            integer := 0;
   v_email              text;
   v_user_id            uuid;
   v_email_confirmed_at timestamptz;
@@ -62,7 +67,10 @@ begin
       using errcode = '42501';
   end if;
 
-  v_bucket_key := 'email:' || left(coalesce(nullif(btrim(p_rate_key), ''), 'global'), 128);
+  v_raw_rate_key := btrim(coalesce(p_rate_key, ''));
+  v_session_part := left(coalesce(nullif(btrim(split_part(v_raw_rate_key, '.', 1)), ''), 'global'), 128);
+  v_ip_part := left(btrim(split_part(v_raw_rate_key, '.', 2)), 128);
+  v_bucket_key := 'email:' || v_session_part;
 
   -- Expurgo oportunístico leve de janelas expiradas há mais de 24h
   if random() < 0.02 then
@@ -90,7 +98,33 @@ begin
         end
   returning hit_count into v_hits;
 
-  if v_hits > 8 then
+  -- Teto rígido por IP (20 req / 10 min): bloqueia rotação maliciosa de client_nonce
+  -- preservando margem justa para múltiplos aparelhos sob mesmo CGNAT/Wi-Fi residencial.
+  if v_ip_part <> '' then
+    v_ip_bucket_key := 'ip:' || v_ip_part;
+
+    insert into private.signup_guard_rate_limits as rl_ip (
+      bucket_key,
+      window_started_at,
+      hit_count
+    ) values (
+      v_ip_bucket_key,
+      v_now,
+      1
+    )
+    on conflict (bucket_key) do update
+      set hit_count = case
+            when rl_ip.window_started_at <= (v_now - interval '10 minutes') then 1
+            else rl_ip.hit_count + 1
+          end,
+          window_started_at = case
+            when rl_ip.window_started_at <= (v_now - interval '10 minutes') then v_now
+            else rl_ip.window_started_at
+          end
+    returning hit_count into v_ip_hits;
+  end if;
+
+  if v_hits > 8 or v_ip_hits > 20 then
     return jsonb_build_object('status', 'RATE_LIMITED');
   end if;
 
