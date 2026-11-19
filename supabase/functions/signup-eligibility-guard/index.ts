@@ -146,7 +146,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       : "";
     const clientNonce = sanitizeClientNonce(payload.client_nonce);
     const clientIp = extractClientIp(req);
-    const rateKey = await sha256HexUtf8(`DSP_SIGNUP_GUARD_V1|${clientIp}|${clientNonce}`);
+    const sessionKey = await sha256HexUtf8(`DSP_SIGNUP_GUARD_V1|${clientIp}|${clientNonce}`);
+    const ipKey = await sha256HexUtf8(`DSP_SIGNUP_GUARD_IP_V1|${clientIp}`);
+    const rateKey = `${sessionKey}.${ipKey}`;
 
     const { data, error } = await supabaseAdmin.rpc("service_evaluate_signup_email_guard", {
       p_email: email,
