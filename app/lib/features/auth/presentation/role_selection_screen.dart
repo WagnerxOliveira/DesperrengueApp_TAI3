@@ -8,6 +8,7 @@ import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/serene_route_transitions.dart';
 import 'auth_gate.dart';
 import 'desperrengue_welcome_cinema_screen.dart';
 
@@ -73,28 +74,16 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
   void _abrirReplayWelcomeCinema() {
     final firstName = _nomeUsuario == 'você' ? '' : _nomeUsuario;
     Navigator.of(context).push(
-      PageRouteBuilder<void>(
-        transitionDuration: const Duration(milliseconds: 380),
-        reverseTransitionDuration: const Duration(milliseconds: 300),
-        pageBuilder: (routeContext, animation, secondaryAnimation) =>
-            DesperrengueWelcomeCinemaScreen(
-              userFirstName: firstName,
-              isReplay: true,
-              onCompleted: () {
-                if (Navigator.of(routeContext).canPop()) {
-                  Navigator.of(routeContext).pop();
-                }
-              },
-            ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            ),
-            child: child,
-          );
-        },
+      SereneAuthPageRoute<void>(
+        builder: (routeContext) => DesperrengueWelcomeCinemaScreen(
+          userFirstName: firstName,
+          isReplay: true,
+          onCompleted: () {
+            if (Navigator.of(routeContext).canPop()) {
+              Navigator.of(routeContext).pop();
+            }
+          },
+        ),
       ),
     );
   }
@@ -108,96 +97,151 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
   }
 
   void _mostrarModalSair() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: SereneModalSheetConfig.barrierColor,
+      sheetAnimationStyle: SereneModalSheetConfig.sheetAnimationStyle,
       builder: (sheetContext) {
         final tk = sheetContext.tk;
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 48,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 24),
-                  decoration: BoxDecoration(
-                    color: tk.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+        final mq = MediaQuery.of(sheetContext);
+        final textScale = mq.textScaler.scale(1.0);
+        final stackButtons = mq.size.width < 350 || textScale > 1.25;
+        final compactSheet = mq.size.height < 680 || textScale > 1.25;
+
+        final cancelBtn = OutlinedButton(
+          onPressed: () => Navigator.pop(sheetContext),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(44, 48),
+            padding: EdgeInsets.symmetric(
+              vertical: compactSheet ? 12 : 14,
+              horizontal: 16,
+            ),
+            foregroundColor: tk.text,
+            side: BorderSide(color: tk.border),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: Text(
+            'Cancelar',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: compactSheet ? 15 : 16,
+            ),
+          ),
+        );
+
+        final signOutBtn = FilledButton(
+          onPressed: () async {
+            final navigator = Navigator.of(context);
+            Navigator.pop(sheetContext);
+            await ProfileService().signOut();
+            navigator.pushAndRemoveUntil(
+              SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
+              (route) => false,
+            );
+          },
+          style: FilledButton.styleFrom(
+            backgroundColor: tk.danger,
+            foregroundColor: AppTokens.onColor(tk.danger),
+            minimumSize: const Size(44, 48),
+            padding: EdgeInsets.symmetric(
+              vertical: compactSheet ? 12 : 14,
+              horizontal: 16,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: Text(
+            'Sair da Conta',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: compactSheet ? 15 : 16,
+            ),
+          ),
+        );
+
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: mq.size.height * 0.92),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: tk.raised,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
+              border: Border(top: BorderSide(color: tk.border, width: 1.2)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  compactSheet ? 18 : 24,
+                  compactSheet ? 14 : 20,
+                  compactSheet ? 18 : 24,
+                  compactSheet ? 16 : 24,
                 ),
-                Icon(Icons.logout_rounded, size: 48, color: tk.danger),
-                const SizedBox(height: 16),
-                Text(
-                  'Deseja sair da conta?',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: tk.text,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Você precisará fazer login novamente com seu e-mail ou Google para acessar o Desperrengue.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: tk.textMuted),
-                ),
-                const SizedBox(height: 32),
-                Row(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(sheetContext),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          foregroundColor: tk.text,
-                          side: BorderSide(color: tk.border),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Cancelar',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                    Center(
+                      child: Container(
+                        width: 48,
+                        height: 4,
+                        margin: EdgeInsets.only(bottom: compactSheet ? 14 : 20),
+                        decoration: BoxDecoration(
+                          color: tk.border,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () async {
-                          final navigator = Navigator.of(context);
-                          Navigator.pop(sheetContext);
-                          await ProfileService().signOut();
-                          navigator.pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (_) => const AuthGate()),
-                            (route) => false,
-                          );
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: tk.danger,
-                          foregroundColor: AppTokens.onColor(tk.danger),
-                          minimumSize: const Size.fromHeight(52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Sair da Conta',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
+                    Icon(
+                      Icons.logout_rounded,
+                      size: compactSheet ? 38 : 48,
+                      color: tk.danger,
+                    ),
+                    SizedBox(height: compactSheet ? 10 : 16),
+                    Text(
+                      'Deseja sair da conta?',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: compactSheet ? 19 : 22,
+                        fontWeight: FontWeight.bold,
+                        color: tk.text,
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Você precisará fazer login novamente com seu e-mail ou Google para acessar o Desperrengue.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: compactSheet ? 13.5 : 15,
+                        color: tk.textMuted,
+                        height: 1.38,
+                      ),
+                    ),
+                    SizedBox(height: compactSheet ? 18 : 28),
+                    if (stackButtons) ...[
+                      signOutBtn,
+                      const SizedBox(height: 10),
+                      cancelBtn,
+                    ] else
+                      Row(
+                        children: [
+                          Expanded(child: cancelBtn),
+                          const SizedBox(width: 16),
+                          Expanded(child: signOutBtn),
+                        ],
+                      ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         );
@@ -283,6 +327,9 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                               children: [
                                 IconButton(
                                   tooltip: 'Voltar',
+                                  style: IconButton.styleFrom(
+                                    minimumSize: const Size(44, 44),
+                                  ),
                                   onPressed: _mostrarModalSair,
                                   icon: Icon(
                                     Icons.arrow_back_ios_new_rounded,
@@ -290,46 +337,58 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                                   ),
                                 ),
                                 Flexible(
-                                  child: TextButton.icon(
+                                  child: TextButton(
                                     key: const Key('btn-replay-welcome-cinema'),
                                     onPressed: _abrirReplayWelcomeCinema,
                                     style: TextButton.styleFrom(
                                       foregroundColor: tk.text,
                                       backgroundColor: tk.isDark
-                                          ? tk.surface.withValues(alpha: 0.80)
-                                          : tk.clientSoft
-                                                .withValues(alpha: 0.55),
+                                          ? tk.surface.withValues(alpha: 0.88)
+                                          : tk.surface,
                                       padding: EdgeInsets.symmetric(
-                                        horizontal: compact ? 10 : 12,
-                                        vertical: compact ? 6 : 8,
+                                        horizontal: compact ? 10 : 14,
+                                        vertical: compact ? 8 : 10,
                                       ),
-                                      minimumSize: Size.zero,
+                                      minimumSize: const Size(44, 44),
+                                      visualDensity: VisualDensity.standard,
                                       tapTargetSize:
-                                          MaterialTapTargetSize.shrinkWrap,
+                                          MaterialTapTargetSize.padded,
                                       shape: RoundedRectangleBorder(
                                         borderRadius:
                                             BorderRadius.circular(999),
                                         side: BorderSide(
-                                          color: tk.clientAccent.withValues(
-                                            alpha: tk.isDark ? 0.38 : 0.28,
-                                          ),
+                                          color: tk.isDark
+                                              ? tk.clientAccent.withValues(
+                                                  alpha: 0.38,
+                                                )
+                                              : tk.border,
                                         ),
                                       ),
                                     ),
-                                    icon: Icon(
-                                      Icons.play_circle_outline_rounded,
-                                      size: compact ? 15 : 16,
-                                      color: tk.clientAccent,
-                                    ),
-                                    label: Text(
-                                      'Como funciona',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: compact ? 11.5 : 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: tk.text,
-                                      ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.play_circle_outline_rounded,
+                                          size: compact ? 15 : 17,
+                                          color: tk.isDark
+                                              ? tk.clientAccent
+                                              : tk.brand,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            'Rever apresentação',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: compact ? 11.5 : 12.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: tk.text,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
