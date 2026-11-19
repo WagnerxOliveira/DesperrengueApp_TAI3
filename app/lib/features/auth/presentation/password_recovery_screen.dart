@@ -6,6 +6,7 @@ import '../../../core/services/registration_guard_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/desperrengue_brand_logo.dart';
 import '../../../core/ui/light_island.dart';
+import '../../../core/ui/serene_route_transitions.dart';
 import 'auth_gate.dart';
 import 'login_screen.dart';
 
@@ -181,7 +182,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
           : LoginScreen(initialEmail: email);
 
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => targetScreen),
+        SereneAuthPageRoute<void>(builder: (_) => targetScreen),
         (_) => false,
       );
     } catch (e) {
@@ -347,6 +348,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: _primaryBlue,
               foregroundColor: Colors.white,
+              minimumSize: const Size(44, 48),
               padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -498,6 +500,7 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: _primaryBlue,
               foregroundColor: Colors.white,
+              minimumSize: const Size(44, 48),
               padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
@@ -525,6 +528,9 @@ class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
           const SizedBox(height: 12),
           TextButton(
             key: const Key('btn-recovery-change-email'),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(44, 48),
+            ),
             onPressed: _isLoading
                 ? null
                 : () {

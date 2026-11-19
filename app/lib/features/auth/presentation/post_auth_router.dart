@@ -8,6 +8,7 @@ import '../../../core/services/profile_service.dart';
 import '../../../core/services/welcome_cinema_tracker.dart';
 import '../../../core/storage/local_prefs.dart';
 import '../../../core/ui/app_theme.dart';
+import '../../../core/ui/serene_route_transitions.dart';
 import '../../../core/ui/widgets.dart';
 import '../../client/presentation/client_setup_screen.dart';
 import '../../client/presentation/client_shell.dart';
@@ -97,7 +98,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
     final navigator = Navigator.of(context);
     await ProfileService().signOut();
     navigator.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AuthGate()),
+      SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
       (_) => false,
     );
   }
@@ -190,12 +191,24 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
       case AppDestination.modeSelection:
         final showCinema =
             _showPostSignupCinema && !_session.forceSelection.value;
+        final disableAnimations = MediaQuery.disableAnimationsOf(context);
         return ColoredBox(
           color: const Color(0xFF0F172A),
           child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 450),
+            duration: disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 380),
+            reverseDuration: disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 280),
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) =>
+                SereneAuthPageRoute.buildSwitcherTransition(
+                  context: context,
+                  animation: animation,
+                  child: child,
+                ),
             child: showCinema
                 ? DesperrengueWelcomeCinemaScreen(
                     key: const ValueKey('post-signup-welcome-cinema'),

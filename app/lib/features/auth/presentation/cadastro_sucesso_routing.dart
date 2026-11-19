@@ -8,6 +8,7 @@ import '../../../core/services/profile_service.dart';
 import '../../../core/services/welcome_cinema_tracker.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/desperrengue_brand_logo.dart';
+import '../../../core/ui/serene_route_transitions.dart';
 import 'auth_gate.dart';
 
 class CadastroSucessoRoutingScreen extends StatefulWidget {
@@ -69,21 +70,7 @@ class _CadastroSucessoRoutingScreenState
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      PageRouteBuilder<void>(
-        transitionDuration: const Duration(milliseconds: 420),
-        reverseTransitionDuration: const Duration(milliseconds: 260),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const AuthGate(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            ),
-            child: child,
-          );
-        },
-      ),
+      SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
       (route) => false,
     );
   }
