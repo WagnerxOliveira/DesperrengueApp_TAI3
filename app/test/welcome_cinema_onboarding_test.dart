@@ -31,15 +31,37 @@ const List<Key> _kSemanticStoryKeys = <Key>[
 ];
 
 const List<String> _kExpectedStoryTitles = <String>[
-  'Sua casa resolvida sem dor de cabeça',
-  'Privacidade total antes de contratar',
-  'Seu dinheiro 100% protegido sempre',
-  'Sua casa mais valorizada',
-  'Justo para quem trabalha',
-  'Uma conta, dois caminhos',
+  'Casa Resolvida Sem Dor de Cabeça',
+  'Privacidade Total ao Pedir',
+  'Seu Dinheiro 100% Protegido',
+  'Sua Casa Mais Valorizada',
+  'Justo para Quem Trabalha',
+  'Uma Conta, Dois Caminhos',
 ];
 
-const List<String> _kBannedTechnicalJargon = <String>[
+const List<String> _kExpectedStorySubtitles = <String>[
+  'Do reparo urgente à manutenção planejada, encontre o especialista certo em poucos toques.',
+  'Compare até 3 orçamentos protegidos. Seu endereço fica oculto até contratar.',
+  'O valor fica guardado em segurança e só libera com seu código pessoal.',
+  'Histórico inteligente do imóvel pronto em PDF para aluguéis, seguros ou venda.',
+  'Sem pagar taxas para enviar orçamento e 100% das peças sem desconto.',
+  'Contrate serviços ou atenda clientes com uma única conta verificada.',
+];
+
+/// Termos em inglês, artefatos/erros de OCR do vídeo de referência e jargões
+/// técnicos frios estritamente proibidos em qualquer etapa da apresentação.
+const List<String> _kBannedEnglishTyposAndJargon = <String>[
+  'Segmented Control',
+  'Segment Control',
+  'Story ',
+  'Story',
+  'Stories',
+  'Score',
+  'Chip',
+  'Repuirdade',
+  'Silversão',
+  'Espaet',
+  'Dirctois',
   'De Casteljau',
   'SHA-256',
   'OCR',
@@ -51,6 +73,11 @@ const List<String> _kBannedTechnicalJargon = <String>[
   'PBKDF2',
   'Escrow',
   'Smart Split',
+  'Next',
+  'Skip',
+  'Paused',
+  'Back',
+  'Close',
 ];
 
 void _expectActiveStory(int activeIndex) {
@@ -59,7 +86,7 @@ void _expectActiveStory(int activeIndex) {
       find.byKey(_kCanonicalStoryKeys[i]),
       i == activeIndex ? findsOneWidget : findsNothing,
       reason:
-          'Esperava apenas Story ${activeIndex + 1} (${_kCanonicalStoryKeys[activeIndex]}) ativo, mas falhou no índice $i',
+          'Esperava apenas Etapa ${activeIndex + 1} (${_kCanonicalStoryKeys[activeIndex]}) ativa, mas falhou no índice $i',
     );
     expect(
       find.byKey(_kSemanticStoryKeys[i]),
@@ -86,27 +113,39 @@ List<String> _collectAllVisibleTexts(WidgetTester tester) {
       texts.add(content);
     }
   }
+  for (final element in find.byType(Tooltip).evaluate()) {
+    final widget = element.widget as Tooltip;
+    final message = widget.message ?? widget.richMessage?.toPlainText() ?? '';
+    if (message.trim().isNotEmpty) {
+      texts.add(message.trim());
+    }
+  }
   return texts;
 }
 
-void _assertZeroBannedJargonInCurrentStory(
+void _assertPurePortugueseInCurrentStage(
   WidgetTester tester, {
   required int storyIndex,
 }) {
   final allTexts = _collectAllVisibleTexts(tester);
+  expect(
+    allTexts,
+    isNotEmpty,
+    reason: 'Etapa ${storyIndex + 1} deve expor textos visíveis para auditoria',
+  );
   for (final text in allTexts) {
     final normalized = text.toUpperCase();
-    for (final banned in _kBannedTechnicalJargon) {
+    for (final banned in _kBannedEnglishTyposAndJargon) {
       final needle = banned.toUpperCase();
-      final isShortAcronym = needle.length <= 4 && !needle.contains(' ');
-      final matched = isShortAcronym
+      final isWordToken = !needle.contains(' ') && !needle.contains('-');
+      final matched = isWordToken
           ? RegExp('\\b${RegExp.escape(needle)}\\b').hasMatch(normalized)
           : normalized.contains(needle);
       expect(
         matched,
         isFalse,
         reason:
-            'Story ${storyIndex + 1} expôs jargão técnico proibido "$banned" no texto: "$text"',
+            'Etapa ${storyIndex + 1} expôs termo em inglês, erro do vídeo ou jargão proibido "$banned" no texto: "$text"',
       );
     }
   }
@@ -124,12 +163,14 @@ void _expectMinTouchTarget(
   expect(
     size.width,
     greaterThanOrEqualTo(minWidth),
-    reason: 'Largura de toque de "$label" (${size.width}) deve ser >= ${minWidth}dp',
+    reason:
+        'Largura de toque de "$label" (${size.width}) deve ser >= ${minWidth}dp',
   );
   expect(
     size.height,
     greaterThanOrEqualTo(minHeight),
-    reason: 'Altura de toque de "$label" (${size.height}) deve ser >= ${minHeight}dp',
+    reason:
+        'Altura de toque de "$label" (${size.height}) deve ser >= ${minHeight}dp',
   );
 }
 
@@ -160,15 +201,18 @@ void main() {
   });
 
   group(
-    '1. WelcomeCinemaTracker (v4 / v2.25.0) — Governança Pós-Cadastro e Ponte Escura',
+    '1. WelcomeCinemaTracker (v5 / v2.26.0) — Governança Pós-Cadastro e Ponte Escura',
     () {
-      test('chaves de persistência v4 configuradas para a vitrine 120Hz v2.25.0', () {
-        expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v4_seen_');
-        expect(
-          WelcomeCinemaTracker.keyPendingUid,
-          'welcome_cinema_v4_pending_uid',
-        );
-      });
+      test(
+        'chaves de persistência v5 configuradas para a apresentação fiel ao vídeo (v2.26.0)',
+        () {
+          expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v5_seen_');
+          expect(
+            WelcomeCinemaTracker.keyPendingUid,
+            'welcome_cinema_v5_pending_uid',
+          );
+        },
+      );
 
       test(
         'dispara true para conta recém-criada armada via OTP e para 1º login OAuth recente',
@@ -178,7 +222,7 @@ void main() {
 
           final prefsAfterArm = await SharedPreferences.getInstance();
           expect(
-            prefsAfterArm.getString('welcome_cinema_v4_pending_uid'),
+            prefsAfterArm.getString('welcome_cinema_v5_pending_uid'),
             'uid-otp-1',
           );
 
@@ -204,7 +248,7 @@ void main() {
       );
 
       test(
-        'após markCompleted(uid), limpa pending_uid, grava welcome_cinema_v4_seen_<uid> e isola entre usuários distintos',
+        'após markCompleted(uid), limpa pending_uid, grava welcome_cinema_v5_seen_<uid> e nunca repete nem vaza entre usuários distintos',
         () async {
           final now = DateTime.utc(2026, 11, 19, 14, 0, 0);
           final user1 = _makeProfile(id: 'uid-1', fullName: 'Ana');
@@ -223,8 +267,8 @@ void main() {
           await WelcomeCinemaTracker.markCompleted('uid-1');
 
           final prefs = await SharedPreferences.getInstance();
-          expect(prefs.getString('welcome_cinema_v4_seen_uid-1'), '1');
-          expect(prefs.getString('welcome_cinema_v4_pending_uid'), isNull);
+          expect(prefs.getString('welcome_cinema_v5_seen_uid-1'), '1');
+          expect(prefs.getString('welcome_cinema_v5_pending_uid'), isNull);
 
           // Mesmo recarregando do disco (cold restart), nunca repete para uid-1
           WelcomeCinemaTracker.resetMemoryStateForTesting();
@@ -383,10 +427,10 @@ void main() {
   );
 
   group(
-    '2. Ritmo Sereno de 10,5s por Story (63000ms default) & Progressão Completa dos 6 Stories',
+    '2. Fidelidade às 6 Etapas do Vídeo, Chave Seletora de Luxo & 100% Português (ZERO Inglês)',
     () {
       testWidgets(
-        'duração padrão de 63000ms (10,5s por Story): permanece tranquilo no Story 1 em 5s e em 10s, avança ao Story 2 após 10,5s e conclui ao final do Story 6',
+        'duração padrão de 63000ms (10,5s por Etapa): exibe Etapa 1 de 6..Etapa 6 de 6, story-pagination-dots e conclui exatamente 1 vez',
         (tester) async {
           tester.view.physicalSize = const Size(1080, 2400);
           tester.view.devicePixelRatio = 2.75;
@@ -411,35 +455,41 @@ void main() {
           expect(DesperrengueWelcomeCinemaScreen.storyCount, 6);
 
           _expectActiveStory(0);
-          expect(find.text('1 de 6'), findsOneWidget);
+          expect(find.text('Etapa 1 de 6'), findsOneWidget);
+          expect(
+            find.byKey(const Key('story-pagination-dots')),
+            findsOneWidget,
+          );
 
-          // Em 5s: leitura calma no Story 1 (já em Ato 3 de Repouso Sereno)
+          // Em 5s e em 10s: leitura calma na Etapa 1 (Ato 3 de Repouso Sereno)
           await tester.pump(const Duration(seconds: 5));
           _expectActiveStory(0);
-          expect(find.text('1 de 6'), findsOneWidget);
+          expect(find.text('Etapa 1 de 6'), findsOneWidget);
           expect(completedCount, 0);
 
-          // Em 10s (10000ms < 10500ms): ainda permanece sereno no Story 1
           await tester.pump(const Duration(seconds: 5));
           _expectActiveStory(0);
-          expect(find.text('1 de 6'), findsOneWidget);
+          expect(find.text('Etapa 1 de 6'), findsOneWidget);
           expect(completedCount, 0);
 
-          // Em 10,6s (10600ms > 10500ms): avança automaticamente para o Story 2
+          // Em 10,6s (> 10,5s): avança automaticamente para a Etapa 2
           await tester.pump(const Duration(milliseconds: 600));
           _expectActiveStory(1);
-          expect(find.text('2 de 6'), findsOneWidget);
+          expect(find.text('Etapa 2 de 6'), findsOneWidget);
           expect(completedCount, 0);
 
-          // Avança pelos Stories 2 -> 3 -> 4 -> 5 -> 6 no ritmo padrão de 10,5s
+          // Avança pelas Etapas 3 -> 4 -> 5 -> 6 no ritmo padrão de 10,5s
           for (var expectedStory = 2; expectedStory < 6; expectedStory++) {
             await tester.pump(const Duration(milliseconds: 10500));
             _expectActiveStory(expectedStory);
-            expect(find.text('${expectedStory + 1} de 6'), findsOneWidget);
+            expect(
+              find.text('Etapa ${expectedStory + 1} de 6'),
+              findsOneWidget,
+            );
             expect(completedCount, 0);
           }
 
-          // Conclui os últimos ~10,4s do Story 6 e dispara onCompleted exatamente 1 vez
+          // Conclui os últimos ~10,4s da Etapa 6 e dispara onCompleted exatamente 1 vez
           await tester.pump(const Duration(milliseconds: 10500));
           await tester.pump();
           expect(completedCount, 1);
@@ -447,14 +497,14 @@ void main() {
       );
 
       testWidgets(
-        'progride pelos 6 Stories exibindo foco único (1 Tag + 1 Título <= 7 palavras + 1 Subtítulo + 1 Hero Card) e micro-demonstrações serenas',
+        'mapeia fielmente todos os elementos visuais e textos em português das 6 etapas do vídeo sobre cards porcelana',
         (tester) async {
           tester.view.physicalSize = const Size(1080, 2400);
           tester.view.devicePixelRatio = 2.75;
           addTearDown(tester.view.reset);
 
           var completedCount = 0;
-          const duration = Duration(milliseconds: 12000); // 2000ms por Story
+          const duration = Duration(milliseconds: 12000); // 2000ms por Etapa
 
           await tester.pumpWidget(
             MaterialApp(
@@ -467,126 +517,346 @@ void main() {
           );
           await tester.pump();
 
-          // Story 1 (0ms..2000ms): Casa Resolvida Sem Dor de Cabeça (busca preenchida + 3 CategoryBrandEmblem)
+          // Verifica paginação de 6 pontos centralizados (ativo 18x6dp, demais 6x6dp)
+          final dotsFinder = find.byKey(const Key('story-pagination-dots'));
+          expect(dotsFinder, findsOneWidget);
+          final dotElements = find
+              .descendant(
+                of: dotsFinder,
+                matching: find.byType(AnimatedContainer),
+              )
+              .evaluate()
+              .toList();
+          expect(dotElements, hasLength(6));
+          expect(tester.getSize(find.byWidget(dotElements[0].widget)), const Size(18.0, 6.0));
+          for (var d = 1; d < 6; d++) {
+            expect(tester.getSize(find.byWidget(dotElements[d].widget)), const Size(6.0, 6.0));
+          }
+
+          // Verifica card herói em acabamento Porcelana Luminosa (#FFFFFF -> #F8FAFC)
+          final heroDecorated = tester.widget<DecoratedBox>(
+            find
+                .descendant(
+                  of: find.byType(WelcomeStoryHeroCard),
+                  matching: find.byType(DecoratedBox),
+                )
+                .first,
+          );
+          final heroBoxDeco = heroDecorated.decoration as BoxDecoration;
+          final heroGradient = heroBoxDeco.gradient! as LinearGradient;
+          expect(
+            heroGradient.colors,
+            containsAllInOrder(const <Color>[
+              Color(0xFFFFFFFF),
+              Color(0xFFF8FAFC),
+            ]),
+          );
+
+          // Verifica pílula branca (#F8FAFC) do botão Próximo nas Etapas 1–5
+          final nextBtnDecoratedStage1 = tester.widget<DecoratedBox>(
+            find
+                .descendant(
+                  of: find.byKey(const Key('btn-story-next')),
+                  matching: find.byType(DecoratedBox),
+                )
+                .first,
+          );
+          expect(
+            (nextBtnDecoratedStage1.decoration as BoxDecoration).color,
+            const Color(0xFFF8FAFC),
+          );
+
+          // Etapa 1 (0ms..2000ms): Casa Resolvida Sem Dor de Cabeça
+          // Verifica digitação inicial ("Trocar resist...") antes de concluir
+          expect(find.textContaining('Trocar resist'), findsOneWidget);
           await tester.pump(const Duration(milliseconds: 1500)); // t = 1500ms
           _expectActiveStory(0);
           expect(
             find.byKey(const Key('welcome-cinema-progress-bar')),
             findsOneWidget,
           );
-          expect(find.text('BEM-VINDO(A), ANA'), findsOneWidget);
-          expect(
-            find.text('Sua casa resolvida sem dor de cabeça'),
-            findsOneWidget,
-          );
+          expect(find.text('Etapa 1 de 6'), findsOneWidget);
+          expect(find.text(_kExpectedStoryTitles[0]), findsOneWidget);
+          expect(find.text(_kExpectedStorySubtitles[0]), findsOneWidget);
           expect(
             find.text('Trocar resistência do chuveiro'),
             findsOneWidget,
           );
-          expect(find.byType(CategoryBrandEmblem), findsNWidgets(3));
-          expect(find.text('Elétrica'), findsOneWidget);
+          expect(find.byType(CategoryBrandEmblem), findsNWidgets(4));
+          expect(find.text('Eletricista Verificado'), findsOneWidget);
           expect(find.text('Encanador'), findsOneWidget);
-          expect(find.text('Ar-condicionado'), findsOneWidget);
+          expect(find.text('Climatização'), findsOneWidget);
+          expect(find.text('Reparos Gerais'), findsOneWidget);
           expect(
             find.text('Atendimento rápido na sua região'),
             findsOneWidget,
           );
+          expect(find.text('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
-          // Story 2 (2000ms..4000ms): cruza fronteira em 2100ms e avança micro-coreografia até 3600ms
-          await tester.pump(const Duration(milliseconds: 600)); // t = 2100ms (monta Story 2)
+          // Etapa 2 (2000ms..4000ms): Privacidade Total ao Pedir
+          await tester.pump(const Duration(milliseconds: 600)); // t = 2100ms
           _expectActiveStory(1);
-          await tester.pump(const Duration(milliseconds: 1500)); // t = 3600ms (Ato 3 repouso)
+          await tester.pump(const Duration(milliseconds: 1500)); // t = 3600ms
           _expectActiveStory(1);
-          expect(find.text('SEGURANÇA DA SUA CASA'), findsOneWidget);
-          expect(
-            find.text('Privacidade total antes de contratar'),
-            findsOneWidget,
-          );
+          expect(find.text('Etapa 2 de 6'), findsOneWidget);
+          expect(find.text(_kExpectedStoryTitles[1]), findsOneWidget);
+          expect(find.text(_kExpectedStorySubtitles[1]), findsOneWidget);
+          expect(find.text('Pedido Protegido'), findsOneWidget);
           expect(find.text('🔒 Rua e número protegidos'), findsOneWidget);
-          expect(find.text('Ricardo M.'), findsOneWidget);
-          expect(find.text('Carlos A.'), findsOneWidget);
-          expect(find.text('André S.'), findsOneWidget);
+          expect(find.text('Proposta 1'), findsOneWidget);
+          expect(find.text('Proposta 2'), findsOneWidget);
+          expect(find.text('Proposta 3'), findsOneWidget);
+          expect(find.text('R\$ 120,00'), findsOneWidget);
+          expect(find.text('R\$ 150,00'), findsOneWidget);
+          expect(find.text('R\$ 180,00'), findsOneWidget);
+          expect(find.text('4,9'), findsOneWidget);
+          expect(find.text('4,8'), findsOneWidget);
+          expect(find.text('4,7'), findsOneWidget);
+          expect(find.text('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
-          // Story 3 (4000ms..6000ms): cofre + código 4·8·2·9 + 90 dias
-          await tester.pump(const Duration(milliseconds: 500)); // t = 4100ms (monta Story 3)
+          // Etapa 3 (4000ms..6000ms): Seu Dinheiro 100% Protegido
+          await tester.pump(const Duration(milliseconds: 500)); // t = 4100ms
           _expectActiveStory(2);
-          await tester.pump(const Duration(milliseconds: 1500)); // t = 5600ms (Ato 3 repouso)
+          await tester.pump(const Duration(milliseconds: 1500)); // t = 5600ms
           _expectActiveStory(2);
-          expect(find.text('PAGAMENTO PROTEGIDO'), findsOneWidget);
+          expect(find.text('Etapa 3 de 6'), findsOneWidget);
+          expect(find.text(_kExpectedStoryTitles[2]), findsOneWidget);
+          expect(find.text(_kExpectedStorySubtitles[2]), findsOneWidget);
           expect(
-            find.text('Seu dinheiro 100% protegido sempre'),
+            find.text('Serviço aprovado · 90 dias de garantia'),
             findsOneWidget,
           );
           expect(
             find.text('R\$ 180,00 · Guardado com segurança'),
             findsOneWidget,
           );
-          expect(
-            find.text('✓ Serviço aprovado · 90 dias de garantia'),
-            findsOneWidget,
-          );
           for (final digit in const ['4', '8', '2', '9']) {
             expect(find.text(digit), findsWidgets);
           }
+          expect(find.text('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
-          // Story 4 (6000ms..8000ms): Saúde do Imóvel 96% · Em dia + PDF
-          await tester.pump(const Duration(milliseconds: 500)); // t = 6100ms (monta Story 4)
+          // Etapa 4 (6000ms..8000ms): Sua Casa Mais Valorizada
+          await tester.pump(const Duration(milliseconds: 500)); // t = 6100ms
           _expectActiveStory(3);
-          await tester.pump(const Duration(milliseconds: 1500)); // t = 7600ms (Ato 3 repouso)
+          await tester.pump(const Duration(milliseconds: 1500)); // t = 7600ms
           _expectActiveStory(3);
-          expect(find.text('HISTÓRICO INTELIGENTE'), findsOneWidget);
-          expect(find.text('Sua casa mais valorizada'), findsOneWidget);
+          expect(find.text('Etapa 4 de 6'), findsOneWidget);
+          expect(find.text(_kExpectedStoryTitles[3]), findsOneWidget);
+          expect(find.text(_kExpectedStorySubtitles[3]), findsOneWidget);
           expect(find.text('Saúde do Imóvel'), findsOneWidget);
-          expect(find.text('96% · Em dia'), findsOneWidget);
-          expect(find.text('Revisão Elétrica'), findsOneWidget);
-          expect(find.text('Climatização'), findsOneWidget);
-          expect(find.text('Comprovante em PDF'), findsNWidgets(2));
+          expect(find.text('96%'), findsOneWidget);
+          expect(find.text('Em dia'), findsOneWidget);
+          expect(find.text('0%'), findsOneWidget);
+          expect(find.text('100%'), findsOneWidget);
+          expect(find.text('Revisão Elétrica · 12/10/2026'), findsOneWidget);
+          expect(find.text('Climatização · 05/11/2026'), findsOneWidget);
+          expect(find.text('PDF'), findsNWidgets(2));
+          expect(find.text('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
-          // Story 5 (8000ms..10000ms): R$ 0,00 + Valor garantido + ★ 5,0
-          await tester.pump(const Duration(milliseconds: 500)); // t = 8100ms (monta Story 5)
+          // Etapa 5 (8000ms..10000ms): Justo para Quem Trabalha
+          await tester.pump(const Duration(milliseconds: 500)); // t = 8100ms
           _expectActiveStory(4);
-          await tester.pump(const Duration(milliseconds: 1500)); // t = 9600ms (Ato 3 repouso)
+          await tester.pump(const Duration(milliseconds: 1500)); // t = 9600ms
           _expectActiveStory(4);
-          expect(find.text('MODO PROFISSIONAL'), findsOneWidget);
-          expect(find.text('Justo para quem trabalha'), findsOneWidget);
-          expect(find.text('Custo para orçar: R\$ 0,00'), findsOneWidget);
+          expect(find.text('Etapa 5 de 6'), findsOneWidget);
+          expect(find.text(_kExpectedStoryTitles[4]), findsOneWidget);
+          expect(find.text(_kExpectedStorySubtitles[4]), findsOneWidget);
+          expect(find.text('Painel do Profissional'), findsOneWidget);
+          expect(find.text('Custo para orçar:'), findsOneWidget);
+          expect(find.text('R\$ 0,00'), findsOneWidget);
           expect(
             find.text('Valor do cliente já garantido antes de sair'),
             findsOneWidget,
           );
-          expect(find.text('★ 5,0 · Profissional Destaque'), findsOneWidget);
+          expect(find.text('Reputação Verificada'), findsOneWidget);
+          expect(find.text('5,0 · Profissional Destaque'), findsOneWidget);
+          expect(find.text('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
-          // Story 6 (10000ms..12000ms): Modo Cliente + Modo Profissional + Identidade Verificada
-          await tester.pump(const Duration(milliseconds: 500)); // t = 10100ms (monta Story 6)
+          // Etapa 6 (10000ms..12000ms): Uma Conta, Dois Caminhos + Chave Seletora de Luxo
+          await tester.pump(const Duration(milliseconds: 500)); // t = 10100ms
           _expectActiveStory(5);
-          await tester.pump(const Duration(milliseconds: 1500)); // t = 11600ms (Ato 3 repouso)
+          await tester.pump(const Duration(milliseconds: 1500)); // t = 11600ms
           _expectActiveStory(5);
-          expect(find.text('LIBERDADE EM 1 TOQUE'), findsOneWidget);
-          expect(find.text('Uma conta, dois caminhos'), findsOneWidget);
+          expect(find.text('Etapa 6 de 6'), findsOneWidget);
+          expect(find.text(_kExpectedStoryTitles[5]), findsOneWidget);
+          expect(find.text(_kExpectedStorySubtitles[5]), findsOneWidget);
+          expect(find.text('Escolha Seu Perfil'), findsOneWidget);
+          expect(find.text('1 toque'), findsOneWidget);
+          expect(
+            find.byKey(const Key('dual-mode-luxury-switch')),
+            findsOneWidget,
+          );
           expect(find.text('Modo Cliente'), findsOneWidget);
           expect(find.text('Modo Profissional'), findsOneWidget);
+          expect(find.text('Contratar com garantia'), findsOneWidget);
+          expect(find.text('Atender sem pagar para orçar'), findsOneWidget);
           expect(find.text('Identidade Verificada'), findsOneWidget);
-          expect(find.text('1 conta · 2 perfis'), findsOneWidget);
           expect(find.text('Começar agora'), findsOneWidget);
+          // Verifica pílula Aurora Iridescente (#6EE7B7 -> #A7F3D0 -> #FDE68A -> #FDBA74) na Etapa 6
+          final auroraBtnDeco = tester
+              .widget<DecoratedBox>(
+                find
+                    .descendant(
+                      of: find.byKey(const Key('btn-story-next')),
+                      matching: find.byType(DecoratedBox),
+                    )
+                    .first,
+              )
+              .decoration as BoxDecoration;
+          final auroraGradient = auroraBtnDeco.gradient! as LinearGradient;
+          expect(
+            auroraGradient.colors,
+            equals(const <Color>[
+              Color(0xFF6EE7B7),
+              Color(0xFFA7F3D0),
+              Color(0xFFFDE68A),
+              Color(0xFFFDBA74),
+            ]),
+          );
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
           expect(completedCount, 0);
 
-          // Conclui 100% do Story 6 (12000ms)
+          // Conclui 100% da Etapa 6 (12000ms)
           await tester.pump(const Duration(milliseconds: 500));
           await tester.pump();
           expect(completedCount, 1);
+        },
+      );
+
+      testWidgets(
+        'Etapa 6: toque interativo direto nas opções da chave seletora (dual-mode-luxury-switch) alterna entre Modo Cliente e Modo Profissional SEM pular nem fechar a etapa e mantendo buildCount == 1',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
+
+          var completedCount = 0;
+          final heroBuilds = <int, int>{};
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DesperrengueWelcomeCinemaScreen(
+                userFirstName: 'Wagner',
+                onActiveHeroBuild: (idx) {
+                  heroBuilds[idx] = (heroBuilds[idx] ?? 0) + 1;
+                },
+                onCompleted: () => completedCount++,
+              ),
+            ),
+          );
+          await tester.pump();
+
+          // Salta para a Etapa 6
+          await tester.tap(find.byKey(const Key('cinema-chapter-tap-5')));
+          await tester.pump();
+          _expectActiveStory(5);
+          expect(heroBuilds[5], equals(1));
+
+          final luxurySwitch = find.byKey(const Key('dual-mode-luxury-switch'));
+          final clientOption = find.byKey(const Key('dual-mode-option-client'));
+          final providerOption = find.byKey(
+            const Key('dual-mode-option-provider'),
+          );
+          expect(luxurySwitch, findsOneWidget);
+          _expectMinTouchTarget(
+            tester,
+            clientOption,
+            label: 'dual-mode-option-client (Modo Cliente)',
+          );
+          _expectMinTouchTarget(
+            tester,
+            providerOption,
+            label: 'dual-mode-option-provider (Modo Profissional)',
+          );
+
+          // No início da Etapa 6 (0.4s < 1.35s): Modo Cliente ativo (#FFFFFF)
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(
+            tester.widget<Text>(find.text('Modo Cliente')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+          expect(
+            tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFF0F172A),
+          );
+
+          // Em repouso (3.5s > 2.45s): cursor auto-deslizou para Modo Profissional (#FFFFFF)
+          await tester.pump(const Duration(milliseconds: 3100));
+          expect(
+            tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+          expect(
+            tester.widget<Text>(find.text('Modo Cliente')).style!.color,
+            const Color(0xFF0F172A),
+          );
+
+          // Toque interativo direto em "Modo Cliente" -> desliza cursor de volta para Cliente SEM sair da Etapa 6!
+          await tester.tap(clientOption);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          _expectActiveStory(5);
+          expect(completedCount, 0);
+          expect(
+            tester.widget<Text>(find.text('Modo Cliente')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+          expect(
+            tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFF0F172A),
+          );
+
+          // Toque interativo direto em "Modo Profissional" (na metade direita do palco, onde um toque comum concluiria!)
+          // Deve apenas alternar o cursor para Profissional, SEM disparar onCompleted!
+          await tester.tap(providerOption);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          _expectActiveStory(5);
+          expect(completedCount, 0);
+          expect(
+            tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+          expect(
+            tester.widget<Text>(find.text('Modo Cliente')).style!.color,
+            const Color(0xFF0F172A),
+          );
+
+          // Também valida toque direto sobre os rótulos textuais dentro de dual-mode-luxury-switch
+          await tester.tap(find.text('Modo Cliente'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          _expectActiveStory(5);
+          expect(completedCount, 0);
+          expect(
+            tester.widget<Text>(find.text('Modo Cliente')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+
+          await tester.tap(find.text('Modo Profissional'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          _expectActiveStory(5);
+          expect(completedCount, 0);
+          expect(
+            tester.widget<Text>(find.text('Modo Profissional')).style!.color,
+            const Color(0xFFFFFFFF),
+          );
+
+          // Confirma que toda a alternância interativa preservou WelcomeStoryHeroCard buildCount == 1
+          expect(heroBuilds[5], equals(1));
         },
       );
     },
   );
 
   group(
-    '3. Anti-Jank 120 FPS — Isolamento Estrito de Rebuild do WelcomeStoryHeroCard',
+    '3. Anti-Jank 120 FPS — Isolamento Estrito de Rebuild (buildCount == 1) & Bridge Aurora 520ms',
     () {
       testWidgets(
         'onActiveHeroBuild comprova buildCount == 1 estrito durante pump(3s) único E durante 190 frames contínuos de 16ms enquanto a barra de progresso corre',
@@ -597,7 +867,7 @@ void main() {
 
           final heroBuildsByStory = <int, int>{};
 
-          // Sub-caso A: pump único de 3 segundos (especificação obrigatória FASE 4)
+          // Sub-caso A: pump único de 3 segundos
           await tester.pumpWidget(
             MaterialApp(
               home: DesperrengueWelcomeCinemaScreen(
@@ -616,7 +886,8 @@ void main() {
           expect(
             heroBuildsByStory[0],
             equals(1),
-            reason: 'Montagem inicial do WelcomeStoryHeroCard ativo deve registrar 1 build',
+            reason:
+                'Montagem inicial do WelcomeStoryHeroCard ativo deve registrar 1 build',
           );
 
           await tester.pump(const Duration(seconds: 3));
@@ -678,7 +949,7 @@ void main() {
       );
 
       testWidgets(
-        '_SharedAmbientCanvas interpola 520ms sem corte seco no auto-avanço e no toque mantendo buildCount == 1 em cada Story visitado, e cascata Ato 1 inicia em 0.0',
+        '_SharedAmbientCanvas interpola 520ms sem corte seco no auto-avanço e no toque mantendo buildCount == 1 em cada etapa visitada, e cascata Ato 1 inicia em 0.0',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -720,7 +991,7 @@ void main() {
           );
           expect(buildsByStory[0], equals(1));
 
-          // Auto-avança do Story 1 para o Story 2 (cruza 10,5s) e roda 36 frames de 16ms (576ms > 520ms do bridge ambiente)
+          // Auto-avança da Etapa 1 para a Etapa 2 (cruza 10,5s) e roda 36 frames de 16ms (576ms > 520ms do bridge aurora)
           await tester.pump(const Duration(milliseconds: 9800));
           _expectActiveStory(1);
           expect(buildsByStory[1], equals(1));
@@ -734,15 +1005,15 @@ void main() {
                 'Interpolação contínua de 520ms do _SharedAmbientCanvas no auto-avanço jamais pode reconstruir WelcomeStoryHeroCard!',
           );
 
-          // Salto por toque direto para o Story 4 (cinema-chapter-tap-3) + 36 frames de 16ms
-          await tester.tap(find.byKey(const Key('cinema-chapter-tap-3')));
+          // Salto por toque direto para a Etapa 5 (com poeira estelar dourada) + 36 frames de 16ms
+          await tester.tap(find.byKey(const Key('cinema-chapter-tap-4')));
           await tester.pump();
-          _expectActiveStory(3);
-          expect(buildsByStory[3], equals(1));
+          _expectActiveStory(4);
+          expect(buildsByStory[4], equals(1));
           for (var f = 0; f < 36; f++) {
             await tester.pump(const Duration(milliseconds: 16));
           }
-          expect(buildsByStory[3], equals(1));
+          expect(buildsByStory[4], equals(1));
 
           // Desmonta no meio de um bridge ambiente (180ms < 520ms) sem vazar tickers ou lançar exceção
           await tester.tap(find.byKey(const Key('cinema-chapter-tap-5')));
@@ -757,10 +1028,10 @@ void main() {
   );
 
   group(
-    '4. Motor de Gestos Listener de Latência Zero, Controles e Alvos >= 44x44dp',
+    '4. Motor de Gestos Listener de Latência Zero, Controles e Alvos Táteis (>= 44x44dp / >= 48dp)',
     () {
       testWidgets(
-        'zonas de toque 32% esquerda e 68% direita (por Key e por coordenadas na fronteira 32%/68%) voltam, reiniciam no Story 1, avançam e concluem no Story 6',
+        'zonas de toque 32% esquerda e 68% direita (por Key e por coordenadas na fronteira 32%/68%) voltam, reiniciam na Etapa 1, avançam e concluem na Etapa 6',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -797,48 +1068,50 @@ void main() {
             reason: 'Zona direita deve ocupar 68% da largura do palco',
           );
 
-          // Toque por coordenada em 34% da largura (>= 32% -> zona direita) avança Story 1 -> Story 2
+          // Toque por coordenada em 34% da largura (>= 32% -> zona direita) avança Etapa 1 -> Etapa 2
           final stageTopLeft = prevRect.topLeft;
-          final stageCenterY = prevRect.center.dy;
+          final stageTopSafeY = prevRect.top + 24.0;
           await tester.tapAt(
-            Offset(stageTopLeft.dx + totalStageWidth * 0.34, stageCenterY),
+            Offset(stageTopLeft.dx + totalStageWidth * 0.34, stageTopSafeY),
           );
           await tester.pump();
           _expectActiveStory(1);
-          expect(find.text('2 de 6'), findsOneWidget);
+          expect(find.text('Etapa 2 de 6'), findsOneWidget);
 
-          // Avança Story 2 -> Story 3 tocando em story-tap-zone-next
+          // Avança Etapa 2 -> Etapa 3 tocando em story-tap-zone-next
           await tester.tap(nextZone);
           await tester.pump();
           _expectActiveStory(2);
 
-          // Toque por coordenada em 30% da largura (< 32% -> zona esquerda) volta Story 3 -> Story 2
+          // Toque por coordenada em 30% da largura (< 32% -> zona esquerda) volta Etapa 3 -> Etapa 2
           await tester.tapAt(
-            Offset(stageTopLeft.dx + totalStageWidth * 0.30, stageCenterY),
+            Offset(stageTopLeft.dx + totalStageWidth * 0.30, stageTopSafeY),
           );
           await tester.pump();
           _expectActiveStory(1);
 
-          // Volta Story 2 -> Story 1 via story-tap-zone-prev
+          // Volta Etapa 2 -> Etapa 1 via story-tap-zone-prev
           await tester.tap(prevZone);
           await tester.pump();
           _expectActiveStory(0);
 
-          // Avança 4s no Story 1 e toca na zona esquerda: reinicia Story 1 (não sai nem quebra)
+          // Avança 4s na Etapa 1 e toca na zona esquerda: reinicia Etapa 1 (não sai nem quebra)
           await tester.pump(const Duration(seconds: 4));
           await tester.tap(prevZone);
           await tester.pump();
           _expectActiveStory(0);
           expect(completedCount, 0);
-          // Como reiniciou do zero, após 8s ainda está no Story 1 (< 10,5s)
+          // Como reiniciou do zero, após 8s ainda está na Etapa 1 (< 10,5s)
           await tester.pump(const Duration(seconds: 8));
           _expectActiveStory(0);
 
-          // Caminha pelos 6 Stories via zona direita até concluir no Story 6
+          // Caminha pelas 6 etapas via zona direita (acima do switch interativo) até concluir na Etapa 6
           for (var expectedStory = 0; expectedStory < 6; expectedStory++) {
             _expectActiveStory(expectedStory);
             expect(completedCount, 0);
-            await tester.tap(nextZone);
+            await tester.tapAt(
+              Offset(stageTopLeft.dx + totalStageWidth * 0.72, stageTopSafeY),
+            );
             await tester.pump();
           }
           expect(completedCount, 1);
@@ -846,7 +1119,7 @@ void main() {
       );
 
       testWidgets(
-        'swipe horizontal com física de mola (fling e drag para esquerda e direita) transiciona suavemente entre Stories',
+        'swipe horizontal com física de mola (fling e drag para esquerda e direita) transiciona suavemente entre as etapas',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -873,12 +1146,12 @@ void main() {
           final pageViewFinder = find.byType(PageView);
           _expectActiveStory(0);
 
-          // Fling esquerda -> Story 1 para Story 2
+          // Fling esquerda -> Etapa 1 para Etapa 2
           await tester.fling(pageViewFinder, const Offset(-260, 0), 1200);
           await pumpSpringSettle();
           _expectActiveStory(1);
 
-          // Swipe humano (timedDrag) esquerda -> Story 2 para Story 3
+          // Swipe humano (timedDrag) esquerda -> Etapa 2 para Etapa 3
           await tester.timedDrag(
             pageViewFinder,
             const Offset(-140, 0),
@@ -887,17 +1160,17 @@ void main() {
           await pumpSpringSettle();
           _expectActiveStory(2);
 
-          // Drag estático além do ponto médio esquerda -> Story 3 para Story 4
+          // Drag estático além do ponto médio esquerda -> Etapa 3 para Etapa 4
           await tester.drag(pageViewFinder, const Offset(-230, 0));
           await pumpSpringSettle();
           _expectActiveStory(3);
 
-          // Fling direita -> Story 4 para Story 3
+          // Fling direita -> Etapa 4 para Etapa 3
           await tester.fling(pageViewFinder, const Offset(260, 0), 1200);
           await pumpSpringSettle();
           _expectActiveStory(2);
 
-          // Swipe humano (timedDrag) direita -> Story 3 para Story 2
+          // Swipe humano (timedDrag) direita -> Etapa 3 para Etapa 2
           await tester.timedDrag(
             pageViewFinder,
             const Offset(140, 0),
@@ -906,7 +1179,7 @@ void main() {
           await pumpSpringSettle();
           _expectActiveStory(1);
 
-          // Drag estático além do ponto médio direita -> Story 2 para Story 1
+          // Drag estático além do ponto médio direita -> Etapa 2 para Etapa 1
           await tester.drag(pageViewFinder, const Offset(230, 0));
           await pumpSpringSettle();
           _expectActiveStory(0);
@@ -915,7 +1188,7 @@ void main() {
       );
 
       testWidgets(
-        '6 barras de segmento (cinema-chapter-tap-0..5) possuem altura de toque >= 44dp e saltam diretamente para qualquer Story',
+        '6 barras de segmento (cinema-chapter-tap-0..5) possuem altura de toque >= 44dp e saltam diretamente para qualquer etapa',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -947,23 +1220,28 @@ void main() {
 
           const jumpOrder = <int>[3, 5, 1, 4, 0, 2, 5];
           for (final targetStory in jumpOrder) {
-            await tester.tap(find.byKey(Key('cinema-chapter-tap-$targetStory')));
+            await tester.tap(
+              find.byKey(Key('cinema-chapter-tap-$targetStory')),
+            );
             await tester.pump();
             _expectActiveStory(targetStory);
-            expect(find.text('${targetStory + 1} de 6'), findsOneWidget);
+            expect(
+              find.text('Etapa ${targetStory + 1} de 6'),
+              findsOneWidget,
+            );
           }
           expect(completedCount, 0);
         },
       );
 
       testWidgets(
-        'todos os botões (Pular, Fechar em replay, Voltar, Próximo / Começar agora e Rever apresentação) respeitam >= 44x44dp e funcionam ponta a ponta',
+        'todos os controles (Pular >= 44dp, Fechar >= 44dp, Voltar circular >= 44x44dp nas Etapas 2–6, Próximo / Começar agora >= 48dp e Rever apresentação >= 44dp) funcionam ponta a ponta',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
           addTearDown(tester.view.reset);
 
-          // 1) Modo pós-cadastro (isReplay: false): PopScope bloqueado + botão Pular >= 44x44dp + Voltar / Próximo / Começar agora
+          // 1) Modo pós-cadastro (isReplay: false): PopScope bloqueado + Pular >= 44x44dp + pílula larga Próximo >= 48dp
           var skippedOrCompleted = 0;
           await tester.pumpWidget(
             MaterialApp(
@@ -998,42 +1276,55 @@ void main() {
           _expectMinTouchTarget(
             tester,
             nextBtn,
-            label: 'btn-story-next (Próximo)',
+            minWidth: 200.0,
+            minHeight: 48.0,
+            label: 'btn-story-next (Próximo largura total na Etapa 1)',
           );
 
-          // No Story 1, Voltar fica invisível e com IgnorePointer ativo
-          final prevIgnoreOnStory1 = tester.widget<IgnorePointer>(
-            find
-                .ancestor(
-                  of: prevBtn,
-                  matching: find.byType(IgnorePointer),
-                )
-                .first,
-          );
-          expect(prevIgnoreOnStory1.ignoring, isTrue);
+          // Na Etapa 1, o botão Voltar não é exibido (pílula Próximo ocupa largura total fiel a 00:01 do vídeo)
+          expect(prevBtn, findsNothing);
 
-          // Avança ao Story 2 -> botão Voltar passa a ficar interativo e >= 44x44dp
-          await tester.tap(nextBtn);
+          // Verifica Voltar >= 44x44dp e Próximo/Começar agora >= 48dp em TODAS as Etapas 2 a 6
+          for (var step = 1; step < 6; step++) {
+            await tester.tap(find.byKey(Key('cinema-chapter-tap-$step')));
+            await tester.pump();
+            _expectActiveStory(step);
+            _expectMinTouchTarget(
+              tester,
+              prevBtn,
+              minWidth: 44.0,
+              minHeight: 44.0,
+              label: 'btn-story-prev (Voltar na Etapa ${step + 1})',
+            );
+            expect(find.byTooltip('Voltar'), findsOneWidget);
+            _expectMinTouchTarget(
+              tester,
+              nextBtn,
+              minWidth: 160.0,
+              minHeight: 48.0,
+              label: 'btn-story-next na Etapa ${step + 1}',
+            );
+          }
+
+          // Volta da Etapa 6 -> Etapa 5 via btn-story-prev e depois salta para Etapa 2 -> volta para Etapa 1
+          await tester.tap(prevBtn);
+          await tester.pump();
+          _expectActiveStory(4);
+
+          await tester.tap(find.byKey(const Key('cinema-chapter-tap-1')));
           await tester.pump();
           _expectActiveStory(1);
-          expect(find.text('Voltar'), findsOneWidget);
-          _expectMinTouchTarget(
-            tester,
-            prevBtn,
-            label: 'btn-story-prev (Voltar)',
-          );
-
-          // Toca em Voltar -> retorna ao Story 1
           await tester.tap(prevBtn);
           await tester.pump();
           _expectActiveStory(0);
+          expect(prevBtn, findsNothing);
 
           // Toca em Pular -> conclui imediatamente
           await tester.tap(skipBtn);
           await tester.pump();
           expect(skippedOrCompleted, 1);
 
-          // 2) Testa botão Começar agora no Story 6 (>= 44x44dp)
+          // 2) Testa botão aurora "Começar agora" na Etapa 6 (>= 48dp de altura)
           var finishedViaPrimaryCta = 0;
           await tester.pumpWidget(
             MaterialApp(
@@ -1052,7 +1343,9 @@ void main() {
           _expectMinTouchTarget(
             tester,
             find.byKey(const Key('btn-story-next')),
-            label: 'btn-story-next (Começar agora)',
+            minWidth: 160.0,
+            minHeight: 48.0,
+            label: 'btn-story-next (Começar agora aurora)',
           );
           await tester.tap(find.byKey(const Key('btn-story-next')));
           await tester.pump();
@@ -1123,7 +1416,7 @@ void main() {
       );
 
       testWidgets(
-        'Hold-to-Pause de Latência Zero: segurar por 3s+ congela no milissegundo exato, exibe cinema-paused-badge (Pausado) e retoma ao soltar SEM avançar acidentalmente de página',
+        'Hold-to-Pause de Latência Zero (0ms): Timer 220ms -> Pausado -> 3s+ congelado -> retoma do ponto exato sem pular página',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -1141,22 +1434,26 @@ void main() {
           await tester.pump();
           expect(find.byKey(const Key('cinema-paused-badge')), findsNothing);
 
-          // Avança 2,0s no Story 1 (restam 8,5s dos 10,5s do Story 1)
+          // Avança 2,0s na Etapa 1 (restam 8,5s dos 10,5s da Etapa 1)
           await tester.pump(const Duration(seconds: 2));
           _expectActiveStory(0);
 
-          // Segura o dedo na metade direita do palco (onde um toque rápido avançaria de página!)
+          // Segura o dedo na zona direita do palco (onde um toque rápido avançaria de página!)
           final nextZoneCenter = tester.getCenter(
             find.byKey(const Key('story-tap-zone-next')),
           );
           final gesture = await tester.startGesture(nextZoneCenter);
 
-          // Após 250ms (>= 220ms do Timer), selo "Pausado" aparece suavemente
-          await tester.pump(const Duration(milliseconds: 250));
+          // Antes de 220ms (ex: 150ms): cronômetro já está parado em 0ms, mas badge ainda não apareceu
+          await tester.pump(const Duration(milliseconds: 150));
+          expect(find.byKey(const Key('cinema-paused-badge')), findsNothing);
+
+          // Aos 250ms (>= 220ms do Timer), selo "Pausado" aparece suavemente
+          await tester.pump(const Duration(milliseconds: 100));
           expect(find.byKey(const Key('cinema-paused-badge')), findsOneWidget);
           expect(find.text('Pausado'), findsOneWidget);
 
-          // Mantém pressionado por 3s (e depois mais 10s = 13s totais > 10,5s): continua congelado no Story 1!
+          // Mantém pressionado por 3s (e depois mais 10s = 13s totais > 10,5s): permanece congelado na Etapa 1!
           await tester.pump(const Duration(seconds: 3));
           _expectActiveStory(0);
           expect(completed, isFalse);
@@ -1165,31 +1462,31 @@ void main() {
           _expectActiveStory(0);
           expect(completed, isFalse);
 
-          // Solta o dedo -> remove cinema-paused-badge e NÃO salta acidentalmente para o Story 2!
+          // Solta o dedo -> remove cinema-paused-badge e NÃO salta acidentalmente para a Etapa 2!
           await gesture.up();
           await tester.pump();
           expect(find.byKey(const Key('cinema-paused-badge')), findsNothing);
           _expectActiveStory(0);
-          expect(find.text('1 de 6'), findsOneWidget);
+          expect(find.text('Etapa 1 de 6'), findsOneWidget);
 
-          // Comprova retomada do ponto exato (2,0s): após +8,0s (= 10,0s < 10,5s) continua no Story 1
+          // Comprova retomada do ponto exato (2,0s): após +8,0s (= 10,0s < 10,5s) continua na Etapa 1
           await tester.pump(const Duration(seconds: 8));
           _expectActiveStory(0);
 
-          // Após +600ms (= 10,6s > 10,5s), avança naturalmente para o Story 2
+          // Após +600ms (= 10,6s > 10,5s), avança naturalmente para a Etapa 2
           await tester.pump(const Duration(milliseconds: 600));
           _expectActiveStory(1);
-          expect(find.text('2 de 6'), findsOneWidget);
+          expect(find.text('Etapa 2 de 6'), findsOneWidget);
         },
       );
     },
   );
 
   group(
-    '5. Acessibilidade (disableAnimations: true), Anti-Jargão, Densidade e Respiro >= 38%',
+    '5. Acessibilidade (disableAnimations: true), Auditoria Linguística 100% PT-BR & Contraste WCAG AA (>= 4.5:1)',
     () {
       testWidgets(
-        'MediaQuery(disableAnimations: true) renderiza estado final de repouso nos 6 Stories sem falhas e sem timers pendentes',
+        'MediaQuery(disableAnimations: true) renderiza estado final de repouso nas 6 etapas sem falhas e sem timers pendentes',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -1211,13 +1508,12 @@ void main() {
           await tester.pump();
           expect(tester.takeException(), isNull);
 
-          // No frame 0 com disableAnimations: true, cada Story já exibe seu estado final 1.0
           final expectedRestingSnippets = <String>[
             'Trocar resistência do chuveiro',
             '🔒 Rua e número protegidos',
-            '✓ Serviço aprovado · 90 dias de garantia',
-            '96% · Em dia',
-            '★ 5,0 · Profissional Destaque',
+            'Serviço aprovado · 90 dias de garantia',
+            '96%',
+            '5,0 · Profissional Destaque',
             'Identidade Verificada',
           ];
 
@@ -1242,7 +1538,7 @@ void main() {
       );
 
       testWidgets(
-        'auditoria automática nos 6 Stories: zero jargão técnico proibido, título <= 7 palavras, zero FittedBox, contraste WCAG AA >= 4.5:1 e >= 38% espaço negativo',
+        'auditoria linguística 100% Português, contraste matemático WCAG AA >= 4.5:1 em todos os pares de cores, zero FittedBox e respiro >= 38%',
         (tester) async {
           tester.view.physicalSize = const Size(390, 844);
           tester.view.devicePixelRatio = 1.0;
@@ -1258,7 +1554,18 @@ void main() {
           );
           await tester.pump();
 
-          const darkSurfaceRef = Color(0xFF131B29);
+          // Fundos aurora reais (topo, meio e base) das 6 etapas para validação WCAG AA
+          const auroraBackgroundStopsByStage = <List<Color>>[
+            [Color(0xFF0D1B20), Color(0xFF112526), Color(0xFF16302B)],
+            [Color(0xFF0C1D24), Color(0xFF10282A), Color(0xFF15322D)],
+            [Color(0xFF0E1D22), Color(0xFF132829), Color(0xFF18332E)],
+            [Color(0xFF111F2F), Color(0xFF162B38), Color(0xFF1B353E)],
+            [Color(0xFF1B1832), Color(0xFF231E3E), Color(0xFF2B2347)],
+            [Color(0xFF211926), Color(0xFF3D2622), Color(0xFF523020)],
+          ];
+
+          const porcelainWhite = Color(0xFFFFFFFF);
+          const porcelainBase = Color(0xFFF8FAFC);
 
           for (var storyIndex = 0; storyIndex < 6; storyIndex++) {
             await tester.tap(
@@ -1266,20 +1573,27 @@ void main() {
             );
             await tester.pump();
 
-            // Varre jargão tanto no início (Ato 1/2) quanto no repouso (Ato 3)
-            _assertZeroBannedJargonInCurrentStory(
+            // Auditoria 100% Português no Ato 1/2 (início/digitação/ocultação) E no Ato 3 (repouso)
+            _assertPurePortugueseInCurrentStage(
               tester,
               storyIndex: storyIndex,
             );
-            await tester.pump(const Duration(milliseconds: 3500));
-            _assertZeroBannedJargonInCurrentStory(
+            await tester.pump(const Duration(milliseconds: 1100));
+            _assertPurePortugueseInCurrentStage(
+              tester,
+              storyIndex: storyIndex,
+            );
+            await tester.pump(const Duration(milliseconds: 2600));
+            _assertPurePortugueseInCurrentStage(
               tester,
               storyIndex: storyIndex,
             );
 
-            // Título curto <= 7 palavras
+            // Título curto <= 7 palavras + Subtítulo editorial presentes
             final title = _kExpectedStoryTitles[storyIndex];
+            final subtitle = _kExpectedStorySubtitles[storyIndex];
             expect(find.text(title), findsOneWidget);
+            expect(find.text(subtitle), findsOneWidget);
             final wordCount = title
                 .trim()
                 .split(RegExp(r'\s+'))
@@ -1289,10 +1603,10 @@ void main() {
               wordCount,
               lessThanOrEqualTo(7),
               reason:
-                  'Título do Story ${storyIndex + 1} ("$title") excedeu 7 palavras ($wordCount)',
+                  'Título da Etapa ${storyIndex + 1} ("$title") excedeu 7 palavras ($wordCount)',
             );
 
-            // Estritamente 1 Card Herói visível e zero FittedBox esmagando tipografia
+            // Estritamente 1 Card Herói Porcelana visível e zero FittedBox
             expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
             expect(
               find.descendant(
@@ -1300,42 +1614,95 @@ void main() {
                 matching: find.byType(FittedBox),
               ),
               findsNothing,
-              reason: 'Story ${storyIndex + 1} não pode usar FittedBox',
+              reason: 'Etapa ${storyIndex + 1} jamais pode usar FittedBox',
             );
 
-            // Espaço de respiro >= 38% (Spacer proporcional acima e abaixo + área livre da viewport >= 38%)
+            // Espaço de respiro >= 38%
             expect(
               find.descendant(
                 of: find.byKey(_kCanonicalStoryKeys[storyIndex]),
                 matching: find.byType(Spacer),
               ),
               findsAtLeastNWidgets(2),
-              reason:
-                  'Story ${storyIndex + 1} deve usar Spacer proporcional acima e abaixo do bloco focal',
             );
             final screenArea = 390.0 * 844.0;
             final titleRect = tester.getRect(find.text(title));
+            final subRect = tester.getRect(find.text(subtitle));
             final heroRect = tester.getRect(
               find.byType(WelcomeStoryHeroCard),
             );
-            final occupiedCardAndCopyArea =
+            final occupiedArea =
                 (titleRect.width * titleRect.height) +
-                (heroRect.width * heroRect.height) +
-                (350.0 * 80.0); // tag + subtítulo + barra visual fina
+                (subRect.width * subRect.height) +
+                (heroRect.width * heroRect.height);
             final freeAreaRatio =
-                1.0 - (occupiedCardAndCopyArea / screenArea).clamp(0.0, 1.0);
+                1.0 - (occupiedArea / screenArea).clamp(0.0, 1.0);
             expect(
               freeAreaRatio,
               greaterThanOrEqualTo(0.38),
               reason:
-                  'Story ${storyIndex + 1} precisa preservar >= 38% de espaço negativo respirável (livre: ${(freeAreaRatio * 100).toStringAsFixed(1)}%)',
+                  'Etapa ${storyIndex + 1} precisa preservar >= 38% de espaço negativo respirável (livre: ${(freeAreaRatio * 100).toStringAsFixed(1)}%)',
             );
 
-            // Contraste WCAG AA >= 4.5:1 nos textos principais do Story
-            final titleWidget = tester.widget<Text>(find.text(title));
+            // Contraste WCAG AA (>= 4.5:1) nos textos claros sobre o fundo aurora da etapa
+            final stepLabelColor = tester
+                .widget<Text>(find.text('Etapa ${storyIndex + 1} de 6'))
+                .style!
+                .color!;
+            final titleColor =
+                tester.widget<Text>(find.text(title)).style!.color!;
+            final subtitleColor =
+                tester.widget<Text>(find.text(subtitle)).style!.color!;
+
+            for (final bgStop in auroraBackgroundStopsByStage[storyIndex]) {
+              expect(
+                AppTokens.contrast(stepLabelColor, bgStop),
+                greaterThanOrEqualTo(4.5),
+                reason:
+                    'Contraste de "Etapa ${storyIndex + 1} de 6" insuficiente contra $bgStop',
+              );
+              expect(
+                AppTokens.contrast(titleColor, bgStop),
+                greaterThanOrEqualTo(4.5),
+                reason:
+                    'Contraste do título "$title" insuficiente contra $bgStop',
+              );
+              expect(
+                AppTokens.contrast(subtitleColor, bgStop),
+                greaterThanOrEqualTo(4.5),
+                reason:
+                    'Contraste do subtítulo da Etapa ${storyIndex + 1} insuficiente contra $bgStop',
+              );
+            }
+          }
+
+          // Validação matemática WCAG AA >= 4.5:1 de todos os pares internos dos cards porcelana, switch de luxo e CTAs
+          const contrastPairs = <(Color, Color, String)>[
+            (Color(0xFF0F172A), porcelainWhite, 'Texto primário sobre porcelana #FFFFFF'),
+            (Color(0xFF0F172A), porcelainBase, 'Texto primário sobre porcelana #F8FAFC'),
+            (Color(0xFF334155), Color(0xFFF1F5F9), 'Texto secundário sobre bloco pérola #F1F5F9'),
+            (Color(0xFF064E3B), Color(0xFFECFDF5), 'Selo regional sobre menta clara #ECFDF5'),
+            (Color(0xFF064E3B), Color(0xFFDCFCE7), 'Selo protegido/verificado sobre menta #DCFCE7'),
+            (Color(0xFF065F46), porcelainBase, 'Serviço aprovado sobre porcelana #F8FAFC'),
+            (Color(0xFFFFFFFF), Color(0xFF991B1B), 'Selo PDF branco sobre vermelho #991B1B'),
+            (Color(0xFFFFFFFF), Color(0xFF1E3A8A), 'Modo Cliente ativo sobre cursor Safira #1E3A8A'),
+            (Color(0xFFFFFFFF), Color(0xFF1D4ED8), 'Modo Cliente ativo sobre cursor Safira #1D4ED8'),
+            (Color(0xFFFFFFFF), Color(0xFF047857), 'Modo Profissional ativo sobre cursor Esmeralda #047857'),
+            (Color(0xFFFFFFFF), Color(0xFF0F766E), 'Modo Profissional ativo sobre cursor Oceano #0F766E'),
+            (Color(0xFF0F172A), Color(0xFFE8EEF5), 'Opção inativa sobre trilho acetinado #E8EEF5'),
+            (Color(0xFF0F172A), Color(0xFFF8FAFC), 'Botão Próximo (#0F172A sobre #F8FAFC)'),
+            (Color(0xFF0B1320), Color(0xFF6EE7B7), 'CTA Começar agora sobre aurora menta #6EE7B7'),
+            (Color(0xFF0B1320), Color(0xFFA7F3D0), 'CTA Começar agora sobre aurora menta clara #A7F3D0'),
+            (Color(0xFF0B1320), Color(0xFFFDE68A), 'CTA Começar agora sobre aurora champanhe #FDE68A'),
+            (Color(0xFF0B1320), Color(0xFFFDBA74), 'CTA Começar agora sobre aurora âmbar #FDBA74'),
+          ];
+
+          for (final pair in contrastPairs) {
             expect(
-              AppTokens.contrast(titleWidget.style!.color!, darkSurfaceRef),
+              AppTokens.contrast(pair.$1, pair.$2),
               greaterThanOrEqualTo(4.5),
+              reason:
+                  'Violação WCAG AA (< 4.5:1) em: ${pair.$3} (obtido: ${AppTokens.contrast(pair.$1, pair.$2).toStringAsFixed(2)}:1)',
             );
           }
         },
@@ -1344,42 +1711,54 @@ void main() {
   );
 
   group(
-    '6. Matriz Extrema de Responsividade nos 6 Stories (Ato 1, Ato 2 e Ato 3) + RoleSelectionScreen',
+    '6. Matriz Extrema Zero-Overflow nas 6 Etapas (Ato 1, Ato 2 e Ato 3) + RoleSelectionScreen',
     () {
-      const extremeViewports = <({Size size, double scale, String label})>[
+      const extremeViewports =
+          <({Size physicalSize, double dpr, double scale, String label})>[
         (
-          size: Size(320, 640),
+          physicalSize: Size(320, 640),
+          dpr: 1.0,
           scale: 1.35,
-          label: '320x640 @ textScaler 1.35',
+          label: '320x640 @ 1.35',
         ),
         (
-          size: Size(320, 640),
+          physicalSize: Size(320, 640),
+          dpr: 1.0,
           scale: 1.40,
-          label: '320x640 @ textScaler 1.40',
+          label: '320x640 @ 1.40',
         ),
         (
-          size: Size(360, 780),
+          physicalSize: Size(360, 780),
+          dpr: 1.0,
           scale: 1.0,
-          label: '360x780 @ textScaler 1.0',
+          label: '360x780 @ 1.0',
         ),
         (
-          size: Size(390, 844),
+          physicalSize: Size(390, 844),
+          dpr: 1.0,
           scale: 1.0,
-          label: '390x844 @ textScaler 1.0',
+          label: '390x844 @ 1.0',
         ),
         (
-          size: Size(412, 915),
+          physicalSize: Size(412, 915),
+          dpr: 1.0,
           scale: 1.30,
-          label: '412x915 @ textScaler 1.30',
+          label: '412x915 @ 1.30',
+        ),
+        (
+          physicalSize: Size(1080, 2400),
+          dpr: 2.75,
+          scale: 1.0,
+          label: '1080x2400 @ 2.75',
         ),
       ];
 
       for (final vp in extremeViewports) {
         testWidgets(
-          'zero RenderFlex overflow nos 6 Stories (Ato 1 entrada, Ato 2 micro-demo e Ato 3 repouso) + RoleSelectionScreen em ${vp.label}',
+          'zero RenderFlex overflow nas 6 Etapas (Ato 1 entrada, Ato 2 demonstração e Ato 3 repouso) + chave seletora + RoleSelectionScreen em ${vp.label}',
           (tester) async {
-            tester.view.physicalSize = vp.size;
-            tester.view.devicePixelRatio = 1.0;
+            tester.view.physicalSize = vp.physicalSize;
+            tester.view.devicePixelRatio = vp.dpr;
             addTearDown(tester.view.reset);
 
             await tester.pumpWidget(
@@ -1402,9 +1781,9 @@ void main() {
             await tester.pump();
             expect(tester.takeException(), isNull);
 
-            // Testa cada um dos 6 Stories nos 3 Atos:
+            // Testa cada uma das 6 Etapas nos 3 Atos:
             // - Ato 1 (0,30s): entrada sedosa em cascata
-            // - Ato 2 (1,65s): micro-demonstração em andamento
+            // - Ato 2 (1,65s): demonstração viva em andamento
             // - Ato 3 (4,20s): repouso sereno absoluto
             for (var storyIndex = 0; storyIndex < 6; storyIndex++) {
               await tester.tap(
@@ -1414,7 +1793,8 @@ void main() {
               expect(
                 tester.takeException(),
                 isNull,
-                reason: 'Zero overflow ao abrir Story ${storyIndex + 1} em ${vp.label}',
+                reason:
+                    'Zero overflow ao abrir Etapa ${storyIndex + 1} em ${vp.label}',
               );
 
               // Ato 1 (300ms)
@@ -1422,7 +1802,8 @@ void main() {
               expect(
                 tester.takeException(),
                 isNull,
-                reason: 'Zero overflow no Ato 1 do Story ${storyIndex + 1} em ${vp.label}',
+                reason:
+                    'Zero overflow no Ato 1 da Etapa ${storyIndex + 1} em ${vp.label}',
               );
               _expectActiveStory(storyIndex);
 
@@ -1431,7 +1812,8 @@ void main() {
               expect(
                 tester.takeException(),
                 isNull,
-                reason: 'Zero overflow no Ato 2 do Story ${storyIndex + 1} em ${vp.label}',
+                reason:
+                    'Zero overflow no Ato 2 da Etapa ${storyIndex + 1} em ${vp.label}',
               );
               _expectActiveStory(storyIndex);
 
@@ -1440,18 +1822,57 @@ void main() {
               expect(
                 tester.takeException(),
                 isNull,
-                reason: 'Zero overflow no Ato 3 de Repouso do Story ${storyIndex + 1} em ${vp.label}',
+                reason:
+                    'Zero overflow no Ato 3 de Repouso da Etapa ${storyIndex + 1} em ${vp.label}',
               );
               _expectActiveStory(storyIndex);
             }
 
-            // Verifica também Hold-to-Pause badge na mesma resolução extrema (ex: 320x640 @ 1.40x)
+            // Verifica alvos táteis >= 44dp / >= 48dp e toque interativo na chave seletora da Etapa 6 na resolução extrema
+            _expectMinTouchTarget(
+              tester,
+              find.byKey(const Key('btn-skip-welcome-cinema')),
+              label: 'btn-skip-welcome-cinema em ${vp.label}',
+            );
+            _expectMinTouchTarget(
+              tester,
+              find.byKey(const Key('btn-story-prev')),
+              label: 'btn-story-prev em ${vp.label}',
+            );
+            _expectMinTouchTarget(
+              tester,
+              find.byKey(const Key('btn-story-next')),
+              minHeight: 48.0,
+              label: 'btn-story-next em ${vp.label}',
+            );
+            _expectMinTouchTarget(
+              tester,
+              find.byKey(const Key('dual-mode-option-client')),
+              label: 'dual-mode-option-client em ${vp.label}',
+            );
+            _expectMinTouchTarget(
+              tester,
+              find.byKey(const Key('dual-mode-option-provider')),
+              label: 'dual-mode-option-provider em ${vp.label}',
+            );
+            await tester.tap(find.byKey(const Key('dual-mode-option-client')));
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 300));
+            expect(tester.takeException(), isNull);
+
+            // Verifica Hold-to-Pause badge na mesma resolução extrema (ex: 320x640 @ 1.40)
+            final stageTopLeft = tester.getTopLeft(
+              find.byKey(const Key('story-tap-zone-prev')),
+            );
             final gesture = await tester.startGesture(
-              tester.getCenter(find.byType(PageView)),
+              stageTopLeft + const Offset(24, 24),
             );
             await tester.pump(const Duration(milliseconds: 260));
             expect(tester.takeException(), isNull);
-            expect(find.byKey(const Key('cinema-paused-badge')), findsOneWidget);
+            expect(
+              find.byKey(const Key('cinema-paused-badge')),
+              findsOneWidget,
+            );
             await gesture.up();
             await tester.pump();
             expect(tester.takeException(), isNull);
@@ -1476,7 +1897,9 @@ void main() {
             await tester.pump(const Duration(milliseconds: 450));
             expect(tester.takeException(), isNull);
 
-            final replayBtn = find.byKey(const Key('btn-replay-welcome-cinema'));
+            final replayBtn = find.byKey(
+              const Key('btn-replay-welcome-cinema'),
+            );
             _expectMinTouchTarget(
               tester,
               replayBtn,
