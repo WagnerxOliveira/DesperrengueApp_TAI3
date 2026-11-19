@@ -1,15 +1,20 @@
+import '../../../core/services/registration_guard_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cadastro_dados_basicos.dart';
+import 'cadastro_verificacao_otp.dart';
 import 'auth_gate.dart';
+import 'password_recovery_screen.dart';
 import '../../../core/ui/desperrengue_brand_logo.dart';
 import '../../../core/ui/light_island.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.initialEmail = ''});
+
+  final String initialEmail;
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -31,6 +36,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // CICLO DE VIDA
   // (O deep link do e-mail de aprovação agora é tratado no AuthGate.)
   // ===========================================================================
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialEmail.trim().isNotEmpty) {
+      _emailController.text = widget.initialEmail.trim();
+    }
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -64,20 +77,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         password: _passwordController.text,
       );
       _irParaRaiz();
-    } on AuthException {
+    } on AuthException catch (e) {
       if (mounted) {
+        final rawLower = '${e.code ?? ''} ${e.message}'.toLowerCase();
+        final isUnconfirmed =
+            rawLower.contains('email not confirmed') ||
+            rawLower.contains('email_not_confirmed');
+        final msg = RegistrationGuardService.translateAuthErrorPtBr(e);
+        final typedEmail = _emailController.text.trim();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('E-mail ou senha incorretos.'),
+          SnackBar(
+            content: Text(msg),
             backgroundColor: Colors.redAccent,
+            action: isUnconfirmed && typedEmail.isNotEmpty
+                ? SnackBarAction(
+                    label: 'Confirmar código',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              CadastroVerificacaoOtpScreen(email: typedEmail),
+                        ),
+                      );
+                    },
+                  )
+                : null,
           ),
         );
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ocorreu um erro inesperado. Tente novamente.'),
+          SnackBar(
+            content: Text(RegistrationGuardService.translateAuthErrorPtBr(e)),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -109,7 +142,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Falha de Autenticação: ${e.message}'),
+            content: Text(RegistrationGuardService.translateAuthErrorPtBr(e)),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -118,7 +151,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Ocorreu um erro inesperado: $e'),
+            content: Text(RegistrationGuardService.translateAuthErrorPtBr(e)),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -263,7 +296,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: _isLoading ? null : () {},
+                      key: const Key('btn-login-forgot-password'),
+                      onPressed: _isLoading
+                          ? null
+                          : () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PasswordRecoveryScreen(
+                                    initialEmail: _emailController.text.trim(),
+                                  ),
+                                ),
+                              );
+                            },
                       child: Text(
                         'Esqueci minha senha?',
                         style: TextStyle(

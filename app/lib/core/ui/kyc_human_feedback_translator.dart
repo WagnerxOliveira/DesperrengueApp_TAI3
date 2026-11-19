@@ -83,6 +83,27 @@ class KycHumanFeedbackTranslator {
 
     final upper = raw.toUpperCase();
 
+    if (upper.contains('ERR_DUPLICATE_CPF_IDENTITY') ||
+        upper.contains('CPF JÁ ESTÁ VINCULADO') ||
+        upper.contains('CPF JÁ VINCULADO')) {
+      return 'Identificamos que este CPF já possui cadastro no Desperrengue. Para sua segurança, entre na sua conta principal — ela já libera tanto o modo Cliente quanto o modo Profissional.';
+    }
+
+    if (upper.contains('ERR_SIGNUP_GUARD_RATE_LIMITED') ||
+        upper.contains('OVER_EMAIL_SEND_RATE_LIMIT') ||
+        upper.contains('OVER_REQUEST_RATE_LIMIT') ||
+        upper.contains('EMAIL RATE LIMIT EXCEEDED')) {
+      return 'Muitas tentativas seguidas por segurança. Aguarde alguns minutos antes de tentar novamente.';
+    }
+
+    if (upper.contains('USER_ALREADY_REGISTERED') ||
+        upper.contains('USER_ALREADY_EXISTS') ||
+        upper.contains('ALREADY REGISTERED') ||
+        upper.contains('ALREADY BEEN REGISTERED') ||
+        upper.contains('EMAIL_EXISTS')) {
+      return 'Este e-mail já possui uma conta ativa no Desperrengue. Entre com sua senha atual ou recupere o acesso em "Esqueci minha senha".';
+    }
+
     if (upper.contains('ERR_EXCESSIVE_GLARE') ||
         upper.contains('GLARE') ||
         upper.contains('REFLEXO ESPECULAR')) {
