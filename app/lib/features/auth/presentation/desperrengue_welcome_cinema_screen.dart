@@ -2181,9 +2181,7 @@ class _Story1SearchFieldLeaf extends StatelessWidget {
                 ((fullQuery.length - minChars) * progress).round())
             .clamp(minChars, fullQuery.length);
         final isFinished = visibleCount >= fullQuery.length;
-        final visibleText = isFinished
-            ? fullQuery
-            : '${fullQuery.substring(0, visibleCount)}...';
+        final visibleText = fullQuery.substring(0, visibleCount);
 
         return DecoratedBox(
           decoration: BoxDecoration(
@@ -2218,18 +2216,49 @@ class _Story1SearchFieldLeaf extends StatelessWidget {
                   color: Color(0xFF047857),
                 ),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    visibleText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFF0F172A),
-                      fontSize: isCompact ? 11.8 : 13.4,
-                      fontWeight: FontWeight.w700,
+                if (isFinished) ...[
+                  Expanded(
+                    child: Text(
+                      visibleText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF0F172A),
+                        fontSize: isCompact ? 11.8 : 13.4,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    key: Key('search-completed-check'),
+                    size: 17,
+                    color: Color(0xFF10B981),
+                  ),
+                ] else ...[
+                  Flexible(
+                    child: Text(
+                      visibleText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF0F172A),
+                        fontSize: isCompact ? 11.8 : 13.4,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  const DecoratedBox(
+                    key: Key('search-typing-caret'),
+                    decoration: BoxDecoration(
+                      color: Color(0xFF10B981),
+                      borderRadius: BorderRadius.all(Radius.circular(1)),
+                    ),
+                    child: SizedBox(width: 2, height: 15),
+                  ),
+                ],
               ],
             ),
           ),
@@ -3672,11 +3701,19 @@ class _Story6DualAccountSwitchDemoState
   }
 
   double _autoChoreographedPosition(double t) {
-    // 0.0s–1.35s (0.00..0.435): Modo Cliente (0.0)
-    // 1.35s–2.45s (0.435..0.790): desliza suavemente para Modo Profissional (1.0)
-    return Curves.easeOutQuart.transform(
-      ((t - 0.435) / (0.790 - 0.435)).clamp(0.0, 1.0),
+    // 0.0s–1.10s (0.00..0.355): Modo Cliente (0.0)
+    // 1.10s–2.10s (0.355..0.677): desliza com mola suave para Modo Profissional (1.0)
+    // 2.20s–3.00s (0.710..0.968): retorna suavemente estacionando em Modo Cliente (0.0)
+    if (t <= 0.355) return 0.0;
+    if (t < 0.710) {
+      return Curves.easeOutQuart.transform(
+        ((t - 0.355) / (0.580 - 0.355)).clamp(0.0, 1.0),
+      );
+    }
+    final backToClient = Curves.easeOutQuart.transform(
+      ((t - 0.710) / (0.968 - 0.710)).clamp(0.0, 1.0),
     );
+    return (1.0 - backToClient).clamp(0.0, 1.0);
   }
 
   double _currentCursorPosition() {
@@ -3718,8 +3755,6 @@ class _Story6DualAccountSwitchDemoState
       ]),
       builder: (context, _) {
         final cursorPos = _currentCursorPosition().clamp(0.0, 1.0);
-        final isHarmonyResting = _manualSelectedMode == null &&
-            widget.actAnimation.value >= 0.80;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -3768,7 +3803,6 @@ class _Story6DualAccountSwitchDemoState
             _LuxuryDualModeSegmentedSwitch(
               key: const Key('dual-mode-luxury-switch'),
               cursorPosition: cursorPos,
-              showDualHarmonyGlow: isHarmonyResting,
               isCompact: isCompact,
               isUltraCompact: isUltraCompact,
               onInteractivePointerDown: widget.onInteractivePointerDown,
@@ -3807,7 +3841,7 @@ class _Story6DualAccountSwitchDemoState
                               style: TextStyle(
                                 color: const Color(0xFF0F172A),
                                 fontSize: isCompact ? 10.3 : 11.4,
-                                fontWeight: cursorPos < 0.5 || isHarmonyResting
+                                fontWeight: cursorPos < 0.5
                                     ? FontWeight.w700
                                     : FontWeight.w600,
                               ),
@@ -3846,7 +3880,7 @@ class _Story6DualAccountSwitchDemoState
                               style: TextStyle(
                                 color: const Color(0xFF0F172A),
                                 fontSize: isCompact ? 10.3 : 11.4,
-                                fontWeight: cursorPos >= 0.5 || isHarmonyResting
+                                fontWeight: cursorPos >= 0.5
                                     ? FontWeight.w700
                                     : FontWeight.w600,
                               ),
@@ -3906,13 +3940,13 @@ class _Story6DualAccountSwitchDemoState
 }
 
 /// Chave Seletora Dupla Esculpida de Altíssimo Padrão (`Modo Cliente` <->
-/// `Modo Profissional`): trilho acetinado rebaixado `#E8EEF5` + cursor pílula
-/// flutuante com mola `Curves.easeOutQuart` e toque interativo direto.
+/// `Modo Profissional`): trilho acetinado rebaixado `#E8EEF5` com sombra
+/// interna sutil + 1 único cursor pílula lapidado com chanfro luminoso superior
+/// e sombra colorida em 2 camadas.
 class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
   const _LuxuryDualModeSegmentedSwitch({
     super.key,
     required this.cursorPosition,
-    required this.showDualHarmonyGlow,
     required this.isCompact,
     required this.isUltraCompact,
     required this.onInteractivePointerDown,
@@ -3920,7 +3954,6 @@ class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
   });
 
   final double cursorPosition;
-  final bool showDualHarmonyGlow;
   final bool isCompact;
   final bool isUltraCompact;
   final ValueChanged<int> onInteractivePointerDown;
@@ -3939,7 +3972,7 @@ class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
       pos,
     )!;
     final thumbEnd = Color.lerp(
-      const Color(0xFF1D4ED8),
+      const Color(0xFF2563EB),
       const Color(0xFF0F766E),
       pos,
     )!;
@@ -3949,8 +3982,17 @@ class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
       onPointerDown: (event) => onInteractivePointerDown(event.pointer),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFFE8EEF5),
           borderRadius: BorderRadius.circular(18),
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFDFE7F0),
+              Color(0xFFE8EEF5),
+              Color(0xFFEDF2F8),
+            ],
+            stops: [0.0, 0.24, 1.0],
+          ),
           border: Border.all(
             color: const Color(0xFFCBD5E1),
             width: 1.15,
@@ -3962,23 +4004,7 @@ class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
             height: switchHeight - 8.0,
             child: Stack(
               children: [
-                // Destaque porcelana secundário no modo complementar durante o repouso
-                if (showDualHarmonyGlow)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: 0.49,
-                      heightFactor: 1.0,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFFFFF),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFCBD5E1)),
-                        ),
-                      ),
-                    ),
-                  ),
-                // Cursor pílula flutuante esculpido
+                // 1 único cursor pílula flutuante esculpido (chanfro luminoso + sombra dupla)
                 Align(
                   alignment: Alignment((pos * 2.0) - 1.0, 0.0),
                   child: FractionallySizedBox(
@@ -3993,21 +4019,49 @@ class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
                           colors: [thumbStart, thumbEnd],
                         ),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.28),
+                          color: Colors.white.withValues(alpha: 0.30),
                           width: 1.0,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: thumbStart.withValues(alpha: 0.30),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
+                            color: thumbEnd.withValues(alpha: 0.28),
+                            blurRadius: 14,
+                            offset: const Offset(0, 5),
+                          ),
+                          BoxShadow(
+                            color:
+                                const Color(0xFF0F172A).withValues(alpha: 0.16),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1.5),
                           ),
                         ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: SizedBox(
+                            height: 11,
+                            width: double.infinity,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.white.withValues(alpha: 0.24),
+                                    Colors.white.withValues(alpha: 0.0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-                // Opções interativas de toque direto
+                // Opções interativas de toque direto sobre o trilho acetinado
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
