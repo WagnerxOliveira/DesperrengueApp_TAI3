@@ -676,6 +676,83 @@ void main() {
           );
         },
       );
+
+      testWidgets(
+        '_SharedAmbientCanvas interpola 520ms sem corte seco no auto-avanço e no toque mantendo buildCount == 1 em cada Story visitado, e cascata Ato 1 inicia em 0.0',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
+
+          final buildsByStory = <int, int>{};
+
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DesperrengueWelcomeCinemaScreen(
+                key: const ValueKey('cinema-ambient-bridge-120hz'),
+                userFirstName: 'Ana',
+                onActiveHeroBuild: (storyIndex) {
+                  buildsByStory[storyIndex] =
+                      (buildsByStory[storyIndex] ?? 0) + 1;
+                },
+                onCompleted: () {},
+              ),
+            ),
+          );
+          await tester.pump();
+          expect(buildsByStory[0], equals(1));
+
+          // Verifica cascata orgânica do Ato 1 iniciando em 0.0 no frame 0 e chegando a 1.0 em 760ms
+          final heroFadeFinder = find
+              .ancestor(
+                of: find.byType(WelcomeStoryHeroCard),
+                matching: find.byType(FadeTransition),
+              )
+              .first;
+          expect(
+            tester.widget<FadeTransition>(heroFadeFinder).opacity.value,
+            closeTo(0.0, 0.001),
+          );
+          await tester.pump(const Duration(milliseconds: 760));
+          expect(
+            tester.widget<FadeTransition>(heroFadeFinder).opacity.value,
+            closeTo(1.0, 0.001),
+          );
+          expect(buildsByStory[0], equals(1));
+
+          // Auto-avança do Story 1 para o Story 2 (cruza 10,5s) e roda 36 frames de 16ms (576ms > 520ms do bridge ambiente)
+          await tester.pump(const Duration(milliseconds: 9800));
+          _expectActiveStory(1);
+          expect(buildsByStory[1], equals(1));
+          for (var f = 0; f < 36; f++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          expect(
+            buildsByStory[1],
+            equals(1),
+            reason:
+                'Interpolação contínua de 520ms do _SharedAmbientCanvas no auto-avanço jamais pode reconstruir WelcomeStoryHeroCard!',
+          );
+
+          // Salto por toque direto para o Story 4 (cinema-chapter-tap-3) + 36 frames de 16ms
+          await tester.tap(find.byKey(const Key('cinema-chapter-tap-3')));
+          await tester.pump();
+          _expectActiveStory(3);
+          expect(buildsByStory[3], equals(1));
+          for (var f = 0; f < 36; f++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          expect(buildsByStory[3], equals(1));
+
+          // Desmonta no meio de um bridge ambiente (180ms < 520ms) sem vazar tickers ou lançar exceção
+          await tester.tap(find.byKey(const Key('cinema-chapter-tap-5')));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 180));
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        },
+      );
     },
   );
 
