@@ -956,6 +956,84 @@ check('20. Cofre KYC Semestral Unificado (6 Meses) + Antecedentes Criminais PF +
   assert.match(visionGate, /NOTHING_ON_RECORD/);
 });
 
+check('21. Escudo Zero-Trust Anti-Recadastro Duplicado (`20261118220000` + `signup-eligibility-guard`): `private.signup_guard_rate_limits` RLS FORCE, `service_evaluate_signup_email_guard` (8 req/10m, service_role only, zero PII), `check_cpf_registration_conflict` (6 req/10m, pepper `DSP-CPF-PEPPER-2026:`, `DUPLICATE_CPF_SIGNUP_BLOCKED`) e piso temporal `180ms`', () => {
+  const migGuardPath = path.join(
+    MIGRATIONS_DIR,
+    '20261118220000_duplicate_signup_guard_rate_limit_and_cpf_shield.sql'
+  );
+  const edgeGuardPath = path.join(MIGRATIONS_DIR, '..', 'functions', 'signup-eligibility-guard', 'index.ts');
+  assert.ok(fs.existsSync(migGuardPath), 'Migration 20261118220000 obrigatória');
+  assert.ok(fs.existsSync(edgeGuardPath), 'Edge Function signup-eligibility-guard/index.ts obrigatória');
+
+  const migGuard = fs.readFileSync(migGuardPath, 'utf8');
+  const edgeGuard = fs.readFileSync(edgeGuardPath, 'utf8');
+  const strippedGuard = lexSql(
+    migGuard,
+    '20261118220000_duplicate_signup_guard_rate_limit_and_cpf_shield.sql'
+  );
+
+  assert.match(strippedGuard, /^\s*begin\s*;/i, '20261118220000 deve abrir com begin;');
+  assert.match(strippedGuard, /commit\s*;\s*$/i, '20261118220000 deve encerrar com commit;');
+  assert.doesNotMatch(strippedGuard, /\bgrant\b[\s\S]{0,240}?\bto\s+(?:anon|public)\b/i);
+  assert.doesNotMatch(strippedGuard, /\bcurrent_user\b/i, '20261118220000 não pode usar current_user em SECURITY DEFINER');
+
+  const rawCreateTables = strippedGuard.match(/\bcreate\s+table\s+(?!if\s+not\s+exists\b)/gi) ?? [];
+  assert.equal(rawCreateTables.length, 0, '20261118220000: todo CREATE TABLE deve usar IF NOT EXISTS');
+  const rawCreateIndexes = strippedGuard.match(/\bcreate\s+(?:unique\s+)?index\s+(?!if\s+not\s+exists\b)/gi) ?? [];
+  assert.equal(rawCreateIndexes.length, 0, '20261118220000: todo CREATE INDEX deve usar IF NOT EXISTS');
+
+  // Cofre privado de rate-limit
+  assert.match(migGuard, /create\s+table\s+if\s+not\s+exists\s+private\.signup_guard_rate_limits/i);
+  assert.match(migGuard, /alter\s+table\s+private\.signup_guard_rate_limits\s+enable\s+row\s+level\s+security/i);
+  assert.match(migGuard, /alter\s+table\s+private\.signup_guard_rate_limits\s+force\s+row\s+level\s+security/i);
+  assert.match(
+    migGuard,
+    /revoke\s+all\s+on\s+table\s+private\.signup_guard_rate_limits\s+from\s+public,\s*anon,\s*authenticated/i
+  );
+
+  // RPC service_evaluate_signup_email_guard (service_role only, 8 req / 10 minutes, zero PII)
+  assert.match(migGuard, /create\s+or\s+replace\s+function\s+public\.service_evaluate_signup_email_guard/i);
+  assert.match(
+    migGuard,
+    /revoke\s+all\s+on\s+function\s+public\.service_evaluate_signup_email_guard\s*\(\s*text\s*,\s*text\s*\)\s+from\s+public,\s*anon,\s*authenticated/i
+  );
+  assert.match(
+    migGuard,
+    /grant\s+execute\s+on\s+function\s+public\.service_evaluate_signup_email_guard\s*\(\s*text\s*,\s*text\s*\)\s+to\s+service_role/i
+  );
+  assert.match(migGuard, /private\.ceo_owner_canonical_email\(\)/i);
+  assert.match(migGuard, /auth\.identities/i);
+  assert.match(migGuard, /ALREADY_REGISTERED_CONFIRMED/);
+  assert.match(migGuard, /PENDING_EMAIL_VERIFICATION/);
+  assert.match(migGuard, /RATE_LIMITED/);
+
+  // RPC check_cpf_registration_conflict (authenticated, 6 req / 10 minutes, pepper + CEO live event)
+  assert.match(migGuard, /create\s+or\s+replace\s+function\s+public\.check_cpf_registration_conflict/i);
+  assert.match(
+    migGuard,
+    /revoke\s+all\s+on\s+function\s+public\.check_cpf_registration_conflict\s*\(\s*text\s*\)\s+from\s+public,\s*anon/i
+  );
+  assert.match(
+    migGuard,
+    /grant\s+execute\s+on\s+function\s+public\.check_cpf_registration_conflict\s*\(\s*text\s*\)\s+to\s+authenticated/i
+  );
+  assert.match(migGuard, /ERR_SIGNUP_GUARD_RATE_LIMITED/);
+  assert.match(migGuard, /DSP-CPF-PEPPER-2026:/);
+  assert.match(migGuard, /DUPLICATE_CPF_SIGNUP_BLOCKED/);
+  assert.match(migGuard, /private\.emit_ceo_live_event_safe/i);
+  assert.match(migGuard, /exception\s+when\s+others\s+then\s+null/i);
+
+  // Edge Function signup-eligibility-guard: IP + nonce SHA-256, service_role, piso 180ms, HTTP 429
+  assert.match(edgeGuard, /x-forwarded-for/i);
+  assert.match(edgeGuard, /cf-connecting-ip/i);
+  assert.match(edgeGuard, /SHA-256/);
+  assert.match(edgeGuard, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(edgeGuard, /service_evaluate_signup_email_guard/);
+  assert.match(edgeGuard, /Math\.max\s*\(\s*0\s*,/);
+  assert.match(edgeGuard, /180/);
+  assert.match(edgeGuard, /429/);
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log(`\nResumo: ${results.length - failed.length}/${results.length} verificações aprovadas.`);
 if (failed.length > 0) {

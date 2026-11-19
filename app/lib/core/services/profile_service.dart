@@ -14,10 +14,58 @@ import 'media_service.dart';
 /// Acesso ao perfil e às RPCs de KYC. É a única camada que conhece nomes de
 /// tabelas, colunas e funções do banco — as telas só falam com este serviço.
 class ProfileService {
-  ProfileService([SupabaseClient? client])
-    : _client = client ?? Supabase.instance.client;
+  ProfileService([SupabaseClient? client]) : _injectedClient = client;
 
-  final SupabaseClient _client;
+  final SupabaseClient? _injectedClient;
+
+  SupabaseClient get _client => _injectedClient ?? Supabase.instance.client;
+
+  SupabaseClient? get _clientOrNull {
+    if (_injectedClient != null) return _injectedClient;
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Verifica no Passo 1 do cadastro se o CPF informado já está vinculado a
+  /// outra conta ativa na plataforma (`check_cpf_registration_conflict`).
+  ///
+  /// - Retorna `true` se houver conflito (`conflict == true`).
+  /// - Propaga (`rethrow`) quando o servidor acionar `ERR_SIGNUP_GUARD_RATE_LIMITED`.
+  /// - Em ambiente de teste sem backend mockado, devolve `false` graciosamente.
+  Future<bool> checkCpfRegistrationConflict(String cpfRaw) async {
+    final digits = DocumentOcrAndLivenessService.digitsOnly(cpfRaw);
+    if (digits.isEmpty) return false;
+
+    final client = _clientOrNull;
+    if (client == null) return false;
+    if (_injectedClient == null && client.auth.currentUser == null) {
+      return false;
+    }
+
+    try {
+      final dynamic res = await client.rpc<dynamic>(
+        'check_cpf_registration_conflict',
+        params: <String, dynamic>{'p_cpf_raw': digits},
+      );
+      if (res is Map) {
+        return res['conflict'] == true;
+      }
+      return false;
+    } on PostgrestException catch (e) {
+      if (e.message.toUpperCase().contains('ERR_SIGNUP_GUARD_RATE_LIMITED')) {
+        rethrow;
+      }
+      return false;
+    } catch (e) {
+      if (e.toString().toUpperCase().contains('ERR_SIGNUP_GUARD_RATE_LIMITED')) {
+        rethrow;
+      }
+      return false;
+    }
+  }
 
   static const String kycBucket = 'kyc-documents';
 
