@@ -13,8 +13,8 @@ import '../storage/local_prefs.dart';
 class WelcomeCinemaTracker {
   WelcomeCinemaTracker._();
 
-  static const String keyPrefixSeen = 'welcome_cinema_v4_seen_';
-  static const String keyPendingUid = 'welcome_cinema_v4_pending_uid';
+  static const String keyPrefixSeen = 'welcome_cinema_v5_seen_';
+  static const String keyPendingUid = 'welcome_cinema_v5_pending_uid';
 
   static final Set<String> _completedInMemory = <String>{};
   static String? _armedUidInMemory;
