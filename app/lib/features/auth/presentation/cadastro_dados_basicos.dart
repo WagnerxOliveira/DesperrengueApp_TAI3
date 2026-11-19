@@ -116,10 +116,11 @@ class _CadastroDadosBasicosScreenState
     if (!mounted || action == null) return;
     switch (action) {
       case ExistingAccountSheetAction.goToLogin:
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (_) => LoginScreen(initialEmail: emailDigitado),
           ),
+          (_) => false,
         );
         break;
       case ExistingAccountSheetAction.recoverPassword:
@@ -174,6 +175,8 @@ class _CadastroDadosBasicosScreenState
     }
 
     if (!mounted) return;
+    _senhaController.clear();
+    _confirmarSenhaController.clear();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Código enviado para o seu e-mail!'),
@@ -288,6 +291,8 @@ class _CadastroDadosBasicosScreenState
       }
 
       if (mounted) {
+        _senhaController.clear();
+        _confirmarSenhaController.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Código enviado para o seu e-mail!'),

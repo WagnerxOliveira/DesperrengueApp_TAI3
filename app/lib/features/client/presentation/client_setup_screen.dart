@@ -16,6 +16,7 @@ import '../../../core/services/draft_store.dart';
 import '../../../core/services/live_camera_frame_bridge.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
+import '../../../core/services/registration_guard_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
@@ -413,7 +414,16 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       hasConflict = await (widget.customCpfConflictChecker != null
           ? widget.customCpfConflictChecker!(_cpf.text)
           : ProfileService().checkCpfRegistrationConflict(_cpf.text));
-    } catch (_) {
+    } catch (e) {
+      if (RegistrationGuardService.isRateLimitException(e) ||
+          e.toString().toUpperCase().contains('ERR_SIGNUP_GUARD_RATE_LIMITED')) {
+        if (mounted) {
+          final msg = KycHumanFeedbackTranslator.translateError(e);
+          setState(() => _error = msg);
+          showSnack(context, msg, error: true);
+        }
+        return;
+      }
       hasConflict = false;
     } finally {
       _checkingCpfConflict = false;

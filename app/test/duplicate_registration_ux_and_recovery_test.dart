@@ -642,6 +642,57 @@ void main() {
           expect(find.byType(LoginScreen), findsOneWidget);
         },
       );
+
+      testWidgets(
+        'Cenário 7: ERR_SIGNUP_GUARD_RATE_LIMITED no Passo 1 de ClientSetupScreen mantém no Passo 1 e exibe aviso traduzido sem código ERR_ em ${vp.label}',
+        (tester) async {
+          await tester.binding.setSurfaceSize(vp.size);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+
+          await tester.pumpWidget(
+            _buildTestApp(
+              textScale: vp.scale,
+              brightness: Brightness.dark,
+              home: ClientSetupScreen(
+                profile: UserProfile.fromMap(const <String, dynamic>{
+                  'id': 'user-cpf-rate-limited',
+                  'full_name': 'Wagner Oliveira',
+                  'phone': '35999887766',
+                  'is_client': true,
+                }),
+                customCpfConflictChecker: (_) async {
+                  throw StateError('ERR_SIGNUP_GUARD_RATE_LIMITED');
+                },
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          await tester.enterText(
+            find.byKey(const ValueKey('client-setup-cpf')),
+            '11978723610',
+          );
+          await tester.pump();
+
+          await tester.tap(
+            find.byKey(const ValueKey('client-setup-step0-continue')),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Permanece no Passo 1 (não avança para Passo 2 nem abre modal de conflito)
+          expect(find.text('Onde você precisa do serviço?'), findsNothing);
+          expect(
+            find.byKey(const Key('existing-cpf-account-sheet')),
+            findsNothing,
+          );
+          expect(
+            find.textContaining('Muitas tentativas seguidas por segurança'),
+            findsWidgets,
+          );
+          _assertZeroEnglishOrBannedJargon(tester);
+        },
+      );
     }
   });
 }
