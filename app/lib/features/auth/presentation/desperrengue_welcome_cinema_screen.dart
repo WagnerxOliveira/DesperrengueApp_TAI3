@@ -9,24 +9,23 @@ import 'package:flutter/services.dart';
 
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/category_brand_emblem.dart';
-import '../../../core/ui/desperrengue_brand_logo.dart';
 
-/// Vitrine interativa pós-cadastro de 6 Stories a 120 FPS (v2.25.0).
+/// Apresentação interativa pós-cadastro em 6 etapas a 120 FPS (v2.26.0).
 ///
-/// Arquitetura de performance e serenidade visual:
-/// - **Ritmo sereno (`10,5s` por Story, `63000ms` total)**: leitura calma com
-///   3 Atos finitos (`0.0s–0.75s` entrada em cascata, `0.75s–3.10s` uma única
-///   micro-demonstração viva, `3.10s–10.5s` repouso sereno absoluto sem loops).
-/// - **Isolamento estrito 120Hz**: `_storyProgressController` notifica
-///   exclusivamente `_TopSegmentedProgressBars` em `RepaintBoundary`, garantindo
-///   `buildCount == 1` em [WelcomeStoryHeroCard] durante o avanço do tempo.
-/// - **Fundo vivo contínuo (`_SharedAmbientCanvas`)**: camada única persistente
-///   em `RepaintBoundary` escutando apenas o `PageController`, com interpolação
-///   cromática contínua e paralaxe radial de 15%.
+/// Arquitetura visual e de engenharia:
+/// - **Composição Porcelana sobre Aurora**: cartões heróis claros de porcelana
+///   acetinada (`#FFFFFF` -> `#F8FAFC`, `borderRadius: 26`, contraste WCAG AAA)
+///   flutuando sobre um fundo aurora contínuo em `RepaintBoundary`.
+/// - **Ritmo sereno (`10,5s` por etapa, `63000ms` total)**: coreografia finita
+///   em 3 Atos (`0.0s–0.75s` entrada em cascata, `0.75s–3.10s` demonstração
+///   viva única, `3.10s–10.5s` repouso sereno absoluto sem nenhum `repeat()`).
+/// - **Isolamento estrito 120Hz**: `_storyProgressController` notifica apenas
+///   `_TopSegmentedProgressBars` em `RepaintBoundary`, preservando
+///   `buildCount == 1` estrito em [WelcomeStoryHeroCard] durante o avanço.
 /// - **Gestos de latência zero (`Listener` + `PageView`)**: pausa no exato `0ms`
-///   em `onPointerDown`, selo `Pausado` após `220ms` via `Timer` compatível com
-///   `FakeAsync`, zonas de toque `32%` (voltar/reiniciar) e `68%` (avançar) sem
-///   disputa na `GestureArena`, e alvos táteis `>= 44x44dp`.
+///   em `onPointerDown`, indicador `Pausado` após `220ms` via `Timer` compatível
+///   com `FakeAsync`, zonas `32%` / `68%` sem disputa na `GestureArena` e
+///   suporte a toque interativo direto na chave seletora dupla da Etapa 6.
 class DesperrengueWelcomeCinemaScreen extends StatefulWidget {
   const DesperrengueWelcomeCinemaScreen({
     super.key,
@@ -52,11 +51,11 @@ class DesperrengueWelcomeCinemaScreen extends StatefulWidget {
       _DesperrengueWelcomeCinemaScreenState();
 }
 
-/// Card herói dedicado de cada Story, com isolamento de rebuilds a 120 FPS.
+/// Card herói central em Porcelana Luminosa com isolamento de rebuilds a 120 FPS.
 ///
-/// Dispara [onActiveHeroBuild] apenas quando [isActiveStory] é verdadeiro.
-/// Todas as micro-animações internas operam em sub-widgets folhas para que
-/// [build] execute estritamente 1 única vez enquanto a barra de progresso corre.
+/// Dispara [onActiveHeroBuild] estritamente quando [isActiveStory] é verdadeiro.
+/// Todas as micro-animações operam em sub-widgets folhas para garantir que
+/// [build] execute apenas 1 vez enquanto o progresso da etapa corre.
 class WelcomeStoryHeroCard extends StatelessWidget {
   const WelcomeStoryHeroCard({
     super.key,
@@ -81,47 +80,53 @@ class WelcomeStoryHeroCard extends StatelessWidget {
       onActiveHeroBuild?.call(storyIndex);
     }
 
+    final radius = BorderRadius.circular(isCompact ? 22 : 26);
+
     return RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(isCompact ? 20 : 24),
+          borderRadius: radius,
           gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF172030),
-              Color(0xFF131B29),
-              Color(0xFF0F1622),
+              Color(0xFFFFFFFF),
+              Color(0xFFFAFBFD),
+              Color(0xFFF8FAFC),
             ],
+            stops: [0.0, 0.55, 1.0],
           ),
           border: Border.all(
             color: Color.alphaBlend(
-              accentColor.withValues(alpha: 0.28),
-              const Color(0xFF263349),
+              accentColor.withValues(alpha: 0.22),
+              const Color(0xFFE2E8F0),
             ),
-            width: 1.0,
+            width: 1.1,
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF040812).withValues(alpha: 0.52),
-              blurRadius: 32,
-              offset: const Offset(0, 14),
+              color: const Color(0xFF040B14).withValues(alpha: 0.38),
+              blurRadius: 34,
+              offset: const Offset(0, 16),
             ),
             BoxShadow(
-              color: accentColor.withValues(alpha: 0.08),
-              blurRadius: 32,
-              offset: const Offset(0, 14),
+              color: accentColor.withValues(alpha: 0.14),
+              blurRadius: 28,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(isCompact ? 20 : 24),
+          borderRadius: radius,
           child: CustomPaint(
-            foregroundPainter: _HeroCardTopBevelPainter(
+            foregroundPainter: _PorcelainCardSpecularPainter(
               accentColor: accentColor,
             ),
             child: Padding(
-              padding: EdgeInsets.all(isCompact ? 14 : 20),
+              padding: EdgeInsets.symmetric(
+                horizontal: isCompact ? 12 : 18,
+                vertical: isCompact ? 11 : 17,
+              ),
               child: child,
             ),
           ),
@@ -131,30 +136,30 @@ class WelcomeStoryHeroCard extends StatelessWidget {
   }
 }
 
-class _HeroCardTopBevelPainter extends CustomPainter {
-  const _HeroCardTopBevelPainter({required this.accentColor});
+class _PorcelainCardSpecularPainter extends CustomPainter {
+  const _PorcelainCardSpecularPainter({required this.accentColor});
 
   final Color accentColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.width <= 32) return;
-    final bevelRect = Rect.fromLTWH(16, 0, size.width - 32, 1.0);
+    if (size.width <= 36) return;
+    final bevelRect = Rect.fromLTWH(18, 0, size.width - 36, 1.5);
     final paint = Paint()
       ..shader = LinearGradient(
         colors: [
           Colors.white.withValues(alpha: 0.0),
-          Colors.white.withValues(alpha: 0.20),
+          Colors.white.withValues(alpha: 0.92),
           accentColor.withValues(alpha: 0.32),
           Colors.white.withValues(alpha: 0.0),
         ],
-        stops: const [0.0, 0.35, 0.65, 1.0],
+        stops: const [0.0, 0.35, 0.70, 1.0],
       ).createShader(bevelRect);
     canvas.drawRect(bevelRect, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _HeroCardTopBevelPainter oldDelegate) {
+  bool shouldRepaint(covariant _PorcelainCardSpecularPainter oldDelegate) {
     return oldDelegate.accentColor != accentColor;
   }
 }
@@ -176,6 +181,7 @@ class _DesperrengueWelcomeCinemaScreenState
   bool _isProgrammaticPageJump = false;
 
   int? _activePointerId;
+  int? _interactiveControlPointerId;
   Offset _pointerDownPosition = Offset.zero;
   Timer? _holdPauseTimer;
   bool _didHoldPause = false;
@@ -267,6 +273,7 @@ class _DesperrengueWelcomeCinemaScreenState
     _holdPauseTimer?.cancel();
     _holdPauseTimer = null;
     _activePointerId = null;
+    _interactiveControlPointerId = null;
     _didHoldPause = false;
     _isDragging = false;
     if (_isHoldPausedNotifier.value) {
@@ -336,6 +343,10 @@ class _DesperrengueWelcomeCinemaScreenState
     _jumpToStoryImmediate(current - 1, playSelectionHaptic: true);
   }
 
+  void _registerInteractiveControlPointerDown(int pointerId) {
+    _interactiveControlPointerId = pointerId;
+  }
+
   void _handleStagePointerDown(PointerDownEvent event) {
     if (_completedDispatched || _activePointerId != null) return;
     _activePointerId = event.pointer;
@@ -376,7 +387,10 @@ class _DesperrengueWelcomeCinemaScreenState
 
   void _handleStagePointerUp(PointerUpEvent event) {
     if (event.pointer != _activePointerId) return;
+    final wasInteractiveControl =
+        event.pointer == _interactiveControlPointerId;
     _activePointerId = null;
+    _interactiveControlPointerId = null;
     _holdPauseTimer?.cancel();
     _holdPauseTimer = null;
 
@@ -390,7 +404,9 @@ class _DesperrengueWelcomeCinemaScreenState
     }
     if (_completedDispatched) return;
 
-    if (!wasDragging && !wasHoldPause) {
+    // Se foi toque rápido sobre a chave seletora interativa da Etapa 6,
+    // preserva a etapa atual e retoma o cronômetro suavemente.
+    if (!wasDragging && !wasHoldPause && !wasInteractiveControl) {
       if (event.localPosition.dx < _stageWidth * 0.32) {
         _handlePreviousAction();
       } else {
@@ -399,13 +415,13 @@ class _DesperrengueWelcomeCinemaScreenState
       return;
     }
 
-    // Retoma suavemente de onde parou se seguiu na mesma página (hold-pause ou micro-arraste)
     _resumeTimelineIfSettled();
   }
 
   void _handleStagePointerCancel(PointerCancelEvent event) {
     if (event.pointer != _activePointerId) return;
     _activePointerId = null;
+    _interactiveControlPointerId = null;
     _holdPauseTimer?.cancel();
     _holdPauseTimer = null;
     _didHoldPause = false;
@@ -444,22 +460,12 @@ class _DesperrengueWelcomeCinemaScreenState
     }
   }
 
-  String get _cleanFirstName {
-    final trimmed = widget.userFirstName.trim();
-    if (trimmed.isEmpty ||
-        trimmed.toLowerCase() == 'você' ||
-        trimmed.toLowerCase() == 'usuário') {
-      return '';
-    }
-    return trimmed;
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
       canPop: widget.isReplay,
       child: AppScaffold(
-        backgroundColor: const Color(0xFF0C111C),
+        backgroundColor: const Color(0xFF0D1B20),
         body: Stack(
           fit: StackFit.expand,
           children: [
@@ -473,17 +479,19 @@ class _DesperrengueWelcomeCinemaScreenState
                 builder: (context, constraints) {
                   final textScale =
                       MediaQuery.textScalerOf(context).scale(10.0) / 10.0;
-                  final isCompact = constraints.maxHeight < 700 ||
-                      constraints.maxWidth < 360 ||
-                      textScale > 1.22;
+                  final isCompact = constraints.maxHeight < 720 ||
+                      constraints.maxWidth < 365 ||
+                      textScale > 1.20;
+                  final isUltraCompact = constraints.maxHeight < 680 ||
+                      (constraints.maxWidth <= 335 && textScale >= 1.30);
                   final horizontalPad = isCompact ? 12.0 : 20.0;
 
                   return Padding(
                     padding: EdgeInsets.fromLTRB(
                       horizontalPad,
-                      isCompact ? 4.0 : 8.0,
+                      isUltraCompact ? 2.0 : (isCompact ? 4.0 : 8.0),
                       horizontalPad,
-                      isCompact ? 6.0 : 12.0,
+                      isUltraCompact ? 4.0 : (isCompact ? 6.0 : 12.0),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -493,7 +501,8 @@ class _DesperrengueWelcomeCinemaScreenState
                           activeStoryListenable: _activeStoryNotifier,
                           onTapChapter: (index) => _jumpToStoryImmediate(index),
                         ),
-                        _TopBrandHeaderRow(
+                        _TopStageHeaderRow(
+                          activeStoryListenable: _activeStoryNotifier,
                           isReplay: widget.isReplay,
                           isCompact: isCompact,
                           holdPausedListenable: _isHoldPausedNotifier,
@@ -542,15 +551,17 @@ class _DesperrengueWelcomeCinemaScreenState
                                             storyIndex: index,
                                             isActiveStory: index ==
                                                 _activeStoryNotifier.value,
-                                            userFirstName: _cleanFirstName,
                                             totalDuration: widget.totalDuration,
                                             isCompact: isCompact,
+                                            isUltraCompact: isUltraCompact,
                                             pageController: _pageController,
                                             holdPausedListenable:
                                                 _isHoldPausedNotifier,
                                             restartEpochListenable: index == 0
                                                 ? _storyZeroRestartEpoch
                                                 : null,
+                                            onInteractiveControlPointerDown:
+                                                _registerInteractiveControlPointerDown,
                                             onActiveHeroBuild:
                                                 widget.onActiveHeroBuild,
                                           );
@@ -593,10 +604,11 @@ class _DesperrengueWelcomeCinemaScreenState
                             },
                           ),
                         ),
-                        SizedBox(height: isCompact ? 4.0 : 8.0),
+                        SizedBox(height: isUltraCompact ? 4.0 : 8.0),
                         _BottomStoryNavigationBar(
                           activeStoryListenable: _activeStoryNotifier,
                           isCompact: isCompact,
+                          isUltraCompact: isUltraCompact,
                           onPrevious: _handlePreviousAction,
                           onNext: () => _handleNextAction(fromStageTap: false),
                         ),
@@ -637,97 +649,97 @@ class _RenderPassThroughTapZoneOverlay extends RenderProxyBox {
 }
 
 // =============================================================================
-// PALETA E ESPECIFICAÇÃO EDITORIAL DOS 6 STORIES (WCAG AA >= 4.5:1)
+// PROGRESSÃO CROMÁTICA AURORA DAS 6 ETAPAS (FIEL A 00:00–00:09 DO VÍDEO)
 // =============================================================================
 
 class _StoryVisualSpec {
   const _StoryVisualSpec({
     required this.legacyKey,
     required this.bgTop,
+    required this.bgMid,
     required this.bgBottom,
     required this.primaryOrb,
     required this.secondaryOrb,
     required this.accent,
-    required this.tagBg,
-    required this.tagText,
+    required this.stardustWeight,
   });
 
   final Key legacyKey;
   final Color bgTop;
+  final Color bgMid;
   final Color bgBottom;
   final Color primaryOrb;
   final Color secondaryOrb;
   final Color accent;
-  final Color tagBg;
-  final Color tagText;
+  final double stardustWeight;
 }
 
 const List<_StoryVisualSpec> _kStorySpecs = <_StoryVisualSpec>[
-  // Story 1: Casa Resolvida Sem Dor de Cabeça
+  // Etapa 1 (00:00–00:01): Verde-Floresta Profundo & Névoa Sálvia-Esmeralda
   _StoryVisualSpec(
     legacyKey: Key('cinema-act-1-mission'),
-    bgTop: Color(0xFF0E1320),
-    bgBottom: Color(0xFF090D16),
-    primaryOrb: Color(0xFFE87A3D),
-    secondaryOrb: Color(0xFF38BDF8),
-    accent: Color(0xFFFF9B5E),
-    tagBg: Color(0xFF281C15),
-    tagText: Color(0xFFFFBC94),
+    bgTop: Color(0xFF0D1B20),
+    bgMid: Color(0xFF112526),
+    bgBottom: Color(0xFF16302B),
+    primaryOrb: Color(0xFF34D399),
+    secondaryOrb: Color(0xFF6EE7B7),
+    accent: Color(0xFF10B981),
+    stardustWeight: 0.0,
   ),
-  // Story 2: Privacidade Total ao Pedir
+  // Etapa 2 (00:02): Azul-Petróleo Profundo & Bruma Menta
   _StoryVisualSpec(
     legacyKey: Key('cinema-story-2-client-voice'),
-    bgTop: Color(0xFF0B151E),
-    bgBottom: Color(0xFF081018),
+    bgTop: Color(0xFF0C1D24),
+    bgMid: Color(0xFF10282A),
+    bgBottom: Color(0xFF15322D),
     primaryOrb: Color(0xFF2DD4BF),
-    secondaryOrb: Color(0xFF60A5FA),
-    accent: Color(0xFF5EEAD4),
-    tagBg: Color(0xFF122826),
-    tagText: Color(0xFF86EFAC),
+    secondaryOrb: Color(0xFF6EE7B7),
+    accent: Color(0xFF10B981),
+    stardustWeight: 0.0,
   ),
-  // Story 3: Seu Dinheiro 100% Protegido
+  // Etapa 3 (00:03–00:04): Obsidiana-Esmeralda & Aura de Cofre
   _StoryVisualSpec(
     legacyKey: Key('cinema-act-3-client'),
-    bgTop: Color(0xFF0B1618),
-    bgBottom: Color(0xFF081014),
-    primaryOrb: Color(0xFF34D399),
-    secondaryOrb: Color(0xFF38BDF8),
-    accent: Color(0xFF6EE7B7),
-    tagBg: Color(0xFF122923),
-    tagText: Color(0xFF86EFAC),
+    bgTop: Color(0xFF0E1D22),
+    bgMid: Color(0xFF132829),
+    bgBottom: Color(0xFF18332E),
+    primaryOrb: Color(0xFF6EE7B7),
+    secondaryOrb: Color(0xFFA7F3D0),
+    accent: Color(0xFF10B981),
+    stardustWeight: 0.0,
   ),
-  // Story 4: Sua Casa Mais Valorizada
+  // Etapa 4 (00:05): Safira-Ardósia & Ciano-Esmeralda
   _StoryVisualSpec(
     legacyKey: Key('cinema-story-4-passport'),
-    bgTop: Color(0xFF101522),
-    bgBottom: Color(0xFF0A0E18),
-    primaryOrb: Color(0xFFF5B74F),
-    secondaryOrb: Color(0xFF60A5FA),
-    accent: Color(0xFFFCD34D),
-    tagBg: Color(0xFF272114),
-    tagText: Color(0xFFFDE68A),
+    bgTop: Color(0xFF111F2F),
+    bgMid: Color(0xFF162B38),
+    bgBottom: Color(0xFF1B353E),
+    primaryOrb: Color(0xFF38BDF8),
+    secondaryOrb: Color(0xFF34D399),
+    accent: Color(0xFF10B981),
+    stardustWeight: 0.0,
   ),
-  // Story 5: Justo para Quem Trabalha
+  // Etapa 5 (00:06–00:07): Ameixa-Índigo Real & Poeira Estelar Dourada
   _StoryVisualSpec(
     legacyKey: Key('cinema-act-4-provider'),
-    bgTop: Color(0xFF0C1526),
-    bgBottom: Color(0xFF080E1A),
-    primaryOrb: Color(0xFF60A5FA),
-    secondaryOrb: Color(0xFF34D399),
-    accent: Color(0xFF93C5FD),
-    tagBg: Color(0xFF152338),
-    tagText: Color(0xFFBFDBFE),
+    bgTop: Color(0xFF1B1832),
+    bgMid: Color(0xFF231E3E),
+    bgBottom: Color(0xFF2B2347),
+    primaryOrb: Color(0xFF8B5CF6),
+    secondaryOrb: Color(0xFFFCD34D),
+    accent: Color(0xFF10B981),
+    stardustWeight: 0.85,
   ),
-  // Story 6: Uma Conta, Dois Caminhos
+  // Etapa 6 (00:08–00:09): Horizonte Âmbar-Pôr-do-Sol & Esmeralda
   _StoryVisualSpec(
     legacyKey: Key('cinema-act-2-audience'),
-    bgTop: Color(0xFF101422),
-    bgBottom: Color(0xFF090D18),
-    primaryOrb: Color(0xFFFF8F52),
-    secondaryOrb: Color(0xFF74A7FF),
-    accent: Color(0xFFFFB07A),
-    tagBg: Color(0xFF261D19),
-    tagText: Color(0xFFFFC8A3),
+    bgTop: Color(0xFF211926),
+    bgMid: Color(0xFF3D2622),
+    bgBottom: Color(0xFF523020),
+    primaryOrb: Color(0xFFFB923C),
+    secondaryOrb: Color(0xFF34D399),
+    accent: Color(0xFFF59E0B),
+    stardustWeight: 1.0,
   ),
 ];
 
@@ -822,14 +834,11 @@ class _SharedAmbientCanvasState extends State<_SharedAmbientCanvas>
   }
 
   void _onPageControllerChanged() {
-    // Ignora o salto instantâneo de jumpToPage para que o bridge de 520ms
-    // conduza o deslocamento suave sem corte seco.
     if (widget.isProgrammaticJumpGetter()) return;
 
     final livePage = _tryReadLivePage();
     if (livePage == null) return;
 
-    // Durante swipe manual / física de mola do PageView, segue 1:1 (0ms latência)
     if (_bridgeController.isAnimating) {
       final isFractionalSwipe =
           (livePage - livePage.roundToDouble()).abs() > 1e-3;
@@ -850,8 +859,6 @@ class _SharedAmbientCanvasState extends State<_SharedAmbientCanvas>
     final isActivelySwiping = livePage != null &&
         (livePage - livePage.roundToDouble()).abs() > 1e-3;
 
-    // Se a troca de página ocorreu durante um swipe fracionário do PageView,
-    // o próprio PageController já está interpolando 1:1 sem corte seco.
     if (isActivelySwiping) {
       return;
     }
@@ -905,6 +912,17 @@ class _SharedAmbientPainter extends CustomPainter {
 
   final ValueListenable<double> ambientPageListenable;
 
+  static const List<(double, double, double)> _kAmbientStars =
+      <(double, double, double)>[
+    (0.14, 0.24, 1.8),
+    (0.86, 0.28, 2.2),
+    (0.18, 0.72, 2.4),
+    (0.82, 0.76, 2.0),
+    (0.32, 0.84, 1.6),
+    (0.71, 0.86, 2.3),
+    (0.52, 0.18, 1.5),
+  ];
+
   @override
   void paint(Canvas canvas, Size size) {
     final page = ambientPageListenable.value.clamp(
@@ -919,9 +937,11 @@ class _SharedAmbientPainter extends CustomPainter {
     final b = _kStorySpecs[upper];
 
     final bgTop = Color.lerp(a.bgTop, b.bgTop, frac)!;
+    final bgMid = Color.lerp(a.bgMid, b.bgMid, frac)!;
     final bgBottom = Color.lerp(a.bgBottom, b.bgBottom, frac)!;
     final primaryOrb = Color.lerp(a.primaryOrb, b.primaryOrb, frac)!;
     final secondaryOrb = Color.lerp(a.secondaryOrb, b.secondaryOrb, frac)!;
+    final stardust = ui.lerpDouble(a.stardustWeight, b.stardustWeight, frac)!;
 
     final rect = Offset.zero & size;
     canvas.drawRect(
@@ -930,18 +950,20 @@ class _SharedAmbientPainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset.zero,
           Offset(0, size.height),
-          [bgTop, bgBottom],
+          [bgTop, bgMid, bgBottom],
+          const [0.0, 0.54, 1.0],
         ),
     );
 
-    // Paralaxe sutil de exatos 15% da velocidade do swipe horizontal
+    // Paralaxe radial sutil de exatos 15% da velocidade do swipe horizontal
     final parallaxShift = page * size.width * 0.15;
 
+    // Halo aurora superior direito / central
     final topGlowCenter = Offset(
-      (size.width * 0.86) - parallaxShift,
-      size.height * 0.20,
+      (size.width * 0.84) - (parallaxShift * 0.45),
+      size.height * 0.30,
     );
-    final topRadius = size.width * 0.78;
+    final topRadius = size.width * 0.92;
     canvas.drawCircle(
       topGlowCenter,
       topRadius,
@@ -950,19 +972,20 @@ class _SharedAmbientPainter extends CustomPainter {
           topGlowCenter,
           topRadius,
           [
-            primaryOrb.withValues(alpha: 0.16),
-            primaryOrb.withValues(alpha: 0.04),
+            primaryOrb.withValues(alpha: 0.22),
+            primaryOrb.withValues(alpha: 0.07),
             Colors.transparent,
           ],
-          const [0.0, 0.55, 1.0],
+          const [0.0, 0.56, 1.0],
         ),
     );
 
+    // Bruma esmeralda/coral inferior esquerda fiel ao vídeo
     final bottomGlowCenter = Offset(
-      (size.width * 0.14) + parallaxShift,
+      (size.width * 0.18) + (parallaxShift * 0.35),
       size.height * 0.78,
     );
-    final bottomRadius = size.width * 0.72;
+    final bottomRadius = size.width * 0.86;
     canvas.drawCircle(
       bottomGlowCenter,
       bottomRadius,
@@ -971,13 +994,71 @@ class _SharedAmbientPainter extends CustomPainter {
           bottomGlowCenter,
           bottomRadius,
           [
-            secondaryOrb.withValues(alpha: 0.12),
-            secondaryOrb.withValues(alpha: 0.03),
+            secondaryOrb.withValues(alpha: 0.18),
+            secondaryOrb.withValues(alpha: 0.05),
             Colors.transparent,
           ],
-          const [0.0, 0.55, 1.0],
+          const [0.0, 0.58, 1.0],
         ),
     );
+
+    // Véu diagonal suave de aurora atrás do cartão de porcelana
+    final auroraVeil = Path()
+      ..moveTo(-size.width * 0.15, size.height * 0.58)
+      ..quadraticBezierTo(
+        size.width * 0.45,
+        size.height * 0.42,
+        size.width * 1.15,
+        size.height * 0.68,
+      )
+      ..lineTo(size.width * 1.15, size.height * 0.92)
+      ..quadraticBezierTo(
+        size.width * 0.42,
+        size.height * 0.66,
+        -size.width * 0.15,
+        size.height * 0.84,
+      )
+      ..close();
+    canvas.drawPath(
+      auroraVeil,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          Offset(0, size.height * 0.45),
+          Offset(size.width, size.height * 0.85),
+          [
+            secondaryOrb.withValues(alpha: 0.04),
+            primaryOrb.withValues(alpha: 0.10),
+            secondaryOrb.withValues(alpha: 0.05),
+          ],
+          const [0.0, 0.5, 1.0],
+        ),
+    );
+
+    // Pontos luminosos dourados suaves no horizonte das Etapas 5 e 6
+    if (stardust > 0.02) {
+      for (final star in _kAmbientStars) {
+        final center = Offset(
+          (size.width * star.$1) - (parallaxShift * 0.08),
+          size.height * star.$2,
+        );
+        canvas.drawCircle(
+          center,
+          star.$3 * 3.0,
+          Paint()
+            ..color = const Color(0xFFFDE68A).withValues(
+              alpha: 0.10 * stardust,
+            ),
+        );
+        canvas.drawCircle(
+          center,
+          star.$3,
+          Paint()
+            ..color = const Color(0xFFFEF3C7).withValues(
+              alpha: 0.46 * stardust,
+            ),
+        );
+      }
+    }
   }
 
   @override
@@ -1069,7 +1150,7 @@ class _SereneStoryPageScrollPhysics extends PageScrollPhysics {
 }
 
 // =============================================================================
-// TOPO ISOLADO EM REPAINTBOUNDARY: 6 BARRAS INTERATIVAS >= 44dp + MARCA/PULAR
+// TOPO FIEL AO VÍDEO (100% PORTUGUÊS — 6 BARRAS BRANCAS + ETAPA X DE 6 + PULAR)
 // =============================================================================
 
 class _TopSegmentedProgressBars extends StatelessWidget {
@@ -1131,9 +1212,7 @@ class _TopSegmentedProgressBars extends StatelessWidget {
                               borderRadius: BorderRadius.circular(99),
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(
-                                    alpha: i == activeStory ? 0.24 : 0.16,
-                                  ),
+                                  color: Colors.white.withValues(alpha: 0.24),
                                 ),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
@@ -1142,7 +1221,7 @@ class _TopSegmentedProgressBars extends StatelessWidget {
                                     heightFactor: 1.0,
                                     child: const DecoratedBox(
                                       decoration: BoxDecoration(
-                                        color: Color(0xFFF1F5F9),
+                                        color: Color(0xFFF8FAFC),
                                       ),
                                     ),
                                   ),
@@ -1164,14 +1243,16 @@ class _TopSegmentedProgressBars extends StatelessWidget {
   }
 }
 
-class _TopBrandHeaderRow extends StatelessWidget {
-  const _TopBrandHeaderRow({
+class _TopStageHeaderRow extends StatelessWidget {
+  const _TopStageHeaderRow({
+    required this.activeStoryListenable,
     required this.isReplay,
     required this.isCompact,
     required this.holdPausedListenable,
     required this.onExitPressed,
   });
 
+  final ValueListenable<int> activeStoryListenable;
   final bool isReplay;
   final bool isCompact;
   final ValueListenable<bool> holdPausedListenable;
@@ -1179,31 +1260,33 @@ class _TopBrandHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const total = DesperrengueWelcomeCinemaScreen.storyCount;
+
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 44.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          DesperrengueBrandLogo(
-            size: isCompact ? 24 : 28,
-            borderRadius: isCompact ? 7 : 8,
-            showShadow: false,
-          ),
-          const SizedBox(width: 8),
           Expanded(
             child: Row(
               children: [
-                const Flexible(
-                  child: Text(
-                    'Desperrengue',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Color(0xFFF1F5F9),
-                      fontSize: 13.0,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
+                Flexible(
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: activeStoryListenable,
+                    builder: (context, storyIndex, _) {
+                      final safeStep = (storyIndex + 1).clamp(1, total);
+                      return Text(
+                        'Etapa $safeStep de $total',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFFCBD5E1),
+                          fontSize: isCompact ? 12.5 : 13.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                        ),
+                      );
+                    },
                   ),
                 ),
                 ValueListenableBuilder<bool>(
@@ -1223,7 +1306,7 @@ class _TopBrandHeaderRow extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           TextButton(
             key: Key(
               isReplay
@@ -1232,17 +1315,20 @@ class _TopBrandHeaderRow extends StatelessWidget {
             ),
             onPressed: onExitPressed,
             style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFE2E8F0),
-              backgroundColor: const Color(0xFF1B2434),
-              minimumSize: const Size(52, 44),
+              foregroundColor: const Color(0xFFF8FAFC),
+              backgroundColor: const Color(0xFF13222A).withValues(alpha: 0.72),
+              minimumSize: const Size(60, 44),
               padding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 12 : 14,
+                horizontal: isCompact ? 14 : 16,
                 vertical: 8,
               ),
               tapTargetSize: MaterialTapTargetSize.padded,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(99),
-                side: const BorderSide(color: Color(0xFF2D3B52)),
+                borderRadius: BorderRadius.circular(999),
+                side: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.34),
+                  width: 1.0,
+                ),
               ),
             ),
             child: Text(
@@ -1250,8 +1336,8 @@ class _TopBrandHeaderRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: const Color(0xFFF1F5F9),
-                fontSize: isCompact ? 12.0 : 12.5,
+                color: const Color(0xFFF8FAFC),
+                fontSize: isCompact ? 12.0 : 13.0,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1307,9 +1393,9 @@ class _FadeInPausedBadgeState extends State<_FadeInPausedBadge>
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: const Color(0xFF232F44),
-          borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: const Color(0xFF3A4B69)),
+          color: const Color(0xFF14242E).withValues(alpha: 0.88),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
         ),
         child: const Padding(
           padding: EdgeInsets.symmetric(horizontal: 9, vertical: 4),
@@ -1319,7 +1405,7 @@ class _FadeInPausedBadgeState extends State<_FadeInPausedBadge>
               Icon(
                 Icons.pause_rounded,
                 size: 12,
-                color: Color(0xFFE2E8F0),
+                color: Color(0xFFF8FAFC),
               ),
               SizedBox(width: 4),
               Flexible(
@@ -1328,7 +1414,7 @@ class _FadeInPausedBadgeState extends State<_FadeInPausedBadge>
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Color(0xFFF1F5F9),
+                    color: Color(0xFFF8FAFC),
                     fontSize: 11.0,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1343,19 +1429,21 @@ class _FadeInPausedBadgeState extends State<_FadeInPausedBadge>
 }
 
 // =============================================================================
-// RODAPÉ LIMPO E RESPIRÁVEL (>= 48dp DE ALTURA DE TOQUE)
+// RODAPÉ FIEL AO VÍDEO (6 PONTOS CENTRALIZADOS + PÍLULA LARGA + VOLTAR DISCRETO)
 // =============================================================================
 
 class _BottomStoryNavigationBar extends StatelessWidget {
   const _BottomStoryNavigationBar({
     required this.activeStoryListenable,
     required this.isCompact,
+    required this.isUltraCompact,
     required this.onPrevious,
     required this.onNext,
   });
 
   final ValueListenable<int> activeStoryListenable;
   final bool isCompact;
+  final bool isUltraCompact;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
 
@@ -1369,140 +1457,200 @@ class _BottomStoryNavigationBar extends StatelessWidget {
         final isFirst = storyIndex <= 0;
         final isLast = storyIndex >= total - 1;
         final reduceMotion = MediaQuery.disableAnimationsOf(context);
+        final buttonHeight = isCompact ? 50.0 : 54.0;
 
-        return ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Flexible(
-                child: IgnorePointer(
-                  ignoring: isFirst,
-                  child: AnimatedOpacity(
-                    opacity: isFirst ? 0.0 : 1.0,
-                    duration: reduceMotion
-                        ? Duration.zero
-                        : const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    child: TextButton.icon(
-                      key: const Key('btn-story-prev'),
-                      onPressed: onPrevious,
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFFE2E8F0),
-                        backgroundColor: const Color(0xFF172030),
-                        minimumSize: const Size(48, 48),
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isCompact ? 10 : 14,
-                          vertical: 10,
-                        ),
-                        tapTargetSize: MaterialTapTargetSize.padded,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(99),
-                          side: const BorderSide(color: Color(0xFF2A384E)),
-                        ),
-                      ),
-                      icon: const Icon(
-                        Icons.chevron_left_rounded,
-                        size: 18,
-                        color: Color(0xFFE2E8F0),
-                      ),
-                      label: Text(
-                        'Voltar',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFF1F5F9),
-                          fontSize: isCompact ? 12.0 : 13.0,
-                          fontWeight: FontWeight.w600,
-                        ),
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              key: const Key('story-pagination-dots'),
+              height: 12.0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(total, (i) {
+                  final active = i == storyIndex;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3.5),
+                    child: AnimatedContainer(
+                      duration: reduceMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      width: active ? 18.0 : 6.0,
+                      height: 6.0,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: active
+                            ? const Color(0xFFF8FAFC)
+                            : Colors.white.withValues(alpha: 0.34),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                }),
               ),
-              const SizedBox(width: 8),
-              Text(
-                '${storyIndex + 1} de $total',
-                maxLines: 1,
-                style: TextStyle(
-                  color: const Color(0xFFAEC0D6),
-                  fontSize: isCompact ? 11.5 : 12.0,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                flex: isLast ? 2 : 1,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    key: const Key('btn-story-next'),
-                    onPressed: onNext,
-                    style: TextButton.styleFrom(
-                      foregroundColor: isLast
-                          ? const Color(0xFF0B111E)
-                          : const Color(0xFFF1F5F9),
-                      backgroundColor: isLast
-                          ? const Color(0xFFFF9E57)
-                          : const Color(0xFF1E2A3D),
-                      minimumSize: const Size(56, 48),
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? 14 : 18,
-                        vertical: 10,
-                      ),
-                      tapTargetSize: MaterialTapTargetSize.padded,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(99),
-                        side: BorderSide(
-                          color: isLast
-                              ? const Color(0xFFFFB880)
-                              : const Color(0xFF33445E),
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            isLast ? 'Começar agora' : 'Próximo',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isLast
-                                  ? const Color(0xFF0B111E)
-                                  : const Color(0xFFF1F5F9),
-                              fontSize: isCompact ? 12.5 : 13.5,
-                              fontWeight: FontWeight.w800,
+            ),
+            SizedBox(height: isUltraCompact ? 6.0 : 10.0),
+            ConstrainedBox(
+              constraints: BoxConstraints(minHeight: buttonHeight),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (!isFirst) ...[
+                    Semantics(
+                      button: true,
+                      label: 'Voltar',
+                      child: Tooltip(
+                        message: 'Voltar',
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            key: const Key('btn-story-prev'),
+                            onTap: onPrevious,
+                            customBorder: const CircleBorder(),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFF14232B)
+                                    .withValues(alpha: 0.72),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.30),
+                                ),
+                              ),
+                              child: const SizedBox(
+                                width: 48.0,
+                                height: 48.0,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.chevron_left_rounded,
+                                    size: 24,
+                                    color: Color(0xFFF8FAFC),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          isLast
-                              ? Icons.arrow_forward_rounded
-                              : Icons.chevron_right_rounded,
-                          size: 18,
-                          color: isLast
-                              ? const Color(0xFF0B111E)
-                              : const Color(0xFFF1F5F9),
-                        ),
-                      ],
+                      ),
+                    ),
+                    const SizedBox(width: 10.0),
+                  ],
+                  Expanded(
+                    child: _PrimaryWidePillActionButton(
+                      key: const Key('btn-story-next'),
+                      isAuroraCta: isLast,
+                      height: buttonHeight,
+                      isCompact: isCompact,
+                      onPressed: onNext,
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
+class _PrimaryWidePillActionButton extends StatelessWidget {
+  const _PrimaryWidePillActionButton({
+    super.key,
+    required this.isAuroraCta,
+    required this.height,
+    required this.isCompact,
+    required this.onPressed,
+  });
+
+  final bool isAuroraCta;
+  final double height;
+  final bool isCompact;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(999);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        color: isAuroraCta ? null : const Color(0xFFF8FAFC),
+        gradient: isAuroraCta
+            ? const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Color(0xFF6EE7B7),
+                  Color(0xFFA7F3D0),
+                  Color(0xFFFDE68A),
+                  Color(0xFFFDBA74),
+                ],
+                stops: [0.0, 0.36, 0.72, 1.0],
+              )
+            : null,
+        border: Border.all(
+          color: isAuroraCta
+              ? Colors.white.withValues(alpha: 0.65)
+              : const Color(0xFFFFFFFF),
+          width: 1.0,
+        ),
+        boxShadow: isAuroraCta
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF6EE7B7).withValues(alpha: 0.28),
+                  blurRadius: 20,
+                  offset: const Offset(-6, 6),
+                ),
+                BoxShadow(
+                  color: const Color(0xFFFDBA74).withValues(alpha: 0.30),
+                  blurRadius: 22,
+                  offset: const Offset(6, 6),
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: const Color(0xFF040B14).withValues(alpha: 0.24),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: radius,
+          child: SizedBox(
+            height: height,
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Center(
+                child: Text(
+                  isAuroraCta ? 'Começar agora' : 'Próximo',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: isAuroraCta
+                        ? const Color(0xFF0B1320)
+                        : const Color(0xFF0F172A),
+                    fontSize: isCompact ? 14.5 : 15.8,
+                    fontWeight:
+                        isAuroraCta ? FontWeight.w900 : FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // =============================================================================
-// PÁGINA DO STORY COM COREOGRAFIA FINITA EM 3 ATOS (ZERO REPEAT, >= 38% RESPIRO)
+// PÁGINA DA ETAPA COM COREOGRAFIA FINITA EM 3 ATOS (ZERO REPEAT, >= 38% RESPIRO)
 // =============================================================================
 
 class _StorySlidePage extends StatefulWidget {
@@ -1510,22 +1658,24 @@ class _StorySlidePage extends StatefulWidget {
     super.key,
     required this.storyIndex,
     required this.isActiveStory,
-    required this.userFirstName,
     required this.totalDuration,
     required this.isCompact,
+    required this.isUltraCompact,
     required this.pageController,
     required this.holdPausedListenable,
+    required this.onInteractiveControlPointerDown,
     this.restartEpochListenable,
     this.onActiveHeroBuild,
   });
 
   final int storyIndex;
   final bool isActiveStory;
-  final String userFirstName;
   final Duration totalDuration;
   final bool isCompact;
+  final bool isUltraCompact;
   final PageController pageController;
   final ValueListenable<bool> holdPausedListenable;
+  final ValueChanged<int> onInteractiveControlPointerDown;
   final ValueListenable<int>? restartEpochListenable;
   final ValueChanged<int>? onActiveHeroBuild;
 
@@ -1624,81 +1774,79 @@ class _StorySlidePageState extends State<_StorySlidePage>
     );
   }
 
-  (String, String, String) _copyForStory(int index) {
+  (String, String) _copyForStory(int index) {
     switch (index) {
       case 0:
-        final greeting = widget.userFirstName.isNotEmpty
-            ? 'BEM-VINDO(A), ${widget.userFirstName.toUpperCase()}'
-            : 'BEM-VINDO(A)';
         return (
-          greeting,
-          'Sua casa resolvida sem dor de cabeça',
-          'Do reparo urgente à manutenção planejada, encontre o especialista certo perto de você em poucos toques.',
+          'Casa Resolvida Sem Dor de Cabeça',
+          'Do reparo urgente à manutenção planejada, encontre o especialista certo em poucos toques.',
         );
       case 1:
         return (
-          'SEGURANÇA DA SUA CASA',
-          'Privacidade total antes de contratar',
-          'Explique por áudio ou foto e compare até 3 orçamentos claros. Seu endereço completo fica oculto até você escolher quem contratar.',
+          'Privacidade Total ao Pedir',
+          'Compare até 3 orçamentos protegidos. Seu endereço fica oculto até contratar.',
         );
       case 2:
         return (
-          'PAGAMENTO PROTEGIDO',
-          'Seu dinheiro 100% protegido sempre',
-          'O valor fica guardado na plataforma. O profissional só recebe quando o serviço termina e você confirma com seu código pessoal.',
+          'Seu Dinheiro 100% Protegido',
+          'O valor fica guardado em segurança e só libera com seu código pessoal.',
         );
       case 3:
         return (
-          'HISTÓRICO INTELIGENTE',
-          'Sua casa mais valorizada',
-          'Cada manutenção concluída fica registrada automaticamente no histórico do seu imóvel, pronto em PDF para aluguéis, seguros ou venda.',
+          'Sua Casa Mais Valorizada',
+          'Histórico inteligente do imóvel pronto em PDF para aluguéis, seguros ou venda.',
         );
       case 4:
         return (
-          'MODO PROFISSIONAL',
-          'Justo para quem trabalha',
-          'Sem pagar taxas para enviar orçamento. Receba 100% do valor das peças sem desconto e construa sua reputação na cidade.',
+          'Justo para Quem Trabalha',
+          'Sem pagar taxas para enviar orçamento e 100% das peças sem desconto.',
         );
       default:
         return (
-          'LIBERDADE EM 1 TOQUE',
-          'Uma conta, dois caminhos',
-          'Contrate serviços para sua casa ou atenda clientes na sua área usando uma única conta verificada com identidade segura.',
+          'Uma Conta, Dois Caminhos',
+          'Contrate serviços ou atenda clientes com uma única conta verificada.',
         );
     }
   }
 
-  Widget _buildHeroDemoContent(int index, bool isCompact) {
+  Widget _buildHeroDemoContent(int index, bool isCompact, bool isUltraCompact) {
     switch (index) {
       case 0:
         return _Story1SearchAndSpecialtiesDemo(
           actAnimation: _actController,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         );
       case 1:
         return _Story2PrivacyAndQuotesDemo(
           actAnimation: _actController,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         );
       case 2:
         return _Story3ProtectedVaultPinDemo(
           actAnimation: _actController,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         );
       case 3:
         return _Story4PropertyHealthHistoryDemo(
           actAnimation: _actController,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         );
       case 4:
         return _Story5FairProviderPanelDemo(
           actAnimation: _actController,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         );
       default:
         return _Story6DualAccountSwitchDemo(
           actAnimation: _actController,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
+          onInteractivePointerDown: widget.onInteractiveControlPointerDown,
         );
     }
   }
@@ -1706,33 +1854,26 @@ class _StorySlidePageState extends State<_StorySlidePage>
   @override
   Widget build(BuildContext context) {
     final spec = _kStorySpecs[widget.storyIndex];
-    final (tagText, titleText, subtitleText) = _copyForStory(widget.storyIndex);
+    final (titleText, subtitleText) = _copyForStory(widget.storyIndex);
     final isCompact = widget.isCompact;
+    final isUltraCompact = widget.isUltraCompact;
 
     // Ato 1 (0.0s – 0.75s = 0.00 .. 0.242 de 3.10s): cascata sedosa sem quique
-    final tagFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      _interval(0.00, 0.14),
-    );
-    final tagSlide = Tween<Offset>(
-      begin: const Offset(0, 0.18),
-      end: Offset.zero,
-    ).animate(_interval(0.00, 0.14));
-
     final titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      _interval(0.03, 0.18),
+      _interval(0.00, 0.16),
     );
     final titleSlide = Tween<Offset>(
       begin: const Offset(0, 0.14),
       end: Offset.zero,
-    ).animate(_interval(0.03, 0.18));
+    ).animate(_interval(0.00, 0.16));
 
     final subFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      _interval(0.06, 0.21),
+      _interval(0.04, 0.20),
     );
     final subSlide = Tween<Offset>(
       begin: const Offset(0, 0.14),
       end: Offset.zero,
-    ).animate(_interval(0.06, 0.21));
+    ).animate(_interval(0.04, 0.20));
 
     final heroOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       _interval(0.08, 0.242),
@@ -1747,7 +1888,11 @@ class _StorySlidePageState extends State<_StorySlidePage>
       accentColor: spec.accent,
       isCompact: isCompact,
       onActiveHeroBuild: widget.onActiveHeroBuild,
-      child: _buildHeroDemoContent(widget.storyIndex, isCompact),
+      child: _buildHeroDemoContent(
+        widget.storyIndex,
+        isCompact,
+        isUltraCompact,
+      ),
     );
 
     final animatedHero = AnimatedBuilder(
@@ -1764,7 +1909,7 @@ class _StorySlidePageState extends State<_StorySlidePage>
             if (pos.hasContentDimensions && pos.hasPixels) {
               final p =
                   widget.pageController.page ?? widget.storyIndex.toDouble();
-              parallaxX = (p - widget.storyIndex).clamp(-1.0, 1.0) * 18.0;
+              parallaxX = (p - widget.storyIndex).clamp(-1.0, 1.0) * 16.0;
             }
           } catch (_) {
             parallaxX = 0.0;
@@ -1776,6 +1921,35 @@ class _StorySlidePageState extends State<_StorySlidePage>
         );
       },
     );
+
+    final showStardust = widget.storyIndex == 4 || widget.storyIndex == 5;
+    final heroStageWithOptionalStardust = showStardust
+        ? Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                top: -14,
+                bottom: -14,
+                left: -8,
+                right: -8,
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _GoldenCelebrationStardustPainter(
+                        actAnimation: _actController,
+                        isWarmSunset: widget.storyIndex == 5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              animatedHero,
+            ],
+          )
+        : animatedHero;
+
+    final titleSize = isUltraCompact ? 18.0 : (isCompact ? 21.0 : 27.5);
+    final subSize = isUltraCompact ? 11.4 : (isCompact ? 12.6 : 14.8);
 
     return CustomScrollView(
       key: spec.legacyKey,
@@ -1789,40 +1963,7 @@ class _StorySlidePageState extends State<_StorySlidePage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Spacer(flex: 5),
-                  FadeTransition(
-                    opacity: tagFade,
-                    child: SlideTransition(
-                      position: tagSlide,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: spec.tagBg,
-                          borderRadius: BorderRadius.circular(99),
-                          border: Border.all(
-                            color: spec.accent.withValues(alpha: 0.36),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isCompact ? 10 : 12,
-                            vertical: isCompact ? 4 : 5.5,
-                          ),
-                          child: Text(
-                            tagText,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: spec.tagText,
-                              fontSize: isCompact ? 10.2 : 11.2,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: isCompact ? 8 : 14),
+                  const Spacer(flex: 4),
                   FadeTransition(
                     opacity: titleFade,
                     child: SlideTransition(
@@ -1833,35 +1974,35 @@ class _StorySlidePageState extends State<_StorySlidePage>
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: const Color(0xFFF8FAFC),
-                          fontSize: isCompact ? 20.5 : 27.0,
+                          fontSize: titleSize,
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.6,
-                          height: 1.15,
+                          height: 1.14,
                         ),
                       ),
                     ),
                   ),
-                  SizedBox(height: isCompact ? 6 : 10),
+                  SizedBox(height: isUltraCompact ? 4 : (isCompact ? 6 : 10)),
                   FadeTransition(
                     opacity: subFade,
                     child: SlideTransition(
                       position: subSlide,
                       child: Text(
                         subtitleText,
-                        maxLines: 4,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: const Color(0xFFCBD5E1),
-                          fontSize: isCompact ? 12.5 : 14.8,
+                          color: const Color(0xFFE2E8F0),
+                          fontSize: subSize,
                           fontWeight: FontWeight.w400,
-                          height: 1.38,
+                          height: 1.32,
                         ),
                       ),
                     ),
                   ),
-                  SizedBox(height: isCompact ? 14 : 24),
-                  animatedHero,
-                  const Spacer(flex: 6),
+                  SizedBox(height: isUltraCompact ? 10 : (isCompact ? 14 : 22)),
+                  heroStageWithOptionalStardust,
+                  const Spacer(flex: 5),
                 ],
               ),
             ),
@@ -1872,31 +2013,119 @@ class _StorySlidePageState extends State<_StorySlidePage>
   }
 }
 
+/// Poeira estelar dourada sutil fluindo entre `1.2s–3.1s` e repousando
+/// serenamente nas Etapas 5 e 6 (fiel a `00:06–00:09` do vídeo, zero repeat).
+class _GoldenCelebrationStardustPainter extends CustomPainter {
+  _GoldenCelebrationStardustPainter({
+    required this.actAnimation,
+    required this.isWarmSunset,
+  }) : super(repaint: actAnimation);
+
+  final Animation<double> actAnimation;
+  final bool isWarmSunset;
+
+  static const List<(double, double, double, bool)> _kParticles =
+      <(double, double, double, bool)>[
+    (0.06, 0.88, 3.2, true),
+    (0.14, 0.96, 2.2, false),
+    (0.24, 0.99, 2.8, false),
+    (0.76, 0.98, 2.5, false),
+    (0.88, 0.92, 3.4, true),
+    (0.95, 0.80, 2.6, true),
+    (0.03, 0.72, 2.1, false),
+    (0.92, 0.22, 2.4, true),
+    (0.08, 0.18, 2.0, false),
+    (0.50, 1.01, 2.2, false),
+  ];
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 1.2s..3.1s de 3.10s -> [0.387 .. 1.0]
+    final raw = ((actAnimation.value - 0.387) / (1.0 - 0.387)).clamp(0.0, 1.0);
+    if (raw <= 0.001) return;
+
+    final p = Curves.easeOutQuart.transform(raw);
+    final primaryGold =
+        isWarmSunset ? const Color(0xFFFDE68A) : const Color(0xFFFCD34D);
+    final coreCream = const Color(0xFFFFFBEB);
+
+    for (var i = 0; i < _kParticles.length; i++) {
+      final item = _kParticles[i];
+      final stagger = ((raw - (i * 0.04)) / 0.64).clamp(0.0, 1.0);
+      if (stagger <= 0.0) continue;
+      final sp = Curves.easeOutQuart.transform(stagger);
+      final driftY = (1.0 - sp) * 14.0;
+      final center = Offset(
+        size.width * item.$1,
+        (size.height * item.$2) + driftY,
+      );
+      final radius = item.$3 * (0.65 + 0.35 * sp);
+      final alpha = (0.62 * p * sp).clamp(0.0, 0.65);
+
+      canvas.drawCircle(
+        center,
+        radius * 2.8,
+        Paint()..color = primaryGold.withValues(alpha: alpha * 0.28),
+      );
+
+      if (item.$4) {
+        _drawFourPointSparkle(canvas, center, radius * 2.1, coreCream, alpha);
+      } else {
+        canvas.drawCircle(
+          center,
+          radius,
+          Paint()..color = coreCream.withValues(alpha: alpha),
+        );
+      }
+    }
+  }
+
+  void _drawFourPointSparkle(
+    Canvas canvas,
+    Offset c,
+    double r,
+    Color color,
+    double alpha,
+  ) {
+    final q = r * 0.26;
+    final path = Path()
+      ..moveTo(c.dx, c.dy - r)
+      ..quadraticBezierTo(c.dx + q, c.dy - q, c.dx + r, c.dy)
+      ..quadraticBezierTo(c.dx + q, c.dy + q, c.dx, c.dy + r)
+      ..quadraticBezierTo(c.dx - q, c.dy + q, c.dx - r, c.dy)
+      ..quadraticBezierTo(c.dx - q, c.dy - q, c.dx, c.dy - r)
+      ..close();
+    canvas.drawPath(path, Paint()..color = color.withValues(alpha: alpha));
+  }
+
+  @override
+  bool shouldRepaint(covariant _GoldenCelebrationStardustPainter oldDelegate) {
+    return oldDelegate.actAnimation != actAnimation ||
+        oldDelegate.isWarmSunset != isWarmSunset;
+  }
+}
+
 // =============================================================================
-// MICRO-DEMONSTRAÇÕES VIVAS EM SUB-WIDGETS FOLHAS (ATO 2: 0.75s–3.10s -> REPOUSO)
+// ETAPA 1 (00:00–00:01): BUSCA + GRADE 2x2 VERIFICADA + ATENDIMENTO RÁPIDO
 // =============================================================================
 
-/// Story 1/6: Barra de busca preenchendo `"Trocar resistência do chuveiro"`
-/// (`0.8s–1.8s`) + 3 chips `CategoryBrandEmblem` (`Elétrica`, `Encanador`,
-/// `Ar-condicionado`) + selo calmo `Atendimento rápido na sua região`.
 class _Story1SearchAndSpecialtiesDemo extends StatelessWidget {
   const _Story1SearchAndSpecialtiesDemo({
     required this.actAnimation,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final bool isCompact;
+  final bool isUltraCompact;
 
   static const String _kFullQuery = 'Trocar resistência do chuveiro';
-  static const List<String> _kSpecialties = <String>[
-    'Elétrica',
-    'Encanador',
-    'Ar-condicionado',
-  ];
 
   @override
   Widget build(BuildContext context) {
+    final gap = isUltraCompact ? 7.0 : (isCompact ? 9.0 : 12.0);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1905,14 +2134,15 @@ class _Story1SearchAndSpecialtiesDemo extends StatelessWidget {
           actAnimation: actAnimation,
           fullQuery: _kFullQuery,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         ),
-        SizedBox(height: isCompact ? 10 : 14),
-        _Story1SpecialtiesEmergenceLeaf(
+        SizedBox(height: gap),
+        _Story1VerifiedGrid2x2Leaf(
           actAnimation: actAnimation,
-          specialties: _kSpecialties,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         ),
-        SizedBox(height: isCompact ? 10 : 14),
+        SizedBox(height: gap),
         _Story1RegionSealLeaf(
           actAnimation: actAnimation,
           isCompact: isCompact,
@@ -1927,11 +2157,13 @@ class _Story1SearchFieldLeaf extends StatelessWidget {
     required this.actAnimation,
     required this.fullQuery,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final String fullQuery;
   final bool isCompact;
+  final bool isUltraCompact;
 
   @override
   Widget build(BuildContext context) {
@@ -1944,56 +2176,60 @@ class _Story1SearchFieldLeaf extends StatelessWidget {
           1.0,
         );
         final progress = Curves.easeOutCubic.transform(raw);
-        final minChars = 7;
+        const minChars = 13; // "Trocar resist"
         final visibleCount = (minChars +
                 ((fullQuery.length - minChars) * progress).round())
             .clamp(minChars, fullQuery.length);
-        final visibleText = fullQuery.substring(0, visibleCount);
         final isFinished = visibleCount >= fullQuery.length;
+        final visibleText = isFinished
+            ? fullQuery
+            : '${fullQuery.substring(0, visibleCount)}...';
 
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: const Color(0xFF1C273A),
+            color: const Color(0xFFFFFFFF),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isFinished
-                  ? const Color(0xFFFF9B5E).withValues(alpha: 0.48)
-                  : const Color(0xFF2D3C56),
+              color: Color.lerp(
+                const Color(0xFF6EE7B7),
+                const Color(0xFF10B981),
+                progress,
+              )!,
+              width: 1.35,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: isCompact ? 11 : 14,
-              vertical: isCompact ? 9 : 11,
+              horizontal: isCompact ? 10 : 13,
+              vertical: isUltraCompact ? 7.5 : (isCompact ? 9 : 11),
             ),
             child: Row(
               children: [
                 const Icon(
                   Icons.search_rounded,
                   size: 18,
-                  color: Color(0xFFFFB07A),
+                  color: Color(0xFF047857),
                 ),
-                const SizedBox(width: 9),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     visibleText,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: const Color(0xFFF1F5F9),
-                      fontSize: isCompact ? 12.2 : 13.5,
-                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF0F172A),
+                      fontSize: isCompact ? 11.8 : 13.4,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                if (isFinished) ...[
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    size: 16,
-                    color: Color(0xFF6EE7B7),
-                  ),
-                ],
               ],
             ),
           ),
@@ -2003,80 +2239,170 @@ class _Story1SearchFieldLeaf extends StatelessWidget {
   }
 }
 
-class _Story1SpecialtiesEmergenceLeaf extends StatelessWidget {
-  const _Story1SpecialtiesEmergenceLeaf({
+class _Story1VerifiedGrid2x2Leaf extends StatelessWidget {
+  const _Story1VerifiedGrid2x2Leaf({
     required this.actAnimation,
-    required this.specialties,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
-  final List<String> specialties;
   final bool isCompact;
+  final bool isUltraCompact;
 
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        return Wrap(
-          spacing: isCompact ? 6 : 8,
-          runSpacing: isCompact ? 6 : 8,
-          children: List.generate(specialties.length, (i) {
-            final start = 0.42 + (i * 0.09);
-            final end = (start + 0.24).clamp(0.0, 1.0);
-            final p = Curves.easeOutQuart.transform(
-              ((actAnimation.value - start) / (end - start)).clamp(0.0, 1.0),
-            );
-            final name = specialties[i];
+  static const List<(String, String)> _kItems = <(String, String)>[
+    ('Eletricista Verificado', 'Elétrica'),
+    ('Encanador', 'Encanador'),
+    ('Climatização', 'Ar-condicionado'),
+    ('Reparos Gerais', 'Pequenos Reparos'),
+  ];
 
-            return Opacity(
-              opacity: (0.28 + (0.72 * p)).clamp(0.0, 1.0),
-              child: Transform.translate(
-                offset: Offset(0, (1.0 - p) * 8.0),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1B2537),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: i == 0
-                          ? const Color(0xFFFF9B5E).withValues(alpha: 0.48)
-                          : const Color(0xFF2C3B54),
-                    ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isCompact ? 8 : 10,
-                      vertical: isCompact ? 5.5 : 7,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CategoryBrandEmblem(
-                          categoryName: name,
-                          size: isCompact ? 22 : 26,
-                          showCornerBadge: false,
-                        ),
-                        const SizedBox(width: 7),
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: const Color(0xFFF1F5F9),
-                              fontSize: isCompact ? 11.5 : 12.5,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
+  Widget _buildSpecialtyPill({
+    required int index,
+    required String displayLabel,
+    required String emblemCategory,
+    required double progress,
+  }) {
+    final emblemSize = isUltraCompact ? 20.0 : (isCompact ? 22.0 : 28.0);
+
+    return Opacity(
+      opacity: (0.30 + (0.70 * progress)).clamp(0.0, 1.0),
+      child: Transform.translate(
+        offset: Offset(0, (1.0 - progress) * 7.0),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: index == 0
+                  ? const Color(0xFF6EE7B7)
+                  : const Color(0xFFE2E8F0),
+              width: 1.1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isCompact ? 7 : 10,
+              vertical: isUltraCompact ? 5.5 : (isCompact ? 7 : 8.5),
+            ),
+            child: Row(
+              children: [
+                CategoryBrandEmblem(
+                  categoryName: emblemCategory,
+                  size: emblemSize,
+                  showCornerBadge: false,
+                ),
+                SizedBox(width: isCompact ? 6 : 8),
+                Expanded(
+                  child: Text(
+                    displayLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFF0F172A),
+                      fontSize: isUltraCompact
+                          ? 10.2
+                          : (isCompact ? 10.8 : 12.0),
+                      fontWeight: FontWeight.w700,
+                      height: 1.14,
                     ),
                   ),
                 ),
-              ),
-            );
-          }),
+                const SizedBox(width: 4),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF10B981),
+                  ),
+                  child: SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: Center(
+                      child: Icon(
+                        Icons.check_rounded,
+                        size: 10.5,
+                        color: Color(0xFFFFFFFF),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final spacing = isCompact ? 6.0 : 8.0;
+
+    return AnimatedBuilder(
+      animation: actAnimation,
+      builder: (context, _) {
+        double itemProgress(int i) {
+          final start = 0.36 + (i * 0.075);
+          final end = (start + 0.24).clamp(0.0, 1.0);
+          return Curves.easeOutQuart.transform(
+            ((actAnimation.value - start) / (end - start)).clamp(0.0, 1.0),
+          );
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _buildSpecialtyPill(
+                    index: 0,
+                    displayLabel: _kItems[0].$1,
+                    emblemCategory: _kItems[0].$2,
+                    progress: itemProgress(0),
+                  ),
+                ),
+                SizedBox(width: spacing),
+                Expanded(
+                  child: _buildSpecialtyPill(
+                    index: 1,
+                    displayLabel: _kItems[1].$1,
+                    emblemCategory: _kItems[1].$2,
+                    progress: itemProgress(1),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: spacing),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildSpecialtyPill(
+                    index: 2,
+                    displayLabel: _kItems[2].$1,
+                    emblemCategory: _kItems[2].$2,
+                    progress: itemProgress(2),
+                  ),
+                ),
+                SizedBox(width: spacing),
+                Expanded(
+                  child: _buildSpecialtyPill(
+                    index: 3,
+                    displayLabel: _kItems[3].$1,
+                    emblemCategory: _kItems[3].$2,
+                    progress: itemProgress(3),
+                  ),
+                ),
+              ],
+            ),
+          ],
         );
       },
     );
@@ -2101,41 +2427,42 @@ class _Story1RegionSealLeaf extends StatelessWidget {
           ((actAnimation.value - 0.62) / 0.28).clamp(0.0, 1.0),
         );
         return Opacity(
-          opacity: (0.35 + (0.65 * p)).clamp(0.0, 1.0),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: const Color(0xFF132923),
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: const Color(0xFF34D399).withValues(alpha: 0.36),
+          opacity: (0.38 + (0.62 * p)).clamp(0.0, 1.0),
+          child: Center(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF5),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFA7F3D0)),
               ),
-            ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 10 : 12,
-                vertical: isCompact ? 6.5 : 8,
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.verified_rounded,
-                    size: 15,
-                    color: Color(0xFF6EE7B7),
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: Text(
-                      'Atendimento rápido na sua região',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFFD1FAE5),
-                        fontSize: isCompact ? 11.2 : 12.2,
-                        fontWeight: FontWeight.w600,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 11 : 14,
+                  vertical: isCompact ? 5.5 : 7.0,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.check_circle_rounded,
+                      size: 15,
+                      color: Color(0xFF059669),
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Atendimento rápido na sua região',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: const Color(0xFF064E3B),
+                          fontSize: isCompact ? 11.0 : 12.2,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -2145,40 +2472,59 @@ class _Story1RegionSealLeaf extends StatelessWidget {
   }
 }
 
-/// Story 2/6: Linha de endereço transicionando (`0.9s–1.8s`) para escudo
-/// `🔒 Rua e número protegidos` + 3 propostas comparativas com destaque suave
-/// de seleção aos `2.2s`.
+// =============================================================================
+// ETAPA 2 (00:02): PEDIDO PROTEGIDO + RUA OCULTA + 3 PROPOSTAS CLARAS
+// =============================================================================
+
 class _Story2PrivacyAndQuotesDemo extends StatelessWidget {
   const _Story2PrivacyAndQuotesDemo({
     required this.actAnimation,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final bool isCompact;
+  final bool isUltraCompact;
 
   static const List<(String, String, String)> _kProposals =
       <(String, String, String)>[
-    ('Ricardo M.', '★ 5,0', 'R\$ 160'),
-    ('Carlos A.', '★ 4,9', 'R\$ 175'),
-    ('André S.', '★ 4,9', 'R\$ 190'),
+    ('Proposta 1', 'R\$ 120,00', '4,9'),
+    ('Proposta 2', 'R\$ 150,00', '4,8'),
+    ('Proposta 3', 'R\$ 180,00', '4,7'),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final gap = isUltraCompact ? 6.5 : (isCompact ? 8.5 : 11.0);
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(
+          'Pedido Protegido',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: const Color(0xFF0F172A),
+            fontSize: isCompact ? 14.0 : 16.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+        SizedBox(height: gap),
         _Story2AddressShieldLeaf(
           actAnimation: actAnimation,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         ),
-        SizedBox(height: isCompact ? 10 : 14),
+        SizedBox(height: gap),
         _Story2ProposalsListLeaf(
           actAnimation: actAnimation,
           proposals: _kProposals,
           isCompact: isCompact,
+          isUltraCompact: isUltraCompact,
         ),
       ],
     );
@@ -2189,29 +2535,31 @@ class _Story2AddressShieldLeaf extends StatelessWidget {
   const _Story2AddressShieldLeaf({
     required this.actAnimation,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final bool isCompact;
+  final bool isUltraCompact;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: actAnimation,
       builder: (context, _) {
-        // 0.9s..1.8s de 3.10s -> [0.290 .. 0.581]
+        // 0.85s..1.75s de 3.10s -> [0.274 .. 0.565]
         final shieldProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.290) / (0.581 - 0.290)).clamp(0.0, 1.0),
+          ((actAnimation.value - 0.274) / (0.565 - 0.274)).clamp(0.0, 1.0),
         );
         final shielded = shieldProgress >= 0.45;
         final bg = Color.lerp(
-          const Color(0xFF1B2638),
-          const Color(0xFF132B24),
+          const Color(0xFFF1F5F9),
+          const Color(0xFFDCFCE7),
           shieldProgress,
         )!;
         final border = Color.lerp(
-          const Color(0xFF2D3C54),
-          const Color(0xFF34D399).withValues(alpha: 0.48),
+          const Color(0xFFCBD5E1),
+          const Color(0xFF86EFAC),
           shieldProgress,
         )!;
 
@@ -2219,35 +2567,35 @@ class _Story2AddressShieldLeaf extends StatelessWidget {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border),
+            border: Border.all(color: border, width: 1.15),
           ),
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: isCompact ? 10 : 13,
-              vertical: isCompact ? 8 : 10,
+              vertical: isUltraCompact ? 6.5 : (isCompact ? 8 : 9.5),
             ),
             child: Row(
               children: [
                 Icon(
-                  shielded ? Icons.shield_rounded : Icons.place_outlined,
-                  size: 16,
+                  shielded ? Icons.lock_rounded : Icons.place_outlined,
+                  size: 15,
                   color: shielded
-                      ? const Color(0xFF6EE7B7)
-                      : const Color(0xFFAEC0D6),
+                      ? const Color(0xFF047857)
+                      : const Color(0xFF334155),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 7),
                 Expanded(
                   child: Text(
                     shielded
                         ? '🔒 Rua e número protegidos'
-                        : 'Sua região · Ocultando endereço...',
+                        : 'Ocultando rua e número...',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: shielded
-                          ? const Color(0xFFD1FAE5)
-                          : const Color(0xFFE2E8F0),
-                      fontSize: isCompact ? 11.8 : 13.0,
+                          ? const Color(0xFF064E3B)
+                          : const Color(0xFF334155),
+                      fontSize: isCompact ? 11.5 : 13.0,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -2266,20 +2614,22 @@ class _Story2ProposalsListLeaf extends StatelessWidget {
     required this.actAnimation,
     required this.proposals,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final List<(String, String, String)> proposals;
   final bool isCompact;
+  final bool isUltraCompact;
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: actAnimation,
       builder: (context, _) {
-        // Destaque suave da escolha ideal aos 2.2s (0.710 de 3.10s)
+        // Destaque suave da Proposta 1 aos 2.1s (0.677 de 3.10s)
         final selectProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.66) / 0.24).clamp(0.0, 1.0),
+          ((actAnimation.value - 0.65) / 0.24).clamp(0.0, 1.0),
         );
 
         return Column(
@@ -2290,48 +2640,56 @@ class _Story2ProposalsListLeaf extends StatelessWidget {
             final highlight = isBest ? selectProgress : 0.0;
 
             return Padding(
-              padding: EdgeInsets.only(top: i == 0 ? 0 : (isCompact ? 6 : 8)),
+              padding: EdgeInsets.only(
+                top: i == 0 ? 0 : (isUltraCompact ? 5.0 : 7.0),
+              ),
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   color: Color.lerp(
-                    const Color(0xFF1A2435),
-                    const Color(0xFF152D29),
+                    const Color(0xFFFFFFFF),
+                    const Color(0xFFECFDF5),
                     highlight,
                   ),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: Color.lerp(
-                      const Color(0xFF2A384F),
-                      const Color(0xFF5EEAD4).withValues(alpha: 0.62),
+                      const Color(0xFFE2E8F0),
+                      const Color(0xFF10B981),
                       highlight,
                     )!,
+                    width: isBest && highlight > 0.4 ? 1.35 : 1.0,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Padding(
                   padding: EdgeInsets.symmetric(
-                    horizontal: isCompact ? 10 : 12,
-                    vertical: isCompact ? 7.5 : 9.5,
+                    horizontal: isCompact ? 10 : 13,
+                    vertical: isUltraCompact ? 6.5 : (isCompact ? 8 : 10),
                   ),
                   child: Row(
                     children: [
-                      Icon(
-                        isBest && highlight > 0.5
-                            ? Icons.check_circle_rounded
-                            : Icons.person_outline_rounded,
-                        size: 16,
-                        color: isBest && highlight > 0.5
-                            ? const Color(0xFF6EE7B7)
-                            : const Color(0xFFAEC0D6),
-                      ),
-                      const SizedBox(width: 8),
+                      if (isBest && highlight > 0.5) ...[
+                        const Icon(
+                          Icons.check_circle_rounded,
+                          size: 15,
+                          color: Color(0xFF059669),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
                       Expanded(
                         child: Text(
                           item.$1,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: const Color(0xFFF1F5F9),
-                            fontSize: isCompact ? 11.8 : 13.0,
+                            color: const Color(0xFF0F172A),
+                            fontSize: isCompact ? 11.8 : 13.2,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -2341,21 +2699,27 @@ class _Story2ProposalsListLeaf extends StatelessWidget {
                         item.$2,
                         maxLines: 1,
                         style: TextStyle(
-                          color: const Color(0xFFFCD34D),
-                          fontSize: isCompact ? 11.2 : 12.2,
-                          fontWeight: FontWeight.w700,
+                          color: isBest && highlight > 0.5
+                              ? const Color(0xFF064E3B)
+                              : const Color(0xFF0F172A),
+                          fontSize: isCompact ? 11.8 : 13.4,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      SizedBox(width: isCompact ? 7 : 10),
+                      const Icon(
+                        Icons.star_rounded,
+                        size: 15,
+                        color: Color(0xFFF59E0B),
+                      ),
+                      const SizedBox(width: 2),
                       Text(
                         item.$3,
                         maxLines: 1,
                         style: TextStyle(
-                          color: isBest && highlight > 0.5
-                              ? const Color(0xFF86EFAC)
-                              : const Color(0xFFE2E8F0),
-                          fontSize: isCompact ? 12.0 : 13.2,
-                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF0F172A),
+                          fontSize: isCompact ? 11.5 : 12.8,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ],
@@ -2370,153 +2734,164 @@ class _Story2ProposalsListLeaf extends StatelessWidget {
   }
 }
 
-/// Story 3/6: Cofre `R$ 180,00 · Guardado com segurança` + 4 dígitos do código
-/// pessoal acendendo um a um (`1.0s–2.4s`: `•` -> `4` · `8` · `2` · `9`) +
-/// selo sereno `✓ Serviço aprovado · 90 dias de garantia`.
+// =============================================================================
+// ETAPA 3 (00:03–00:04): COFRE 3D + CARTÃO SAFIRA + DÍGITOS 4 · 8 · 2 · (9)
+// =============================================================================
+
 class _Story3ProtectedVaultPinDemo extends StatelessWidget {
   const _Story3ProtectedVaultPinDemo({
     required this.actAnimation,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final bool isCompact;
+  final bool isUltraCompact;
 
   static const List<String> _kPinDigits = <String>['4', '8', '2', '9'];
 
   @override
   Widget build(BuildContext context) {
+    final gap = isUltraCompact ? 6.5 : (isCompact ? 8.5 : 11.5);
+
     return AnimatedBuilder(
       animation: actAnimation,
       builder: (context, _) {
         final t = actAnimation.value;
-        // 2.4s..2.95s -> [0.774 .. 0.95] aprovação final serena
-        final approvedProgress = Curves.easeOutQuart.transform(
-          ((t - 0.76) / 0.20).clamp(0.0, 1.0),
+        final approvedOpacity = Curves.easeOutQuart.transform(
+          ((t - 0.52) / 0.34).clamp(0.0, 1.0),
         );
-        final isApproved = approvedProgress >= 0.5;
+        final vaultProgress = Curves.easeOutQuart.transform(
+          ((t - 0.20) / 0.65).clamp(0.0, 1.0),
+        );
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Opacity(
+              opacity: (0.28 + (0.72 * approvedOpacity)).clamp(0.0, 1.0),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_rounded,
+                    size: 16,
+                    color: Color(0xFF059669),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Serviço aprovado · 90 dias de garantia',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF065F46),
+                        fontSize: isCompact ? 11.4 : 12.8,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: gap),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: Color.lerp(
-                  const Color(0xFF1A2536),
-                  const Color(0xFF132B23),
-                  approvedProgress,
-                ),
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(
-                  color: Color.lerp(
-                    const Color(0xFF2B3B54),
-                    const Color(0xFF34D399).withValues(alpha: 0.52),
-                    approvedProgress,
-                  )!,
-                ),
+                color: const Color(0xFFE8F5F0),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFCFE8DE)),
               ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 10 : 13,
-                  vertical: isCompact ? 8 : 10,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          isApproved
-                              ? Icons.verified_user_rounded
-                              : Icons.lock_outline_rounded,
-                          size: 16,
-                          color: const Color(0xFF6EE7B7),
-                        ),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text(
-                            'R\$ 180,00 · Guardado com segurança',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: const Color(0xFFF1F5F9),
-                              fontSize: isCompact ? 12.0 : 13.2,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
+              child: SizedBox(
+                height: isUltraCompact ? 68.0 : (isCompact ? 80.0 : 98.0),
+                width: double.infinity,
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _ProtectedEscrowVaultArtPainter(
+                      lockProgress: vaultProgress,
                     ),
-                    if (isApproved) ...[
-                      SizedBox(height: isCompact ? 4 : 6),
-                      Text(
-                        '✓ Serviço aprovado · 90 dias de garantia',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFF86EFAC),
-                          fontSize: isCompact ? 11.2 : 12.2,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
             ),
-            SizedBox(height: isCompact ? 12 : 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(_kPinDigits.length, (i) {
-                // Entre 1.0s (0.323) e 2.4s (0.774), acende 1 a 1 com calma
-                final digitThreshold = 0.34 + (i * 0.115);
-                final litProgress = Curves.easeOutQuart.transform(
-                  ((t - digitThreshold) / 0.12).clamp(0.0, 1.0),
-                );
-                final isLit = litProgress >= 0.45;
+            SizedBox(height: gap),
+            Text(
+              'R\$ 180,00 · Guardado com segurança',
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF0F172A),
+                fontSize: isCompact ? 12.0 : 13.6,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            SizedBox(height: gap),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEF2F6),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: const Color(0xFFD8E1EB)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 12 : 16,
+                  vertical: isUltraCompact ? 4.5 : (isCompact ? 6.0 : 7.5),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: List.generate(_kPinDigits.length, (i) {
+                    // 1.0s..2.4s -> [0.323 .. 0.774]
+                    final threshold = 0.33 + (i * 0.115);
+                    final lit = Curves.easeOutQuart.transform(
+                      ((t - threshold) / 0.11).clamp(0.0, 1.0),
+                    );
+                    final isLit = lit >= 0.45;
+                    final isFinalConfirmed = i == _kPinDigits.length - 1;
+                    final ringSize =
+                        isUltraCompact ? 28.0 : (isCompact ? 31.0 : 35.0);
 
-                return Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      left: i == 0 ? 0 : 4,
-                      right: i == _kPinDigits.length - 1 ? 0 : 4,
-                    ),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Color.lerp(
-                          const Color(0xFF1A2334),
-                          const Color(0xFF152C26),
-                          litProgress,
+                    return SizedBox(
+                      width: ringSize,
+                      height: ringSize,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isFinalConfirmed
+                              ? Color.lerp(
+                                  const Color(0xFFE2E8F0),
+                                  const Color(0xFFDCFCE7),
+                                  lit,
+                                )
+                              : Colors.transparent,
+                          border: isFinalConfirmed
+                              ? Border.all(
+                                  color: Color.lerp(
+                                    const Color(0xFFCBD5E1),
+                                    const Color(0xFF10B981),
+                                    lit,
+                                  )!,
+                                  width: 2.0,
+                                )
+                              : null,
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Color.lerp(
-                            const Color(0xFF2B3950),
-                            const Color(0xFF6EE7B7).withValues(alpha: 0.58),
-                            litProgress,
-                          )!,
-                        ),
-                      ),
-                      child: SizedBox(
-                        height: isCompact ? 42 : 48,
                         child: Center(
                           child: Text(
                             isLit ? _kPinDigits[i] : '•',
                             style: TextStyle(
-                              color: isLit
-                                  ? const Color(0xFFF8FAFC)
-                                  : const Color(0xFFA8B6C8),
-                              fontSize: isCompact ? 17.0 : 19.5,
+                              color: isFinalConfirmed && isLit
+                                  ? const Color(0xFF064E3B)
+                                  : const Color(0xFF0F172A),
+                              fontSize: isCompact ? 15.0 : 17.5,
                               fontWeight: FontWeight.w800,
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                );
-              }),
+                    );
+                  }),
+                ),
+              ),
             ),
           ],
         );
@@ -2525,32 +2900,308 @@ class _Story3ProtectedVaultPinDemo extends StatelessWidget {
   }
 }
 
-/// Story 4/6: Cartão `Saúde do Imóvel` com arco circular `SweepGradient` sem
-/// costura deslizando até `96% · Em dia`, revelando 2 registros verificados
-/// (`Revisão Elétrica` e `Climatização` com `Comprovante em PDF`).
+/// Ilustração Vetorial 3D de Cofre Metálico Escovado + Cartão Safira com Chip
+/// Dourado sobre palco menta-pérola (fiel a `00:03–00:04` do vídeo).
+class _ProtectedEscrowVaultArtPainter extends CustomPainter {
+  const _ProtectedEscrowVaultArtPainter({required this.lockProgress});
+
+  final double lockProgress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = math.min(size.width / 220.0, size.height / 96.0);
+    canvas.save();
+    canvas.translate(
+      (size.width - (220.0 * s)) / 2.0,
+      (size.height - (96.0 * s)) / 2.0,
+    );
+    canvas.scale(s, s);
+
+    // Sombra macia de contato no palco menta-pérola
+    canvas.drawOval(
+      const Rect.fromLTWH(34, 72, 152, 14),
+      Paint()..color = const Color(0xFF0F172A).withValues(alpha: 0.12),
+    );
+
+    // 1) COFRE METÁLICO TITÂNIO ESCOVADO 3D (ESQUERDA/CENTRO)
+    // Lateral esquerda 3D em perspectiva
+    final sideDepth = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(46, 16, 16, 58),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(
+      sideDepth,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF64748B), Color(0xFF334155)],
+        ).createShader(const Rect.fromLTWH(46, 16, 16, 58)),
+    );
+
+    // Pés de apoio do cofre
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(56, 72, 12, 5),
+        const Radius.circular(2),
+      ),
+      Paint()..color = const Color(0xFF1E293B),
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(102, 72, 12, 5),
+        const Radius.circular(2),
+      ),
+      Paint()..color = const Color(0xFF1E293B),
+    );
+
+    // Corpo frontal de titânio escovado
+    const vaultRect = Rect.fromLTWH(53, 14, 68, 60);
+    final vaultRRect = RRect.fromRectAndRadius(
+      vaultRect,
+      const Radius.circular(8),
+    );
+    canvas.drawRRect(
+      vaultRRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFF1F5F9),
+            Color(0xFFCBD5E1),
+            Color(0xFF94A3B8),
+          ],
+          stops: [0.0, 0.52, 1.0],
+        ).createShader(vaultRect),
+    );
+    canvas.drawRRect(
+      vaultRRect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.2
+        ..color = const Color(0xFF64748B),
+    );
+
+    // Porta rebaixada do cofre + dobradiças cromadas
+    const doorRect = Rect.fromLTWH(60, 21, 54, 46);
+    final doorRRect = RRect.fromRectAndRadius(
+      doorRect,
+      const Radius.circular(5),
+    );
+    canvas.drawRRect(
+      doorRRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFE2E8F0), Color(0xFF94A3B8)],
+        ).createShader(doorRect),
+    );
+    canvas.drawRRect(
+      doorRRect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = const Color(0xFF475569),
+    );
+
+    for (final hy in const [27.0, 53.0]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(57, hy, 5, 8),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = const Color(0xFF334155),
+      );
+    }
+
+    // Volante circular central da trava do cofre (gira suavemente até travar)
+    const dialCenter = Offset(87, 44);
+    canvas.drawCircle(
+      dialCenter,
+      12.5,
+      Paint()..color = const Color(0xFF1E293B),
+    );
+    canvas.drawCircle(
+      dialCenter,
+      10.2,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.8
+        ..color = Color.lerp(
+          const Color(0xFF94A3B8),
+          const Color(0xFF34D399),
+          lockProgress,
+        )!,
+    );
+
+    final angleBase = lockProgress * (math.pi * 0.25);
+    final spokePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.8
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFFF8FAFC);
+    for (var k = 0; k < 4; k++) {
+      final a = angleBase + (k * math.pi / 2);
+      canvas.drawLine(
+        dialCenter,
+        Offset(
+          dialCenter.dx + math.cos(a) * 7.2,
+          dialCenter.dy + math.sin(a) * 7.2,
+        ),
+        spokePaint,
+      );
+    }
+    canvas.drawCircle(
+      dialCenter,
+      3.0,
+      Paint()..color = const Color(0xFFE2E8F0),
+    );
+
+    // 2) CARTÃO SAFIRA PROTEGIDO COM CHIP DOURADO (SOBREPOSTO À DIREITA)
+    const cardRect = Rect.fromLTWH(105, 24, 74, 48);
+    final cardRRect = RRect.fromRectAndRadius(
+      cardRect,
+      const Radius.circular(8),
+    );
+
+    // Sombra projetada sobre o cofre
+    canvas.drawRRect(
+      cardRRect.shift(const Offset(-3, 4)),
+      Paint()..color = const Color(0xFF0F172A).withValues(alpha: 0.24),
+    );
+
+    // Gradiente Safira Real
+    canvas.drawRRect(
+      cardRRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF3B82F6),
+            Color(0xFF1D4ED8),
+            Color(0xFF1E3A8A),
+          ],
+          stops: [0.0, 0.55, 1.0],
+        ).createShader(cardRect),
+    );
+
+    // Reflexo acetinado diagonal no cartão
+    canvas.save();
+    canvas.clipRRect(cardRRect);
+    final sheen = Path()
+      ..moveTo(118, 24)
+      ..lineTo(148, 24)
+      ..lineTo(130, 72)
+      ..lineTo(105, 72)
+      ..close();
+    canvas.drawPath(
+      sheen,
+      Paint()..color = Colors.white.withValues(alpha: 0.12),
+    );
+    canvas.restore();
+
+    canvas.drawRRect(
+      cardRRect,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0
+        ..color = const Color(0xFF93C5FD).withValues(alpha: 0.65),
+    );
+
+    // Chip EMV Dourado esculpido
+    const chipRect = Rect.fromLTWH(114, 37, 15, 11);
+    final chipRRect = RRect.fromRectAndRadius(
+      chipRect,
+      const Radius.circular(2.5),
+    );
+    canvas.drawRRect(
+      chipRRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFDE68A), Color(0xFFF59E0B)],
+        ).createShader(chipRect),
+    );
+    canvas.drawLine(
+      const Offset(114, 42.5),
+      const Offset(129, 42.5),
+      Paint()
+        ..strokeWidth = 0.8
+        ..color = const Color(0xFFB45309),
+    );
+
+    // Pontos prateados e selo esmeralda no canto do cartão
+    for (var d = 0; d < 4; d++) {
+      canvas.drawCircle(
+        Offset(116.0 + (d * 5.0), 59.0),
+        1.3,
+        Paint()..color = const Color(0xFFDBEAFE),
+      );
+    }
+    canvas.drawCircle(
+      const Offset(166, 58),
+      6.5,
+      Paint()..color = const Color(0xFF10B981),
+    );
+    final check = Path()
+      ..moveTo(163.2, 58.0)
+      ..lineTo(165.3, 60.1)
+      ..lineTo(169.2, 56.0);
+    canvas.drawPath(
+      check,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.6
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = Colors.white,
+    );
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _ProtectedEscrowVaultArtPainter oldDelegate) {
+    return oldDelegate.lockProgress != lockProgress;
+  }
+}
+
+// =============================================================================
+// ETAPA 4 (00:05): SAÚDE DO IMÓVEL 96% (ARCO 180° ESMERALDA) + HISTÓRICO PDF
+// =============================================================================
+
 class _Story4PropertyHealthHistoryDemo extends StatelessWidget {
   const _Story4PropertyHealthHistoryDemo({
     required this.actAnimation,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final bool isCompact;
+  final bool isUltraCompact;
 
-  static const List<String> _kRecords = <String>[
-    'Revisão Elétrica',
-    'Climatização',
+  static const List<String> _kCertifiedRows = <String>[
+    'Revisão Elétrica · 12/10/2026',
+    'Climatização · 05/11/2026',
   ];
 
   @override
   Widget build(BuildContext context) {
+    final gap = isUltraCompact ? 6.0 : (isCompact ? 8.0 : 11.0);
+
     return AnimatedBuilder(
       animation: actAnimation,
       builder: (context, _) {
         final arcProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.24) / 0.58).clamp(0.0, 1.0),
+          ((actAnimation.value - 0.22) / 0.58).clamp(0.0, 1.0),
         );
         final displayedPercent = (72 + (24 * arcProgress).round()).clamp(0, 96);
+        final gaugeHeight = isUltraCompact ? 78.0 : (isCompact ? 90.0 : 108.0);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -2558,110 +3209,186 @@ class _Story4PropertyHealthHistoryDemo extends StatelessWidget {
           children: [
             Row(
               children: [
-                SizedBox(
-                  width: isCompact ? 52 : 60,
-                  height: isCompact ? 52 : 60,
-                  child: RepaintBoundary(
-                    child: CustomPaint(
-                      painter: _SeamlessHealthArcPainter(
-                        progress: 0.96 * arcProgress,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$displayedPercent%',
-                          style: TextStyle(
-                            color: const Color(0xFFF8FAFC),
-                            fontSize: isCompact ? 12.5 : 14.0,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
+                Expanded(
+                  child: Text(
+                    'Saúde do Imóvel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFF0F172A),
+                      fontSize: isCompact ? 14.0 : 16.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Saúde do Imóvel',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFF8FAFC),
-                          fontSize: isCompact ? 13.2 : 14.8,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '$displayedPercent% · Em dia',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFF86EFAC),
-                          fontSize: isCompact ? 11.8 : 12.8,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(3, (index) {
+                        return Padding(
+                          padding: EdgeInsets.only(left: index == 0 ? 0 : 3),
+                          child: const DecoratedBox(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF475569),
+                            ),
+                            child: SizedBox(width: 3.5, height: 3.5),
+                          ),
+                        );
+                      }),
+                    ),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: isCompact ? 10 : 14),
-            for (var i = 0; i < _kRecords.length; i++) ...[
-              if (i > 0) SizedBox(height: isCompact ? 6 : 8),
+            SizedBox(height: gap),
+            SizedBox(
+              height: gaugeHeight,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  Positioned.fill(
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _PropertyHealthSemiArchPainter(
+                          progress: 0.96 * arcProgress,
+                          strokeWidth: isUltraCompact ? 10.5 : 13.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.only(
+                      bottom: isUltraCompact ? 14.0 : 18.0,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$displayedPercent%',
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: const Color(0xFF0F172A),
+                            fontSize: isUltraCompact
+                                ? 21.0
+                                : (isCompact ? 24.0 : 30.0),
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.8,
+                            height: 1.0,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Em dia',
+                          maxLines: 1,
+                          style: TextStyle(
+                            color: const Color(0xFF334155),
+                            fontSize: isCompact ? 11.2 : 12.6,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    left: isCompact ? 16 : 28,
+                    bottom: 0,
+                    child: Text(
+                      '0%',
+                      style: TextStyle(
+                        color: const Color(0xFF334155),
+                        fontSize: isCompact ? 10.2 : 11.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: isCompact ? 12 : 22,
+                    bottom: 0,
+                    child: Text(
+                      '100%',
+                      style: TextStyle(
+                        color: const Color(0xFF334155),
+                        fontSize: isCompact ? 10.2 : 11.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: gap),
+            for (var i = 0; i < _kCertifiedRows.length; i++) ...[
+              if (i > 0) SizedBox(height: isUltraCompact ? 5.0 : 7.0),
               Opacity(
                 opacity: (0.35 +
                         0.65 *
                             Curves.easeOutQuart.transform(
-                              ((actAnimation.value - (0.45 + i * 0.14)) / 0.25)
+                              ((actAnimation.value - (0.44 + i * 0.14)) / 0.25)
                                   .clamp(0.0, 1.0),
                             ))
                     .clamp(0.0, 1.0),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A2436),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF2B3A52)),
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: isCompact ? 10 : 12,
-                      vertical: isCompact ? 7.5 : 9.5,
+                      horizontal: isCompact ? 9 : 12,
+                      vertical: isUltraCompact ? 6.0 : (isCompact ? 7.5 : 9.0),
                     ),
                     child: Row(
                       children: [
                         const Icon(
-                          Icons.check_circle_outline_rounded,
+                          Icons.check_rounded,
                           size: 16,
-                          color: Color(0xFFFCD34D),
+                          color: Color(0xFF059669),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 7),
                         Expanded(
                           child: Text(
-                            _kRecords[i],
+                            _kCertifiedRows[i],
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: const Color(0xFFF1F5F9),
-                              fontSize: isCompact ? 11.8 : 13.0,
+                              color: const Color(0xFF0F172A),
+                              fontSize: isCompact ? 11.4 : 12.8,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            'Comprovante em PDF',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: const Color(0xFFBFDBFE),
-                              fontSize: isCompact ? 10.8 : 11.8,
-                              fontWeight: FontWeight.w600,
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Color(0xFF991B1B),
+                            borderRadius: BorderRadius.all(Radius.circular(6)),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 6.5,
+                              vertical: 2.5,
+                            ),
+                            child: Text(
+                              'PDF',
+                              style: TextStyle(
+                                color: Color(0xFFFFFFFF),
+                                fontSize: 9.8,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                           ),
                         ),
@@ -2678,187 +3405,177 @@ class _Story4PropertyHealthHistoryDemo extends StatelessWidget {
   }
 }
 
-class _SeamlessHealthArcPainter extends CustomPainter {
-  const _SeamlessHealthArcPainter({required this.progress});
+class _PropertyHealthSemiArchPainter extends CustomPainter {
+  const _PropertyHealthSemiArchPainter({
+    required this.progress,
+    required this.strokeWidth,
+  });
 
   final double progress;
+  final double strokeWidth;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (math.min(size.width, size.height) / 2) - 4.0;
+    final radius = math.min(
+      (size.width / 2) - strokeWidth - 8.0,
+      size.height - strokeWidth - 10.0,
+    );
+    if (radius <= 8.0) return;
+
+    final center = Offset(size.width / 2, size.height - 14.0);
     final rect = Rect.fromCircle(center: center, radius: radius);
 
     final trackPaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.0
+      ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFF2A3950);
+      ..color = const Color(0xFFE2E8F0);
 
-    canvas.drawArc(
-      rect,
-      -math.pi * 0.75,
-      math.pi * 1.5,
-      false,
-      trackPaint,
-    );
+    canvas.drawArc(rect, math.pi, math.pi, false, trackPaint);
 
     final clamped = progress.clamp(0.0, 1.0);
     if (clamped <= 0.001) return;
 
     final activePaint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 5.2
+      ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
-      ..shader = const SweepGradient(
-        startAngle: 0.0,
-        endAngle: math.pi * 1.5,
-        colors: [
-          Color(0xFFFCD34D),
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: const [
           Color(0xFF34D399),
-          Color(0xFF60A5FA),
+          Color(0xFF10B981),
+          Color(0xFF059669),
         ],
-        transform: GradientRotation(-math.pi * 0.75),
       ).createShader(rect);
 
-    canvas.drawArc(
-      rect,
-      -math.pi * 0.75,
-      math.pi * 1.5 * clamped,
-      false,
-      activePaint,
-    );
+    canvas.drawArc(rect, math.pi, math.pi * clamped, false, activePaint);
   }
 
   @override
-  bool shouldRepaint(covariant _SeamlessHealthArcPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+  bool shouldRepaint(covariant _PropertyHealthSemiArchPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.strokeWidth != strokeWidth;
   }
 }
 
-/// Story 5/6: Painel do Profissional com `Custo para orçar: R$ 0,00`,
-/// `Valor do cliente já garantido antes de sair` e barra de reputação até
-/// `★ 5,0 · Profissional Destaque`.
+// =============================================================================
+// ETAPA 5 (00:06–00:07): PAINEL DO PROFISSIONAL + R$ 0,00 + REPUTAÇÃO VERIFICADA
+// =============================================================================
+
 class _Story5FairProviderPanelDemo extends StatelessWidget {
   const _Story5FairProviderPanelDemo({
     required this.actAnimation,
     required this.isCompact,
+    required this.isUltraCompact,
   });
 
   final Animation<double> actAnimation;
   final bool isCompact;
+  final bool isUltraCompact;
 
   @override
   Widget build(BuildContext context) {
+    final gap = isUltraCompact ? 7.0 : (isCompact ? 9.0 : 13.0);
+
     return AnimatedBuilder(
       animation: actAnimation,
       builder: (context, _) {
         final barProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.28) / 0.56).clamp(0.0, 1.0),
+          ((actAnimation.value - 0.26) / 0.56).clamp(0.0, 1.0),
         );
-        final fillFactor = (0.35 + (0.65 * barProgress)).clamp(0.0, 1.0);
+        final fillFactor = (0.36 + (0.64 * barProgress)).clamp(0.0, 1.0);
 
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              'Painel do Profissional',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF0F172A),
+                fontSize: isCompact ? 14.0 : 16.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+            SizedBox(height: gap),
             DecoratedBox(
               decoration: BoxDecoration(
-                color: const Color(0xFF132A23),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: const Color(0xFF34D399).withValues(alpha: 0.42),
-                ),
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
               child: Padding(
                 padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 10 : 13,
-                  vertical: isCompact ? 8 : 10,
+                  horizontal: isCompact ? 11 : 15,
+                  vertical: isUltraCompact ? 8.0 : (isCompact ? 10.0 : 13.0),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      size: 16,
-                      color: Color(0xFF6EE7B7),
+                    Text(
+                      'Custo para orçar:',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF334155),
+                        fontSize: isCompact ? 11.4 : 12.6,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Custo para orçar: R\$ 0,00',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFD1FAE5),
-                          fontSize: isCompact ? 12.0 : 13.2,
-                          fontWeight: FontWeight.w800,
-                        ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'R\$ 0,00',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF0F172A),
+                        fontSize: isUltraCompact
+                            ? 20.0
+                            : (isCompact ? 22.5 : 26.0),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.6,
+                        height: 1.12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Valor do cliente já garantido antes de sair',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: const Color(0xFF334155),
+                        fontSize: isCompact ? 11.4 : 12.6,
+                        fontWeight: FontWeight.w600,
+                        height: 1.25,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            SizedBox(height: isCompact ? 8 : 10),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A2538),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF2C3C56)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 10 : 13,
-                  vertical: isCompact ? 8 : 10,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.shield_outlined,
-                      size: 16,
-                      color: Color(0xFF93C5FD),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Valor do cliente já garantido antes de sair',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFE2E8F0),
-                          fontSize: isCompact ? 11.5 : 12.8,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            SizedBox(height: gap),
+            Text(
+              'Reputação Verificada',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: const Color(0xFF0F172A),
+                fontSize: isCompact ? 12.2 : 13.8,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            SizedBox(height: isCompact ? 10 : 14),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    '★ 5,0 · Profissional Destaque',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFFFDE68A),
-                      fontSize: isCompact ? 11.8 : 13.0,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: isCompact ? 6 : 8),
+            SizedBox(height: isUltraCompact ? 5.0 : 7.0),
             SizedBox(
-              height: 8,
+              height: isCompact ? 8.0 : 9.5,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(99),
+                borderRadius: BorderRadius.circular(999),
                 child: DecoratedBox(
-                  decoration: const BoxDecoration(color: Color(0xFF233047)),
+                  decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: FractionallySizedBox(
@@ -2868,13 +3585,315 @@ class _Story5FairProviderPanelDemo extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              Color(0xFF60A5FA),
-                              Color(0xFF34D399),
+                              Color(0xFF10B981),
+                              Color(0xFF0D9488),
                             ],
                           ),
                         ),
                       ),
                     ),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: isUltraCompact ? 6.0 : 8.0),
+            Row(
+              children: [
+                const Icon(
+                  Icons.star_rounded,
+                  size: 17,
+                  color: Color(0xFFF59E0B),
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    '5,0 · Profissional Destaque',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFF0F172A),
+                      fontSize: isCompact ? 11.8 : 13.2,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+// ETAPA 6 (00:08–00:09): CHAVE SELETORA DUPLA ESCULPIDA DE ALTÍSSIMO PADRÃO
+// =============================================================================
+
+class _Story6DualAccountSwitchDemo extends StatefulWidget {
+  const _Story6DualAccountSwitchDemo({
+    required this.actAnimation,
+    required this.isCompact,
+    required this.isUltraCompact,
+    required this.onInteractivePointerDown,
+  });
+
+  final Animation<double> actAnimation;
+  final bool isCompact;
+  final bool isUltraCompact;
+  final ValueChanged<int> onInteractivePointerDown;
+
+  @override
+  State<_Story6DualAccountSwitchDemo> createState() =>
+      _Story6DualAccountSwitchDemoState();
+}
+
+class _Story6DualAccountSwitchDemoState
+    extends State<_Story6DualAccountSwitchDemo>
+    with SingleTickerProviderStateMixin {
+  int? _manualSelectedMode; // null = segue coreografia; 0 = Cliente; 1 = Profissional
+  late final AnimationController _manualSwitchController;
+  double _manualFrom = 0.0;
+  double _manualTo = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _manualSwitchController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+  }
+
+  @override
+  void dispose() {
+    _manualSwitchController.dispose();
+    super.dispose();
+  }
+
+  double _autoChoreographedPosition(double t) {
+    // 0.0s–1.35s (0.00..0.435): Modo Cliente (0.0)
+    // 1.35s–2.45s (0.435..0.790): desliza suavemente para Modo Profissional (1.0)
+    return Curves.easeOutQuart.transform(
+      ((t - 0.435) / (0.790 - 0.435)).clamp(0.0, 1.0),
+    );
+  }
+
+  double _currentCursorPosition() {
+    if (_manualSelectedMode == null) {
+      return _autoChoreographedPosition(widget.actAnimation.value);
+    }
+    final curved = Curves.easeOutQuart.transform(
+      _manualSwitchController.value.clamp(0.0, 1.0),
+    );
+    return _manualFrom + ((_manualTo - _manualFrom) * curved);
+  }
+
+  void _handleSelectMode(int targetMode) {
+    final currentPos = _currentCursorPosition();
+    final targetPos = targetMode == 0 ? 0.0 : 1.0;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _manualSelectedMode = targetMode;
+      _manualFrom = currentPos;
+      _manualTo = targetPos;
+    });
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _manualSwitchController.value = 1.0;
+    } else {
+      _manualSwitchController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompact = widget.isCompact;
+    final isUltraCompact = widget.isUltraCompact;
+    final gap = isUltraCompact ? 7.0 : (isCompact ? 9.5 : 13.0);
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        widget.actAnimation,
+        _manualSwitchController,
+      ]),
+      builder: (context, _) {
+        final cursorPos = _currentCursorPosition().clamp(0.0, 1.0);
+        final isHarmonyResting = _manualSelectedMode == null &&
+            widget.actAnimation.value >= 0.80;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Escolha Seu Perfil',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: const Color(0xFF0F172A),
+                      fontSize: isCompact ? 14.0 : 16.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF2F6),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompact ? 9 : 11,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      '1 toque',
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: const Color(0xFF0F172A),
+                        fontSize: isCompact ? 10.6 : 11.6,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: gap),
+            _LuxuryDualModeSegmentedSwitch(
+              key: const Key('dual-mode-luxury-switch'),
+              cursorPosition: cursorPos,
+              showDualHarmonyGlow: isHarmonyResting,
+              isCompact: isCompact,
+              isUltraCompact: isUltraCompact,
+              onInteractivePointerDown: widget.onInteractivePointerDown,
+              onSelectMode: _handleSelectMode,
+            ),
+            SizedBox(height: gap),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 9 : 12,
+                  vertical: isUltraCompact ? 6.0 : (isCompact ? 7.5 : 9.0),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.shield_outlined,
+                            size: 14,
+                            color: cursorPos < 0.5
+                                ? const Color(0xFF1E3A8A)
+                                : const Color(0xFF334155),
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              'Contratar com garantia',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: const Color(0xFF0F172A),
+                                fontSize: isCompact ? 10.3 : 11.4,
+                                fontWeight: cursorPos < 0.5 || isHarmonyResting
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 5),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF94A3B8),
+                        ),
+                        child: SizedBox(width: 4, height: 4),
+                      ),
+                    ),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Icon(
+                            Icons.bolt_rounded,
+                            size: 14,
+                            color: cursorPos >= 0.5
+                                ? const Color(0xFF047857)
+                                : const Color(0xFF334155),
+                          ),
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              'Atender sem pagar para orçar',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: const Color(0xFF0F172A),
+                                fontSize: isCompact ? 10.3 : 11.4,
+                                fontWeight: cursorPos >= 0.5 || isHarmonyResting
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: gap),
+            Center(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDCFCE7),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 12 : 16,
+                    vertical: isUltraCompact ? 5.5 : (isCompact ? 6.5 : 8.0),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.check_circle_rounded,
+                        size: 16,
+                        color: Color(0xFF047857),
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          'Identidade Verificada',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: const Color(0xFF064E3B),
+                            fontSize: isCompact ? 11.5 : 12.8,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2886,217 +3905,199 @@ class _Story5FairProviderPanelDemo extends StatelessWidget {
   }
 }
 
-/// Story 6/6: Seletor tátil realista (Segmented Pill) que desliza com mola
-/// suave de `Modo Cliente` para `Modo Profissional` aos `1.4s` e volta aos
-/// `2.4s` a exibir os dois perfis integrados sob o selo `Identidade Verificada`.
-class _Story6DualAccountSwitchDemo extends StatelessWidget {
-  const _Story6DualAccountSwitchDemo({
-    required this.actAnimation,
+/// Chave Seletora Dupla Esculpida de Altíssimo Padrão (`Modo Cliente` <->
+/// `Modo Profissional`): trilho acetinado rebaixado `#E8EEF5` + cursor pílula
+/// flutuante com mola `Curves.easeOutQuart` e toque interativo direto.
+class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
+  const _LuxuryDualModeSegmentedSwitch({
+    super.key,
+    required this.cursorPosition,
+    required this.showDualHarmonyGlow,
     required this.isCompact,
+    required this.isUltraCompact,
+    required this.onInteractivePointerDown,
+    required this.onSelectMode,
   });
 
-  final Animation<double> actAnimation;
+  final double cursorPosition;
+  final bool showDualHarmonyGlow;
   final bool isCompact;
+  final bool isUltraCompact;
+  final ValueChanged<int> onInteractivePointerDown;
+  final ValueChanged<int> onSelectMode;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        final t = actAnimation.value;
-        // Fase 1 (< 0.42): foco Modo Cliente
-        // Fase 2 (0.42 .. 0.77, ~1.4s..2.4s): desliza para Modo Profissional
-        // Fase 3 (>= 0.77, >= 2.4s): ambos os perfis integrados em repouso
-        final toProvider = Curves.easeOutQuart.transform(
-          ((t - 0.42) / 0.18).clamp(0.0, 1.0),
-        );
-        final toUnified = Curves.easeOutQuart.transform(
-          ((t - 0.77) / 0.19).clamp(0.0, 1.0),
-        );
+    final pos = cursorPosition.clamp(0.0, 1.0);
+    final isClientActive = pos < 0.5;
+    final isProviderActive = pos >= 0.5;
+    final switchHeight = isUltraCompact ? 52.0 : (isCompact ? 52.0 : 54.0);
 
-        final clientEmphasis =
-            ((1.0 - toProvider) + (toProvider * toUnified)).clamp(0.32, 1.0);
-        final providerEmphasis = toProvider.clamp(0.32, 1.0);
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFF182233),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF2B3A52)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(5),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _SegmentedRolePillOption(
-                        icon: Icons.home_outlined,
-                        label: 'Modo Cliente',
-                        emphasis: clientEmphasis,
-                        activeBg: const Color(0xFF2B2019),
-                        activeBorder: const Color(0xFFFF9E57),
-                        activeInk: const Color(0xFFFFC8A3),
-                        isCompact: isCompact,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: _SegmentedRolePillOption(
-                        icon: Icons.handyman_outlined,
-                        label: 'Modo Profissional',
-                        emphasis: providerEmphasis,
-                        activeBg: const Color(0xFF17273F),
-                        activeBorder: const Color(0xFF74A7FF),
-                        activeInk: const Color(0xFFBFDBFE),
-                        isCompact: isCompact,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: isCompact ? 10 : 14),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Color.lerp(
-                  const Color(0xFF1A2436),
-                  const Color(0xFF132A23),
-                  toUnified,
-                ),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Color.lerp(
-                    const Color(0xFF2C3B54),
-                    const Color(0xFF34D399).withValues(alpha: 0.45),
-                    toUnified,
-                  )!,
-                ),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 10 : 13,
-                  vertical: isCompact ? 8 : 10,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.verified_user_rounded,
-                      size: 16,
-                      color: Color(0xFF6EE7B7),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Identidade Verificada',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFD1FAE5),
-                          fontSize: isCompact ? 11.8 : 13.0,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        '1 conta · 2 perfis',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFAEC0D6),
-                          fontSize: isCompact ? 10.8 : 11.8,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _SegmentedRolePillOption extends StatelessWidget {
-  const _SegmentedRolePillOption({
-    required this.icon,
-    required this.label,
-    required this.emphasis,
-    required this.activeBg,
-    required this.activeBorder,
-    required this.activeInk,
-    required this.isCompact,
-  });
-
-  final IconData icon;
-  final String label;
-  final double emphasis;
-  final Color activeBg;
-  final Color activeBorder;
-  final Color activeInk;
-  final bool isCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    final factor = ((emphasis - 0.32) / 0.68).clamp(0.0, 1.0);
-    final bg = Color.lerp(
-      const Color(0xFF182233),
-      activeBg,
-      factor,
+    final thumbStart = Color.lerp(
+      const Color(0xFF1E3A8A),
+      const Color(0xFF047857),
+      pos,
     )!;
-    final border = Color.lerp(
-      Colors.transparent,
-      activeBorder.withValues(alpha: 0.65),
-      factor,
-    )!;
-    final textColor = Color.lerp(
-      const Color(0xFFAEC0D6),
-      const Color(0xFFF8FAFC),
-      factor,
-    )!;
-    final iconColor = Color.lerp(
-      const Color(0xFFAEC0D6),
-      activeInk,
-      factor,
+    final thumbEnd = Color.lerp(
+      const Color(0xFF1D4ED8),
+      const Color(0xFF0F766E),
+      pos,
     )!;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: isCompact ? 8 : 10,
-          vertical: isCompact ? 9 : 11,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) => onInteractivePointerDown(event.pointer),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8EEF5),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFFCBD5E1),
+            width: 1.15,
+          ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: isCompact ? 14 : 16, color: iconColor),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: textColor,
-                  fontSize: isCompact ? 11.0 : 12.2,
-                  fontWeight: FontWeight.w700,
+        child: Padding(
+          padding: const EdgeInsets.all(4.0),
+          child: SizedBox(
+            height: switchHeight - 8.0,
+            child: Stack(
+              children: [
+                // Destaque porcelana secundário no modo complementar durante o repouso
+                if (showDualHarmonyGlow)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: 0.49,
+                      heightFactor: 1.0,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFFFF),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                      ),
+                    ),
+                  ),
+                // Cursor pílula flutuante esculpido
+                Align(
+                  alignment: Alignment((pos * 2.0) - 1.0, 0.0),
+                  child: FractionallySizedBox(
+                    widthFactor: 0.50,
+                    heightFactor: 1.0,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [thumbStart, thumbEnd],
+                        ),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.28),
+                          width: 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: thumbStart.withValues(alpha: 0.30),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                // Opções interativas de toque direto
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        key: const Key('dual-mode-option-client'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onSelectMode(0),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isCompact ? 6 : 10,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.home_rounded,
+                                size: isCompact ? 15 : 17,
+                                color: isClientActive
+                                    ? const Color(0xFFFFFFFF)
+                                    : const Color(0xFF1E3A8A),
+                              ),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  'Modo Cliente',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isClientActive
+                                        ? const Color(0xFFFFFFFF)
+                                        : const Color(0xFF0F172A),
+                                    fontSize: isUltraCompact
+                                        ? 10.6
+                                        : (isCompact ? 11.2 : 12.5),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        key: const Key('dual-mode-option-provider'),
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => onSelectMode(1),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isCompact ? 6 : 10,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.handyman_rounded,
+                                size: isCompact ? 14 : 16,
+                                color: isProviderActive
+                                    ? const Color(0xFFFFFFFF)
+                                    : const Color(0xFF047857),
+                              ),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  'Modo Profissional',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: isProviderActive
+                                        ? const Color(0xFFFFFFFF)
+                                        : const Color(0xFF0F172A),
+                                    fontSize: isUltraCompact
+                                        ? 10.6
+                                        : (isCompact ? 11.2 : 12.5),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
