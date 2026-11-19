@@ -315,14 +315,14 @@ class _DesperrengueWelcomeCinemaScreenState
               final entryWindow = (320.0 / perStoryMs).clamp(0.035, 0.24);
               final entryProgress = reduceMotion
                   ? 1.0
-                  : Curves.easeOutCubic.transform(
+                  : Curves.easeOutQuart.transform(
                       (localT / entryWindow).clamp(0.0, 1.0),
                     );
               final slideDx =
                   (1.0 - entryProgress) * 18.0 * _navigationSlideDirection;
               final entryScale = 0.985 + (0.015 * entryProgress);
-              final entryOpacity = (0.86 + (0.14 * entryProgress)).clamp(
-                0.0,
+              final entryOpacity = (0.78 + (0.22 * entryProgress)).clamp(
+                0.75,
                 1.0,
               );
 
@@ -540,7 +540,6 @@ class _DesperrengueWelcomeCinemaScreenState
               child: Row(
                 children: [
                   const Flexible(
-                    flex: 0,
                     child: Text(
                       'Desperrengue',
                       maxLines: 1,
@@ -576,41 +575,45 @@ class _DesperrengueWelcomeCinemaScreenState
               ),
             ),
             if (_isPaused)
-              Padding(
-                padding: const EdgeInsets.only(left: 6),
-                child: Container(
-                  key: const Key('cinema-paused-badge'),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF6D00).withValues(alpha: 0.24),
-                    borderRadius: BorderRadius.circular(99),
-                    border: Border.all(
-                      color: const Color(0xFFFF8A2B).withValues(alpha: 0.72),
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 6),
+                  child: Container(
+                    key: const Key('cinema-paused-badge'),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
                     ),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.pause_circle_filled_rounded,
-                        size: 12,
-                        color: Color(0xFFFFB020),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF6D00).withValues(alpha: 0.24),
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(
+                        color: const Color(0xFFFF8A2B).withValues(alpha: 0.72),
                       ),
-                      SizedBox(width: 4),
-                      Text(
-                        'Pausado para leitura',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.pause_circle_filled_rounded,
+                          size: 12,
+                          color: Color(0xFFFFB020),
                         ),
-                      ),
-                    ],
+                        SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            'Pausado para leitura',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -666,50 +669,56 @@ class _DesperrengueWelcomeCinemaScreenState
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Opacity(
-          opacity: canGoBack ? 1.0 : 0.42,
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              key: const Key('btn-story-prev'),
-              onTap: _goToPreviousStory,
-              borderRadius: BorderRadius.circular(99),
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 10 : 13,
-                  vertical: isCompact ? 6 : 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(99),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.16),
+        Flexible(
+          child: Opacity(
+            opacity: canGoBack ? 1.0 : 0.42,
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: const Key('btn-story-prev'),
+                onTap: _goToPreviousStory,
+                borderRadius: BorderRadius.circular(99),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isCompact ? 8 : 13,
+                    vertical: isCompact ? 6 : 8,
                   ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.chevron_left_rounded,
-                      size: 16,
-                      color: Colors.white,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(99),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16),
                     ),
-                    const SizedBox(width: 2),
-                    Text(
-                      'Anterior',
-                      style: TextStyle(
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.chevron_left_rounded,
+                        size: 16,
                         color: Colors.white,
-                        fontSize: isCompact ? 11.0 : 12.0,
-                        fontWeight: FontWeight.w700,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 2),
+                      Flexible(
+                        child: Text(
+                          'Anterior',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isCompact ? 11.0 : 12.0,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -741,67 +750,73 @@ class _DesperrengueWelcomeCinemaScreenState
             ],
           ),
         ),
-        const SizedBox(width: 8),
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            key: const Key('btn-story-next'),
-            onTap: _goToNextStory,
-            borderRadius: BorderRadius.circular(99),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 11 : 15,
-                vertical: isCompact ? 6 : 8,
-              ),
-              decoration: BoxDecoration(
-                gradient: isLastStory
-                    ? const LinearGradient(
-                        colors: [Color(0xFFFF6D00), Color(0xFFFF8A2B)],
-                      )
-                    : LinearGradient(
-                        colors: [
-                          accent.withValues(alpha: 0.24),
-                          Colors.white.withValues(alpha: 0.10),
-                        ],
-                      ),
-                borderRadius: BorderRadius.circular(99),
-                border: Border.all(
-                  color: isLastStory
-                      ? const Color(0xFFFFB020)
-                      : accent.withValues(alpha: 0.55),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              key: const Key('btn-story-next'),
+              onTap: _goToNextStory,
+              borderRadius: BorderRadius.circular(99),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 9 : 15,
+                  vertical: isCompact ? 6 : 8,
                 ),
-                boxShadow: isLastStory
-                    ? [
-                        BoxShadow(
-                          color: const Color(
-                            0xFFFF6D00,
-                          ).withValues(alpha: 0.38),
-                          blurRadius: 12,
-                          offset: const Offset(0, 3),
+                decoration: BoxDecoration(
+                  gradient: isLastStory
+                      ? const LinearGradient(
+                          colors: [Color(0xFFFF6D00), Color(0xFFFF8A2B)],
+                        )
+                      : LinearGradient(
+                          colors: [
+                            accent.withValues(alpha: 0.24),
+                            Colors.white.withValues(alpha: 0.10),
+                          ],
                         ),
-                      ]
-                    : null,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    isLastStory ? 'Começar agora →' : 'Próximo',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: isCompact ? 11.0 : 12.0,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(
+                    color: isLastStory
+                        ? const Color(0xFFFFB020)
+                        : accent.withValues(alpha: 0.55),
                   ),
-                  if (!isLastStory) ...[
-                    const SizedBox(width: 2),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      size: 16,
-                      color: Colors.white,
+                  boxShadow: isLastStory
+                      ? [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFF6D00,
+                            ).withValues(alpha: 0.38),
+                            blurRadius: 12,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        isLastStory ? 'Começar agora →' : 'Próximo',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isCompact ? 11.0 : 12.0,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                     ),
+                    if (!isLastStory) ...[
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -880,7 +895,17 @@ class _DesperrengueWelcomeCinemaScreenState
       key: storyKey,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: mockupCard),
+        Expanded(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: 460,
+                maxHeight: isCompact ? 350 : 415,
+              ),
+              child: mockupCard,
+            ),
+          ),
+        ),
         SizedBox(height: isCompact ? 8 : 14),
         Column(
           mainAxisSize: MainAxisSize.min,
@@ -961,7 +986,10 @@ class _DesperrengueWelcomeCinemaScreenState
     required IconData windowIcon,
     required bool isCompact,
     required Widget child,
+    double localT = 0.0,
+    bool reduceMotion = false,
   }) {
+    final specularShift = reduceMotion ? 0.0 : (localT - 0.5) * 0.45;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(isCompact ? 18 : 24),
@@ -993,12 +1021,56 @@ class _DesperrengueWelcomeCinemaScreenState
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(isCompact ? 18 : 24),
-        child: Padding(
-          padding: EdgeInsets.all(isCompact ? 11 : 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Barra Superior do Mini-App Mockup
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Reflexo diagonal suave guiado por localT (Glassmorphism 120 FPS)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment(-0.85 + specularShift, -1.0),
+                      end: Alignment(0.85 + specularShift, 1.0),
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.035),
+                        accentColor.withValues(alpha: 0.045),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                      stops: const [0.0, 0.42, 0.56, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // Chanfro especular luminoso superior de vidro premium
+            Positioned(
+              left: 16,
+              right: 16,
+              top: 0,
+              height: 1.4,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.0),
+                        Colors.white.withValues(alpha: 0.42),
+                        accentColor.withValues(alpha: 0.55),
+                        Colors.white.withValues(alpha: 0.0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.all(isCompact ? 11 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Barra Superior do Mini-App Mockup
               Row(
                 children: [
                   Container(
@@ -1033,7 +1105,6 @@ class _DesperrengueWelcomeCinemaScreenState
                   ),
                   const SizedBox(width: 6),
                   Flexible(
-                    flex: 0,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
@@ -1079,6 +1150,8 @@ class _DesperrengueWelcomeCinemaScreenState
             ],
           ),
         ),
+          ],
+        ),
       ),
     );
   }
@@ -1123,6 +1196,8 @@ class _DesperrengueWelcomeCinemaScreenState
       windowStatusBadge: '33 Áreas Ativas',
       windowIcon: Icons.grid_view_rounded,
       isCompact: isCompact,
+      localT: localT,
+      reduceMotion: reduceMotion,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1350,6 +1425,8 @@ class _DesperrengueWelcomeCinemaScreenState
       windowStatusBadge: 'Até 3 Propostas',
       windowIcon: Icons.mic_rounded,
       isCompact: isCompact,
+      localT: localT,
+      reduceMotion: reduceMotion,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1389,9 +1466,11 @@ class _DesperrengueWelcomeCinemaScreenState
                     Expanded(
                       child: SizedBox(
                         height: isCompact ? 22 : 26,
-                        child: CustomPaint(
-                          painter: _VoiceWaveformBarsPainter(
-                            phase: reduceMotion ? 0.35 : localT,
+                        child: RepaintBoundary(
+                          child: CustomPaint(
+                            painter: _VoiceWaveformBarsPainter(
+                              phase: reduceMotion ? 0.35 : localT,
+                            ),
                           ),
                         ),
                       ),
@@ -1615,6 +1694,8 @@ class _DesperrengueWelcomeCinemaScreenState
       windowStatusBadge: 'Custódia 100%',
       windowIcon: Icons.shield_rounded,
       isCompact: isCompact,
+      localT: localT,
+      reduceMotion: reduceMotion,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1622,7 +1703,7 @@ class _DesperrengueWelcomeCinemaScreenState
         children: [
           // 1. Mapa de Chegada ao Vivo com Rota De Casteljau
           Container(
-            height: isCompact ? 76 : 98,
+            height: isCompact ? 76 : 114,
             decoration: BoxDecoration(
               color: const Color(0xFF081A1C),
               borderRadius: BorderRadius.circular(13),
@@ -1635,11 +1716,13 @@ class _DesperrengueWelcomeCinemaScreenState
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(13),
-                  child: CustomPaint(
-                    painter: _LiveArrivalRadarPainter(
-                      progress: reduceMotion
-                          ? 0.72
-                          : (0.20 + 0.75 * localT).clamp(0.0, 1.0),
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _LiveArrivalRadarPainter(
+                        progress: reduceMotion
+                            ? 0.72
+                            : (0.20 + 0.75 * localT).clamp(0.0, 1.0),
+                      ),
                     ),
                   ),
                 ),
@@ -1911,6 +1994,8 @@ class _DesperrengueWelcomeCinemaScreenState
       windowStatusBadge: 'ABNT NBR 5674',
       windowIcon: Icons.workspace_premium_rounded,
       isCompact: isCompact,
+      localT: localT,
+      reduceMotion: reduceMotion,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1936,15 +2021,17 @@ class _DesperrengueWelcomeCinemaScreenState
                 SizedBox(
                   width: isCompact ? 56 : 68,
                   height: isCompact ? 56 : 68,
-                  child: CustomPaint(
-                    painter: _PassportScoreArcPainter(progress: gaugeProgress),
-                    child: Center(
-                      child: Text(
-                        '96 / 100',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: isCompact ? 11.0 : 12.5,
-                          fontWeight: FontWeight.w900,
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _PassportScoreArcPainter(progress: gaugeProgress),
+                      child: Center(
+                        child: Text(
+                          '96 / 100',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isCompact ? 11.0 : 12.5,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
                       ),
                     ),
@@ -2065,12 +2152,16 @@ class _DesperrengueWelcomeCinemaScreenState
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'Vistorias & Seguros',
-                  style: TextStyle(
-                    color: Color(0xFFFBBF24),
-                    fontSize: 9.8,
-                    fontWeight: FontWeight.w800,
+                const Flexible(
+                  child: Text(
+                    'Vistorias & Seguros',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Color(0xFFFBBF24),
+                      fontSize: 9.8,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],
@@ -2116,6 +2207,8 @@ class _DesperrengueWelcomeCinemaScreenState
       windowStatusBadge: 'Renda Justa',
       windowIcon: Icons.leaderboard_rounded,
       isCompact: isCompact,
+      localT: localT,
+      reduceMotion: reduceMotion,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2222,43 +2315,49 @@ class _DesperrengueWelcomeCinemaScreenState
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isCompact ? 9 : 12,
-                        vertical: isCompact ? 6 : 7.5,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF16A34A), Color(0xFF22C55E)],
+                    Flexible(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isCompact ? 8 : 12,
+                          vertical: isCompact ? 6 : 7.5,
                         ),
-                        borderRadius: BorderRadius.circular(99),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(
-                              0xFF22C55E,
-                            ).withValues(alpha: 0.32),
-                            blurRadius: 10,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF16A34A), Color(0xFF22C55E)],
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.pix_rounded,
-                            size: 13,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Saque Rápido no PIX',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: isCompact ? 10.0 : 11.0,
-                              fontWeight: FontWeight.w900,
+                          borderRadius: BorderRadius.circular(99),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF22C55E,
+                              ).withValues(alpha: 0.32),
+                              blurRadius: 10,
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.pix_rounded,
+                              size: 13,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                'Saque Rápido no PIX',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: isCompact ? 10.0 : 11.0,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -2404,6 +2503,8 @@ class _DesperrengueWelcomeCinemaScreenState
       windowStatusBadge: 'Troca em 1 Toque',
       windowIcon: Icons.swap_horiz_rounded,
       isCompact: isCompact,
+      localT: localT,
+      reduceMotion: reduceMotion,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2686,7 +2787,7 @@ class _InfiniteSpecialtyMarqueeBelt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tileWidth = isCompact ? 132.0 : 148.0;
-    final tileHeight = isCompact ? 46.0 : 54.0;
+    final tileHeight = isCompact ? 56.0 : 60.0;
     const gap = 8.0;
     final step = tileWidth + gap;
     final totalBeltWidth = items.length * step;
@@ -2755,7 +2856,7 @@ class _InfiniteSpecialtyMarqueeBelt extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: isCompact ? 7 : 9,
-        vertical: isCompact ? 5 : 6,
+        vertical: isCompact ? 3 : 5,
       ),
       decoration: BoxDecoration(
         color: const Color(0xFF18243A).withValues(alpha: 0.90),
@@ -2774,6 +2875,7 @@ class _InfiniteSpecialtyMarqueeBelt extends StatelessWidget {
           const SizedBox(width: 7),
           Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2783,8 +2885,9 @@ class _InfiniteSpecialtyMarqueeBelt extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: isCompact ? 10.2 : 11.2,
+                    fontSize: isCompact ? 10.0 : 11.2,
                     fontWeight: FontWeight.w800,
+                    height: 1.05,
                   ),
                 ),
                 Text(
@@ -2793,8 +2896,9 @@ class _InfiniteSpecialtyMarqueeBelt extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: isCompact ? 8.8 : 9.6,
+                    fontSize: isCompact ? 8.6 : 9.6,
                     fontWeight: FontWeight.w600,
+                    height: 1.05,
                   ),
                 ),
               ],
@@ -3089,14 +3193,16 @@ class _PassportScoreArcPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 5.8
       ..strokeCap = StrokeCap.round
-      ..shader = ui.Gradient.sweep(
-        center,
-        const [
+      ..shader = const SweepGradient(
+        startAngle: 0.0,
+        endAngle: math.pi * 1.5,
+        colors: [
           Color(0xFFF59E0B),
           Color(0xFF10B981),
           Color(0xFF38BDF8),
         ],
-      );
+        transform: GradientRotation(-math.pi * 0.75),
+      ).createShader(rect);
 
     canvas.drawArc(
       rect,
