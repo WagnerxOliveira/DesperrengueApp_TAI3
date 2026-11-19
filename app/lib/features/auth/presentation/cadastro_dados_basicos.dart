@@ -6,13 +6,37 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/env.dart';
+import '../../../core/services/registration_guard_service.dart';
 import 'verificacao_step6c_termos.dart';
 import 'cadastro_verificacao_otp.dart';
+import 'existing_account_sheets.dart';
+import 'login_screen.dart';
+import 'password_recovery_screen.dart';
 
 import '../../../core/ui/light_island.dart';
 
 class CadastroDadosBasicosScreen extends StatefulWidget {
-  const CadastroDadosBasicosScreen({super.key});
+  const CadastroDadosBasicosScreen({
+    super.key,
+    @visibleForTesting this.customPrecheckEmail,
+    @visibleForTesting this.customSignUp,
+    @visibleForTesting this.customResendSignupOtp,
+  });
+
+  @visibleForTesting
+  final Future<SignupEmailEligibility> Function(String email)?
+  customPrecheckEmail;
+
+  @visibleForTesting
+  final Future<AuthResponse> Function({
+    required String email,
+    required String password,
+    required String fullName,
+  })?
+  customSignUp;
+
+  @visibleForTesting
+  final Future<void> Function(String email)? customResendSignupOtp;
 
   @override
   State<CadastroDadosBasicosScreen> createState() =>
@@ -27,6 +51,7 @@ class _CadastroDadosBasicosScreenState
   final _emailController = TextEditingController();
   final _senhaController = TextEditingController();
   final _confirmarSenhaController = TextEditingController();
+  final _emailFocusNode = FocusNode();
 
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
@@ -42,6 +67,7 @@ class _CadastroDadosBasicosScreenState
   void dispose() {
     _nomeController.dispose();
     _emailController.dispose();
+    _emailFocusNode.dispose();
     _senhaController.clear();
     _senhaController.dispose();
     _confirmarSenhaController.clear();
@@ -74,6 +100,95 @@ class _CadastroDadosBasicosScreenState
     }
   }
 
+  Future<void> _abrirModalContaExistente(String emailDigitado) async {
+    if (!mounted) return;
+    _senhaController.clear();
+    _confirmarSenhaController.clear();
+    setState(() {
+      _isLoading = false;
+    });
+
+    final action = await ExistingAccountDetectedSheet.show(
+      context,
+      email: emailDigitado,
+    );
+
+    if (!mounted || action == null) return;
+    switch (action) {
+      case ExistingAccountSheetAction.goToLogin:
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => LoginScreen(initialEmail: emailDigitado),
+          ),
+        );
+        break;
+      case ExistingAccountSheetAction.recoverPassword:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PasswordRecoveryScreen(initialEmail: emailDigitado),
+          ),
+        );
+        break;
+      case ExistingAccountSheetAction.useOtherEmail:
+        _emailFocusNode.requestFocus();
+        break;
+    }
+  }
+
+  Future<void> _abrirModalVerificacaoPendente(String emailDigitado) async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+    });
+
+    final action = await PendingVerificationDetectedSheet.show(
+      context,
+      email: emailDigitado,
+    );
+
+    if (!mounted || action != PendingVerificationSheetAction.resendAndVerify) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      if (widget.customResendSignupOtp != null) {
+        await widget.customResendSignupOtp!(emailDigitado);
+      } else {
+        await Supabase.instance.client.auth.resend(
+          type: OtpType.signup,
+          email: emailDigitado,
+        );
+      }
+    } catch (_) {
+      // Mesmo se o GoTrue aplicar cooldown de segundos no reenvio,
+      // levamos o usuário para a tela de confirmação do código já enviado.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Código enviado para o seu e-mail!'),
+        backgroundColor: Colors.green,
+      ),
+    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            CadastroVerificacaoOtpScreen(email: emailDigitado),
+      ),
+    );
+  }
+
   Future<void> _processarCadastro() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -93,9 +208,9 @@ class _CadastroDadosBasicosScreenState
       _isLoading = true;
     });
 
-    try {
-      final emailDigitado = _emailController.text.trim();
+    final emailDigitado = _emailController.text.trim();
 
+    try {
       final emailExiste = await _validarEmailRealAPI(emailDigitado);
 
       if (!emailExiste) {
@@ -116,11 +231,61 @@ class _CadastroDadosBasicosScreenState
         return;
       }
 
-      await Supabase.instance.client.auth.signUp(
-        email: emailDigitado,
-        password: _senhaController.text,
-        data: {'full_name': _nomeController.text.trim()},
-      );
+      // 1. Pre-check de elegibilidade antes de disparar signUp (evita o falso OTP)
+      SignupEmailEligibility eligibility =
+          SignupEmailEligibility.unknownFallback;
+      try {
+        eligibility = widget.customPrecheckEmail != null
+            ? await widget.customPrecheckEmail!(emailDigitado)
+            : await RegistrationGuardService().precheckEmail(emailDigitado);
+      } catch (_) {
+        eligibility = SignupEmailEligibility.unknownFallback;
+      }
+
+      if (eligibility == SignupEmailEligibility.alreadyRegisteredConfirmed) {
+        await _abrirModalContaExistente(emailDigitado);
+        return;
+      }
+
+      if (eligibility == SignupEmailEligibility.pendingEmailVerification) {
+        await _abrirModalVerificacaoPendente(emailDigitado);
+        return;
+      }
+
+      if (eligibility == SignupEmailEligibility.rateLimited) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Muitas tentativas seguidas. Aguarde alguns minutos antes de tentar novamente.',
+              ),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 2. Executa signUp capturando AuthResponse para inspecionar GoTrue identities
+      final AuthResponse res = widget.customSignUp != null
+          ? await widget.customSignUp!(
+              email: emailDigitado,
+              password: _senhaController.text,
+              fullName: _nomeController.text.trim(),
+            )
+          : await Supabase.instance.client.auth.signUp(
+              email: emailDigitado,
+              password: _senhaController.text,
+              data: {'full_name': _nomeController.text.trim()},
+            );
+
+      // 3. CHECAGEM CRÍTICA GOTRUE:
+      // Quando email confirmations estão ativas no Supabase, o GoTrue retorna
+      // HTTP 200 com user.identities == [] para contas já existentes e NÃO envia OTP!
+      if (RegistrationGuardService.isObfuscatedDuplicateSignUpResponse(res)) {
+        await _abrirModalContaExistente(emailDigitado);
+        return;
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -138,20 +303,16 @@ class _CadastroDadosBasicosScreenState
           ),
         );
       }
-    } on AuthException catch (e) {
+    } catch (e) {
+      if (RegistrationGuardService.isDuplicateAccountException(e)) {
+        await _abrirModalContaExistente(emailDigitado);
+        return;
+      }
       if (mounted) {
+        final msg = RegistrationGuardService.translateAuthErrorPtBr(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro de autenticação: ${e.message}'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Ocorreu um erro ao validar a sua conta.'),
+            content: Text(msg),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -235,6 +396,7 @@ class _CadastroDadosBasicosScreenState
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _emailController,
+                  focusNode: _emailFocusNode,
                   enabled: !_isLoading,
                   keyboardType: TextInputType.emailAddress,
                   decoration: _buildInputDecoration(

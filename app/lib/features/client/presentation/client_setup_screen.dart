@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/user_profile.dart';
 import '../../../core/security/kyc_session_anti_swap_guard.dart';
@@ -19,6 +20,9 @@ import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
 import '../../../core/ui/widgets.dart';
+import '../../auth/presentation/auth_gate.dart';
+import '../../auth/presentation/existing_account_sheets.dart';
+import '../../auth/presentation/login_screen.dart';
 import '../../shared/presentation/criminal_background_check_step.dart';
 import '../../shared/presentation/role_terms_acceptance_screen.dart';
 import 'address_form.dart';
@@ -155,6 +159,7 @@ class ClientSetupScreen extends StatefulWidget {
     @visibleForTesting this.rawOcrFrontTextOverride,
     @visibleForTesting this.rawOcrBackTextOverride,
     @visibleForTesting this.customCriminalResultOverride,
+    @visibleForTesting this.customCpfConflictChecker,
   });
 
   final UserProfile profile;
@@ -167,6 +172,7 @@ class ClientSetupScreen extends StatefulWidget {
   final String? rawOcrFrontTextOverride;
   final String? rawOcrBackTextOverride;
   final AuditedCriminalRecordResult? customCriminalResultOverride;
+  final Future<bool> Function(String cpfRaw)? customCpfConflictChecker;
 
   @override
   State<ClientSetupScreen> createState() => _ClientSetupScreenState();
@@ -197,6 +203,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   late AuditedCriminalRecordResult? _criminalResult =
       widget.customCriminalResultOverride;
   bool _saving = false;
+  bool _checkingCpfConflict = false;
   bool _restoring = true;
   bool _restored = false;
   String? _error;
@@ -342,7 +349,43 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     }
   }
 
-  void _validateStep0AndAdvance() {
+  bool _isSupabaseInitialized() {
+    try {
+      Supabase.instance.client;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _openExistingCpfAccountSheet() async {
+    if (!mounted) return;
+    final masked = KycHumanFeedbackTranslator.formatCpfQuietLuxury(
+      _cpf.text,
+      masked: true,
+    );
+    final action = await ExistingCpfAccountSheet.show(
+      context,
+      cpfMasked: masked,
+    );
+    if (!mounted || action != ExistingCpfSheetAction.signOutAndGoLogin) {
+      return;
+    }
+    try {
+      await ProfileService().signOut();
+    } catch (_) {}
+    if (!mounted) return;
+    final Widget rootTarget = _isSupabaseInitialized()
+        ? const AuthGate()
+        : const LoginScreen();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => rootTarget),
+      (_) => false,
+    );
+  }
+
+  Future<void> _validateStep0AndAdvance() async {
+    if (_checkingCpfConflict) return;
     if (!DocumentOcrAndLivenessService.isValidCivilFullName(_name.text)) {
       setState(() => _error = 'Informe seu nome e sobrenome completos conforme o documento.');
       showSnack(context, 'Informe seu nome e sobrenome completos.', error: true);
@@ -361,6 +404,24 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     if (!_termsAccepted) {
       setState(() => _error = 'Confirme a leitura e o aceite dos Termos de Uso para continuar.');
       showSnack(context, 'Confirme o aceite dos Termos de Uso.', error: true);
+      return;
+    }
+
+    _checkingCpfConflict = true;
+    bool hasConflict = false;
+    try {
+      hasConflict = await (widget.customCpfConflictChecker != null
+          ? widget.customCpfConflictChecker!(_cpf.text)
+          : ProfileService().checkCpfRegistrationConflict(_cpf.text));
+    } catch (_) {
+      hasConflict = false;
+    } finally {
+      _checkingCpfConflict = false;
+    }
+
+    if (!mounted) return;
+    if (hasConflict) {
+      await _openExistingCpfAccountSheet();
       return;
     }
     _setStep(1);
@@ -1001,9 +1062,17 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       AppSession.instance.refreshProfile();
     } catch (e) {
       if (mounted) {
-        final msg = friendlyError(e);
+        final rawError = e.toString();
+        final isDuplicateCpf =
+            rawError.toUpperCase().contains('ERR_DUPLICATE_CPF_IDENTITY');
+        final msg = rawError.toUpperCase().contains('ERR_')
+            ? KycHumanFeedbackTranslator.translateError(e)
+            : friendlyError(e);
         setState(() => _error = msg);
         showSnack(context, msg, error: true);
+        if (isDuplicateCpf) {
+          unawaited(_openExistingCpfAccountSheet());
+        }
       }
     } finally {
       if (mounted) setState(() => _saving = false);
