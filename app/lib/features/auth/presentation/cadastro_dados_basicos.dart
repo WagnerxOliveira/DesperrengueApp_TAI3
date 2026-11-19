@@ -14,6 +14,7 @@ import 'login_screen.dart';
 import 'password_recovery_screen.dart';
 
 import '../../../core/ui/light_island.dart';
+import '../../../core/ui/serene_route_transitions.dart';
 
 class CadastroDadosBasicosScreen extends StatefulWidget {
   const CadastroDadosBasicosScreen({
@@ -117,7 +118,7 @@ class _CadastroDadosBasicosScreenState
     switch (action) {
       case ExistingAccountSheetAction.goToLogin:
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
+          SereneAuthPageRoute<void>(
             builder: (_) => LoginScreen(initialEmail: emailDigitado),
           ),
           (_) => false,
@@ -125,7 +126,7 @@ class _CadastroDadosBasicosScreenState
         break;
       case ExistingAccountSheetAction.recoverPassword:
         Navigator.of(context).push(
-          MaterialPageRoute(
+          SereneAuthPageRoute<void>(
             builder: (_) => PasswordRecoveryScreen(initialEmail: emailDigitado),
           ),
         );
@@ -185,7 +186,7 @@ class _CadastroDadosBasicosScreenState
     );
     Navigator.push(
       context,
-      MaterialPageRoute(
+      SereneAuthPageRoute<void>(
         builder: (context) =>
             CadastroVerificacaoOtpScreen(email: emailDigitado),
       ),
@@ -302,7 +303,7 @@ class _CadastroDadosBasicosScreenState
 
         Navigator.push(
           context,
-          MaterialPageRoute(
+          SereneAuthPageRoute<void>(
             builder: (context) =>
                 CadastroVerificacaoOtpScreen(email: emailDigitado),
           ),
@@ -539,7 +540,7 @@ class _CadastroDadosBasicosScreenState
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute<void>(
+                            SereneAuthPageRoute<void>(
                               builder: (_) =>
                                   const VerificacaoStep6cTermosScreen(),
                             ),

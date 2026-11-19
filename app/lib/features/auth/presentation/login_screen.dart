@@ -10,6 +10,7 @@ import 'auth_gate.dart';
 import 'password_recovery_screen.dart';
 import '../../../core/ui/desperrengue_brand_logo.dart';
 import '../../../core/ui/light_island.dart';
+import '../../../core/ui/serene_route_transitions.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key, this.initialEmail = ''});
@@ -61,7 +62,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _irParaRaiz() {
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const AuthGate()),
+      SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
       (_) => false,
     );
   }
@@ -95,7 +96,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     textColor: Colors.white,
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(
+                        SereneAuthPageRoute<void>(
                           builder: (_) =>
                               CadastroVerificacaoOtpScreen(email: typedEmail),
                         ),
@@ -297,12 +298,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       key: const Key('btn-login-forgot-password'),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(44, 44),
+                      ),
                       onPressed: _isLoading
                           ? null
                           : () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
+                                SereneAuthPageRoute<void>(
                                   builder: (_) => PasswordRecoveryScreen(
                                     initialEmail: _emailController.text.trim(),
                                   ),
@@ -410,33 +414,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   Center(
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: _isLoading
                           ? null
                           : () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(
+                                SereneAuthPageRoute<void>(
                                   builder: (context) =>
                                       const CadastroDadosBasicosScreen(),
                                 ),
                               );
                             },
-                      child: RichText(
-                        text: TextSpan(
-                          text: 'Não tem conta? ',
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 15,
-                          ),
-                          children: [
-                            TextSpan(
-                              text: 'Cadastre-se',
-                              style: TextStyle(
-                                color: _primaryBlue,
-                                fontWeight: FontWeight.bold,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minWidth: 44,
+                          minHeight: 44,
+                        ),
+                        child: Center(
+                          child: RichText(
+                            text: TextSpan(
+                              text: 'Não tem conta? ',
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 15,
                               ),
+                              children: [
+                                TextSpan(
+                                  text: 'Cadastre-se',
+                                  style: TextStyle(
+                                    color: _primaryBlue,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
