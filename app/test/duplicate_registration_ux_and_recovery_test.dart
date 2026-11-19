@@ -7,7 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/services/registration_guard_service.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
+import 'package:desperrengue_app/core/ui/app_tokens.dart';
 import 'package:desperrengue_app/core/ui/kyc_human_feedback_translator.dart';
+import 'package:desperrengue_app/core/ui/serene_route_transitions.dart';
 import 'package:desperrengue_app/features/auth/presentation/cadastro_dados_basicos.dart';
 import 'package:desperrengue_app/features/auth/presentation/cadastro_verificacao_otp.dart';
 import 'package:desperrengue_app/features/auth/presentation/existing_account_sheets.dart';
@@ -18,6 +20,7 @@ import 'package:desperrengue_app/features/client/presentation/client_setup_scree
 Widget _buildTestApp({
   required Widget home,
   double textScale = 1.0,
+  bool disableAnimations = false,
   UserMode? mode = UserMode.client,
   Brightness brightness = Brightness.light,
 }) {
@@ -29,7 +32,10 @@ Widget _buildTestApp({
       builder: (context, child) {
         final mq = MediaQuery.of(context);
         return MediaQuery(
-          data: mq.copyWith(textScaler: TextScaler.linear(textScale)),
+          data: mq.copyWith(
+            textScaler: TextScaler.linear(textScale),
+            disableAnimations: disableAnimations,
+          ),
           child: child!,
         );
       },
@@ -92,6 +98,27 @@ void _assertZeroEnglishOrBannedJargon(WidgetTester tester) {
   }
 }
 
+void _expectSheetButtonTouchTarget(
+  WidgetTester tester,
+  Key buttonKey, {
+  double minWidth = 44.0,
+  double minHeight = 48.0,
+}) {
+  final finder = find.byKey(buttonKey);
+  expect(finder, findsOneWidget, reason: 'Botão $buttonKey deve existir');
+  final size = tester.getSize(finder);
+  expect(
+    size.width,
+    greaterThanOrEqualTo(minWidth),
+    reason: 'Botão $buttonKey largura (${size.width}) deve ser >= ${minWidth}dp',
+  );
+  expect(
+    size.height,
+    greaterThanOrEqualTo(minHeight),
+    reason: 'Botão $buttonKey altura (${size.height}) deve ser >= ${minHeight}dp',
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -99,26 +126,59 @@ void main() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
   });
 
-  final viewports = <({Size size, double scale, String label})>[
+  const coreViewports = <({Size size, double scale, String label})>[
     (
-      size: const Size(320, 640),
-      scale: 1.4,
-      label: '320x640 @ 1.4x',
+      size: Size(320, 640),
+      scale: 1.40,
+      label: '320x640 @ 1.40x',
     ),
     (
-      size: const Size(360, 780),
+      size: Size(360, 780),
       scale: 1.0,
       label: '360x780 @ 1.0x',
     ),
     (
-      size: const Size(412, 915),
+      size: Size(390, 844),
       scale: 1.0,
-      label: '412x915 @ 1.0x',
+      label: '390x844 @ 1.0x',
+    ),
+    (
+      size: Size(412, 915),
+      scale: 1.30,
+      label: '412x915 @ 1.30x',
+    ),
+  ];
+
+  const extremeMatrixViewports = <({Size size, double scale, String label})>[
+    (
+      size: Size(320, 640),
+      scale: 1.35,
+      label: '320x640 @ textScaler 1.35',
+    ),
+    (
+      size: Size(320, 640),
+      scale: 1.40,
+      label: '320x640 @ textScaler 1.40',
+    ),
+    (
+      size: Size(360, 780),
+      scale: 1.0,
+      label: '360x780 @ textScaler 1.0',
+    ),
+    (
+      size: Size(390, 844),
+      scale: 1.0,
+      label: '390x844 @ textScaler 1.0',
+    ),
+    (
+      size: Size(412, 915),
+      scale: 1.30,
+      label: '412x915 @ textScaler 1.30',
     ),
   ];
 
   group('1. Blindagem Anti-Recadastro de E-mail (Pre-check, GoTrue Obfuscated Identities e AuthException)', () {
-    for (final vp in viewports) {
+    for (final vp in coreViewports) {
       testWidgets(
         'Cenário 1: E-mail já confirmado via precheckEmail abre existing-account-detected-sheet, NÃO chama signUp e NÃO abre OTP em ${vp.label}',
         (tester) async {
@@ -215,7 +275,6 @@ void main() {
                   required fullName,
                 }) async {
                   signUpCalled = true;
-                  // Simula exatamente o retorno silencioso do GoTrue quando o e-mail já existe:
                   return AuthResponse(
                     user: User(
                       id: 'obfuscated-gotrue-uid',
@@ -299,8 +358,8 @@ void main() {
     }
   });
 
-  group('2. Ações do ExistingAccountDetectedSheet, Login Pré-Preenchido e Recuperação de Senha In-App', () {
-    for (final vp in viewports) {
+  group('2. Ações do ExistingAccountDetectedSheet, Login Pré-Preenchido e Recuperação de Senha In-App via SereneAuthPageRoute', () {
+    for (final vp in coreViewports) {
       testWidgets(
         'Cenário 4A e 4C: btn-existing-account-use-other-email fecha sheet mantendo na tela; btn-existing-account-go-login abre LoginScreen com e-mail pré-preenchido em ${vp.label}',
         (tester) async {
@@ -363,7 +422,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
 
-          // Verifica que abriu LoginScreen com o e-mail já preenchido!
+          // Verifica que abriu LoginScreen via SereneAuthPageRoute com o e-mail já preenchido
           expect(find.byType(LoginScreen), findsOneWidget);
           expect(find.text(targetEmail), findsOneWidget);
 
@@ -390,7 +449,6 @@ void main() {
           String? verifiedCode;
           String? updatedPassword;
 
-          // 1) Toca em "Esqueci minha senha" no ExistingAccountDetectedSheet -> abre PasswordRecoveryScreen com e-mail preenchido
           await tester.pumpWidget(
             _buildTestApp(
               textScale: vp.scale,
@@ -412,7 +470,6 @@ void main() {
           expect(find.byType(PasswordRecoveryScreen), findsOneWidget);
           expect(find.text(recoveryEmail), findsWidgets);
 
-          // 2) Conclui redefinição de senha em 2 etapas na PasswordRecoveryScreen
           await tester.pumpWidget(
             _buildTestApp(
               textScale: vp.scale,
@@ -436,16 +493,18 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
 
-          // Etapa 1: E-mail já pré-preenchido -> solicita código de 6 dígitos
           expect(find.text(recoveryEmail), findsOneWidget);
           final sendCodeBtn = find.byKey(const Key('btn-send-recovery-code'));
           await tester.ensureVisible(sendCodeBtn);
+          _expectSheetButtonTouchTarget(
+            tester,
+            const Key('btn-send-recovery-code'),
+          );
           await tester.tap(sendCodeBtn);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           expect(otpRequestedForEmail, equals(recoveryEmail));
 
-          // Etapa 2: Exibe campos de OTP e Nova Senha Forte
           final otpInput = find.byKey(const Key('input-recovery-otp'));
           final newPassInput = find.byKey(
             const Key('input-recovery-new-password'),
@@ -466,6 +525,10 @@ void main() {
             const Key('btn-confirm-password-reset'),
           );
           await tester.ensureVisible(confirmResetBtn);
+          _expectSheetButtonTouchTarget(
+            tester,
+            const Key('btn-confirm-password-reset'),
+          );
           await tester.tap(confirmResetBtn);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
@@ -480,7 +543,7 @@ void main() {
   });
 
   group('3. Cadastro Pendente de Confirmação OTP e Conflito de CPF no Passo 1 do ClientSetupScreen', () {
-    for (final vp in viewports) {
+    for (final vp in coreViewports) {
       testWidgets(
         'Cenário 5: pendingEmailVerification abre pending-verification-detected-sheet, reenvia código e navega para CadastroVerificacaoOtpScreen em ${vp.label}',
         (tester) async {
@@ -534,7 +597,7 @@ void main() {
           expect(tester.takeException(), isNull);
 
           // CadastroVerificacaoOtpScreen (tela legada fora do escopo) usa Column fixa;
-          // preserva largura 320px @ 1.4x e garante altura para a transição de rota:
+          // preserva largura/textScaler e garante altura para a transição de rota:
           if (vp.size.height < 940) {
             await tester.binding.setSurfaceSize(Size(vp.size.width, 940));
             await tester.pumpAndSettle();
@@ -579,7 +642,6 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
 
-          // Preenche CPF válido Mod-11 que já pertence a outra conta
           await tester.enterText(
             find.byKey(const ValueKey('client-setup-cpf')),
             '11978723610',
@@ -609,7 +671,6 @@ void main() {
           );
           _assertZeroEnglishOrBannedJargon(tester);
 
-          // Clica em "Conferir dígitos do CPF" -> fecha o modal e mantém no Passo 1
           final reviewBtn = find.byKey(
             const Key('btn-cpf-conflict-review-digits'),
           );
@@ -622,7 +683,6 @@ void main() {
             findsNothing,
           );
 
-          // Reabre o modal e testa "Sair e entrar na minha conta principal"
           await tester.tap(
             find.byKey(const ValueKey('client-setup-step0-continue')),
           );
@@ -680,7 +740,6 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
 
-          // Permanece no Passo 1 (não avança para Passo 2 nem abre modal de conflito)
           expect(find.text('Onde você precisa do serviço?'), findsNothing);
           expect(
             find.byKey(const Key('existing-cpf-account-sheet')),
@@ -691,6 +750,270 @@ void main() {
             findsWidgets,
           );
           _assertZeroEnglishOrBannedJargon(tester);
+        },
+      );
+    }
+  });
+
+  group('4. Matriz Extrema v2.25.0 — 3 Bottom Sheets (WCAG AA >= 4.5:1, Alvos >= 48dp) + SereneAuthPageRoute & Acessibilidade', () {
+    test('SereneAuthPageRoute e SereneModalSheetConfig expõem durações e curvas serenas da especificação v2.25.0', () {
+      expect(SereneModalSheetConfig.duration, const Duration(milliseconds: 380));
+      expect(
+        SereneModalSheetConfig.reverseDuration,
+        const Duration(milliseconds: 260),
+      );
+      expect(
+        SereneModalSheetConfig.sheetAnimationStyle.curve,
+        Curves.easeOutQuart,
+      );
+      expect(
+        SereneModalSheetConfig.sheetAnimationStyle.reverseCurve,
+        Curves.easeInCubic,
+      );
+
+      final route = SereneAuthPageRoute<void>(
+        builder: (_) => const SizedBox.shrink(),
+      );
+      expect(route.transitionDuration, const Duration(milliseconds: 380));
+      expect(route.reverseTransitionDuration, const Duration(milliseconds: 280));
+      expect(route.verticalOffsetPx, 14.0);
+    });
+
+    for (final vp in extremeMatrixViewports) {
+      testWidgets(
+        'Matriz Extrema nos 3 Bottom Sheets (.show com SereneModalSheetConfig): zero overflow, contraste WCAG AA >= 4.5:1 e todos os botões >= 48dp em ${vp.label}',
+        (tester) async {
+          await tester.binding.setSurfaceSize(vp.size);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+
+          late BuildContext hostContext;
+          await tester.pumpWidget(
+            _buildTestApp(
+              textScale: vp.scale,
+              home: Scaffold(
+                body: Builder(
+                  builder: (context) {
+                    hostContext = context;
+                    return const Center(child: Text('Host'));
+                  },
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          const whiteSurface = Colors.white;
+          const emeraldSoftSurface = Color(0xFFECFDF5);
+
+          // 1) ExistingAccountDetectedSheet.show
+          final existingFuture = ExistingAccountDetectedSheet.show(
+            hostContext,
+            email: 'wagner.muito.longo.corporativo@desperrengue.com.br',
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 160));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          expect(
+            find.byKey(const Key('existing-account-detected-sheet')),
+            findsOneWidget,
+          );
+
+          // Valida contraste WCAG AA >= 4.5:1 nos textos do modal
+          final titleWidget = tester.widget<Text>(
+            find.text('Você já possui uma conta no Desperrengue'),
+          );
+          expect(
+            AppTokens.contrast(titleWidget.style!.color!, whiteSurface),
+            greaterThanOrEqualTo(4.5),
+          );
+          final bodyWidget = tester.widget<Text>(
+            find.textContaining('Este e-mail já está cadastrado na plataforma'),
+          );
+          expect(
+            AppTokens.contrast(bodyWidget.style!.color!, whiteSurface),
+            greaterThanOrEqualTo(4.5),
+          );
+          final tipTextWidget = tester.widget<Text>(
+            find.textContaining('Quer usar como Cliente e também como Profissional'),
+          );
+          expect(
+            AppTokens.contrast(tipTextWidget.style!.color!, emeraldSoftSurface),
+            greaterThanOrEqualTo(4.5),
+          );
+          final useOtherTextWidget = tester.widget<Text>(
+            find.text('Usar outro e-mail'),
+          );
+          expect(
+            AppTokens.contrast(useOtherTextWidget.style!.color!, whiteSurface),
+            greaterThanOrEqualTo(4.5),
+          );
+
+          // Valida alvos táteis >= 44x48dp nos 3 botões (incluindo Usar outro e-mail)
+          for (final btnKey in const <Key>[
+            Key('btn-existing-account-go-login'),
+            Key('btn-existing-account-recover-password'),
+            Key('btn-existing-account-use-other-email'),
+          ]) {
+            await tester.ensureVisible(find.byKey(btnKey));
+            expect(tester.takeException(), isNull);
+            _expectSheetButtonTouchTarget(tester, btnKey);
+          }
+
+          await tester.tap(
+            find.byKey(const Key('btn-existing-account-use-other-email')),
+          );
+          await tester.pump(const Duration(milliseconds: 130));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(
+            await existingFuture,
+            ExistingAccountSheetAction.useOtherEmail,
+          );
+
+          // 2) PendingVerificationDetectedSheet.show
+          final pendingFuture = PendingVerificationDetectedSheet.show(
+            hostContext,
+            email: 'pendente.muito.longo@desperrengue.com.br',
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 160));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          expect(
+            find.byKey(const Key('pending-verification-detected-sheet')),
+            findsOneWidget,
+          );
+
+          for (final btnKey in const <Key>[
+            Key('btn-pending-resend-and-verify'),
+            Key('btn-pending-verification-back'),
+          ]) {
+            await tester.ensureVisible(find.byKey(btnKey));
+            expect(tester.takeException(), isNull);
+            _expectSheetButtonTouchTarget(tester, btnKey);
+          }
+
+          await tester.tap(
+            find.byKey(const Key('btn-pending-verification-back')),
+          );
+          await tester.pumpAndSettle();
+          expect(await pendingFuture, PendingVerificationSheetAction.back);
+
+          // 3) ExistingCpfAccountSheet.show
+          final cpfFuture = ExistingCpfAccountSheet.show(
+            hostContext,
+            cpfMasked: '***.787.236-**',
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 160));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          expect(
+            find.byKey(const Key('existing-cpf-account-sheet')),
+            findsOneWidget,
+          );
+
+          for (final btnKey in const <Key>[
+            Key('btn-cpf-conflict-go-login'),
+            Key('btn-cpf-conflict-review-digits'),
+          ]) {
+            await tester.ensureVisible(find.byKey(btnKey));
+            expect(tester.takeException(), isNull);
+            _expectSheetButtonTouchTarget(tester, btnKey);
+          }
+
+          await tester.tap(
+            find.byKey(const Key('btn-cpf-conflict-review-digits')),
+          );
+          await tester.pumpAndSettle();
+          expect(await cpfFuture, ExistingCpfSheetAction.reviewCpfDigits);
+          _assertZeroEnglishOrBannedJargon(tester);
+        },
+      );
+
+      testWidgets(
+        'Transições SereneAuthPageRoute (Login -> Cadastro -> Recuperação -> Voltar) + disableAnimations: true sem overflow em ${vp.label}',
+        (tester) async {
+          await tester.binding.setSurfaceSize(vp.size);
+          addTearDown(() => tester.binding.setSurfaceSize(null));
+
+          // Com animações normais (380ms forward / 280ms reverse + 14px vertical)
+          await tester.pumpWidget(
+            _buildTestApp(
+              textScale: vp.scale,
+              home: const LoginScreen(
+                initialEmail: 'transicao@desperrengue.com.br',
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          // Login -> CadastroDadosBasicosScreen via SereneAuthPageRoute
+          final signupLink = find.byWidgetPredicate(
+            (w) =>
+                w is RichText &&
+                w.text.toPlainText().contains('Cadastre-se'),
+          );
+          await tester.ensureVisible(signupLink);
+          await tester.tap(signupLink);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 180));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.byType(CadastroDadosBasicosScreen), findsOneWidget);
+
+          // Volta (reverse 280ms) -> LoginScreen
+          Navigator.of(
+            tester.element(find.byType(CadastroDadosBasicosScreen)),
+          ).pop();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 140));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.byType(LoginScreen), findsOneWidget);
+
+          // Login -> PasswordRecoveryScreen via SereneAuthPageRoute
+          final forgotBtn = find.byKey(const Key('btn-login-forgot-password'));
+          await tester.ensureVisible(forgotBtn);
+          await tester.tap(forgotBtn);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 180));
+          expect(tester.takeException(), isNull);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.byType(PasswordRecoveryScreen), findsOneWidget);
+
+          // Modo Acessibilidade (disableAnimations: true): transição instantânea Duration.zero
+          await tester.pumpWidget(
+            _buildTestApp(
+              textScale: vp.scale,
+              disableAnimations: true,
+              home: const LoginScreen(
+                initialEmail: 'acessivel@desperrengue.com.br',
+              ),
+            ),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+
+          final forgotAccessible = find.byKey(
+            const Key('btn-login-forgot-password'),
+          );
+          await tester.ensureVisible(forgotAccessible);
+          await tester.tap(forgotAccessible);
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          expect(find.byType(PasswordRecoveryScreen), findsOneWidget);
         },
       );
     }
