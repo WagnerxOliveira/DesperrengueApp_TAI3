@@ -6,9 +6,9 @@ import '../models/marketplace_models.dart';
 import '../services/instant_image_cache_engine.dart';
 import '../services/media_service.dart';
 import '../utils/format.dart';
-import './app_tokens.dart';
 import 'app_theme.dart';
 import 'category_brand_emblem.dart';
+import 'design_system/design_system.dart';
 
 export 'category_brand_emblem.dart';
 export 'duotone_service_icons.dart';
@@ -519,7 +519,8 @@ class _InstantUserAvatarState extends State<InstantUserAvatar> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = widget.accentColor ?? Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
+    final accent = widget.accentColor ?? tk.accentInk;
     final diameter = widget.radius * 2;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final targetPx = (diameter * dpr).round().clamp(48, 512);
@@ -527,10 +528,9 @@ class _InstantUserAvatarState extends State<InstantUserAvatar> {
     final initialsWidget = Center(
       child: Text(
         initials(widget.name),
-        style: TextStyle(
+        style: AppType.titleSm.copyWith(
           color: accent,
-          fontWeight: FontWeight.w800,
-          fontSize: widget.radius * 0.7,
+          fontSize: (widget.radius * 0.7).clamp(AppType.minimumFontSize, 40.0),
         ),
       ),
     );

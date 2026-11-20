@@ -1,19 +1,18 @@
-import '../../../core/ui/app_scaffold.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/marketplace_models.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/job_service.dart';
-import '../../client/presentation/detalhe_servico_cliente_screen.dart';
-import '../../provider/presentation/provider_job_screen.dart';
-
 import '../../../core/services/media_service.dart';
 import '../../../core/services/social_service.dart';
+import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../client/presentation/detalhe_servico_cliente_screen.dart';
+import '../../provider/presentation/provider_job_screen.dart';
 
 String protocolOf(String ticketId) => '#DSP-${ticketId.replaceAll('-', '').substring(0, 4).toUpperCase()}';
 
@@ -59,7 +58,7 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
 
   Future<void> _submit() async {
     if (_desc.text.trim().length < 10) {
-      showSnack(context, 'Descreva o ocorrido (mín. 10 caracteres).', error: true);
+      AppSnackbar.show(context, 'Descreva o ocorrido (mín. 10 caracteres).', kind: AppSnackKind.error);
       return;
     }
     setState(() => _busy = true);
@@ -77,10 +76,10 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => TicketCreatedScreen(ticketId: id, hasJob: widget.job != null, asProvider: widget.asProvider)),
+        AppRoute(builder: (_) => TicketCreatedScreen(ticketId: id, hasJob: widget.job != null, asProvider: widget.asProvider)),
       );
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -88,21 +87,25 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: Text(widget.job == null ? 'Novo chamado' : 'Relatar problema')),
+      appBar: AppAppBar(title: widget.job == null ? 'Novo chamado' : 'Relatar problema'),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
         children: [
-          Text(widget.job == null ? 'Como podemos ajudar?' : 'O que aconteceu com o seu serviço?',
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
+          Text(
+            widget.job == null ? 'Como podemos ajudar?' : 'O que aconteceu com o seu serviço?',
+            style: AppType.headline.copyWith(color: tk.text),
+          ),
           if (widget.job != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.s12),
             const InfoBanner(
               'Ao abrir o chamado, o pagamento do serviço permanece retido até a decisão da nossa equipe de mediação.',
               tone: BannerTone.security,
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           RadioGroup<String>(
             groupValue: _reason,
             onChanged: (v) => setState(() => _reason = v ?? _reason),
@@ -112,33 +115,40 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
                   RadioListTile<String>(
                     contentPadding: EdgeInsets.zero,
                     value: r,
-                    title: Text(r, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    title: Text(r, style: AppType.bodyStrong.copyWith(color: tk.text)),
                   ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          const Text('Enviar fotos (recomendado)', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-          const SizedBox(height: 8),
-          MediaPickerRow(images: _images, onAdd: () async {
-            final img = await pickImage(context);
-            if (img != null && mounted) setState(() => _images.add(img));
-          }, onRemove: (i) => setState(() => _images.removeAt(i))),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s12),
+          Text('Enviar fotos (recomendado)', style: AppType.titleSm.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s8),
+          MediaPickerRow(
+            images: _images,
+            onAdd: () async {
+              final img = await pickImage(context);
+              if (img != null && mounted) setState(() => _images.add(img));
+            },
+            onRemove: (i) => setState(() => _images.removeAt(i)),
+          ),
+          const SizedBox(height: AppSpace.s16),
           Text.rich(TextSpan(children: [
-            TextSpan(text: 'Descreva o ocorrido ', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-            TextSpan(text: '*', style: TextStyle(color: context.tk.danger, fontWeight: FontWeight.w900)),
+            TextSpan(text: 'Descreva o ocorrido ', style: AppType.titleSm.copyWith(color: tk.text)),
+            TextSpan(text: '*', style: AppType.titleSm.copyWith(color: tk.dangerInk)),
           ])),
-          const SizedBox(height: 8),
-          TextField(
+          const SizedBox(height: AppSpace.s8),
+          AppTextField(
             controller: _desc,
+            minLines: 4,
             maxLines: 5,
             maxLength: 2000,
-            decoration: const InputDecoration(hintText: 'Conte o que houve em detalhes para que possamos ajudar você...'),
+            hint: 'Conte o que houve em detalhes para que possamos ajudar você...',
           ),
         ],
       ),
-      bottomNavigationBar: BottomBar(child: PrimaryButton(label: 'Abrir chamado de suporte', loading: _busy, onPressed: _submit)),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(label: 'Abrir chamado de suporte', loading: _busy, onPressed: _submit),
+      ),
     );
   }
 }
@@ -153,39 +163,46 @@ class TicketCreatedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final protocol = protocolOf(ticketId);
     return AppScaffold(
-      appBar: AppBar(automaticallyImplyLeading: false, title: const Text('Chamado aberto')),
+      appBar: const AppAppBar(automaticallyImplyLeading: false, title: 'Chamado aberto'),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpace.s24),
         children: [
-          const SizedBox(height: 12),
-          Center(child: CircleAvatar(radius: 44, backgroundColor: context.tk.successSoft, child: Icon(Icons.shield_rounded, size: 46, color: context.tk.success))),
-          const SizedBox(height: 16),
-          const Text('Recebemos o seu chamado', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
+          Center(
+            child: CircleAvatar(
+              radius: 44,
+              backgroundColor: tk.successSoft,
+              child: Icon(Icons.shield_rounded, size: 46, color: tk.successInk),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s16),
+          Text('Recebemos o seu chamado', textAlign: TextAlign.center, style: AppType.headline.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s12),
           Center(
             child: ActionChip(
-              avatar: const Icon(Icons.copy_rounded, size: 16),
-              label: Text('Protocolo: $protocol', style: const TextStyle(fontWeight: FontWeight.w800)),
+              avatar: Icon(Icons.copy_rounded, size: 16, color: tk.accentInk),
+              label: Text('Protocolo: $protocol', style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.text)),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: protocol));
-                showSnack(context, 'Protocolo copiado.');
+                AppSnackbar.show(context, 'Protocolo copiado.', kind: AppSnackKind.success);
               },
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           Text(
             hasJob
                 ? 'O pagamento fica retido com a Desperrengue enquanto analisamos. Suas fotos e informações do serviço já estão salvas no chamado.'
                 : 'Nossa equipe responderá pelo app.',
             textAlign: TextAlign.center,
-            style: TextStyle(height: 1.45, color: context.tk.textMuted),
+            style: AppType.body.copyWith(color: tk.textMuted),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           const InfoBanner('Prazo de resposta (SLA): até 24 horas.', tone: BannerTone.warning, icon: Icons.schedule_rounded),
           if (hasJob) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.s12),
             InfoBanner(
               asProvider
                   ? 'Recomendamos que você saia do local em segurança. Deixe que nós resolvemos tudo por você.'
@@ -196,8 +213,8 @@ class TicketCreatedScreen extends StatelessWidget {
           ],
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(label: 'Entendi', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(label: 'Entendi', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
       ),
     );
   }
@@ -249,24 +266,30 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
     // Cliente: dossiê completo da mediação. Profissional: tela de mediação do serviço.
     final me = Supabase.instance.client.auth.currentUser?.id;
     final asClient = job.clientId == me && !widget.asProvider;
-    Navigator.of(context).push(MaterialPageRoute<void>(
+    Navigator.of(context).push(AppRoute<void>(
       builder: (_) => asClient ? DetalheServicoClienteScreen(jobId: job.id) : ProviderJobScreen(jobId: job.id),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Ajuda e suporte')),
+      appBar: const AppAppBar(title: 'Ajuda e suporte'),
       body: FutureBuilder<({List<Map<String, dynamic>> tickets, List<Job> disputes})>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
-          if (snap.hasError) return ErrorView(message: 'Não foi possível carregar seus chamados.', onRetry: _reload);
+          if (snap.connectionState != ConnectionState.done) {
+            return const AppSkeletonList(count: 3);
+          }
+          if (snap.hasError) {
+            return AppErrorState(message: 'Não foi possível carregar seus chamados.', onRetry: _reload);
+          }
           final items = snap.data!.tickets;
           final disputes = snap.data!.disputes;
           return ListView(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(margin),
             children: [
               const InfoBanner(
                 'Respondemos em até 24 horas. Para problemas com um serviço específico, abra o chamado dentro do pedido: assim o pagamento fica protegido.',
@@ -274,49 +297,77 @@ class _SupportCenterScreenState extends State<SupportCenterScreen> {
                 title: 'Central Desperrengue',
               ),
               if (disputes.isNotEmpty) ...[
-                const SectionTitle('Mediações em andamento'),
-                for (final j in disputes) _MediationCard(job: j, asProvider: widget.asProvider, onTap: () => _openCase(j)),
+                const SizedBox(height: AppSpace.section),
+                AppSection(
+                  title: 'Mediações em andamento',
+                  child: Column(
+                    children: [
+                      for (final j in disputes) _MediationCard(job: j, asProvider: widget.asProvider, onTap: () => _openCase(j)),
+                    ],
+                  ),
+                ),
               ],
-              const SizedBox(height: 14),
-              SecondaryButton(
+              const SizedBox(height: AppSpace.s16),
+              AppButton(
                 label: 'Abrir novo chamado',
                 icon: Icons.add_comment_outlined,
+                variant: AppButtonVariant.secondary,
                 onPressed: () async {
-                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReportProblemScreen(asProvider: widget.asProvider)));
+                  await Navigator.of(context).push(AppRoute(builder: (_) => ReportProblemScreen(asProvider: widget.asProvider)));
                   _reload();
                 },
               ),
-              const SectionTitle('Meus chamados'),
-              if (items.isEmpty)
-                Padding(padding: const EdgeInsets.all(24), child: Center(child: Text('Nenhum chamado aberto.', style: TextStyle(color: context.tk.textMuted))))
-              else
-                for (final t in items)
-                  AppCard(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(protocolOf(t['id'] as String), style: const TextStyle(fontWeight: FontWeight.w900)),
-                            const Spacer(),
-                            StatusChip(
-                              switch (t['status']) { 'resolved' => 'Resolvido', 'in_review' => 'Em análise', _ => 'Aberto' },
-                              color: t['status'] == 'resolved' ? context.tk.success : context.tk.warningInk,
-                            ),
-                          ],
+              const SizedBox(height: AppSpace.section),
+              AppSection(
+                title: 'Meus chamados',
+                child: items.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(AppSpace.s24),
+                        child: Center(
+                          child: Text('Nenhum chamado aberto.', style: AppType.body.copyWith(color: tk.textMuted)),
                         ),
-                        const SizedBox(height: 6),
-                        Text(t['reason'] as String, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 4),
-                        Text(relativeTime(DateTime.parse(t['created_at'] as String)), style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
-                        if (t['resolution'] != null) ...[
-                          const SizedBox(height: 6),
-                          Text('Resolução: ${t['resolution']}', style: const TextStyle(height: 1.35)),
+                      )
+                    : Column(
+                        children: [
+                          for (final t in items)
+                            AppCard(
+                              margin: const EdgeInsets.only(bottom: AppSpace.s12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: AppSpace.s8,
+                                    runSpacing: AppSpace.s8,
+                                    alignment: WrapAlignment.spaceBetween,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        protocolOf(t['id'] as String),
+                                        style: AppType.tabular(AppType.titleSm).copyWith(color: tk.text),
+                                      ),
+                                      AppStatusChip(
+                                        switch (t['status']) { 'resolved' => 'Resolvido', 'in_review' => 'Em análise', _ => 'Aberto' },
+                                        tone: t['status'] == 'resolved' ? AppTone.success : AppTone.warning,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: AppSpace.s8),
+                                  Text(t['reason'] as String, style: AppType.bodyStrong.copyWith(color: tk.text)),
+                                  const SizedBox(height: AppSpace.s4),
+                                  Text(
+                                    relativeTime(DateTime.parse(t['created_at'] as String)),
+                                    style: AppType.caption.copyWith(color: tk.textMuted),
+                                  ),
+                                  if (t['resolution'] != null) ...[
+                                    const SizedBox(height: AppSpace.s8),
+                                    Text('Resolução: ${t['resolution']}', style: AppType.body.copyWith(color: tk.text)),
+                                  ],
+                                ],
+                              ),
+                            ),
                         ],
-                      ],
-                    ),
-                  ),
+                      ),
+              ),
             ],
           );
         },
@@ -338,27 +389,34 @@ class _MediationCard extends StatelessWidget {
     final tk = context.tk;
     return AppCard(
       key: ValueKey('mediation:${job.id}'),
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: AppSpace.s12),
       color: tk.dangerSoft,
       borderColor: tk.danger.withValues(alpha: 0.4),
       onTap: onTap,
       child: Row(
         children: [
-          CircleAvatar(radius: 22, backgroundColor: tk.danger.withValues(alpha: 0.18), child: Icon(Icons.gavel_rounded, color: tk.danger)),
-          const SizedBox(width: 12),
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: tk.danger.withValues(alpha: 0.18),
+            child: Icon(Icons.gavel_rounded, color: tk.dangerInk),
+          ),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(job.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5)),
-                const SizedBox(height: 2),
-                Text('${job.code} • ${asProvider ? 'Você é o profissional' : 'Você é o cliente'}', style: TextStyle(color: tk.textMuted, fontSize: 12.5)),
-                const SizedBox(height: 6),
-                const StatusChip('Em mediação', icon: Icons.gavel_rounded),
+                Text(job.title, maxLines: 2, style: AppType.titleSm.copyWith(color: tk.text)),
+                const SizedBox(height: AppSpace.s2),
+                Text(
+                  '${job.code} • ${asProvider ? 'Você é o profissional' : 'Você é o cliente'}',
+                  style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
+                ),
+                const SizedBox(height: AppSpace.s8),
+                const AppStatusChip('Em mediação', tone: AppTone.danger, icon: Icons.gavel_rounded),
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: tk.textMuted),
+          Icon(Icons.chevron_right_rounded, color: tk.dangerInk),
         ],
       ),
     );

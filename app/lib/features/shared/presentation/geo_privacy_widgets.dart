@@ -9,7 +9,7 @@ import 'package:latlong2/latlong.dart' show LatLng;
 import '../../../core/models/scheduling_models.dart';
 import '../../../core/security/geo_privacy_policy_engine.dart';
 import '../../../core/services/job_service.dart';
-import '../../../core/ui/app_tokens.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'live_location_map.dart';
 import 'service_map_widgets.dart' show MapAttribution;
 
@@ -199,26 +199,27 @@ Future<void> openProviderLocation(
 // -----------------------------------------------------------------------------
 // Visual "Quiet Luxury" dark glass
 
-const Color _kGlassBase = Color(0xFF0B1120);
-const Color _kSeal = Color(0xFF38BDF8);
-
 class _GlassPill extends StatelessWidget {
-  const _GlassPill({required this.child, this.padding = const EdgeInsets.symmetric(horizontal: 10, vertical: 6)});
+  const _GlassPill({
+    required this.child,
+    this.padding = const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4 + 2),
+  });
   final Widget child;
   final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
+    final darkTk = AppTokens.dark;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: _kGlassBase.withValues(alpha: 0.86),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: _kSeal.withValues(alpha: 0.42)),
+            color: darkTk.background.withValues(alpha: 0.88),
+            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+            border: Border.all(color: darkTk.security.withValues(alpha: 0.45)),
           ),
           child: child,
         ),
@@ -227,24 +228,28 @@ class _GlassPill extends StatelessWidget {
   }
 }
 
-/// Selo "🔒 Segurança Residencial".
+/// Selo de Segurança Residencial.
 class ResidentialSecuritySeal extends StatelessWidget {
   const ResidentialSecuritySeal({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const _GlassPill(
+    final darkTk = AppTokens.dark;
+    return _GlassPill(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('🔒', style: TextStyle(fontSize: 12)),
-          SizedBox(width: 6),
+          Icon(Icons.lock_rounded, size: 14, color: darkTk.security),
+          const SizedBox(width: AppSpace.s8 - 2),
           Flexible(
             child: Text(
               'Segurança Residencial',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.2),
+              maxLines: 2,
+              style: AppType.caption.copyWith(
+                color: darkTk.text,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+              ),
             ),
           ),
         ],
@@ -259,11 +264,12 @@ class ResidentialSecuritySealCompact extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Tooltip(
+    final darkTk = AppTokens.dark;
+    return Tooltip(
       message: 'Segurança Residencial',
       child: _GlassPill(
-        padding: EdgeInsets.all(7),
-        child: Text('🔒', style: TextStyle(fontSize: 12)),
+        padding: const EdgeInsets.all(AppSpace.s8 - 1),
+        child: Icon(Icons.lock_rounded, size: 14, color: darkTk.security),
       ),
     );
   }
@@ -299,6 +305,8 @@ class ProtectedAreaMapCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final darkTk = AppTokens.dark;
     final lat = view.lat;
     final lng = view.lng;
     final radius = (view.radiusM <= 0 ? 650 : view.radiusM).toDouble();
@@ -322,7 +330,7 @@ class ProtectedAreaMapCard extends StatelessWidget {
                 initialZoom: zoom,
                 minZoom: interactive ? math.max(10, zoom - 2) : zoom,
                 maxZoom: interactive ? math.min(17, zoom + 1.5) : zoom,
-                backgroundColor: const Color(0xFF0C1424),
+                backgroundColor: darkTk.background,
                 interactionOptions: InteractionOptions(
                   flags: interactive ? InteractiveFlag.drag | InteractiveFlag.pinchZoom : InteractiveFlag.none,
                 ),
@@ -335,8 +343,8 @@ class ProtectedAreaMapCard extends StatelessWidget {
                       point: center,
                       radius: radius,
                       useRadiusInMeter: true,
-                      color: _kSeal.withValues(alpha: 0.16),
-                      borderColor: _kSeal.withValues(alpha: 0.9),
+                      color: tk.security.withValues(alpha: 0.16),
+                      borderColor: tk.security.withValues(alpha: 0.9),
                       borderStrokeWidth: 2.2,
                     ),
                   ],
@@ -349,68 +357,87 @@ class ProtectedAreaMapCard extends StatelessWidget {
       );
     }
 
-    return Semantics(
-      container: true,
-      label: radiusLabel,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Material(
-          color: const Color(0xFF0C1424),
-          child: InkWell(
-            onTap: onTap,
-            child: SizedBox(
-              key: const ValueKey('protected-area-map-card'),
-              height: height,
-              width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ExcludeSemantics(child: body),
-                  // véu para legibilidade do rodapé
-                  const IgnorePointer(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Color(0x00000000), Color(0x00000000), Color(0xCC0B1120)],
-                          stops: [0, 0.45, 1],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Positioned(left: 10, top: 10, right: 10, child: Align(alignment: Alignment.topLeft, child: ResidentialSecuritySeal())),
-                  Positioned(
-                    left: 14,
-                    right: 14,
-                    bottom: 12,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          key: const ValueKey('protected-area-title'),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900, height: 1.2),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          date != null ? 'Endereço liberado em ${formatGeoDate(date)}, às 00h00' : 'Região aproximada do atendimento',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12, fontWeight: FontWeight.w600, height: 1.25),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+    final content = SizedBox(
+      key: const ValueKey('protected-area-map-card'),
+      height: height,
+      width: double.infinity,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ExcludeSemantics(child: body),
+          // véu para legibilidade do rodapé
+          IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    darkTk.background.withValues(alpha: 0),
+                    darkTk.background.withValues(alpha: 0),
+                    darkTk.background.withValues(alpha: 0.86),
+                  ],
+                  stops: const [0, 0.45, 1],
+                ),
               ),
             ),
           ),
-        ),
+          const Positioned(
+            left: AppSpace.s12 - 2,
+            top: AppSpace.s12 - 2,
+            right: AppSpace.s12 - 2,
+            child: Align(alignment: Alignment.topLeft, child: ResidentialSecuritySeal()),
+          ),
+          Positioned(
+            left: AppSpace.s16 - 2,
+            right: AppSpace.s16 - 2,
+            bottom: AppSpace.s12,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  key: const ValueKey('protected-area-title'),
+                  maxLines: 2,
+                  style: AppType.titleSm.copyWith(color: darkTk.text),
+                ),
+                const SizedBox(height: AppSpace.s2),
+                Text(
+                  date != null ? 'Endereço liberado em ${formatGeoDate(date)}, às 00h00' : 'Região aproximada do atendimento',
+                  maxLines: 2,
+                  style: AppType.tabular(AppType.caption).copyWith(
+                    color: darkTk.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
+    );
+
+    final borderRadius = BorderRadius.circular(AppGeometry.cardRadius);
+    final framed = ClipRRect(
+      borderRadius: borderRadius,
+      child: ColoredBox(
+        color: darkTk.background,
+        child: onTap != null
+            ? AppPressable(
+                onTap: onTap,
+                borderRadius: borderRadius,
+                semanticLabel: radiusLabel,
+                child: content,
+              )
+            : content,
+      ),
+    );
+
+    return Semantics(
+      container: true,
+      label: radiusLabel,
+      child: framed,
     );
   }
 }
@@ -420,11 +447,22 @@ class _MapUnavailableBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    final darkTk = AppTokens.dark;
+    return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0C1424), Color(0xFF14233B)]),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [darkTk.background, darkTk.raised],
+        ),
       ),
-      child: Center(child: Icon(Icons.shield_moon_outlined, size: 44, color: Color(0x6638BDF8))),
+      child: Center(
+        child: Icon(
+          Icons.shield_moon_outlined,
+          size: 44,
+          color: darkTk.security.withValues(alpha: 0.45),
+        ),
+      ),
     );
   }
 }
@@ -440,35 +478,41 @@ class GeoLockNotice extends StatelessWidget {
     if (view.exactUnlocked) return 'Endereço liberado para o atendimento de hoje.';
     final m = view.lockMessage;
     if (m != null && m.trim().isNotEmpty) return m;
-    return '🔒 Endereço Protegido por Segurança: a rua, o número e a rota só são liberados no dia do serviço.';
+    return 'Endereço Protegido por Segurança: a rua, o número e a rota só são liberados no dia do serviço.';
   }
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
     final unlocked = view.exactUnlocked;
-    final accent = unlocked ? tk.success : tk.info;
+    final iconColor = unlocked ? tk.successInk : tk.security;
+    final bgColor = unlocked ? tk.successSoft : tk.securitySoft;
+    final borderColor = (unlocked ? tk.success : tk.security).withValues(alpha: 0.42);
     return Container(
       key: const ValueKey('geo-lock-notice'),
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12 - 2),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: tk.isDark ? 0.14 : 0.10),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.38)),
+        color: bgColor,
+        borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+        border: Border.all(color: borderColor),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(unlocked ? Icons.lock_open_rounded : Icons.lock_rounded, size: 18, color: accent),
+            padding: const EdgeInsets.only(top: AppSpace.s2),
+            child: Icon(
+              unlocked ? Icons.lock_open_rounded : Icons.lock_rounded,
+              size: 18,
+              color: iconColor,
+            ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: AppSpace.s12 - 2),
           Expanded(
             child: Text(
               messageFor(view),
-              style: TextStyle(fontSize: 12.5, height: 1.4, fontWeight: FontWeight.w600, color: tk.text),
+              style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500, color: tk.text),
             ),
           ),
         ],
@@ -489,12 +533,8 @@ class ProtectedAreaMapSheet extends StatelessWidget {
     required ProviderLocationView view,
     Widget? tileLayerOverride,
   }) {
-    return showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      backgroundColor: context.tk.background,
+    return AppSheet.show<void>(
+      context,
       builder: (_) => ProtectedAreaMapSheet(view: view, tileLayerOverride: tileLayerOverride),
     );
   }
@@ -506,23 +546,28 @@ class ProtectedAreaMapSheet extends StatelessWidget {
     final mapH = (screenH * 0.40).clamp(200.0, 360.0);
     return SingleChildScrollView(
       key: const ValueKey('protected-area-map-sheet'),
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + MediaQuery.viewPaddingOf(context).bottom),
+      primary: false,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Região do serviço', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: tk.text)),
-          const SizedBox(height: 4),
+          Text('Região do serviço', style: AppType.title.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s4),
           Text(
             'O círculo mostra só a região aproximada. O ponto exato fica protegido.',
-            style: TextStyle(fontSize: 13, color: tk.textMuted, height: 1.35),
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           ProtectedAreaMapCard(view: view, tileLayerOverride: tileLayerOverride, height: mapH, interactive: true),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           GeoLockNotice(view: view),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: () => Navigator.of(context).maybePop(), child: const Text('Fechar')),
+          const SizedBox(height: AppSpace.s12),
+          AppButton(
+            label: 'Fechar',
+            variant: AppButtonVariant.secondary,
+            compact: true,
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
         ],
       ),
     );
@@ -563,7 +608,7 @@ class ProviderLocationPanel extends StatelessWidget {
             )
           else
             _AreaOnlyCard(view: view),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.s12 - 2),
           GeoLockNotice(view: view),
         ],
       );
@@ -574,69 +619,74 @@ class ProviderLocationPanel extends StatelessWidget {
     final ref = (view.reference ?? '').trim();
     final cep = (view.cep ?? '').trim();
     final open = onOpenExactMap ?? () => openProviderLocation(context, view, tileLayerOverride: tileLayerOverride);
-    return Material(
+    return AppCard(
       key: const ValueKey('provider-location-panel-unlocked'),
-      color: tk.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: open,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: tk.providerAccent.withValues(alpha: 0.45)),
-          ),
-          child: Column(
+      variant: AppCardVariant.tonal,
+      radius: AppGeometry.itemRadius,
+      borderColor: tk.providerAccent.withValues(alpha: 0.45),
+      padding: const EdgeInsets.all(AppSpace.s16),
+      onTap: open,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.place_rounded, color: tk.providerAccent, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          street.isNotEmpty ? street : protectedAreaTitle(view),
-                          style: const TextStyle(fontWeight: FontWeight.w800, height: 1.3),
-                        ),
-                        if (comp.isNotEmpty && street.isEmpty)
-                          Padding(padding: const EdgeInsets.only(top: 3), child: Text(comp, style: TextStyle(color: tk.text, fontSize: 13.5))),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Text(protectedAreaTitle(view), style: TextStyle(color: tk.textMuted, fontSize: 12.5)),
-                        ),
-                        if (ref.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text('Ref: $ref', style: TextStyle(color: tk.textMuted, fontSize: 12.5))),
-                        if (cep.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 3), child: Text('CEP $cep', style: TextStyle(color: tk.textMuted, fontSize: 12.5))),
-                      ],
+              Icon(Icons.place_rounded, color: tk.providerAccentInk, size: 20),
+              const SizedBox(width: AppSpace.s12 - 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      street.isNotEmpty ? street : protectedAreaTitle(view),
+                      style: AppType.bodyStrong.copyWith(color: tk.text),
                     ),
-                  ),
-                  Icon(Icons.chevron_right_rounded, color: tk.providerAccent),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                key: const ValueKey('provider-open-precise-route-btn'),
-                children: [
-                  Icon(Icons.route_rounded, size: 16, color: tk.providerAccent),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      'Ver mapa e rota até o cliente',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: tk.providerAccent),
+                    if (comp.isNotEmpty && street.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpace.s4),
+                        child: Text(comp, style: AppType.bodySm.copyWith(color: tk.text)),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpace.s4),
+                      child: Text(protectedAreaTitle(view), style: AppType.caption.copyWith(color: tk.textMuted)),
                     ),
-                  ),
-                ],
+                    if (ref.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpace.s4),
+                        child: Text('Ref: $ref', style: AppType.caption.copyWith(color: tk.textMuted)),
+                      ),
+                    if (cep.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpace.s4),
+                        child: Text(
+                          'CEP $cep',
+                          style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              GeoLockNotice(view: view),
+              Icon(Icons.chevron_right_rounded, color: tk.providerAccentInk),
             ],
           ),
-        ),
+          const SizedBox(height: AppSpace.s12 - 2),
+          Row(
+            key: const ValueKey('provider-open-precise-route-btn'),
+            children: [
+              Icon(Icons.route_rounded, size: 16, color: tk.providerAccentInk),
+              const SizedBox(width: AppSpace.s8 - 2),
+              Flexible(
+                child: Text(
+                  'Ver mapa e rota até o cliente',
+                  style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: tk.providerAccentInk),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.s12 - 2),
+          GeoLockNotice(view: view),
+        ],
       ),
     );
   }
@@ -650,27 +700,24 @@ class _AreaOnlyCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Container(
+    return AppCard(
       key: const ValueKey('provider-area-only-card'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tk.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tk.border),
-      ),
+      variant: AppCardVariant.tonal,
+      radius: AppGeometry.itemRadius,
+      borderColor: tk.border,
+      padding: const EdgeInsets.all(AppSpace.s16),
       child: Row(
         children: [
-          Icon(Icons.location_city_rounded, size: 20, color: tk.providerAccent),
-          const SizedBox(width: 10),
+          Icon(Icons.location_city_rounded, size: 20, color: tk.providerAccentInk),
+          const SizedBox(width: AppSpace.s12 - 2),
           Expanded(
             child: Text(
               protectedAreaTitle(view),
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: FontWeight.w800, height: 1.3, color: tk.text),
+              style: AppType.bodyStrong.copyWith(color: tk.text),
             ),
           ),
+          const SizedBox(width: AppSpace.s8),
           const ResidentialSecuritySealCompact(),
         ],
       ),
@@ -687,25 +734,22 @@ class ProviderLocationPending extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Container(
+    return AppCard(
       key: const ValueKey('provider-location-pending'),
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tk.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tk.border),
-      ),
+      variant: AppCardVariant.tonal,
+      radius: AppGeometry.itemRadius,
+      borderColor: tk.border,
+      padding: const EdgeInsets.all(AppSpace.s16),
       child: Row(
         children: [
-          Icon(Icons.lock_rounded, size: 18, color: tk.info),
-          const SizedBox(width: 10),
+          Icon(Icons.lock_rounded, size: 18, color: tk.security),
+          const SizedBox(width: AppSpace.s12 - 2),
           Expanded(
             child: Text(
               loading
                   ? 'Verificando a liberação do endereço…'
                   : 'Endereço Protegido por Segurança. Ele aparece aqui assim que for liberado.',
-              style: TextStyle(fontSize: 13, height: 1.35, fontWeight: FontWeight.w600, color: tk.text),
+              style: AppType.bodySm.copyWith(fontWeight: FontWeight.w500, color: tk.text),
             ),
           ),
         ],
@@ -734,13 +778,12 @@ class ProviderAreaLine extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.radar_rounded, size: 15, color: tk.warningInk),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpace.s4),
             Flexible(
               child: Text(
                 label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: tk.textMuted, fontSize: 13, fontWeight: FontWeight.w700),
+                maxLines: 2,
+                style: AppType.caption.copyWith(color: tk.textMuted, fontWeight: FontWeight.w700),
               ),
             ),
           ],
