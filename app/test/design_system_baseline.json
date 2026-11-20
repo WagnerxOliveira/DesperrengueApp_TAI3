@@ -4,11 +4,9 @@
   "core/services/accurate_geo_routing_service.dart": {"fontSize":3,"glyphInText":1},
   "core/services/app_version_and_update_service.dart": {"fontSize":4,"circularProgress":2,"ellipsis":4},
   "core/services/desperrengue_official_pdf_service.dart": {"fontSize":15,"showModalBottomSheet":2,"unembeddedWeight":3},
-  "core/ui/app_theme.dart": {"fontSize":4},
   "core/ui/duotone_service_icons.dart": {"fontSize":3,"ellipsis":1,"unembeddedWeight":1,"glyphInText":1},
   "core/ui/image_picking.dart": {"fontSize":9,"ellipsis":2,"unembeddedWeight":1,"glyphInText":1},
   "core/ui/typography/cinema_type_scale.dart": {"fontSize":14},
-  "core/ui/widgets.dart": {"fontSize":7,"unembeddedWeight":1},
   "features/auth/presentation/cadastro_dados_basicos.dart": {"fontSize":6,"colorLiteral":1,"circularProgress":1},
   "features/auth/presentation/cadastro_sucesso_routing.dart": {"fontSize":2,"colorLiteral":12,"ellipsis":1},
   "features/auth/presentation/cadastro_verificacao_otp.dart": {"fontSize":4,"colorLiteral":1,"materialPageRoute":1,"circularProgress":2},
@@ -85,6 +83,5 @@
   "features/shared/presentation/smart_triage_widgets.dart": {"fontSize":39,"circularProgress":1,"unembeddedWeight":10,"glyphInText":3},
   "features/shared/presentation/support_screens.dart": {"fontSize":7,"materialPageRoute":3,"ellipsis":1,"unembeddedWeight":7},
   "features/shared/presentation/theme_picker.dart": {"fontSize":2,"showModalBottomSheet":1,"unembeddedWeight":1},
-  "main.dart": {"colorLiteral":1},
   "~fim": {}
 }

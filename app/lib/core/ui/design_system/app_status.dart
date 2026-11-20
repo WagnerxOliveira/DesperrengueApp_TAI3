@@ -127,7 +127,7 @@ enum AppPriceSize { xl, lg, sm }
 class AppPrice extends StatelessWidget {
   const AppPrice({super.key, required this.value, this.size = AppPriceSize.sm, this.color, this.strikethrough = false});
 
-  AppPrice.cents(int cents, {super.key, this.size = AppPriceSize.sm, this.color, this.strikethrough = false})
+  const AppPrice.cents(int cents, {super.key, this.size = AppPriceSize.sm, this.color, this.strikethrough = false})
       : value = cents / 100;
 
   /// Valor em reais.

@@ -201,10 +201,12 @@ void main() {
       var a = 0;
       var r = 0;
       await t.pumpWidget(_app(Column(children: [
-        SizedBox(height: 400, child: AppEmptyState(title: 'Nada por aqui', message: 'Volte depois', actionLabel: 'Pedir', onAction: () => a++)),
-        SizedBox(height: 400, child: AppErrorState(message: 'Sem conexão', onRetry: () => r++)),
+        SizedBox(height: 360, child: AppEmptyState(title: 'Nada por aqui', message: 'Volte depois', actionLabel: 'Pedir', onAction: () => a++)),
+        SizedBox(height: 360, child: AppErrorState(message: 'Sem conexão', onRetry: () => r++)),
       ])));
       await t.tap(find.text('Pedir'));
+      await t.ensureVisible(find.text('Tentar de novo'));
+      await t.pumpAndSettle();
       await t.tap(find.text('Tentar de novo'));
       expect(a, 1);
       expect(r, 1);
