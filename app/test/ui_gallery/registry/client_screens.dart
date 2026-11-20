@@ -7,8 +7,13 @@ import 'package:desperrengue_app/core/models/geocode_models.dart';
 import 'package:desperrengue_app/core/models/marketplace_models.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/models/wallet_models.dart';
+import 'package:desperrengue_app/core/services/active_liveness_engine.dart';
+import 'package:desperrengue_app/core/services/document_frame_alignment_engine.dart';
+import 'package:desperrengue_app/core/services/document_ocr_and_liveness_service.dart';
 import 'package:desperrengue_app/core/services/speech_service.dart';
 import 'package:desperrengue_app/core/services/text_refine_service.dart';
+import 'package:desperrengue_app/core/ui/app_scaffold.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'package:desperrengue_app/core/ui/image_picking.dart';
 import 'package:desperrengue_app/features/client/presentation/address_form.dart';
 import 'package:desperrengue_app/features/client/presentation/adicionar_saldo_screen.dart';
@@ -41,8 +46,6 @@ import '../../support/screen_gallery/screen_gallery.dart';
 //    precisa de parâmetro `jobStream`.
 //  * EmergencyRadarScreen (client_job_screen.dart:1493) — initState consulta Supabase
 //    sem catch/injeção (lança PostgrestException 400); precisa de loader injetável.
-//  * DocumentGuidedScannerModal (client_setup_screen.dart:1918) — inicializa
-//    CameraController/availableCameras() em initState sem factory injetável.
 //  * Telas já registradas em `seed_screens.dart` (não duplicadas aqui):
 //    `client/carteira`, `client/category_grid`, `client/insufficient_funds_sheet`.
 //  * Privadas (`_MatchDialog`, `_CanceledView`, `_PixView`, `_AmountView`, …) e
@@ -612,6 +615,152 @@ List<GalleryScreen> clientScreens() => <GalleryScreen>[
     owner: _core,
     modes: _client,
     builder: (_, _) => ClientSetupScreen(profile: SampleData.firstAccessProfile(), initialStep: 1),
+  ),
+  GalleryScreen(
+    id: 'client/liveness_prep',
+    title: 'Prova de Vida — preparação antes da câmera',
+    source: '$_dir/client_setup_screen.dart',
+    wave: 3,
+    owner: _core,
+    modes: _client,
+    builder: (_, _) => ClientSetupScreen(profile: SampleData.firstAccessProfile(), initialStep: 2),
+  ),
+  GalleryScreen(
+    id: 'client/liveness_fullscreen_vermelho',
+    title: 'Prova de Vida — câmera fullscreen (contorno vermelho)',
+    source: '$_dir/active_liveness_fullscreen_modal.dart',
+    wave: 3,
+    owner: _core,
+    modes: _client,
+    builder: (_, _) => const ActiveLivenessFullscreenModal(
+      cpfDigits: '52998224725',
+      testInitialSnapshot: ActiveLivenessSnapshot(
+        stage: LivenessStage.centerFaceInOval,
+        chosenDirection: LivenessTurnDirection.right,
+        blinkSubState: BlinkSubState.awaitingOpenBaseline,
+        contourState: LivenessContourState.invalidRed,
+        progress: 0.0,
+        instruction: 'Centralize seu rosto dentro da moldura',
+        cueKind: LivenessCueKind.alignCenter,
+        readyToCapture: false,
+        sessionWasReset: false,
+        realEarTimeline: <double>[],
+        realPoseTimeline: <({double yawDeg, double pitchDeg})>[],
+        computedLivenessScore: 82.0,
+        validFramesInCurrentStage: 0,
+        activeTrackingId: null,
+      ),
+    ),
+  ),
+  GalleryScreen(
+    id: 'client/liveness_fullscreen_verde',
+    title: 'Prova de Vida — câmera fullscreen (contorno verde)',
+    source: '$_dir/active_liveness_fullscreen_modal.dart',
+    wave: 3,
+    owner: _core,
+    modes: _client,
+    builder: (_, _) => const ActiveLivenessFullscreenModal(
+      cpfDigits: '52998224725',
+      testInitialSnapshot: ActiveLivenessSnapshot(
+        stage: LivenessStage.blinkBothEyesSlowly,
+        chosenDirection: LivenessTurnDirection.right,
+        blinkSubState: BlinkSubState.awaitingClosure,
+        contourState: LivenessContourState.validGreen,
+        progress: 0.48,
+        instruction: 'Pisque os dois olhos devagar',
+        cueKind: LivenessCueKind.blinkEyes,
+        readyToCapture: false,
+        sessionWasReset: false,
+        realEarTimeline: <double>[0.31, 0.30],
+        realPoseTimeline: <({double yawDeg, double pitchDeg})>[(yawDeg: 0.4, pitchDeg: 0.2)],
+        computedLivenessScore: 93.4,
+        validFramesInCurrentStage: 2,
+        activeTrackingId: 1,
+      ),
+    ),
+  ),
+  GalleryScreen(
+    id: 'client/doc_scanner_vermelho',
+    title: 'Scanner de documento — contorno vermelho (enquadramento)',
+    source: '$_dir/document_guided_scanner_modal.dart',
+    wave: 3,
+    owner: _core,
+    modes: _client,
+    builder: (_, _) => const DocumentGuidedScannerModal(
+      isFront: true,
+      documentType: OfficialDocumentType.cnh,
+      autoCaptureEnabled: false,
+      testInitialAssessment: DocumentFrameAssessment(
+        status: DocumentFrameStatus.noDocument,
+        humanHint: 'Posicione a frente do documento dentro da moldura',
+        edgeAlignmentScore: 0.14,
+        interiorExteriorContrast: 9.0,
+        laplacianSharpness: 48.0,
+        glareRatioPct: 1.4,
+        meanLuminance: 132.0,
+        contentDensityScore: 0.12,
+        edgesDetectedCount: 1,
+      ),
+    ),
+  ),
+  GalleryScreen(
+    id: 'client/doc_scanner_verde',
+    title: 'Scanner de documento — contorno verde (pronto)',
+    source: '$_dir/document_guided_scanner_modal.dart',
+    wave: 3,
+    owner: _core,
+    modes: _client,
+    builder: (_, _) => DocumentGuidedScannerModal(
+      isFront: true,
+      documentType: OfficialDocumentType.cnh,
+      autoCaptureEnabled: false,
+      testInitialAssessment: DocumentFrameAssessment.aligned(),
+    ),
+  ),
+  GalleryScreen(
+    id: 'client/doc_ocr_review',
+    title: 'Conferência dos dados do documento (OCR)',
+    source: '$_dir/document_ocr_review_step.dart',
+    wave: 3,
+    owner: _core,
+    modes: _client,
+    builder: (_, _) => AppScaffold(
+      appBar: const AppAppBar(title: 'Conferência do documento'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(AppSpace.s16),
+        child: DocumentOcrReviewStep(
+          typedName: 'Ana Paula Souza',
+          frontImageBytes: _png,
+          backImageBytes: _png,
+          onRetakePhotos: () {},
+          ocrResult: AuditedDocumentOcrResult(
+            documentType: OfficialDocumentType.cnh,
+            extractedFullName: 'ANA PAULA SOUZA ALBUQUERQUE',
+            extractedCpfDigits: '11978723610',
+            extractedCpfFormatted: '119.787.236-10',
+            extractedCpfMasked: '***.787.236-**',
+            cpfHash: 'hash_gallery_demo',
+            extractedDocumentNumber: '07564027706',
+            extractedDocumentNumberMasked: '***27706',
+            extractedBirthDate: DateTime.utc(1992, 5, 18),
+            extractedBirthDateFormatted: '18/05/1992',
+            extractedIssuingAuthority: 'DETRAN/SP',
+            frontPerceptualHash64: 11223344,
+            backPerceptualHash64: 55667788,
+            frontBackHammingDistance: 18,
+            laplacianSharpnessScore: 280.0,
+            specularGlareRatioPct: 1.2,
+            ocrConfidenceScore: 98.4,
+            faceMatchCosineSimilarity: 0.94,
+            nameCrossCheckSimilarity: 1.0,
+            mrzOrQrChecksumValid: true,
+            officialHeaderDetected: true,
+            isAuthenticAndCrossChecked: true,
+            forensicVerificationSeal: 'DSP-OCR-SHA256-9A8B7C6D5E4F3A2B1C0D',
+          ),
+        ),
+      ),
+    ),
   ),
   GalleryScreen(
     id: 'client/historico',

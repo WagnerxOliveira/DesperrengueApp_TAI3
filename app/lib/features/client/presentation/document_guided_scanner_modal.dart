@@ -9,9 +9,11 @@ import 'package:image/image.dart' as img;
 
 import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 
+import '../../../core/models/user_profile.dart';
 import '../../../core/services/document_frame_alignment_engine.dart';
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/services/live_camera_frame_bridge.dart';
+import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
 
 /// Modal fullscreen de captura guiada de documento oficial (Frente e Verso)
@@ -406,22 +408,13 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
 
   @override
   Widget build(BuildContext context) {
-    final darkTk = AppTokens.dark.forAccent(
-      accent: AppTokens.dark.clientAccent,
-      accentInk: AppTokens.dark.clientAccentInk,
-      accentSoft: AppTokens.dark.clientSoft,
-    );
-    final baseTheme = Theme.of(context);
-    final scannerTheme = baseTheme.copyWith(
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.dark(
-        primary: darkTk.accent,
-        onPrimary: darkTk.onAccent,
-        surface: darkTk.surface,
-        onSurface: darkTk.text,
-      ),
-      extensions: <ThemeExtension<dynamic>>[darkTk],
-    );
+    final scannerTheme = AppTheme.resolve(UserMode.client, Brightness.dark);
+    final darkTk = scannerTheme.extension<AppTokens>() ??
+        AppTokens.dark.forAccent(
+          accent: AppTokens.dark.clientAccent,
+          accentInk: AppTokens.dark.clientAccentInk,
+          accentSoft: AppTokens.dark.clientSoft,
+        );
 
     final bool isAlignedGreen = _snapshot?.isAlignedAndReady ?? false;
     final double stabilityProgress =
@@ -568,7 +561,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                                               Text(
                                                 sideSubtitle,
                                                 textAlign: TextAlign.center,
-                                                style: AppType.caption.copyWith(
+                                                style: AppType.bodySm.copyWith(
                                                   color: darkTk.textMuted,
                                                 ),
                                               ),
@@ -613,23 +606,12 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                                   ],
                                 ),
                                 const SizedBox(height: AppSpace.s12),
-                                AppSegmented<bool>(
+                                _ScannerOrientationToggle(
                                   key: const ValueKey(
                                     'scanner-orientation-segmented',
                                   ),
-                                  segments: const <AppSegment<bool>>[
-                                    AppSegment<bool>(
-                                      value: false,
-                                      icon: Icons.crop_landscape_rounded,
-                                      label: 'Horizontal',
-                                    ),
-                                    AppSegment<bool>(
-                                      value: true,
-                                      icon: Icons.crop_portrait_rounded,
-                                      label: 'Vertical',
-                                    ),
-                                  ],
-                                  selected: _isVerticalOrientation,
+                                  isVertical: _isVerticalOrientation,
+                                  darkTk: darkTk,
                                   onChanged: _setOrientation,
                                 ),
                               ],
@@ -658,17 +640,54 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                                 ],
                                 Semantics(
                                   liveRegion: true,
-                                  child: AppStatusChip(
-                                    statusText,
+                                  child: Container(
                                     key: const ValueKey(
                                       'scanner-alignment-pill',
                                     ),
-                                    tone: isAlignedGreen
-                                        ? AppTone.success
-                                        : AppTone.danger,
-                                    icon: isAlignedGreen
-                                        ? Icons.check_circle_outline_rounded
-                                        : Icons.crop_free_rounded,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppSpace.s12,
+                                      vertical: AppSpace.s8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isAlignedGreen
+                                          ? darkTk.successSoft
+                                          : darkTk.dangerSoft,
+                                      borderRadius: BorderRadius.circular(
+                                        AppGeometry.pillRadius,
+                                      ),
+                                      border: Border.all(
+                                        color: isAlignedGreen
+                                            ? darkTk.success
+                                            : darkTk.danger,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          isAlignedGreen
+                                              ? Icons.check_circle_outline_rounded
+                                              : Icons.crop_free_rounded,
+                                          size: 18,
+                                          color: isAlignedGreen
+                                              ? darkTk.successInk
+                                              : darkTk.dangerInk,
+                                        ),
+                                        const SizedBox(width: AppSpace.s8),
+                                        Flexible(
+                                          child: Text(
+                                            statusText,
+                                            textAlign: TextAlign.center,
+                                            style: AppType.bodySm.copyWith(
+                                              color: isAlignedGreen
+                                                  ? darkTk.successInk
+                                                  : darkTk.dangerInk,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: AppSpace.s8),
@@ -696,7 +715,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                                   Text(
                                     'A captura libera assim que a borda ficar verde.',
                                     textAlign: TextAlign.center,
-                                    style: AppType.caption.copyWith(
+                                    style: AppType.bodySm.copyWith(
                                       color: darkTk.textMuted,
                                     ),
                                   ),
@@ -846,6 +865,117 @@ class _ScannerCircleAction extends StatelessWidget {
         shape: BoxShape.circle,
       ),
       child: child,
+    );
+  }
+}
+
+class _ScannerOrientationToggle extends StatelessWidget {
+  const _ScannerOrientationToggle({
+    super.key,
+    required this.isVertical,
+    required this.darkTk,
+    required this.onChanged,
+  });
+
+  final bool isVertical;
+  final AppTokens darkTk;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: darkTk.surface,
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+        border: Border.all(color: darkTk.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpace.s4),
+        child: Row(
+          children: [
+            Expanded(
+              child: _ScannerOrientationOption(
+                label: 'Horizontal',
+                icon: Icons.crop_landscape_rounded,
+                selected: !isVertical,
+                darkTk: darkTk,
+                onTap: () => onChanged(false),
+              ),
+            ),
+            const SizedBox(width: AppSpace.s4),
+            Expanded(
+              child: _ScannerOrientationOption(
+                label: 'Vertical',
+                icon: Icons.crop_portrait_rounded,
+                selected: isVertical,
+                darkTk: darkTk,
+                onTap: () => onChanged(true),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ScannerOrientationOption extends StatelessWidget {
+  const _ScannerOrientationOption({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.darkTk,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final AppTokens darkTk;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bg = selected ? darkTk.accent : darkTk.surface;
+    final Color fg = selected ? darkTk.onAccent : darkTk.text;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s12,
+                vertical: AppSpace.s8,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18, color: fg),
+                  const SizedBox(width: AppSpace.s8),
+                  Flexible(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: AppType.bodySm.copyWith(
+                        color: fg,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
