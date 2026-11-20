@@ -186,6 +186,7 @@ class _AppButtonContent extends StatelessWidget {
               height: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2.4,
+                value: reduced ? 0.72 : null,
                 color: DefaultTextStyle.of(context).style.color,
               ),
             ),

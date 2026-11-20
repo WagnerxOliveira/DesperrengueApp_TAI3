@@ -156,6 +156,7 @@ class AppLoading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final reduced = AppMotion.reduced(context);
     return Center(
       child: Semantics(
         liveRegion: true,
@@ -163,7 +164,14 @@ class AppLoading extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
+            SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                value: reduced ? 0.72 : null,
+              ),
+            ),
             if (message != null) ...[
               const SizedBox(height: AppSpace.s16),
               Text(message!, textAlign: TextAlign.center, style: AppType.body.copyWith(color: tk.textMuted)),

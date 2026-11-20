@@ -55,6 +55,26 @@ void main() {
       expect(AppTokens.contrast(tk.accent, tk.background), greaterThanOrEqualTo(3.0));
       expect(AppTokens.contrast(tk.accentInk, tk.background), greaterThanOrEqualTo(4.5));
     });
+
+    test('star, success, warning e providerAccentInk escuro em dialog tonal atendem WCAG AA', () {
+      final light = AppTokens.light;
+      expect(AppTokens.contrast(light.star, light.background), greaterThanOrEqualTo(3.5));
+      expect(AppTokens.contrast(light.star, light.providerSoft), greaterThanOrEqualTo(3.5));
+      expect(AppTokens.contrast(light.star, light.surface), greaterThanOrEqualTo(3.5));
+
+      expect(AppTokens.contrast(light.success, light.background), greaterThanOrEqualTo(4.5));
+      expect(AppTokens.contrast(Colors.white, light.success), greaterThanOrEqualTo(4.5));
+      expect(AppTokens.contrast(light.success, light.successSoft), greaterThanOrEqualTo(3.0));
+
+      expect(AppTokens.contrast(light.warning, light.background), greaterThanOrEqualTo(3.0));
+      expect(AppTokens.contrast(light.warning, light.warningSoft), greaterThanOrEqualTo(3.0));
+      expect(AppTokens.contrast(AppTokens.onColor(light.warning), light.warning), greaterThanOrEqualTo(4.5));
+
+      final dark = AppTokens.dark;
+      const darkDialogTonal = Color(0xFF3A4049);
+      expect(AppTokens.contrast(dark.providerAccentInk, darkDialogTonal), greaterThanOrEqualTo(4.6));
+      expect(AppTokens.contrast(dark.brand, darkDialogTonal), greaterThanOrEqualTo(4.6));
+    });
   });
 
   group('elevação', () {

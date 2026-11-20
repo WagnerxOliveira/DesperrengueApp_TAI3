@@ -9,6 +9,7 @@ import 'package:desperrengue_app/core/ui/design_system/app_pressable.dart';
 import 'package:desperrengue_app/core/ui/design_system/app_states.dart';
 import 'package:desperrengue_app/core/ui/design_system/app_status.dart';
 import 'package:desperrengue_app/core/ui/design_system/responsive_shell.dart';
+import 'package:desperrengue_app/core/ui/widgets.dart' show InfoBanner, BannerTone, PulseRadar;
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -412,6 +413,31 @@ void main() {
       await t.sendKeyEvent(LogicalKeyboardKey.enter);
       await t.pumpAndSettle();
       expect(picked, 1);
+    });
+
+    testWidgets('PulseRadar e AppLoading param imediatamente com disableAnimations', (t) async {
+      await t.pumpWidget(_app(
+        const Column(children: [
+          PulseRadar(size: 120, child: Icon(Icons.bolt_rounded)),
+          AppLoading(message: 'Aguarde'),
+        ]),
+        disableAnimations: true,
+      ));
+      await t.pump();
+      expect(t.hasRunningAnimations, isFalse);
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('InfoBanner usa tintas semânticas de alto contraste nos ícones', (t) async {
+      await t.pumpWidget(_app(Column(children: [
+        for (final tone in BannerTone.values) InfoBanner('Aviso ${tone.name}', tone: tone),
+      ])));
+      final tk = AppTokens.light;
+      final icons = t.widgetList<Icon>(find.byType(Icon)).toList();
+      expect(icons.any((i) => i.color == tk.warningInk), isTrue);
+      expect(icons.any((i) => i.color == tk.successInk), isTrue);
+      expect(icons.any((i) => i.color == tk.warning), isFalse);
     });
   });
 }
