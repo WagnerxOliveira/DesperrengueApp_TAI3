@@ -62,8 +62,8 @@ List<LiveFaceObservation> _buildCompleteSessionFrames({
   final List<LiveFaceObservation> frames = <LiveFaceObservation>[];
   int ts = startTsMs;
 
-  // Etapa 1: 6 quadros consecutivos centralizados
-  for (int i = 0; i < 6; i++) {
+  // Etapa 1: 5 quadros consecutivos centralizados
+  for (int i = 0; i < 5; i++) {
     ts += 90;
     frames.add(_validFrame(tsMs: ts, trackingId: trackingId));
   }
@@ -135,31 +135,31 @@ void main() {
         forcedDirection: LivenessTurnDirection.right,
       );
 
-      // Muito distante: largura 0.20 / 0.66 = 30.3% (< 38%)
+      // Muito distante: largura 0.24 / 0.66 = 36.4% (< 42%)
       final tooFar = engine.processObservation(
         _validFrame(
           tsMs: 1000,
-          box: const Rect.fromLTWH(0.40, 0.35, 0.20, 0.30),
+          box: const Rect.fromLTWH(0.38, 0.32, 0.24, 0.30),
         ),
       );
       expect(tooFar.contourState, LivenessContourState.invalidRed);
       expect(tooFar.instruction, 'Aproxime um pouco o rosto');
 
-      // Muito próximo: largura 0.62 / 0.66 = 93.9% (> 84%)
+      // Muito próximo: largura 0.64 / 0.66 = 97.0% (> 94%)
       final tooClose = engine.processObservation(
         _validFrame(
           tsMs: 1100,
-          box: const Rect.fromLTWH(0.19, 0.15, 0.62, 0.70),
+          box: const Rect.fromLTWH(0.18, 0.12, 0.64, 0.70),
         ),
       );
       expect(tooClose.contourState, LivenessContourState.invalidRed);
       expect(tooClose.instruction, 'Afaste um pouco o rosto');
 
-      // Fora do centro (±14%): center.dx = 0.70 (dx = +0.20 > 0.14) -> mover para esquerda
+      // Fora do centro (±15%): center.dx = 0.70 (dx = +0.20 > 0.15) -> mover para esquerda
       final offCenter = engine.processObservation(
         _validFrame(
           tsMs: 1200,
-          box: const Rect.fromLTWH(0.50, 0.25, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.50, 0.22, 0.40, 0.50),
         ),
       );
       expect(offCenter.contourState, LivenessContourState.invalidRed);
@@ -173,15 +173,16 @@ void main() {
       final engine = ActiveLivenessStateMachine(
         forcedDirection: LivenessTurnDirection.right,
       );
-      expect(engine.config.maxCenterOffset, 0.14);
-      expect(engine.config.minFaceWidthToOvalRatio, 0.38);
-      expect(engine.config.maxFaceWidthToOvalRatio, 0.84);
+      expect(engine.config.ovalCenterY, 0.47);
+      expect(engine.config.maxCenterOffset, 0.15);
+      expect(engine.config.minFaceWidthToOvalRatio, 0.42);
+      expect(engine.config.maxFaceWidthToOvalRatio, 0.94);
 
-      // 1. Rosto à esquerda na tela (center.dx = 0.30 => dx = -0.20 < -0.14) -> mover para a direita
+      // 1. Rosto à esquerda na tela (center.dx = 0.30 => dx = -0.20 < -0.15) -> mover para a direita
       final shiftRight = engine.processObservation(
         _validFrame(
           tsMs: 1000,
-          box: const Rect.fromLTWH(0.10, 0.25, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.10, 0.22, 0.40, 0.50),
         ),
       );
       expect(shiftRight.contourState, LivenessContourState.invalidRed);
@@ -196,11 +197,11 @@ void main() {
         isFalse,
       );
 
-      // 2. Rosto à direita na tela (center.dx = 0.70 => dx = +0.20 > +0.14) -> mover para a esquerda
+      // 2. Rosto à direita na tela (center.dx = 0.70 => dx = +0.20 > +0.15) -> mover para a esquerda
       final shiftLeft = engine.processObservation(
         _validFrame(
           tsMs: 1100,
-          box: const Rect.fromLTWH(0.50, 0.25, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.50, 0.22, 0.40, 0.50),
         ),
       );
       expect(shiftLeft.contourState, LivenessContourState.invalidRed);
@@ -209,34 +210,43 @@ void main() {
         'Centralize movendo o rosto um pouco para a esquerda',
       );
 
-      // 3. Rosto alto demais na moldura (center.dy = 0.30 => dy = -0.20 < -0.14) -> abaixar
+      // 3. Rosto alto demais na moldura (center.dy = 0.27 => dy = -0.20 < -0.15) -> abaixar
       final moveDown = engine.processObservation(
         _validFrame(
           tsMs: 1200,
-          box: const Rect.fromLTWH(0.30, 0.05, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.30, 0.02, 0.40, 0.50),
         ),
       );
       expect(moveDown.contourState, LivenessContourState.invalidRed);
       expect(moveDown.instruction, 'Abaixe um pouco o rosto na moldura');
 
-      // 4. Rosto baixo demais na moldura (center.dy = 0.70 => dy = +0.20 > +0.14) -> levantar
+      // 4. Rosto baixo demais na moldura (center.dy = 0.67 => dy = +0.20 > +0.15) -> levantar
       final moveUp = engine.processObservation(
         _validFrame(
           tsMs: 1300,
-          box: const Rect.fromLTWH(0.30, 0.45, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.30, 0.42, 0.40, 0.50),
         ),
       );
       expect(moveUp.contourState, LivenessContourState.invalidRed);
       expect(moveUp.instruction, 'Levante um pouco o rosto na moldura');
 
-      // 5. Dentro da tolerância ergonômica (dx = 0.13 <= 0.14, width ratio = 0.26/0.66 = 0.394 >= 0.38) -> válido
+      // 5. Dentro da tolerância ergonômica (dx = 0.14 <= 0.15, width ratio = 0.30/0.66 = 0.455 >= 0.42) -> válido
       final ergonomicValid = engine.processObservation(
         _validFrame(
           tsMs: 1400,
-          box: const Rect.fromLTWH(0.50, 0.25, 0.26, 0.50),
+          box: const Rect.fromLTWH(0.49, 0.22, 0.30, 0.50),
         ),
       );
       expect(ergonomicValid.contourState, LivenessContourState.validGreen);
+
+      // 6. Encaixe cheio natural no oval (86% da largura do oval, centerY = 0.47) -> válido!
+      final naturalFullOval = engine.processObservation(
+        _validFrame(
+          tsMs: 1500,
+          box: const Rect.fromLTRB(0.216, 0.22, 0.784, 0.72),
+        ),
+      );
+      expect(naturalFullOval.contourState, LivenessContourState.validGreen);
     });
 
     test('rejeita monitor/tela azulada, baixa iluminação, pouca nitidez e foto estática parada', () {
@@ -370,8 +380,8 @@ void main() {
       );
       expect(closed.blinkSubState, BlinkSubState.awaitingReopen);
 
-      // Permanece fechado por > 1.500 ms (em pequenos passos para não disparar ausência de rosto)
-      for (int i = 0; i < 18; i++) {
+      // Permanece fechado por > 1.800 ms (em pequenos passos para não disparar ausência de rosto)
+      for (int i = 0; i < 20; i++) {
         ts += 100;
         engine.processObservation(
           _validFrame(tsMs: ts, leftEye: 0.12, rightEye: 0.14),
@@ -731,6 +741,34 @@ void main() {
       expect(capturedOutput!.livenessResult.minEyeAspectRatio, lessThan(0.185));
       expect(capturedOutput!.livenessResult.maxEyeAspectRatio, greaterThan(0.24));
       expect(capturedOutput!.chosenDirection, LivenessTurnDirection.right);
+    });
+
+    testWidgets('erro nativo (LiveFaceObservation.unavailable) exibe orientação humana e botão Tentar novamente sem congelar', (tester) async {
+      final controller = StreamController<LiveFaceObservation>.broadcast(sync: true);
+      addTearDown(controller.close);
+
+      await pumpModal(
+        tester,
+        surfaceSize: const Size(390, 844),
+        stream: controller.stream,
+        forcedDirection: LivenessTurnDirection.right,
+        disableAnimations: true,
+      );
+
+      controller.add(
+        LiveFaceObservation.unavailable(
+          timestampMs: 1000,
+          reason:
+              'Não foi possível analisar seu rosto neste momento. Toque em "Tentar novamente" para reiniciar a câmera.',
+          sourceEngine: 'mlkit',
+        ),
+      );
+      await tester.pump();
+
+      expect(findOvalPainter(tester).contourColor, AppTokens.dark.danger);
+      expect(find.textContaining('Não foi possível analisar seu rosto'), findsOneWidget);
+      expect(find.text('Tentar novamente'), findsOneWidget);
+      assertNoBannedJargonVisible(tester);
     });
   });
 }

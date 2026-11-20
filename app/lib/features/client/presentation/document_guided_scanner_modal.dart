@@ -77,7 +77,10 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
   String? _errorMessage;
 
   Timer? _samplingTimer;
+  Timer? _streamWatchdogTimer;
   bool _evaluatingFrame = false;
+  int _framesDeliveredByCamera = 0;
+  bool _streamRebindAttempted = false;
   CameraImage? _latestStreamImage;
   img.Image? _decodedReferenceFront;
 
@@ -119,6 +122,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
   void dispose() {
     _testSub?.cancel();
     _samplingTimer?.cancel();
+    _streamWatchdogTimer?.cancel();
     final ctrl = _controller;
     _controller = null;
     if (ctrl != null) {
@@ -161,6 +165,10 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
 
   Future<void> _initRearCamera({bool switchLens = false}) async {
     _samplingTimer?.cancel();
+    _streamWatchdogTimer?.cancel();
+    _framesDeliveredByCamera = 0;
+    _streamRebindAttempted = false;
+    _latestStreamImage = null;
     _tracker.reset();
     final prev = _controller;
     _controller = null;
@@ -210,11 +218,16 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
       }
 
       final chosen = cams[_selectedCameraIndex];
+      final ImageFormatGroup? formatGroup = kIsWeb
+          ? null
+          : (defaultTargetPlatform == TargetPlatform.android
+              ? ImageFormatGroup.yuv420
+              : ImageFormatGroup.bgra8888);
       final ctrl = CameraController(
         chosen,
         ResolutionPreset.high,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.yuv420,
+        imageFormatGroup: formatGroup,
       );
       await ctrl.initialize();
 
@@ -226,11 +239,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         try {
           await ctrl.setFocusMode(FocusMode.auto);
         } catch (_) {}
-        try {
-          await ctrl.startImageStream((CameraImage frame) {
-            _latestStreamImage = frame;
-          });
-        } catch (_) {}
+        await _startDocumentImageStream(ctrl);
       }
 
       if (!mounted) {
@@ -247,6 +256,9 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         const Duration(milliseconds: 200),
         (_) => _evaluateLiveFrame(),
       );
+      if (!kIsWeb) {
+        _armDocumentStreamWatchdog(ctrl);
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -255,6 +267,45 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
             'Não foi possível abrir a câmera traseira. Verifique as permissões do aparelho e tente novamente.';
       });
     }
+  }
+
+  Future<void> _startDocumentImageStream(CameraController ctrl) async {
+    try {
+      await ctrl.startImageStream((CameraImage frame) {
+        _framesDeliveredByCamera += 1;
+        _latestStreamImage = frame;
+      });
+    } catch (_) {}
+  }
+
+  void _armDocumentStreamWatchdog(CameraController ctrl) {
+    _streamWatchdogTimer?.cancel();
+    _streamWatchdogTimer = Timer(const Duration(milliseconds: 3000), () {
+      if (!mounted || _capturing || _controller != ctrl) return;
+      if (_framesDeliveredByCamera > 0) return;
+
+      if (!_streamRebindAttempted) {
+        _streamRebindAttempted = true;
+        unawaited(() async {
+          try {
+            if (ctrl.value.isStreamingImages) {
+              await ctrl.stopImageStream();
+            }
+          } catch (_) {}
+          if (!mounted || _capturing || _controller != ctrl) return;
+          await _startDocumentImageStream(ctrl);
+          _armDocumentStreamWatchdog(ctrl);
+        }());
+        return;
+      }
+
+      // Se mesmo após reinicialização o stream nativo continuar mudo em um OEM
+      // específico, informa claramente o usuário em vez de travar calado.
+      setState(() {
+        _errorMessage =
+            'Não foi possível ler os quadros da câmera agora. Feche e abra novamente o leitor de documento.';
+      });
+    });
   }
 
   Future<void> _toggleTorch() async {

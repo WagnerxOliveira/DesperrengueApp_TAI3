@@ -34,6 +34,19 @@ class StubFaceDetectionAdapter implements FaceDetectionAdapter {
   }
 
   @override
+  Future<LiveFaceObservation?> analyzeImageFilePath(
+    String filePath, {
+    required bool isFrontCamera,
+    bool deleteAfterAnalysis = false,
+  }) async {
+    return LiveFaceObservation.unavailable(
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      reason: unavailableReason!,
+      sourceEngine: 'stub',
+    );
+  }
+
+  @override
   Future<LiveFaceObservation?> analyzeWebVideoFrame({
     bool mirrorHorizontal = true,
   }) async {

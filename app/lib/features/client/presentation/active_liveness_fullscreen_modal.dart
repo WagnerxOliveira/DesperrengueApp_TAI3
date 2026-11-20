@@ -148,6 +148,9 @@ class _ActiveLivenessFullscreenModalState
   static const double _desktopMaxStageWidth = 520.0;
   static const Duration _contourTransitionDuration = Duration(milliseconds: 180);
   static const Duration _frameThrottle = Duration(milliseconds: 70);
+  static const Duration _streamWatchdogTimeout = Duration(milliseconds: 3200);
+  static const Duration _streamRebindTimeout = Duration(milliseconds: 2500);
+  static const Duration _stillFallbackInterval = Duration(milliseconds: 380);
 
   late final ActiveLivenessStateMachine _engine;
   late ActiveLivenessSnapshot _snapshot;
@@ -158,7 +161,19 @@ class _ActiveLivenessFullscreenModalState
 
   StreamSubscription<LiveFaceObservation>? _testSubscription;
   Timer? _webPollTimer;
+  Timer? _streamWatchdogTimer;
+  Timer? _stillPollTimer;
   int _lastProcessedFrameMs = 0;
+
+  // Telemetria real do stream para evitar congelamento silencioso e projetar
+  // o bounding box do sensor exatamente no viewport visível (coverScale).
+  int _framesDeliveredByCamera = 0;
+  int _observationsProcessed = 0;
+  bool _streamRetryAttempted = false;
+  bool _stillFallbackActive = false;
+  bool _stillCaptureBusy = false;
+  double? _cameraPreviewAspect;
+  double? _viewportAspect;
 
   bool _initializing = false;
   bool _capturing = false;
@@ -198,6 +213,8 @@ class _ActiveLivenessFullscreenModalState
     _closed = true;
     _testSubscription?.cancel();
     _webPollTimer?.cancel();
+    _streamWatchdogTimer?.cancel();
+    _stillPollTimer?.cancel();
     unawaited(_teardownCameraAndAdapter());
     super.dispose();
   }
@@ -205,6 +222,15 @@ class _ActiveLivenessFullscreenModalState
   Future<void> _teardownCameraAndAdapter() async {
     _webPollTimer?.cancel();
     _webPollTimer = null;
+    _streamWatchdogTimer?.cancel();
+    _streamWatchdogTimer = null;
+    _stillPollTimer?.cancel();
+    _stillPollTimer = null;
+    _stillFallbackActive = false;
+    _stillCaptureBusy = false;
+    _framesDeliveredByCamera = 0;
+    _observationsProcessed = 0;
+    _streamRetryAttempted = false;
 
     final controller = _cameraController;
     _cameraController = null;
@@ -265,10 +291,14 @@ class _ActiveLivenessFullscreenModalState
       }
 
       _frontCamera = selected;
+      // Android usa YUV_420_888 (ImageFormatGroup.yuv420) nativo do CameraX em
+      // 100% dos aparelhos, evitando o bug de ImageProxyUtils.planesToNV21 em
+      // sensores Samsung com rowStride > width. O MobileFaceDetectionAdapter
+      // normaliza 1, 2 ou 3 planos para NV21 compacto antes de enviar ao ML Kit.
       final ImageFormatGroup? formatGroup = kIsWeb
           ? null
           : (defaultTargetPlatform == TargetPlatform.android
-              ? ImageFormatGroup.nv21
+              ? ImageFormatGroup.yuv420
               : ImageFormatGroup.bgra8888);
 
       final controller = CameraController(
@@ -285,6 +315,10 @@ class _ActiveLivenessFullscreenModalState
 
       if (kIsWeb) {
         await ensureWebVideoFacingMode(frontCamera: true);
+      } else if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+        } catch (_) {}
       }
 
       final adapter = widget.adapterOverride ?? createFaceDetectionAdapter();
@@ -354,10 +388,13 @@ class _ActiveLivenessFullscreenModalState
 
     if (_streaming) return;
     _streaming = true;
+    _framesDeliveredByCamera = 0;
+    _observationsProcessed = 0;
     final int sensorOrientation = _frontCamera?.sensorOrientation ?? 0;
 
     await controller.startImageStream((CameraImage image) {
-      if (_capturing || _closed || !mounted) return;
+      if (_capturing || _closed || !mounted || _stillFallbackActive) return;
+      _framesDeliveredByCamera += 1;
       final int now = DateTime.now().millisecondsSinceEpoch;
       if (now - _lastProcessedFrameMs < _frameThrottle.inMilliseconds) {
         return;
@@ -375,11 +412,117 @@ class _ActiveLivenessFullscreenModalState
             )
             .then((obs) {
           if (obs != null && mounted && !_closed) {
+            _observationsProcessed += 1;
             _onObservation(obs);
           }
         }),
       );
     });
+
+    _armStreamWatchdog();
+  }
+
+  void _armStreamWatchdog() {
+    _streamWatchdogTimer?.cancel();
+    final Duration delay =
+        _streamRetryAttempted ? _streamRebindTimeout : _streamWatchdogTimeout;
+    _streamWatchdogTimer = Timer(delay, () {
+      if (!mounted || _closed || _capturing || _stillFallbackActive) return;
+      if (_observationsProcessed > 0) return;
+
+      if (_framesDeliveredByCamera == 0) {
+        if (!_streamRetryAttempted) {
+          _streamRetryAttempted = true;
+          unawaited(_rebindImageStreamOnce());
+        } else {
+          unawaited(_activateStillFrameFallback());
+        }
+        return;
+      }
+
+      // Câmera entregou quadros mas o detector não produziu nenhuma observação válida.
+      setState(() {
+        _blockingError =
+            'Não foi possível processar os quadros da câmera frontal agora. Toque em "Tentar novamente".';
+      });
+    });
+  }
+
+  Future<void> _rebindImageStreamOnce() async {
+    final controller = _cameraController;
+    if (controller == null || !controller.value.isInitialized || _closed) return;
+    if (_streaming) {
+      _streaming = false;
+      try {
+        await controller.stopImageStream();
+      } catch (_) {}
+    }
+    if (!mounted || _closed || _capturing) return;
+    try {
+      await _startLiveAnalysisLoop();
+    } catch (_) {
+      await _activateStillFrameFallback();
+    }
+  }
+
+  /// Fallback 100% REAL (Google ML Kit Face Detection via `InputImage.fromFilePath`)
+  /// acionado somente se `startImageStream` não entregar nenhum quadro em um
+  /// dispositivo Android exótico mesmo após reinicialização do stream.
+  Future<void> _activateStillFrameFallback() async {
+    final controller = _cameraController;
+    final adapter = _adapter;
+    if (controller == null ||
+        adapter == null ||
+        !controller.value.isInitialized ||
+        _closed ||
+        _capturing) {
+      return;
+    }
+
+    _stillFallbackActive = true;
+    _streamWatchdogTimer?.cancel();
+    if (_streaming) {
+      _streaming = false;
+      try {
+        await controller.stopImageStream();
+      } catch (_) {}
+    }
+
+    _stillPollTimer?.cancel();
+    _stillPollTimer = Timer.periodic(_stillFallbackInterval, (_) {
+      if (_capturing || _closed || !mounted || _stillCaptureBusy) return;
+      unawaited(_pollStillFrameViaMlKit());
+    });
+  }
+
+  Future<void> _pollStillFrameViaMlKit() async {
+    final controller = _cameraController;
+    final adapter = _adapter;
+    if (controller == null ||
+        adapter == null ||
+        !controller.value.isInitialized ||
+        _capturing ||
+        _closed) {
+      return;
+    }
+    _stillCaptureBusy = true;
+    try {
+      final XFile shot = await controller.takePicture();
+      if (_closed || !mounted || _capturing) return;
+      final LiveFaceObservation? obs = await adapter.analyzeImageFilePath(
+        shot.path,
+        isFrontCamera: true,
+        deleteAfterAnalysis: true,
+      );
+      if (obs != null && mounted && !_closed) {
+        _observationsProcessed += 1;
+        _onObservation(obs);
+      }
+    } catch (_) {
+      // Erro transitório isolado; o contador do adaptador aciona unavailable se persistir.
+    } finally {
+      _stillCaptureBusy = false;
+    }
   }
 
   Future<void> _pollWebFrame() async {
@@ -398,6 +541,8 @@ class _ActiveLivenessFullscreenModalState
 
     if (observation.unavailableReason != null &&
         observation.unavailableReason!.trim().isNotEmpty) {
+      _streamWatchdogTimer?.cancel();
+      _stillPollTimer?.cancel();
       setState(() {
         _blockingError = KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
           observation.unavailableReason!,
@@ -406,9 +551,32 @@ class _ActiveLivenessFullscreenModalState
       return;
     }
 
-    final ActiveLivenessSnapshot next = _engine.processObservation(observation);
+    // Em modo câmera real, projeta o bounding box do sensor cru para o espaço
+    // visível do viewport recortado por `coverScale` (ex.: câmera 3:4 em tela 9:20).
+    LiveFaceObservation effectiveObservation = observation;
+    final double? camAspect = _cameraPreviewAspect;
+    final double? boxAspect = _viewportAspect;
+    if (!_isTestMode &&
+        observation.faceCount > 0 &&
+        observation.normalizedBox != Rect.zero &&
+        camAspect != null &&
+        boxAspect != null) {
+      final Rect projected = projectSensorNormalizedRectToViewport(
+        sensorRect: observation.normalizedBox,
+        cameraAspect: camAspect,
+        viewportAspect: boxAspect,
+      );
+      effectiveObservation = observation.copyWithNormalizedBox(projected);
+    }
+
+    final LivenessContourState previousContour = _snapshot.contourState;
+    final ActiveLivenessSnapshot next =
+        _engine.processObservation(effectiveObservation);
     final bool stageChanged = next.stage != _snapshot.stage;
-    if (stageChanged && !kIsWeb && !_isTestMode) {
+    final bool snappedToGreen =
+        previousContour == LivenessContourState.invalidRed &&
+            next.contourState != LivenessContourState.invalidRed;
+    if ((stageChanged || snappedToGreen) && !kIsWeb && !_isTestMode) {
       HapticFeedback.lightImpact();
     }
 
@@ -429,6 +597,10 @@ class _ActiveLivenessFullscreenModalState
 
     _webPollTimer?.cancel();
     _webPollTimer = null;
+    _streamWatchdogTimer?.cancel();
+    _streamWatchdogTimer = null;
+    _stillPollTimer?.cancel();
+    _stillPollTimer = null;
 
     try {
       final Uint8List selfieBytes = await _acquireSelfieBytes();
@@ -701,6 +873,8 @@ class _ActiveLivenessFullscreenModalState
           camAspect = 3.0 / 4.0;
         }
         final double boxAspect = boxWidth / boxHeight;
+        _cameraPreviewAspect = camAspect;
+        _viewportAspect = boxAspect;
         final double coverScale = math.max(
           1.0,
           camAspect > boxAspect

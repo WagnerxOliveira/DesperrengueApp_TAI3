@@ -217,10 +217,19 @@ class DesperrengueKycVisionBridge {
     ctx.restore();
 
     const imgData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H).data;
-    const x0 = Math.max(1, Math.min(CANVAS_W - 2, Math.floor(box.left * CANVAS_W)));
-    const y0 = Math.max(1, Math.min(CANVAS_H - 2, Math.floor(box.top * CANVAS_H)));
-    const x1 = Math.max(x0 + 2, Math.min(CANVAS_W - 1, Math.ceil(box.right * CANVAS_W)));
-    const y1 = Math.max(y0 + 2, Math.min(CANVAS_H - 1, Math.ceil(box.bottom * CANVAS_H)));
+    const rawW = Math.max(0.05, box.right - box.left);
+    const rawH = Math.max(0.05, box.bottom - box.top);
+    const insetX = rawW * 0.12;
+    const insetY = rawH * 0.12;
+    const innerLeft = Math.max(0, Math.min(0.95, box.left + insetX));
+    const innerRight = Math.max(innerLeft + 0.05, Math.min(1, box.right - insetX));
+    const innerTop = Math.max(0, Math.min(0.95, box.top + insetY));
+    const innerBottom = Math.max(innerTop + 0.05, Math.min(1, box.bottom - insetY));
+
+    const x0 = Math.max(1, Math.min(CANVAS_W - 2, Math.floor(innerLeft * CANVAS_W)));
+    const y0 = Math.max(1, Math.min(CANVAS_H - 2, Math.floor(innerTop * CANVAS_H)));
+    const x1 = Math.max(x0 + 2, Math.min(CANVAS_W - 1, Math.ceil(innerRight * CANVAS_W)));
+    const y1 = Math.max(y0 + 2, Math.min(CANVAS_H - 1, Math.ceil(innerBottom * CANVAS_H)));
 
     let lumSum = 0;
     let gradSum = 0;
@@ -236,7 +245,8 @@ class DesperrengueKycVisionBridge {
         const luma = 0.299 * r + 0.587 * g + 0.114 * b;
         lumSum += luma;
 
-        if ((b > r + 16 && b > g + 6) || luma < 26) {
+        // Assinatura real de brilho azulado de tela LCD/OLED (sem punir barba/cabelo escuro).
+        if (b > r + 24 && b > g + 10 && luma >= 40) {
           bluePixels++;
         }
 

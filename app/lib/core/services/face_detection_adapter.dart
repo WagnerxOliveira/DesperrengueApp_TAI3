@@ -87,6 +87,29 @@ class LiveFaceObservation {
 
   bool get hasSingleFace => faceCount == 1;
 
+  /// Retorna uma cópia preservando toda a telemetria real mas substituindo
+  /// [normalizedBox] (usado ao projetar coordenadas do sensor para o viewport
+  /// visível recortado por `BoxFit.cover`).
+  LiveFaceObservation copyWithNormalizedBox(Rect projectedBox) {
+    return LiveFaceObservation(
+      faceCount: faceCount,
+      trackingId: trackingId,
+      normalizedBox: projectedBox,
+      leftEyeOpenProbability: leftEyeOpenProbability,
+      rightEyeOpenProbability: rightEyeOpenProbability,
+      headEulerAngleX: headEulerAngleX,
+      headEulerAngleY: headEulerAngleY,
+      headEulerAngleZ: headEulerAngleZ,
+      meanLuminance: meanLuminance,
+      sharpness: sharpness,
+      blueMonitorRatio: blueMonitorRatio,
+      textureMotionDelta: textureMotionDelta,
+      timestampMs: timestampMs,
+      sourceEngine: sourceEngine,
+      unavailableReason: unavailableReason,
+    );
+  }
+
   double? get averageEyeOpenProbability {
     final left = leftEyeOpenProbability;
     final right = rightEyeOpenProbability;
@@ -167,6 +190,15 @@ abstract class FaceDetectionAdapter {
     required int sensorOrientation,
     required bool isFrontCamera,
     DeviceOrientation deviceOrientation = DeviceOrientation.portraitUp,
+  });
+
+  /// Fallback real via arquivo fotográfico temporário (`InputImage.fromFilePath`
+  /// no Google ML Kit) quando `startImageStream` não entrega quadros em algum
+  /// aparelho Android exótico. Mantém 100% de detecção facial real.
+  Future<LiveFaceObservation?> analyzeImageFilePath(
+    String filePath, {
+    required bool isFrontCamera,
+    bool deleteAfterAnalysis = false,
   });
 
   /// Analisa o quadro atual do elemento `<video>` ativo na Web via MediaPipe.

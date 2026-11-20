@@ -69,14 +69,22 @@ img.Image? convertCameraImageToUprightRgbNamed({
       final int yPixelStride = yPlane.bytesPerPixel ?? 1;
 
       final bool hasUvPlanes = planes.length >= 3;
-      final Uint8List? uBytes =
-          hasUvPlanes ? planes[1].bytes : (planes.length == 2 ? planes[1].bytes : null);
-      final Uint8List? vBytes =
-          hasUvPlanes ? planes[2].bytes : (planes.length == 2 ? planes[1].bytes : null);
+      final bool isSinglePlaneNv21 = planes.length == 1;
+      final Uint8List? uBytes = hasUvPlanes
+          ? planes[1].bytes
+          : (planes.length == 2 ? planes[1].bytes : (isSinglePlaneNv21 ? yBytes : null));
+      final Uint8List? vBytes = hasUvPlanes
+          ? planes[2].bytes
+          : (planes.length == 2 ? planes[1].bytes : (isSinglePlaneNv21 ? yBytes : null));
       final int uvRowStride = hasUvPlanes
           ? planes[1].bytesPerRow
-          : (planes.length == 2 ? planes[1].bytesPerRow : 0);
+          : (planes.length == 2
+              ? planes[1].bytesPerRow
+              : (isSinglePlaneNv21 ? yRowStride : 0));
+      final int vRowStride = hasUvPlanes ? planes[2].bytesPerRow : uvRowStride;
       final int uvPixelStride = hasUvPlanes ? (planes[1].bytesPerPixel ?? 1) : 2;
+      final int vPixelStride = hasUvPlanes ? (planes[2].bytesPerPixel ?? 1) : 2;
+      final int singlePlaneUvOffset = isSinglePlaneNv21 ? (yRowStride * srcH) : 0;
 
       for (int ty = 0; ty < effectiveH; ty++) {
         final int sy = (ty * srcH) ~/ effectiveH;
@@ -91,14 +99,18 @@ img.Image? convertCameraImageToUprightRgbNamed({
           int uVal = 128;
           int vVal = 128;
           if (uBytes != null && vBytes != null) {
-            final int uvIdx = uvy * uvRowStride + uvx * uvPixelStride;
             if (hasUvPlanes) {
-              if (uvIdx < uBytes.length) uVal = uBytes[uvIdx];
-              if (uvIdx < vBytes.length) vVal = vBytes[uvIdx];
-            } else if (uvIdx + 1 < uBytes.length) {
-              // NV21 interleave (V, U)
-              vVal = uBytes[uvIdx];
-              uVal = uBytes[uvIdx + 1];
+              final int uIdx = uvy * uvRowStride + uvx * uvPixelStride;
+              final int vIdx = uvy * vRowStride + uvx * vPixelStride;
+              if (uIdx < uBytes.length) uVal = uBytes[uIdx];
+              if (vIdx < vBytes.length) vVal = vBytes[vIdx];
+            } else {
+              // Semi-planar 2 planos ou NV21 1 plano (V, U intercalados).
+              final int vuIdx = singlePlaneUvOffset + uvy * uvRowStride + uvx * 2;
+              if (vuIdx + 1 < uBytes.length) {
+                vVal = uBytes[vuIdx];
+                uVal = uBytes[vuIdx + 1];
+              }
             }
           }
 

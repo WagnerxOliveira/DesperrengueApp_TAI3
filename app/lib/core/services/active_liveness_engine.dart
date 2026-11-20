@@ -1,8 +1,62 @@
 import 'dart:math' as math;
+import 'dart:ui' show Rect;
 
 import 'package:flutter/foundation.dart' show immutable;
 
 import 'face_detection_adapter.dart';
+
+/// Projeta um bounding box normalizado `[0..1]` no espaço do sensor (já
+/// verticalizado e espelhado na câmera frontal) para o espaço normalizado
+/// `[0..1]` do viewport visível na tela após o recorte `BoxFit.cover`
+/// (`coverScale`).
+///
+/// Exemplo real (Samsung Galaxy `9:20` = `0.45`, câmera frontal `3:4` = `0.75`):
+/// - `coverScale = 0.75 / 0.45 = 1.667`, recortando 20% à esquerda e 20% à
+///   direita da imagem crua do sensor (`visibleFractionW = 0.60`, `cropX = 0.20`).
+/// - Um rosto com largura `0.34` no sensor ocupa `0.34 / 0.60 = 0.567` na tela
+///   visível (~86% da largura do oval de `0.66`).
+Rect projectSensorNormalizedRectToViewport({
+  required Rect sensorRect,
+  required double cameraAspect,
+  required double viewportAspect,
+}) {
+  if (sensorRect == Rect.zero ||
+      cameraAspect <= 0 ||
+      viewportAspect <= 0 ||
+      !cameraAspect.isFinite ||
+      !viewportAspect.isFinite) {
+    return sensorRect;
+  }
+
+  // Diferença desprezível (< 0,5%): sem recorte relevante.
+  if ((cameraAspect - viewportAspect).abs() < 0.005) {
+    return sensorRect;
+  }
+
+  double left = sensorRect.left;
+  double right = sensorRect.right;
+  double top = sensorRect.top;
+  double bottom = sensorRect.bottom;
+
+  if (cameraAspect > viewportAspect) {
+    // Portrait típico (câmera 3:4 em tela 9:20): recorte horizontal nas laterais.
+    final double visibleFractionW = (viewportAspect / cameraAspect).clamp(0.1, 1.0);
+    final double cropX = (1.0 - visibleFractionW) * 0.5;
+    left = ((left - cropX) / visibleFractionW).clamp(0.0, 1.0);
+    right = ((right - cropX) / visibleFractionW).clamp(0.0, 1.0);
+  } else {
+    // Paisagem / desktop largo: recorte vertical no topo e na base.
+    final double visibleFractionH = (cameraAspect / viewportAspect).clamp(0.1, 1.0);
+    final double cropY = (1.0 - visibleFractionH) * 0.5;
+    top = ((top - cropY) / visibleFractionH).clamp(0.0, 1.0);
+    bottom = ((bottom - cropY) / visibleFractionH).clamp(0.0, 1.0);
+  }
+
+  if (right <= left || bottom <= top) {
+    return Rect.zero;
+  }
+  return Rect.fromLTRB(left, top, right, bottom);
+}
 
 /// Direção de giro tridimensional sorteada por sessão via `Random.secure()`.
 enum LivenessTurnDirection {
@@ -61,39 +115,43 @@ enum LivenessCueKind {
 class ActiveLivenessConfig {
   const ActiveLivenessConfig({
     this.ovalWidthFraction = 0.66,
-    this.maxCenterOffset = 0.14,
-    this.minFaceWidthToOvalRatio = 0.38,
-    this.maxFaceWidthToOvalRatio = 0.84,
+    this.ovalCenterY = 0.47,
+    this.maxCenterOffset = 0.15,
+    this.minFaceWidthToOvalRatio = 0.42,
+    this.maxFaceWidthToOvalRatio = 0.94,
     this.minLuminance = 45.0,
     this.maxLuminance = 228.0,
-    this.minSharpness = 8.0,
+    this.minSharpness = 6.0,
     this.maxBlueMonitorRatio = 0.22,
     this.minTextureMotionDelta = 0.12,
     this.maxConsecutiveStaticFrames = 4,
     this.maxAbsenceBeforeResetMs = 1200,
-    this.centerRequiredFrames = 6,
-    this.centerMaxYawDeg = 10.0,
-    this.centerMaxPitchDeg = 12.0,
-    this.centerMaxRollDeg = 12.0,
-    this.centerMinEyeOpen = 0.70,
+    this.centerRequiredFrames = 5,
+    this.centerMaxYawDeg = 14.0,
+    this.centerMaxPitchDeg = 16.0,
+    this.centerMaxRollDeg = 15.0,
+    this.centerMinEyeOpen = 0.58,
     this.blinkBaselineFrames = 2,
-    this.blinkBaselineMinEyeOpen = 0.68,
+    this.blinkBaselineMinEyeOpen = 0.55,
     this.blinkClosedMaxEyeOpen = 0.28,
     this.blinkMaxYawDeg = 14.0,
     this.blinkReopenFrames = 2,
-    this.blinkReopenMinEyeOpen = 0.65,
-    this.blinkReopenTimeoutMs = 1500,
+    this.blinkReopenMinEyeOpen = 0.55,
+    this.blinkReopenTimeoutMs = 1800,
     this.turnTargetYawDeg = 18.0,
     this.turnWrongDirectionYawDeg = 12.0,
-    this.turnMaxPitchDeg = 18.0,
+    this.turnMaxPitchDeg = 16.0,
     this.turnRequiredFrames = 3,
-    this.returnMaxYawDeg = 8.0,
-    this.returnMaxPitchDeg = 10.0,
-    this.returnMinEyeOpen = 0.65,
+    this.returnMaxYawDeg = 6.5,
+    this.returnMaxPitchDeg = 8.5,
+    this.returnMinEyeOpen = 0.55,
     this.returnRequiredFrames = 3,
   });
 
   final double ovalWidthFraction;
+
+  /// Centro vertical do oval no viewport (`0.47`, sincronizado com `ActiveLivenessOvalPainter`).
+  final double ovalCenterY;
   final double maxCenterOffset;
   final double minFaceWidthToOvalRatio;
   final double maxFaceWidthToOvalRatio;
@@ -244,13 +302,13 @@ class ActiveLivenessStateMachine {
   ActiveLivenessSnapshot get currentSnapshot => _currentSnapshot;
 
   /// Mapeia probabilidade de olho aberto `[0.0..1.0]` para a escala EAR equivalente
-  /// `[0.12..0.33]` compatível com `DocumentOcrAndLivenessService.detectHumanBlinkSequence`:
-  /// - `>= 0.68` -> `>= 0.2628` (`> 0.24` aberto)
-  /// - `<= 0.28` -> `<= 0.1788` (`< 0.185` fechado)
-  /// - `>= 0.65` -> `>= 0.2565` (`> 0.24` reaberto)
+  /// `[0.12..0.345]` compatível com `DocumentOcrAndLivenessService.detectHumanBlinkSequence`:
+  /// - `>= 0.55` -> `>= 0.24375` (`> 0.24` aberto)
+  /// - `<= 0.28` -> `<= 0.1830` (`< 0.185` fechado)
+  /// - `>= 0.55` -> `>= 0.24375` (`> 0.24` reaberto)
   static double eyeOpenProbabilityToEar(double eyeOpenProbability) {
     final double clamped = eyeOpenProbability.clamp(0.0, 1.0);
-    return 0.12 + (clamped * 0.21);
+    return 0.12 + (clamped * 0.225);
   }
 
   /// Reinicia completamente a sessão para a Etapa 1 (opcionalmente sorteando nova direção).
@@ -434,7 +492,7 @@ class ActiveLivenessStateMachine {
     }
 
     final double dx = obs.normalizedBox.center.dx - 0.50;
-    final double dy = obs.normalizedBox.center.dy - 0.50;
+    final double dy = obs.normalizedBox.center.dy - config.ovalCenterY;
     if (dx.abs() > config.maxCenterOffset ||
         dy.abs() > config.maxCenterOffset) {
       _decayStageStreak();
