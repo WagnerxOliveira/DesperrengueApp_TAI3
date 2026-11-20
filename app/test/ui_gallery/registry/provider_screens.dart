@@ -6,6 +6,7 @@ import 'package:desperrengue_app/core/models/provider_dossier_models.dart';
 import 'package:desperrengue_app/core/models/provider_portfolio_models.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/security/geo_privacy_policy_engine.dart';
+import 'package:desperrengue_app/core/services/provider_service.dart' show WalletSummary;
 import 'package:desperrengue_app/core/state/provider_portfolio_controller.dart';
 import 'package:desperrengue_app/core/ui/app_scaffold.dart';
 import 'package:desperrengue_app/core/ui/image_picking.dart';
@@ -26,23 +27,10 @@ import 'package:flutter/material.dart';
 import '../../support/screen_gallery/screen_gallery.dart';
 
 // ---------------------------------------------------------------------------
-// NÃO registradas (inventário inv-3, §5.1) — o que falta para instanciar:
-//  * ServiceExecutionScreen (provider_execution_screens.dart:43):
-//      `Supabase.instance.client.auth.currentUser!.id` no build (L135) estoura
-//      sem sessão + `ForensicPhotoService()` no field-init. Falta parâmetro `myId`.
-//  * ProviderJobScreen (provider_job_screen.dart:23): `JobService().streamJob`
-//      + `currentUser` (stream Supabase sem injeção). Falta `stream`/`jobService`.
-//  * _OpenJobRouter / _UnavailableScreen / _WaitingPaymentScreen
-//      (provider_job_screen.dart): privadas (só via ProviderJobScreen).
-//  * ProviderDashboardTab (provider_shell.dart:95): `_load()` usa
-//      `Future.wait([...6 chamadas])` sem injeção de `loader`; sem sessão real
-//      5 `AuthException` vazam como erros assíncronos não capturados na zone,
-//      além de `ListTile` dentro de `DecoratedBox` sem `Material` disparar
-//      erro de debug. Falta parâmetro `loader` (padrão `WalletTab.loader`) e
-//      `Material` em torno do `ListTile`.
-//  * ProviderShell (provider_shell.dart:39): monta `ProviderDashboardTab`
-//      imediatamente via `IndexedStack` (L65), herdando o bloqueio acima.
-//  * MaterialReceiptCaptureScreen em estados "foto capturada/resultado": exigem
+// Ganchos §5.1 entregues na Onda 4: ServiceExecutionScreen, ProviderJobScreen,
+// ProviderDashboardTab e ProviderShell agora estão registrados abaixo.
+// Pendente apenas: MaterialReceiptCaptureScreen em estados pós-captura (exige
+// FiscalReceiptService mockado por tela).
 //      toque no picker (registrado só o estado inicial).
 // ---------------------------------------------------------------------------
 
@@ -294,6 +282,52 @@ Widget _coreWidgetsShowcase() => ListView(
     );
 
 /// Telas/sheets/widgets do modo profissional (`provider/presentation`).
+ProviderDashboardData _dashboardData() {
+  final job = SampleData.job(
+    status: JobStatus.inProgress,
+    title: _longJobTitle,
+    price: 1850.5,
+    providerId: SampleData.providerId,
+    paymentStatus: 'escrow',
+  );
+  final openJob = SampleData.job(
+    id: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff',
+    status: JobStatus.open,
+    title: 'Instalar aquecedor a gás e revisar tubulação',
+    category: 'Hidráulica',
+    price: 620,
+  );
+  return ProviderDashboardData(
+    jobs: <Job>[job],
+    invites: <({JobInvite invite, Job job})>[
+      (
+        invite: JobInvite(
+          jobId: openJob.id,
+          providerId: SampleData.providerId,
+          status: 'pending',
+          expiresAt: DateTime.utc(2099, 1, 15, 12),
+          createdAt: DateTime.utc(2026, 10, 1),
+        ),
+        job: openJob,
+      ),
+    ],
+    quotes: const <({Quote quote, Job? job})>[],
+    wallet: const WalletSummary(
+      available: 4820.5,
+      held: 1850.5,
+      week: 3120.0,
+      perDay: <double>[420, 680, 0, 540, 890, 590, 0],
+    ),
+    row: <String, dynamic>{
+      'rating_avg': 4.9,
+      'rating_count': 127,
+      'jobs_done': 342,
+      'accepting': true,
+      'specialties': <String>['Elétrica', 'Hidráulica'],
+    },
+  );
+}
+
 List<GalleryScreen> providerScreens() => <GalleryScreen>[
       // ------------------------------------------------------ dossiê
       GalleryScreen(
@@ -627,6 +661,7 @@ List<GalleryScreen> providerScreens() => <GalleryScreen>[
         wave: 3,
         owner: 'provider_ui',
         kind: GalleryKind.sheet,
+        rawSheet: true,
         modes: const <UserMode?>{UserMode.provider},
         builder: (_, _) {
           _seedPortfolio(4, curated: 1);
@@ -643,6 +678,7 @@ List<GalleryScreen> providerScreens() => <GalleryScreen>[
         wave: 3,
         owner: 'provider_ui',
         kind: GalleryKind.sheet,
+        rawSheet: true,
         modes: const <UserMode?>{UserMode.client},
         builder: (_, _) {
           _seedPortfolio(4, curated: 1);
@@ -769,6 +805,94 @@ List<GalleryScreen> providerScreens() => <GalleryScreen>[
         kind: GalleryKind.widget,
         modes: const <UserMode?>{UserMode.provider},
         builder: (_, _) => const WeeklyGoalDialog(initial: 12500),
+      ),
+      // ----------------------------------------- ganchos §5.1 (Onda 4)
+      GalleryScreen(
+        id: 'provider/dashboard_tab',
+        title: 'Painel do profissional (com dados)',
+        source: 'features/provider/presentation/provider_shell.dart',
+        wave: 4,
+        owner: 'provider_ui',
+        kind: GalleryKind.widget,
+        modes: const <UserMode?>{UserMode.provider},
+        animatesForever: true,
+        builder: (_, _) => ProviderDashboardTab(
+          profile: SampleData.providerProfile(),
+          onSeeOpportunities: () {},
+          onSeeWallet: () {},
+          loader: () async => _dashboardData(),
+        ),
+      ),
+      GalleryScreen(
+        id: 'provider/shell',
+        title: 'Casca do profissional (4 abas)',
+        source: 'features/provider/presentation/provider_shell.dart',
+        wave: 4,
+        owner: 'provider_ui',
+        modes: const <UserMode?>{UserMode.provider},
+        animatesForever: true,
+        builder: (_, _) => ProviderShell(
+          profile: SampleData.providerProfile(),
+          dashboardLoader: () async => _dashboardData(),
+          walletLoader: () async => _walletFull(),
+        ),
+      ),
+      GalleryScreen(
+        id: 'provider/service_execution',
+        title: 'Execução do serviço (profissional)',
+        source: 'features/provider/presentation/provider_execution_screens.dart',
+        wave: 4,
+        owner: 'provider_ui',
+        modes: const <UserMode?>{UserMode.provider},
+        animatesForever: true,
+        builder: (_, _) => ServiceExecutionScreen(
+          job: SampleData.job(
+            status: JobStatus.inProgress,
+            title: _longJobTitle,
+            price: 1850.5,
+            providerId: SampleData.providerId,
+            paymentStatus: 'escrow',
+          ),
+          myId: SampleData.providerId,
+        ),
+      ),
+      GalleryScreen(
+        id: 'provider/job_aguardando_pagamento',
+        title: 'Pedido do profissional (aguardando pagamento)',
+        source: 'features/provider/presentation/provider_job_screen.dart',
+        wave: 4,
+        owner: 'provider_ui',
+        modes: const <UserMode?>{UserMode.provider},
+        builder: (_, _) => ProviderJobScreen(
+          jobId: 'j1',
+          currentUserId: SampleData.providerId,
+          stream: Stream<Job?>.value(
+            SampleData.job(
+              status: JobStatus.awaitingPayment,
+              title: _longJobTitle,
+              price: 1850.5,
+              providerId: SampleData.providerId,
+            ),
+          ),
+        ),
+      ),
+      GalleryScreen(
+        id: 'provider/job_indisponivel',
+        title: 'Pedido do profissional (indisponível/cancelado)',
+        source: 'features/provider/presentation/provider_job_screen.dart',
+        wave: 4,
+        owner: 'provider_ui',
+        modes: const <UserMode?>{UserMode.provider},
+        builder: (_, _) => ProviderJobScreen(
+          jobId: 'j1',
+          currentUserId: SampleData.providerId,
+          stream: Stream<Job?>.value(
+            SampleData.job(
+              status: JobStatus.canceled,
+              title: _longJobTitle,
+            ),
+          ),
+        ),
       ),
       // ------------------------------------------------------ carteira
       GalleryScreen(

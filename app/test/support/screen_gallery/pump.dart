@@ -1,5 +1,6 @@
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart' show AppSheet;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -36,6 +37,7 @@ class GalleryScreen {
     this.overrides,
     this.interact,
     this.animatesForever = false,
+    this.rawSheet = false,
     this.skipRules = const <String>{},
     this.note,
   });
@@ -69,6 +71,10 @@ class GalleryScreen {
 
   /// `true` se há animação infinita legítima (não usar `pumpAndSettle`).
   final bool animatesForever;
+
+  /// `true` para sheets que gerenciam a própria altura (`DraggableScrollableSheet`)
+  /// e portanto abrem via `showModalBottomSheet` em vez do `SingleChildScrollView` de `AppSheet.show`.
+  final bool rawSheet;
 
   /// Regras não aplicáveis (ex.: `{'tabular'}` numa tela sem números).
   final Set<String> skipRules;
@@ -269,11 +275,19 @@ class _HostState extends State<_Host> {
           _opened = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              builder: (ctx) => s.builder(ctx, widget.variant),
-            );
+            if (s.rawSheet) {
+              showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                builder: (ctx) => s.builder(ctx, widget.variant),
+              );
+            } else {
+              AppSheet.show<void>(
+                context,
+                showHandle: false,
+                builder: (ctx) => s.builder(ctx, widget.variant),
+              );
+            }
           });
         }
         return const Scaffold(body: SizedBox.expand());
