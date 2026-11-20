@@ -8,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/criminal_background_service.dart';
 import '../../../core/ui/app_scaffold.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
 import '../../../core/ui/widgets.dart';
 
@@ -120,9 +120,10 @@ class _CriminalBackgroundCheckStepState
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (mounted) {
-        showSnack(
+        AppSnackbar.show(
           context,
           'Acesse servicos.pf.gov.br/epol-sinic-publico no navegador para emitir gratuitamente.',
+          kind: AppSnackKind.info,
         );
       }
     }
@@ -283,44 +284,43 @@ class _CriminalBackgroundCheckStepState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Cabeçalho de Confiança
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
+        const Wrap(
+          spacing: AppSpace.s8,
+          runSpacing: AppSpace.s8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            StatusChip(
+            AppStatusChip(
               'Segurança Mútua · Validade de 6 Meses',
-              color: tk.security,
+              tone: AppTone.info,
               icon: Icons.verified_user_rounded,
             ),
-            StatusChip(
+            AppStatusChip(
               'Vale p/ Cliente e Profissional',
-              color: tk.success,
+              tone: AppTone.success,
               icon: Icons.sync_alt_rounded,
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppSpace.s12),
         Text(
           widget.isSixMonthRenewal
               ? 'Renovação Semestral de Antecedentes Criminais'
               : 'Certidão de Antecedentes Criminais (Polícia Federal)',
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+          style: AppType.headline.copyWith(color: tk.text),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpace.s8),
         Text(
           'Para proteger quem abre a porta de casa e quem entra para trabalhar, '
           'o Desperrengue valida a Certidão Negativa da Polícia Federal a cada 6 meses. '
           'Sua validação fica salva para os dois perfis (Cliente e Profissional) sem precisar enviar novamente.',
-          style: TextStyle(color: tk.textMuted, height: 1.4, fontSize: 13.5),
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpace.s16),
 
         // PASSO 1 GUIADO — EMISSÃO OFICIAL GRATUITA EM 1 MINUTO
         AppCard(
-          color: tk.surface,
+          variant: AppCardVariant.tonal,
           borderColor: tk.info.withValues(alpha: 0.35),
-          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -328,111 +328,97 @@ class _CriminalBackgroundCheckStepState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(AppSpace.s8),
                     decoration: BoxDecoration(
                       color: tk.infoSoft,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(
+                        AppGeometry.iconTileRadius,
+                      ),
                     ),
                     child: Icon(
                       Icons.account_balance_rounded,
-                      color: tk.info,
+                      color: tk.isDark ? tk.info : tk.accentInk,
                       size: 22,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: AppSpace.s12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           '1. Emissão Oficial Gratuita em 1 Minuto',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 15,
-                          ),
+                          style: AppType.titleSm.copyWith(color: tk.text),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: AppSpace.s4),
                         Text(
                           '• Toque no botão abaixo para abrir o portal oficial da Polícia Federal (gov.br).\n'
                           '• Informe seu nome civil e CPF para emitir gratuitamente a certidão "Nada Consta".\n'
                           '• Baixe o PDF oficial ou tire uma foto nítida da certidão para enviar no Passo 2.',
-                          style: TextStyle(
-                            color: tk.textMuted,
-                            fontSize: 12.5,
-                            height: 1.45,
-                          ),
+                          style: AppType.bodySm.copyWith(color: tk.textMuted),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  key: const ValueKey('btn-open-pf-portal'),
-                  onPressed: _openPoliciaFederalPortal,
-                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                  label: const Text(
-                    'Emitir Certidão Grátis na Polícia Federal (gov.br)',
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+              const SizedBox(height: AppSpace.s12),
+              AppButton(
+                key: const ValueKey('btn-open-pf-portal'),
+                label: 'Emitir Certidão Grátis na Polícia Federal (gov.br)',
+                icon: Icons.open_in_new_rounded,
+                variant: AppButtonVariant.secondary,
+                compact: true,
+                onPressed: _openPoliciaFederalPortal,
               ),
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpace.s16),
 
         // PASSO 2 — ENVIO DO ARQUIVO OFICIAL E DADOS DE AUTENTICIDADE
         AppCard(
-          padding: const EdgeInsets.all(16),
           borderColor: approved ? tk.success : tk.border,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 '2. Envio da Certidão e Conferência de Autenticidade',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                style: AppType.titleSm.copyWith(color: tk.text),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.s4),
               Text(
                 'Envie o PDF oficial ou uma foto nítida da certidão emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
-                style: TextStyle(color: tk.textMuted, fontSize: 12.5),
+                style: AppType.bodySm.copyWith(color: tk.textMuted),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.s16),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final compact = constraints.maxWidth < 340;
-                  final uploadBtn = FilledButton.tonalIcon(
+                  final compact =
+                      constraints.maxWidth < 360 || context.layout.isLargeText;
+                  final uploadBtn = AppButton(
                     key: const ValueKey('btn-upload-criminal-certificate'),
+                    label: _fileBytes != null
+                        ? 'Arquivo anexado (${_fileName ?? "certidão"})'
+                        : 'Enviar PDF ou Foto da Certidão',
+                    icon: _fileBytes != null
+                        ? Icons.check_circle_rounded
+                        : Icons.upload_file_rounded,
+                    variant: AppButtonVariant.secondary,
+                    compact: true,
                     onPressed: _analyzing
                         ? null
                         : () => _pickCertificateFile(fromCamera: false),
-                    icon: Icon(
-                      _fileBytes != null
-                          ? Icons.check_circle_rounded
-                          : Icons.upload_file_rounded,
-                      size: 18,
-                    ),
-                    label: Text(
-                      _fileBytes != null
-                          ? 'Arquivo anexado (${_fileName ?? "certidão"})'
-                          : 'Enviar PDF ou Foto da Certidão',
-                      textAlign: TextAlign.center,
-                    ),
                   );
-                  final cameraBtn = OutlinedButton.icon(
+                  final cameraBtn = AppButton(
                     key: const ValueKey('btn-camera-criminal-certificate'),
+                    label: 'Fotografar Certidão',
+                    icon: Icons.photo_camera_outlined,
+                    variant: AppButtonVariant.secondary,
+                    compact: true,
                     onPressed: _analyzing
                         ? null
                         : () => _pickCertificateFile(fromCamera: true),
-                    icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                    label: const Text(
-                      'Fotografar Certidão',
-                      textAlign: TextAlign.center,
-                    ),
                   );
 
                   if (compact) {
@@ -440,7 +426,7 @@ class _CriminalBackgroundCheckStepState
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         uploadBtn,
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpace.s12),
                         cameraBtn,
                       ],
                     );
@@ -448,93 +434,108 @@ class _CriminalBackgroundCheckStepState
                   return Row(
                     children: [
                       Expanded(child: uploadBtn),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpace.s12),
                       Expanded(child: cameraBtn),
                     ],
                   );
                 },
               ),
-              const SizedBox(height: 14),
-              TextField(
+              const SizedBox(height: AppSpace.s16),
+              AppTextField(
                 key: const ValueKey('input-criminal-protocol'),
                 controller: _protocolCtrl,
+                label: 'Nº da Certidão / Protocolo PF',
+                hint: 'Ex.: 2026.0192837465',
+                helper:
+                    'Preenchido automaticamente ao ler a certidão ou digitado manualmente.',
+                prefixIcon: Icons.numbers_rounded,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Nº da Certidão / Protocolo PF',
-                  hintText: 'Ex.: 2026.0192837465',
-                  prefixIcon: Icon(Icons.numbers_rounded),
-                  helperText:
-                      'Preenchido automaticamente ao ler a certidão ou digitado manualmente.',
-                ),
+                textInputAction: TextInputAction.next,
+                enabled: !_analyzing,
               ),
-              const SizedBox(height: 12),
-              InkWell(
-                key: const ValueKey('btn-pick-criminal-issue-date'),
-                borderRadius: BorderRadius.circular(12),
-                onTap: _pickIssueDate,
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Data de Emissão da Certidão',
-                    prefixIcon: const Icon(Icons.event_available_rounded),
-                    helperText: isDateRecent
-                        ? 'Emissão dentro do prazo de 90 dias exigido.'
-                        : 'A certidão deve ter sido emitida nos últimos 90 dias.',
-                    errorText: isDateRecent
-                        ? null
-                        : 'Certidão emitida há mais de 90 dias. Emita uma nova gratuitamente.',
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _formatDateBr(_issuedDate),
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+              const SizedBox(height: AppSpace.s16),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  key: const ValueKey('btn-pick-criminal-issue-date'),
+                  borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                  onTap: _pickIssueDate,
+                  child: InputDecorator(
+                    decoration: InputDecoration(
+                      labelText: 'Data de Emissão da Certidão',
+                      labelStyle: AppType.bodySm.copyWith(color: tk.textMuted),
+                      prefixIcon: Icon(
+                        Icons.event_available_rounded,
+                        color: tk.textMuted,
+                      ),
+                      helperText: isDateRecent
+                          ? 'Emissão dentro do prazo de 90 dias exigido.'
+                          : 'A certidão deve ter sido emitida nos últimos 90 dias.',
+                      helperStyle: AppType.caption.copyWith(
+                        color: tk.textMuted,
+                      ),
+                      errorText: isDateRecent
+                          ? null
+                          : 'Certidão emitida há mais de 90 dias. Emita uma nova gratuitamente.',
+                      errorStyle: AppType.bodySm.copyWith(color: tk.dangerInk),
+                      filled: true,
+                      fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppGeometry.fieldRadius,
                         ),
+                        borderSide: BorderSide(color: tk.border),
                       ),
-                      Icon(
-                        Icons.calendar_month_rounded,
-                        size: 18,
-                        color: tk.clientAccent,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          AppGeometry.fieldRadius,
+                        ),
+                        borderSide: BorderSide(color: tk.border),
                       ),
-                    ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _formatDateBr(_issuedDate),
+                            style: AppType.tabular(AppType.bodyStrong)
+                                .copyWith(color: tk.text),
+                          ),
+                        ),
+                        Icon(
+                          Icons.calendar_month_rounded,
+                          size: 20,
+                          color: tk.accentInk,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              TextField(
+              const SizedBox(height: AppSpace.s16),
+              AppTextField(
                 key: const ValueKey('input-criminal-validation-code'),
                 controller: _validationCodeCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Código de Validação Eletrônica PF',
-                  hintText: 'Código alfanumérico de autenticidade no rodapé',
-                  prefixIcon: Icon(Icons.verified_outlined),
-                ),
+                label: 'Código de Validação Eletrônica PF',
+                hint: 'Código alfanumérico de autenticidade no rodapé',
+                prefixIcon: Icons.verified_outlined,
+                textInputAction: TextInputAction.done,
+                enabled: !_analyzing,
+                onSubmitted: (_) {
+                  if (!_analyzing) _runValidation();
+                },
               ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: const ValueKey('btn-validate-criminal-certificate'),
-                  onPressed: _analyzing ? null : _runValidation,
-                  icon: _analyzing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.policy_rounded, size: 19),
-                  label: Text(
-                    _analyzing
-                        ? 'Validando Certidão da Polícia Federal...'
-                        : (approved
-                              ? 'Revalidar Certidão Negativa'
-                              : 'Validar Certidão da Polícia Federal'),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+              const SizedBox(height: AppSpace.s16),
+              AppButton(
+                key: const ValueKey('btn-validate-criminal-certificate'),
+                label: _analyzing
+                    ? 'Validando Certidão da Polícia Federal...'
+                    : (approved
+                          ? 'Revalidar Certidão Negativa'
+                          : 'Validar Certidão da Polícia Federal'),
+                icon: Icons.policy_rounded,
+                loading: _analyzing,
+                onPressed: _runValidation,
               ),
             ],
           ),
@@ -542,8 +543,8 @@ class _CriminalBackgroundCheckStepState
 
         // PASSO 3 — RESULTADO DA VALIDAÇÃO FORENSE
         if (_errorMessage != null) ...[
-          const SizedBox(height: 14),
-          Container(
+          const SizedBox(height: AppSpace.s16),
+          KeyedSubtree(
             key: const ValueKey('criminal-check-rejected-card'),
             child: InfoBanner(
               _errorMessage!,
@@ -554,7 +555,7 @@ class _CriminalBackgroundCheckStepState
           ),
         ],
         if (approved && _result != null) ...[
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           _ApprovedCriminalRecordCard(
             result: _result!,
             holderName: widget.expectedFullName,
@@ -586,42 +587,37 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
     final tk = context.tk;
     final expiresAt = result.issuedDate.add(const Duration(days: 180));
 
-    return Container(
+    return AppCard(
       key: const ValueKey('criminal-check-approved-card'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: tk.successSoft,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tk.success, width: 2),
-      ),
+      variant: AppCardVariant.tonal,
+      color: tk.successSoft,
+      borderColor: tk.success,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.verified_user_rounded, color: tk.success, size: 26),
-              const SizedBox(width: 10),
+              Icon(
+                Icons.verified_user_rounded,
+                color: tk.successInk,
+                size: 26,
+              ),
+              const SizedBox(width: AppSpace.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Certidão Negativa Validada · Vigência Semestral (6 meses)',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 14.5,
-                        color: tk.successInk,
-                      ),
+                      style: AppType.bodyStrong.copyWith(color: tk.successInk),
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: AppSpace.s4),
                     Text(
                       'Situação: NADA CONSTA confirmado junto à Polícia Federal. '
                       'Válida até ${_formatDateBr(expiresAt)} para Cliente e Profissional.',
-                      style: TextStyle(
-                        fontSize: 12.5,
+                      style: AppType.tabular(AppType.bodySm).copyWith(
                         color: tk.successInk,
-                        height: 1.35,
                       ),
                     ),
                   ],
@@ -629,98 +625,33 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
               ),
             ],
           ),
-          const Divider(height: 18),
-          _SummaryPair(
+          Divider(height: AppSpace.s24, color: tk.success.withValues(alpha: 0.3)),
+          AppInfoRow(
             label: 'Titular Conferido',
             value: holderName.isEmpty ? 'Titular Verificado' : holderName,
+            strong: true,
           ),
-          _SummaryPair(
+          AppInfoRow(
             label: 'Protocolo PF',
             value: result.protocolMasked.isNotEmpty
                 ? result.protocolMasked
                 : result.protocolNumber,
+            strong: true,
           ),
-          _SummaryPair(
+          AppInfoRow(
             label: 'Emissão / Validade',
             value:
                 '${_formatDateBr(result.issuedDate)} · Válida por 6 meses (${_formatDateBr(expiresAt)})',
+            strong: true,
           ),
-          _SummaryPair(
+          AppInfoRow(
             label: 'Selo SHA-256',
             value: result.fileSha256Hex.length >= 16
                 ? '${result.fileSha256Hex.substring(0, 16)}...'
                 : result.fileSha256Hex,
+            strong: true,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SummaryPair extends StatelessWidget {
-  const _SummaryPair({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = context.tk;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 290) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: tk.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: tk.text,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 122,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: tk.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: tk.text,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -749,15 +680,22 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final layout = context.layout;
     final expiresAt = profile.effectiveKycExpiresAt;
     final expired = profile.isKycExpiredAt();
     final daysRemaining = profile.daysUntilKycExpiration();
     final valid = profile.criminalRecordVerified && !expired;
 
     return AppScaffold(
-      appBar: AppBar(title: const Text('Validação e Antecedentes (6 Meses)')),
+      backgroundColor: tk.background,
+      appBar: const AppAppBar(title: 'Validação e Antecedentes (6 Meses)'),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+        padding: EdgeInsets.fromLTRB(
+          layout.margin,
+          AppSpace.s12,
+          layout.margin,
+          AppSpace.s32,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -773,60 +711,65 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
                   ? Icons.verified_user_rounded
                   : Icons.event_repeat_rounded,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.s16),
             AppCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Resumo do Ciclo de Validação (6 Meses)',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                    style: AppType.titleSm.copyWith(color: tk.text),
                   ),
-                  const Divider(height: 22),
-                  _SummaryPair(
+                  Divider(height: AppSpace.s24, color: tk.border),
+                  AppInfoRow(
                     label: 'Titular Homologado',
                     value: profile.officialCivilName,
+                    strong: true,
                   ),
-                  _SummaryPair(
+                  AppInfoRow(
                     label: 'Antecedentes PF',
                     value: valid
                         ? 'Nada Consta Verificado'
                         : (expired ? 'Ciclo Expirado' : 'Pendente'),
+                    strong: true,
                   ),
-                  _SummaryPair(
+                  AppInfoRow(
                     label: 'Protocolo PF',
                     value:
                         profile.criminalCertificateNumberMasked ??
                         'Conferido eletronicamente',
+                    strong: true,
                   ),
-                  _SummaryPair(
+                  AppInfoRow(
                     label: 'Válido até',
                     value: _formatDateBr(expiresAt),
+                    strong: true,
                   ),
                   if (daysRemaining != null)
-                    _SummaryPair(
+                    AppInfoRow(
                       label: 'Prazo Restante',
                       value: daysRemaining > 0
                           ? '$daysRemaining dias restantes'
                           : 'Renovação imediata necessária',
+                      strong: true,
                     ),
                 ],
               ),
             ),
             if (onRequestRenewal != null) ...[
-              const SizedBox(height: 20),
-              PrimaryButton(
+              const SizedBox(height: AppSpace.s20),
+              AppButton(
                 key: const ValueKey('btn-trigger-six-month-renewal'),
                 label: 'Renovar Documentos e Antecedentes por +6 Meses',
                 icon: Icons.refresh_rounded,
                 onPressed: onRequestRenewal,
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.s16),
             Text(
               'Proteção LGPD: seus documentos são armazenados em cofre privado criptografado e '
               'reaproveitados automaticamente quando você alterna entre Cliente e Profissional.',
-              style: TextStyle(fontSize: 12, color: tk.textMuted, height: 1.4),
+              style: AppType.caption.copyWith(color: tk.textMuted),
             ),
           ],
         ),

@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,14 +6,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/env.dart';
 import '../../../core/services/registration_guard_service.dart';
-import 'verificacao_step6c_termos.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
+import '../../../core/ui/desperrengue_brand_logo.dart';
 import 'cadastro_verificacao_otp.dart';
 import 'existing_account_sheets.dart';
 import 'login_screen.dart';
 import 'password_recovery_screen.dart';
-
-import '../../../core/ui/light_island.dart';
-import '../../../core/ui/serene_route_transitions.dart';
+import 'verificacao_step6c_termos.dart';
 
 class CadastroDadosBasicosScreen extends StatefulWidget {
   const CadastroDadosBasicosScreen({
@@ -58,8 +57,6 @@ class _CadastroDadosBasicosScreenState
   bool _isConfirmPasswordVisible = false;
   bool _termosAceites = false;
   bool _isLoading = false;
-
-  final Color _primaryBlue = const Color(0xFF003366);
 
   // Chave vem de --dart-define=ABSTRACT_API_KEY (nunca versionada). Vazia = desativado.
   final String _abstractApiKey = Env.abstractApiKey;
@@ -118,7 +115,7 @@ class _CadastroDadosBasicosScreenState
     switch (action) {
       case ExistingAccountSheetAction.goToLogin:
         Navigator.of(context).pushAndRemoveUntil(
-          SereneAuthPageRoute<void>(
+          AppRoute<void>(
             builder: (_) => LoginScreen(initialEmail: emailDigitado),
           ),
           (_) => false,
@@ -126,7 +123,7 @@ class _CadastroDadosBasicosScreenState
         break;
       case ExistingAccountSheetAction.recoverPassword:
         Navigator.of(context).push(
-          SereneAuthPageRoute<void>(
+          AppRoute<void>(
             builder: (_) => PasswordRecoveryScreen(initialEmail: emailDigitado),
           ),
         );
@@ -178,15 +175,14 @@ class _CadastroDadosBasicosScreenState
     if (!mounted) return;
     _senhaController.clear();
     _confirmarSenhaController.clear();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Código enviado para o seu e-mail!'),
-        backgroundColor: Colors.green,
-      ),
+    AppSnackbar.show(
+      context,
+      'Código enviado para o seu e-mail!',
+      kind: AppSnackKind.success,
     );
     Navigator.push(
       context,
-      SereneAuthPageRoute<void>(
+      AppRoute<void>(
         builder: (context) =>
             CadastroVerificacaoOtpScreen(email: emailDigitado),
       ),
@@ -199,11 +195,10 @@ class _CadastroDadosBasicosScreenState
     }
 
     if (!_termosAceites) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, aceite os Termos de Uso para continuar.'),
-          backgroundColor: Colors.redAccent,
-        ),
+      AppSnackbar.show(
+        context,
+        'Por favor, aceite os Termos de Uso para continuar.',
+        kind: AppSnackKind.error,
       );
       return;
     }
@@ -219,14 +214,10 @@ class _CadastroDadosBasicosScreenState
 
       if (!emailExiste) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Este e-mail não existe. Introduza um e-mail verdadeiro.',
-              ),
-              backgroundColor: Colors.redAccent,
-              duration: Duration(seconds: 4),
-            ),
+          AppSnackbar.show(
+            context,
+            'Este e-mail não existe. Introduza um e-mail verdadeiro.',
+            kind: AppSnackKind.error,
           );
         }
         setState(() {
@@ -258,13 +249,10 @@ class _CadastroDadosBasicosScreenState
 
       if (eligibility == SignupEmailEligibility.rateLimited) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Muitas tentativas seguidas. Aguarde alguns minutos antes de tentar novamente.',
-              ),
-              backgroundColor: Colors.redAccent,
-            ),
+          AppSnackbar.show(
+            context,
+            'Muitas tentativas seguidas. Aguarde alguns minutos antes de tentar novamente.',
+            kind: AppSnackKind.error,
           );
         }
         return;
@@ -294,16 +282,15 @@ class _CadastroDadosBasicosScreenState
       if (mounted) {
         _senhaController.clear();
         _confirmarSenhaController.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Código enviado para o seu e-mail!'),
-            backgroundColor: Colors.green,
-          ),
+        AppSnackbar.show(
+          context,
+          'Código enviado para o seu e-mail!',
+          kind: AppSnackKind.success,
         );
 
         Navigator.push(
           context,
-          SereneAuthPageRoute<void>(
+          AppRoute<void>(
             builder: (context) =>
                 CadastroVerificacaoOtpScreen(email: emailDigitado),
           ),
@@ -316,12 +303,7 @@ class _CadastroDadosBasicosScreenState
       }
       if (mounted) {
         final msg = RegistrationGuardService.translateAuthErrorPtBr(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
+        AppSnackbar.show(context, msg, kind: AppSnackKind.error);
       }
     } finally {
       if (mounted) {
@@ -334,336 +316,419 @@ class _CadastroDadosBasicosScreenState
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
-          onPressed: () {
-            Navigator.pop(context);
-          },
+    final tk = context.tk;
+    final layout = context.layout;
+
+    return AppScaffold(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
+          onPressed: _isLoading ? null : () => Navigator.of(context).maybePop(),
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          padding: EdgeInsets.fromLTRB(
+            layout.margin,
+            AppSpace.s8,
+            layout.margin,
+            AppSpace.s32,
+          ),
           child: Form(
             key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Desperrengue',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: _primaryBlue,
+            child: AutofillGroup(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(child: DesperrengueBrandLogo(size: 64)),
+                  const SizedBox(height: AppSpace.s12),
+                  Text(
+                    'Desperrengue',
+                    style: AppType.displayL.copyWith(color: tk.accentInk),
+                    textAlign: TextAlign.center,
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Crie sua conta',
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 40),
-
-                const Text(
-                  'Nome Completo',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _nomeController,
-                  enabled: !_isLoading,
-                  decoration: _buildInputDecoration(
-                    'Digite seu nome completo',
-                    Icons.person_outline,
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    'Crie sua conta',
+                    style: AppType.body.copyWith(color: tk.textMuted),
+                    textAlign: TextAlign.center,
                   ),
-                  validator: (value) {
-                    if (value == null || value.trim().length < 3) {
-                      return 'O nome deve ter pelo menos 3 caracteres.';
-                    }
-                    if (value.trim().length > 50) {
-                      return 'O nome não pode exceder 50 caracteres.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                const Text(
-                  'E-mail',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _emailController,
-                  focusNode: _emailFocusNode,
-                  enabled: !_isLoading,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: _buildInputDecoration(
-                    'Digite seu e-mail',
-                    Icons.mail_outline,
+                  const SizedBox(height: AppSpace.s24),
+                  Text(
+                    'Nome Completo',
+                    style: AppType.bodyStrong.copyWith(color: tk.text),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'E-mail é obrigatório.';
-                    }
-                    final regex = RegExp(
-                      r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
-                    );
-                    if (!regex.hasMatch(value.trim())) {
-                      return 'Introduza um e-mail válido (ex: nome@dominio.com).';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                const Text(
-                  'Senha',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _senhaController,
-                  enabled: !_isLoading,
-                  obscureText: !_isPasswordVisible,
-                  maxLength: 16,
-                  decoration:
-                      _buildInputDecoration(
-                        'Crie sua senha',
-                        Icons.lock_outline,
-                      ).copyWith(
-                        counterText: '',
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _isPasswordVisible
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            color: Colors.grey,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _isPasswordVisible = !_isPasswordVisible;
-                            });
-                          },
-                        ),
-                      ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Senha é obrigatória.';
-                    }
-                    final regex = RegExp(
-                      r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{12,16}$',
-                    );
-                    if (!regex.hasMatch(value)) {
-                      return 'Deve ter entre 12 e 16 caracteres (letras, números e símbolos).';
-                    }
-                    return null;
-                  },
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 6.0, bottom: 16.0),
-                  child: Text(
-                    'Conter de 12 a 16 caracteres. Use letras, caracteres especiais e números.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ),
-
-                const Text(
-                  'Confirmação de Senha',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 8),
-                TextFormField(
-                  controller: _confirmarSenhaController,
-                  enabled: !_isLoading,
-                  obscureText: !_isConfirmPasswordVisible,
-                  maxLength: 16,
-                  decoration:
-                      _buildInputDecoration(
-                        'Repita sua senha',
-                        Icons.lock_outline,
-                      ).copyWith(
-                        counterText: '',
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _isConfirmPasswordVisible
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            color: Colors.grey,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _isConfirmPasswordVisible =
-                                  !_isConfirmPasswordVisible;
-                            });
-                          },
-                        ),
-                      ),
-                  validator: (value) {
-                    if (value != _senhaController.text) {
-                      return 'As senhas não coincidem.';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: Checkbox(
-                        value: _termosAceites,
-                        activeColor: _primaryBlue,
-                        onChanged: _isLoading
-                            ? null
-                            : (value) {
-                                setState(() {
-                                  _termosAceites = value ?? false;
-                                });
-                              },
-                      ),
+                  const SizedBox(height: AppSpace.s8),
+                  TextFormField(
+                    controller: _nomeController,
+                    enabled: !_isLoading,
+                    textCapitalization: TextCapitalization.words,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.name],
+                    style: AppType.body.copyWith(color: tk.text),
+                    cursorColor: tk.accentInk,
+                    decoration: _buildInputDecoration(
+                      context,
+                      'Digite seu nome completo',
+                      Icons.person_outline_rounded,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(6),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            SereneAuthPageRoute<void>(
-                              builder: (_) =>
-                                  const VerificacaoStep6cTermosScreen(),
-                            ),
-                          );
-                        },
-                        child: RichText(
-                          text: TextSpan(
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontSize: 14,
-                            ),
-                            children: [
-                              const TextSpan(text: 'Li e concordo com os '),
-                              TextSpan(
-                                text: 'Termos de Uso e Mandato Legal',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: _primaryBlue,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                              const TextSpan(text: ' e '),
-                              TextSpan(
-                                text: 'Política de Privacidade',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: _primaryBlue,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 32),
-
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _processarCadastro,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Text(
-                          'Cadastrar',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                ),
-                const SizedBox(height: 24),
-
-                Center(
-                  child: GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context);
+                    validator: (value) {
+                      if (value == null || value.trim().length < 3) {
+                        return 'O nome deve ter pelo menos 3 caracteres.';
+                      }
+                      if (value.trim().length > 50) {
+                        return 'O nome não pode exceder 50 caracteres.';
+                      }
+                      return null;
                     },
-                    child: RichText(
-                      text: TextSpan(
-                        text: 'Já tem uma conta? ',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 15,
+                  ),
+                  const SizedBox(height: AppSpace.s16),
+                  Text(
+                    'E-mail',
+                    style: AppType.bodyStrong.copyWith(color: tk.text),
+                  ),
+                  const SizedBox(height: AppSpace.s8),
+                  TextFormField(
+                    controller: _emailController,
+                    focusNode: _emailFocusNode,
+                    enabled: !_isLoading,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.email],
+                    style: AppType.body.copyWith(color: tk.text),
+                    cursorColor: tk.accentInk,
+                    decoration: _buildInputDecoration(
+                      context,
+                      'Digite seu e-mail',
+                      Icons.mail_outline_rounded,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'E-mail é obrigatório.';
+                      }
+                      final regex = RegExp(
+                        r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
+                      );
+                      if (!regex.hasMatch(value.trim())) {
+                        return 'Introduza um e-mail válido (ex: nome@dominio.com).';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppSpace.s16),
+                  Text(
+                    'Senha',
+                    style: AppType.bodyStrong.copyWith(color: tk.text),
+                  ),
+                  const SizedBox(height: AppSpace.s8),
+                  TextFormField(
+                    controller: _senhaController,
+                    enabled: !_isLoading,
+                    obscureText: !_isPasswordVisible,
+                    maxLength: 16,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.newPassword],
+                    style: AppType.body.copyWith(color: tk.text),
+                    cursorColor: tk.accentInk,
+                    decoration:
+                        _buildInputDecoration(
+                          context,
+                          'Crie sua senha',
+                          Icons.lock_outline_rounded,
+                        ).copyWith(
+                          counterText: '',
+                          suffixIcon: AppIconButton(
+                            icon: _isPasswordVisible
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            tooltip: _isPasswordVisible
+                                ? 'Ocultar senha'
+                                : 'Mostrar senha',
+                            color: tk.textMuted,
+                            onPressed: () {
+                              setState(() {
+                                _isPasswordVisible = !_isPasswordVisible;
+                              });
+                            },
+                          ),
                         ),
-                        children: [
-                          TextSpan(
-                            text: 'Faça Login',
-                            style: TextStyle(
-                              color: _primaryBlue,
-                              fontWeight: FontWeight.bold,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Senha é obrigatória.';
+                      }
+                      final regex = RegExp(
+                        r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{12,16}$',
+                      );
+                      if (!regex.hasMatch(value)) {
+                        return 'Deve ter entre 12 e 16 caracteres (letras, números e símbolos).';
+                      }
+                      return null;
+                    },
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      top: AppSpace.s8,
+                      bottom: AppSpace.s16,
+                    ),
+                    child: Text(
+                      'Conter de 12 a 16 caracteres. Use letras, caracteres especiais e números.',
+                      style: AppType.caption.copyWith(color: tk.textMuted),
+                    ),
+                  ),
+                  Text(
+                    'Confirmação de Senha',
+                    style: AppType.bodyStrong.copyWith(color: tk.text),
+                  ),
+                  const SizedBox(height: AppSpace.s8),
+                  TextFormField(
+                    controller: _confirmarSenhaController,
+                    enabled: !_isLoading,
+                    obscureText: !_isConfirmPasswordVisible,
+                    maxLength: 16,
+                    textInputAction: TextInputAction.done,
+                    style: AppType.body.copyWith(color: tk.text),
+                    cursorColor: tk.accentInk,
+                    decoration:
+                        _buildInputDecoration(
+                          context,
+                          'Repita sua senha',
+                          Icons.lock_outline_rounded,
+                        ).copyWith(
+                          counterText: '',
+                          suffixIcon: AppIconButton(
+                            icon: _isConfirmPasswordVisible
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            tooltip: _isConfirmPasswordVisible
+                                ? 'Ocultar confirmação'
+                                : 'Mostrar confirmação',
+                            color: tk.textMuted,
+                            onPressed: () {
+                              setState(() {
+                                _isConfirmPasswordVisible =
+                                    !_isConfirmPasswordVisible;
+                              });
+                            },
+                          ),
+                        ),
+                    validator: (value) {
+                      if (value != _senhaController.text) {
+                        return 'As senhas não coincidem.';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppSpace.s24),
+                  AppCard(
+                    variant: AppCardVariant.tonal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.s12,
+                      vertical: AppSpace.s12,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Checkbox(
+                          value: _termosAceites,
+                          activeColor: tk.accent,
+                          checkColor: tk.onAccent,
+                          onChanged: _isLoading
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _termosAceites = value ?? false;
+                                  });
+                                },
+                        ),
+                        const SizedBox(width: AppSpace.s4),
+                        Expanded(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(AppSpace.s8),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                AppRoute<void>(
+                                  builder: (_) =>
+                                      const VerificacaoStep6cTermosScreen(),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: AppSpace.s4,
+                              ),
+                              child: Text.rich(
+                                TextSpan(
+                                  style: AppType.bodySm.copyWith(
+                                    color: tk.text,
+                                  ),
+                                  children: [
+                                    const TextSpan(
+                                      text: 'Li e concordo com os ',
+                                    ),
+                                    TextSpan(
+                                      text: 'Termos de Uso e Mandato Legal',
+                                      style: AppType.bodySm.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: tk.accentInk,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                    const TextSpan(text: ' e '),
+                                    TextSpan(
+                                      text: 'Política de Privacidade',
+                                      style: AppType.bodySm.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: tk.accentInk,
+                                        decoration: TextDecoration.underline,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s24),
+                  AppPressScale(
+                    enabled: !_isLoading,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _processarCadastro,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: tk.accent,
+                        foregroundColor: tk.onAccent,
+                        disabledBackgroundColor: _isLoading
+                            ? tk.accent
+                            : tk.surfaceInset,
+                        disabledForegroundColor: _isLoading
+                            ? tk.onAccent
+                            : tk.textMuted,
+                        minimumSize: const Size(
+                          double.infinity,
+                          AppGeometry.buttonHeight,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.s20,
+                          vertical: AppSpace.s16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.buttonRadius,
+                          ),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _isLoading
+                          ? AppProgressRing(
+                              value: 0.72,
+                              size: 20,
+                              strokeWidth: 2.4,
+                              color: tk.onAccent,
+                              semanticLabel: 'Cadastrando',
+                            )
+                          : Text(
+                              'Cadastrar',
+                              textAlign: TextAlign.center,
+                              style: AppType.button.copyWith(
+                                color: tk.onAccent,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s20),
+                  Center(
+                    child: AppPressable(
+                      onTap: _isLoading ? null : () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(
+                        AppGeometry.fieldRadius,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          minWidth: AppGeometry.minTarget,
+                          minHeight: AppGeometry.minTarget,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpace.s12,
+                            vertical: AppSpace.s8,
+                          ),
+                          child: Center(
+                            widthFactor: 1,
+                            child: Text.rich(
+                              TextSpan(
+                                text: 'Já tem uma conta? ',
+                                style: AppType.body.copyWith(
+                                  color: tk.textMuted,
+                                ),
+                                children: [
+                                  TextSpan(
+                                    text: 'Faça Login',
+                                    style: AppType.bodyStrong.copyWith(
+                                      color: tk.accentInk,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 32),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ));
+    );
   }
 
-  InputDecoration _buildInputDecoration(String hint, IconData icon) {
+  InputDecoration _buildInputDecoration(
+    BuildContext context,
+    String hint,
+    IconData icon,
+  ) {
+    final tk = context.tk;
+    final radius = BorderRadius.circular(AppGeometry.fieldRadius);
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: Colors.grey.shade400),
-      prefixIcon: Icon(icon, color: Colors.grey),
+      hintStyle: AppType.body.copyWith(color: tk.textMuted),
+      prefixIcon: Icon(icon, color: tk.textMuted, size: 22),
+      filled: true,
+      fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
+      errorMaxLines: 3,
+      errorStyle: AppType.bodySm.copyWith(color: tk.dangerInk),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.s16,
+        vertical: AppSpace.s16,
+      ),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.grey),
+        borderRadius: radius,
+        borderSide: BorderSide(color: tk.border),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: Colors.grey.shade300),
+        borderRadius: radius,
+        borderSide: BorderSide(color: tk.border),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: BorderSide(color: _primaryBlue, width: 2),
+        borderRadius: radius,
+        borderSide: BorderSide(color: tk.accentInk, width: 2),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: Colors.redAccent),
+        borderRadius: radius,
+        borderSide: BorderSide(color: tk.dangerInk, width: 1.5),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: radius,
+        borderSide: BorderSide(color: tk.dangerInk, width: 2),
       ),
     );
   }
