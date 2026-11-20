@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/services/social_service.dart';
 import '../../../core/ui/app_scaffold.dart';
-import '../../../core/ui/app_tokens.dart';
-import '../../../core/ui/widgets.dart';
+import '../../../core/ui/design_system/design_system.dart';
+import '../../../core/ui/widgets.dart' show BellButton;
 import '../../../core/utils/format.dart';
 
 /// Sino com contador de não lidas (usado nas home de cliente e profissional).
@@ -66,7 +66,7 @@ class _UnreadBellState extends State<UnreadBell> {
         return BellButton(
           count: unread,
           onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            AppRoute<void>(
               builder: (_) => NotificationsScreen(
                 onOpenJob: widget.onOpenJob,
                 notificationsStream: widget.notificationsStream,
@@ -165,14 +165,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(
-        title: const Text('Notificações'),
+      appBar: AppAppBar(
+        title: 'Notificações',
+        centerTitle: false,
         actions: [
-          TextButton(
+          AppButton(
             key: const ValueKey('notif-mark-all-read-btn'),
+            label: 'Marcar lidas',
+            variant: AppButtonVariant.tertiary,
+            expand: false,
+            compact: true,
             onPressed: _handleMarkAllRead,
-            child: const Text('Marcar lidas'),
           ),
         ],
       ),
@@ -180,133 +185,185 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         stream: _stream,
         builder: (context, snap) {
           if (snap.hasError) {
-            return const ErrorView(
+            return const AppErrorState(
               message: 'Não foi possível carregar as notificações.',
             );
           }
-          if (!snap.hasData) return const LoadingView();
-          final items = snap.data!
+          final loading = !snap.hasData;
+          final items = (snap.data ?? const <AppNotification>[])
               .map(SocialService.applyOptimisticRead)
               .toList();
-          _latestItems = items;
-          if (items.isEmpty) {
-            return const EmptyView(
+          if (!loading) _latestItems = items;
+
+          final Widget content;
+          if (!loading && items.isEmpty) {
+            content = const AppEmptyState(
               icon: Icons.notifications_off_outlined,
               title: 'Nada por aqui ainda',
-              subtitle:
+              message:
                   'Avisaremos sobre orçamentos, pagamentos e atualizações dos seus serviços.',
             );
+          } else {
+            content = ListView.separated(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.layout.margin,
+                vertical: AppSpace.s12,
+              ),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: AppSpace.item),
+              itemBuilder: (context, i) {
+                final n = items[i];
+                final unread = n.unread;
+                return _NotificationCard(
+                  notification: n,
+                  icon: _icon(n.kind),
+                  unread: unread,
+                  onTap: () {
+                    _handleMarkRead(n);
+                    if (n.jobId != null) {
+                      widget.onOpenJob(context, n.jobId!);
+                    }
+                  },
+                );
+              },
+            );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: items.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final n = items[i];
-              final accent = Theme.of(context).colorScheme.primary;
-              final unread = n.unread;
-              return ListTile(
-                key: ValueKey('notif-tile-${n.id}'),
-                tileColor: unread ? accent.withValues(alpha: 0.08) : null,
-                leading: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: unread
-                          ? accent.withValues(alpha: 0.16)
-                          : context.tk.surface,
-                      child: Icon(
-                        _icon(n.kind),
-                        color: unread ? accent : context.tk.textMuted,
-                      ),
-                    ),
-                    if (unread)
-                      Positioned(
-                        top: -1,
-                        right: -1,
-                        child: Container(
-                          width: 11,
-                          height: 11,
-                          decoration: BoxDecoration(
-                            color: accent,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: context.tk.card,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                title: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        n.title,
-                        style: TextStyle(
-                          fontWeight:
-                              unread ? FontWeight.w800 : FontWeight.w600,
-                          color: unread ? context.tk.text : context.tk.textMuted,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (unread)
-                      Container(
-                        key: ValueKey('notif-unread-badge-${n.id}'),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Nova',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            color: accent,
-                          ),
-                        ),
-                      )
-                    else
-                      Row(
-                        key: ValueKey('notif-read-badge-${n.id}'),
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.done_all_rounded,
-                            size: 14,
-                            color: context.tk.textMuted,
-                          ),
-                          const SizedBox(width: 3),
-                          Text(
-                            'Vista',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w600,
-                              color: context.tk.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                  ],
-                ),
-                subtitle: Text('${n.body ?? ''}\n${relativeTime(n.createdAt)}'),
-                isThreeLine: true,
-                onTap: () {
-                  _handleMarkRead(n);
-                  if (n.jobId != null) {
-                    widget.onOpenJob(context, n.jobId!);
-                  }
-                },
-              );
-            },
+
+          return AppSkeletonSwitcher(
+            loading: loading,
+            skeleton: AppSkeletonList(
+              count: 5,
+              padding: EdgeInsets.symmetric(
+                horizontal: context.layout.margin,
+                vertical: AppSpace.s12,
+              ),
+            ),
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: tk.background),
+              child: content,
+            ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _NotificationCard extends StatelessWidget {
+  const _NotificationCard({
+    required this.notification,
+    required this.icon,
+    required this.unread,
+    required this.onTap,
+  });
+
+  final AppNotification notification;
+  final IconData icon;
+  final bool unread;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final body = notification.body?.trim();
+    return AppCard(
+      key: ValueKey('notif-tile-${notification.id}'),
+      variant: unread ? AppCardVariant.elevated : AppCardVariant.outlined,
+      color: unread ? tk.accentSoft.withValues(alpha: tk.isDark ? 0.5 : 0.45) : null,
+      borderColor: unread ? tk.accent.withValues(alpha: 0.35) : null,
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: AppGeometry.iconTileSize,
+                height: AppGeometry.iconTileSize,
+                decoration: BoxDecoration(
+                  color: unread ? tk.accentSoft : tk.surface,
+                  borderRadius:
+                      BorderRadius.circular(AppGeometry.iconTileRadius),
+                ),
+                child: Icon(
+                  icon,
+                  size: 22,
+                  color: unread ? tk.accentInk : tk.textMuted,
+                ),
+              ),
+              if (unread)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    width: 11,
+                    height: 11,
+                    decoration: BoxDecoration(
+                      color: tk.accent,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: tk.card, width: 2),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: AppSpace.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: AppSpace.s8,
+                  runSpacing: AppSpace.s4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      notification.title,
+                      style: AppType.bodyStrong.copyWith(
+                        fontWeight: unread ? FontWeight.w700 : FontWeight.w600,
+                        color: unread ? tk.text : tk.textMuted,
+                      ),
+                    ),
+                    if (unread)
+                      AppStatusChip(
+                        'Nova',
+                        key: ValueKey('notif-unread-badge-${notification.id}'),
+                        tone: AppTone.accent,
+                      )
+                    else
+                      AppStatusChip(
+                        'Vista',
+                        key: ValueKey('notif-read-badge-${notification.id}'),
+                        tone: AppTone.neutral,
+                        icon: Icons.done_all_rounded,
+                      ),
+                  ],
+                ),
+                if (body != null && body.isNotEmpty) ...[
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    body,
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
+                  ),
+                ],
+                const SizedBox(height: AppSpace.s4),
+                Text(
+                  relativeTime(notification.createdAt),
+                  style: AppType.tabular(AppType.caption)
+                      .copyWith(color: tk.textMuted),
+                ),
+              ],
+            ),
+          ),
+          if (notification.jobId != null) ...[
+            const SizedBox(width: AppSpace.s8),
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpace.s8),
+              child: Icon(Icons.chevron_right_rounded, color: tk.textMuted),
+            ),
+          ],
+        ],
       ),
     );
   }
