@@ -1,14 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
 
 /// Mostra, SOBRE o Painel do Cliente, o overlay circular "Pedido publicado!".
 ///
 ///  * fundo escurecido (`Colors.black.withValues(alpha: 0.65)`) com o painel visível atrás;
-///  * círculo central com ondas/pulso contínuos e ícone de sucesso animado;
+///  * círculo central com micro-celebração breve (Lottie `check_burst.json` + onda única,
+///    sem loop infinito) e próximo passo útil;
 ///  * fecha ao tocar em qualquer parte escura (`barrierDismissible: true`) OU no botão
 ///    "Fechar" logo abaixo do círculo.
 ///
@@ -19,22 +21,25 @@ Future<void> showPublishedOrderOverlay(
   bool direct = false,
   String? providerName,
 }) {
+  final reduced = AppMotion.reduced(context);
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Fechar',
     barrierColor: Colors.black.withValues(alpha: 0.65),
-    transitionDuration: const Duration(milliseconds: 320),
-    transitionBuilder: (context, anim, _, child) => FadeTransition(
-      opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
-      child: ScaleTransition(
-        scale: Tween(
-          begin: 0.85,
-          end: 1.0,
-        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
-        child: child,
-      ),
-    ),
+    transitionDuration: reduced ? Duration.zero : AppMotion.sheet,
+    transitionBuilder: (context, anim, _, child) {
+      if (AppMotion.reduced(context)) return child;
+      return FadeTransition(
+        opacity: CurvedAnimation(parent: anim, curve: AppMotion.fadeCurve),
+        child: ScaleTransition(
+          scale: Tween(begin: 0.92, end: 1.0).animate(
+            CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+          ),
+          child: child,
+        ),
+      );
+    },
     pageBuilder: (context, _, _) => PublishedOrderOverlay(
       categoryName: categoryName,
       direct: direct,
@@ -62,24 +67,27 @@ class PublishedOrderOverlay extends StatefulWidget {
 
 class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
+  late final AnimationController _celebrate = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2400),
+    duration: AppMotion.success,
   );
+  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _pulse.stop();
-    } else if (!_pulse.isAnimating) {
-      _pulse.repeat();
+    if (_started) return;
+    _started = true;
+    if (AppMotion.reduced(context)) {
+      _celebrate.value = 1.0;
+    } else {
+      _celebrate.forward();
     }
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
+    _celebrate.dispose();
     super.dispose();
   }
 
@@ -96,106 +104,104 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    const size = 316.0;
+    final layout = context.layout;
+    final outerSize = math.min(layout.width - AppSpace.s16, 332.0);
+    final circleSize = math.max(264.0, outerSize - AppSpace.s32);
+
     // O Material cobre só o conteúdo (não a tela inteira): o resto da tela continua sendo a
     // barreira escura, que fecha o overlay ao toque.
     return SafeArea(
       child: Center(
-        child: Material(
-          type: MaterialType.transparency,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Toques no círculo não fecham: só a área escura (barreira) e o botão Fechar.
-              RepaintBoundary(
-                child: SizedBox(
-                  key: const ValueKey('published-circle'),
-                  width: size,
-                  height: size,
-                  child: AnimatedBuilder(
-                    animation: _pulse,
-                    builder: (context, child) => CustomPaint(
-                      painter: _WavesPainter(
-                        color: tk.clientAccent,
-                        t: _pulse.value,
-                      ),
-                      child: child,
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 252,
-                        height: 252,
-                        padding: const EdgeInsets.fromLTRB(26, 20, 26, 20),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: tk.card,
-                          border: Border.all(
-                            color: tk.clientAccent.withValues(alpha: 0.6),
-                            width: 3,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: tk.clientAccent.withValues(alpha: 0.45),
-                              blurRadius: 36,
-                              spreadRadius: 2,
-                            ),
-                          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8, vertical: AppSpace.s16),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Toques no círculo não fecham: só a área escura (barreira) e o botão Fechar.
+                RepaintBoundary(
+                  child: SizedBox(
+                    key: const ValueKey('published-circle'),
+                    width: outerSize,
+                    height: outerSize,
+                    child: AnimatedBuilder(
+                      animation: _celebrate,
+                      builder: (context, child) => CustomPaint(
+                        painter: _CelebrationRingPainter(
+                          color: tk.accent,
+                          t: _celebrate.value,
                         ),
-                        // FittedBox: com fonte grande do sistema o conteúdo encolhe em vez de estourar o círculo.
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: SizedBox(
-                            width: 200,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const _AnimatedCheck(),
-                                const SizedBox(height: 10),
-                                Text(
-                                  widget.direct
-                                      ? 'Pedido enviado!'
-                                      : 'Pedido publicado!',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      categoryIcon(widget.categoryName),
-                                      size: 15,
-                                      color: tk.clientAccent,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        widget.categoryName,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          color: tk.clientAccent,
-                                        ),
+                        child: child,
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: circleSize,
+                          height: circleSize,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpace.s24,
+                            vertical: AppSpace.s20,
+                          ),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: tk.surfaceAt(4),
+                            border: Border.all(
+                              color: tk.accent.withValues(alpha: 0.55),
+                              width: 2.5,
+                            ),
+                            boxShadow: tk.elevation(2),
+                          ),
+                          child: ClipOval(
+                            child: Center(
+                              child: SingleChildScrollView(
+                                physics: const ClampingScrollPhysics(),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const _BriefCheckCelebration(),
+                                      const SizedBox(height: AppSpace.s8),
+                                      Text(
+                                        widget.direct
+                                            ? 'Pedido enviado!'
+                                            : 'Pedido publicado!',
+                                        textAlign: TextAlign.center,
+                                        style: AppType.title.copyWith(color: tk.text),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _body,
-                                  textAlign: TextAlign.center,
-                                  maxLines: 4,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    height: 1.3,
-                                    color: tk.textMuted,
+                                      const SizedBox(height: AppSpace.s4),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            categoryIcon(widget.categoryName),
+                                            size: 16,
+                                            color: tk.accentInk,
+                                          ),
+                                          const SizedBox(width: AppSpace.s4),
+                                          Flexible(
+                                            child: Text(
+                                              widget.categoryName,
+                                              textAlign: TextAlign.center,
+                                              style: AppType.caption.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                color: tk.accentInk,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: AppSpace.s4),
+                                      Text(
+                                        _body,
+                                        textAlign: TextAlign.center,
+                                        style: AppType.caption.copyWith(color: tk.textMuted),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -203,24 +209,23 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                key: const ValueKey('published-close'),
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
-                label: const Text('Fechar'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black87,
-                  minimumSize: const Size(160, 48),
-                  textStyle: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
-                  ),
+                const SizedBox(height: AppSpace.s12),
+                Text(
+                  'Acompanhe o andamento em Meus Pedidos',
+                  textAlign: TextAlign.center,
+                  style: AppType.caption.copyWith(color: AppTokens.onColor(tk.scrim)),
                 ),
-              ),
-            ],
+                const SizedBox(height: AppSpace.s12),
+                AppButton(
+                  key: const ValueKey('published-close'),
+                  label: 'Fechar',
+                  icon: Icons.close_rounded,
+                  expand: false,
+                  compact: true,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -228,62 +233,107 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
   }
 }
 
-/// Ondas concêntricas contínuas ao redor do círculo.
-class _WavesPainter extends CustomPainter {
-  _WavesPainter({required this.color, required this.t});
+/// Onda breve de celebração única (t: 0→1) sem loop infinito.
+class _CelebrationRingPainter extends CustomPainter {
+  _CelebrationRingPainter({required this.color, required this.t});
 
   final Color color;
   final double t;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (t <= 0 || t >= 1) return;
     final c = size.center(Offset.zero);
-    const inner = 118.0;
+    final inner = (size.width - AppSpace.s32) / 2;
     final maxR = size.width / 2;
-    for (var i = 0; i < 3; i++) {
-      final p = (t + i / 3) % 1.0;
-      final r = inner + (maxR - inner) * p;
-      canvas.drawCircle(
-        c,
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 3
-          ..color = color.withValues(alpha: (1 - p) * 0.7),
-      );
+    final eased = Curves.easeOutCubic.transform(t);
+    final r = inner + (maxR - inner) * eased;
+    canvas.drawCircle(
+      c,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..color = color.withValues(alpha: (1 - eased) * 0.55),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CelebrationRingPainter old) => old.t != t || old.color != color;
+}
+
+/// Micro-celebração breve (Lottie `check_burst.json` não-loop ou selo estático em reduced-motion).
+class _BriefCheckCelebration extends StatefulWidget {
+  const _BriefCheckCelebration();
+
+  @override
+  State<_BriefCheckCelebration> createState() => _BriefCheckCelebrationState();
+}
+
+class _BriefCheckCelebrationState extends State<_BriefCheckCelebration>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _lottie = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (AppMotion.reduced(context)) {
+      _lottie.value = 1.0;
+    } else {
+      _lottie.forward();
     }
   }
 
   @override
-  bool shouldRepaint(_WavesPainter old) => old.t != t;
-}
-
-/// Ícone de sucesso que "desenha" o check ao entrar.
-class _AnimatedCheck extends StatelessWidget {
-  const _AnimatedCheck();
+  void dispose() {
+    _lottie.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final reduce = MediaQuery.disableAnimationsOf(context);
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: reduce ? 1 : 0, end: 1),
-      duration: reduce ? Duration.zero : const Duration(milliseconds: 700),
-      curve: Curves.elasticOut,
-      builder: (context, v, _) => Transform.scale(
-        scale: math.max(0.0, v),
-        child: Container(
-          width: 64,
-          height: 64,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0E9F6E), Color(0xFF10B981)],
+    final tk = context.tk;
+    final reduce = AppMotion.reduced(context);
+    final badge = Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: tk.success,
+      ),
+      child: Icon(Icons.check_rounded, color: AppTokens.onColor(tk.success), size: 32),
+    );
+    if (reduce) return badge;
+    return SizedBox(
+      width: 64,
+      height: 64,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0.7, end: 1.0),
+            duration: AppMotion.success,
+            curve: Curves.easeOutBack,
+            builder: (context, v, child) => Transform.scale(scale: math.max(0.0, v), child: child),
+            child: badge,
+          ),
+          IgnorePointer(
+            child: Lottie.asset(
+              'assets/lottie/check_burst.json',
+              controller: _lottie,
+              repeat: false,
+              width: 64,
+              height: 64,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
             ),
           ),
-          child: const Icon(Icons.check_rounded, color: Colors.white, size: 42),
-        ),
+        ],
       ),
     );
   }
