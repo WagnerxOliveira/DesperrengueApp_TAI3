@@ -8,8 +8,7 @@ import '../../../core/models/scheduling_models.dart';
 import '../../../core/services/address_lookup.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../shared/presentation/service_map_widgets.dart';
-import '../../../core/ui/widgets.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 
 export '../../../core/models/address_data.dart';
 
@@ -203,7 +202,7 @@ class _AddressFormState extends State<AddressForm> {
   Future<void> _searchCep() async {
     final digits = AddressLookup.onlyDigits(_cep.text);
     if (digits.length != 8) {
-      showSnack(context, 'Digite os 8 números do CEP.', error: true);
+      AppSnackbar.show(context, 'Digite os 8 números do CEP.', kind: AppSnackKind.error);
       return;
     }
     _lastCep = digits;
@@ -224,13 +223,13 @@ class _AddressFormState extends State<AddressForm> {
     setState(() => _loadingGps = true);
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted) showSnack(context, 'Ative a localização (GPS) do aparelho e tente de novo.', error: true);
+        if (mounted) AppSnackbar.show(context, 'Ative a localização (GPS) do aparelho e tente de novo.', kind: AppSnackKind.error);
         return;
       }
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        if (mounted) showSnack(context, 'Permissão de localização negada. Digite o CEP para continuar.', error: true);
+        if (mounted) AppSnackbar.show(context, 'Permissão de localização negada. Digite o CEP para continuar.', kind: AppSnackKind.error);
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
@@ -242,7 +241,7 @@ class _AddressFormState extends State<AddressForm> {
         _lat = pos.latitude;
         _lng = pos.longitude;
         _emit();
-        showSnack(context, 'Localização capturada, mas não achamos o endereço. Digite o CEP.', error: true);
+        AppSnackbar.show(context, 'Localização capturada, mas não achamos o endereço. Digite o CEP.', kind: AppSnackKind.error);
         return;
       }
       _lastCep = found.cep; // evita nova consulta ao preencher o CEP abaixo
@@ -260,10 +259,10 @@ class _AddressFormState extends State<AddressForm> {
       _gpsPin = true;
       _emit();
       setState(() => _auto = _Auto.done);
-      showSnack(context, 'Endereço preenchido! Confira e informe o número.');
+      AppSnackbar.show(context, 'Endereço preenchido! Confira e informe o número.', kind: AppSnackKind.success);
       _numberFocus.requestFocus();
     } catch (_) {
-      if (mounted) showSnack(context, 'Não foi possível obter a localização.', error: true);
+      if (mounted) AppSnackbar.show(context, 'Não foi possível obter a localização.', kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _loadingGps = false);
     }
@@ -284,7 +283,7 @@ class _AddressFormState extends State<AddressForm> {
   /// Abre o mapa com o pino no endereço digitado para o cliente ajustar na porta da casa.
   Future<void> _confirmPin() async {
     if (!_canPlacePin) {
-      showSnack(context, 'Preencha rua, número e cidade para marcar o ponto no mapa.', error: true);
+      AppSnackbar.show(context, 'Preencha rua, número e cidade para marcar o ponto no mapa.', kind: AppSnackKind.error);
       return;
     }
     setState(() => _locatingPin = true);
@@ -362,167 +361,212 @@ class _AddressFormState extends State<AddressForm> {
     );
   }
 
-  Widget _pinSection(Color accent) {
+  Widget _pinSection() {
+    final tk = context.tk;
     if (_pinConfirmed) {
       return Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Row(
-          children: [
-            Expanded(
-              child: _StatusLine(
-                icon: Icons.pin_drop_rounded,
-                text: 'Ponto exato confirmado no mapa.',
-                color: context.tk.success,
+        padding: const EdgeInsets.only(top: AppSpace.s12),
+        child: AppCard(
+          variant: AppCardVariant.tonal,
+          color: tk.successSoft,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s8),
+          child: Row(
+            children: [
+              Expanded(
+                child: _StatusLine(
+                  icon: Icons.pin_drop_rounded,
+                  text: 'Ponto exato confirmado no mapa.',
+                  color: tk.successInk,
+                  padding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            TextButton(key: const Key('pin-adjust'), onPressed: _locatingPin ? null : _confirmPin, child: const Text('Ajustar')),
-          ],
+              AppButton(
+                key: const Key('pin-adjust'),
+                label: 'Ajustar',
+                variant: AppButtonVariant.tertiary,
+                expand: false,
+                compact: true,
+                onPressed: _locatingPin ? null : _confirmPin,
+              ),
+            ],
+          ),
         ),
       );
     }
     if (!_canPlacePin) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: OutlinedButton.icon(
+      padding: const EdgeInsets.only(top: AppSpace.s12),
+      child: AppButton(
         key: const Key('pin-confirm'),
+        variant: AppButtonVariant.secondary,
+        compact: true,
+        loading: _locatingPin,
+        icon: Icons.pin_drop_outlined,
+        label: _locatingPin ? 'Localizando o endereço...' : 'Confirmar o ponto exato no mapa',
         onPressed: _locatingPin ? null : _confirmPin,
-        icon: _locatingPin
-            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(Icons.pin_drop_outlined, color: accent),
-        label: Text(
-          _locatingPin ? 'Localizando o endereço...' : 'Confirmar o ponto exato no mapa',
-          textAlign: TextAlign.center,
-        ),
       ),
     );
   }
 
   Widget _cepStatus() {
+    final tk = context.tk;
     switch (_auto) {
       case _Auto.idle:
         return const SizedBox.shrink();
       case _Auto.loading:
-        return _StatusLine(icon: null, text: 'Buscando endereço...', color: context.tk.textMuted);
+        return _StatusLine(icon: null, text: 'Buscando endereço...', color: tk.textMuted);
       case _Auto.done:
-        return _StatusLine(icon: Icons.check_circle_rounded, text: 'Endereço preenchido. Informe o número.', color: context.tk.success);
+        return _StatusLine(icon: Icons.check_circle_rounded, text: 'Endereço preenchido. Informe o número.', color: tk.successInk);
       case _Auto.notFound:
         return _StatusLine(
           icon: Icons.info_outline_rounded,
           text: 'CEP não encontrado. Preencha o endereço manualmente.',
-          color: context.tk.danger,
+          color: tk.dangerInk,
         );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
+    final stackPairs = context.layout.isLargeText;
+    final numberField = AppTextField(
+      controller: _number,
+      focusNode: _numberFocus,
+      keyboardType: TextInputType.streetAddress,
+      label: 'Número *',
+    );
+    final complementField = AppTextField(
+      controller: _complement,
+      label: 'Complemento',
+    );
+    final cityField = AppTextField(
+      controller: _city,
+      textCapitalization: TextCapitalization.words,
+      label: 'Cidade *',
+    );
+    final ufField = AppTextField(
+      controller: _uf,
+      textCapitalization: TextCapitalization.characters,
+      inputFormatters: [LengthLimitingTextInputFormatter(2)],
+      label: 'UF',
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionTitle('Acesso rápido'),
-        OutlinedButton.icon(
-          onPressed: _loadingGps ? null : _useGps,
-          icon: _loadingGps
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.my_location_rounded),
-          label: Text(
-            _loadingGps ? 'Buscando seu endereço...' : 'Usar minha localização atual',
-            textAlign: TextAlign.center,
+        AppSection(
+          title: 'Acesso rápido',
+          child: AppButton(
+            variant: AppButtonVariant.secondary,
+            compact: true,
+            loading: _loadingGps,
+            icon: Icons.my_location_rounded,
+            label: _loadingGps ? 'Buscando seu endereço...' : 'Usar minha localização atual',
+            onPressed: _loadingGps ? null : _useGps,
           ),
         ),
-        const SizedBox(height: 18),
-        Center(child: Text('Ou digite o CEP e o resto é por nossa conta', style: TextStyle(color: context.tk.textMuted))),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpace.s20),
+        Center(
+          child: Text(
+            'Ou digite o CEP e o resto é por nossa conta',
+            textAlign: TextAlign.center,
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
+          ),
+        ),
+        const SizedBox(height: AppSpace.s16),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: TextField(
+              child: AppTextField(
                 controller: _cep,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(8)],
-                decoration: const InputDecoration(labelText: 'CEP', hintText: '00000000'),
+                label: 'CEP',
+                hint: '00000000',
                 onSubmitted: (_) => _searchCep(),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppSpace.s8),
             SizedBox(
-              height: 56,
-              width: 56,
-              child: IconButton.filledTonal(
-                onPressed: _auto == _Auto.loading ? null : _searchCep,
-                style: IconButton.styleFrom(backgroundColor: accent.withValues(alpha: 0.12), foregroundColor: accent),
-                icon: _auto == _Auto.loading
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.search_rounded),
-              ),
+              height: AppGeometry.inputHeight,
+              width: AppGeometry.inputHeight,
+              child: _auto == _Auto.loading
+                  ? DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tk.accentSoft,
+                        borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                      ),
+                      child: const Center(child: AppSkeleton(width: 24, height: 24, circle: true)),
+                    )
+                  : DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: tk.accentSoft,
+                        borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                      ),
+                      child: Center(
+                        child: AppIconButton(
+                          tooltip: 'Buscar CEP',
+                          icon: Icons.search_rounded,
+                          color: tk.accentInk,
+                          onPressed: _searchCep,
+                        ),
+                      ),
+                    ),
             ),
           ],
         ),
         _cepStatus(),
-        const SizedBox(height: 12),
-        TextField(
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
           controller: _street,
           focusNode: _streetFocus,
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(labelText: 'Rua / Avenida *'),
+          label: 'Rua / Avenida *',
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _number,
-                focusNode: _numberFocus,
-                keyboardType: TextInputType.streetAddress,
-                decoration: const InputDecoration(labelText: 'Número *'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(controller: _complement, decoration: const InputDecoration(labelText: 'Complemento')),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        TextField(
+        const SizedBox(height: AppSpace.s12),
+        if (stackPairs) ...[
+          numberField,
+          const SizedBox(height: AppSpace.s12),
+          complementField,
+        ] else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: numberField),
+              const SizedBox(width: AppSpace.s12),
+              Expanded(child: complementField),
+            ],
+          ),
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
           controller: _neighborhood,
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(labelText: 'Bairro *'),
+          label: 'Bairro *',
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: TextField(
-                controller: _city,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Cidade *'),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: TextField(
-                controller: _uf,
-                textCapitalization: TextCapitalization.characters,
-                inputFormatters: [LengthLimitingTextInputFormatter(2)],
-                decoration: const InputDecoration(labelText: 'UF'),
-              ),
-            ),
-          ],
-        ),
-        _pinSection(accent),
-        const SizedBox(height: 12),
-        TextField(
+        const SizedBox(height: AppSpace.s12),
+        if (stackPairs) ...[
+          cityField,
+          const SizedBox(height: AppSpace.s12),
+          ufField,
+        ] else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 3, child: cityField),
+              const SizedBox(width: AppSpace.s12),
+              Expanded(child: ufField),
+            ],
+          ),
+        _pinSection(),
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
           controller: _reference,
           maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Ponto de referência / instruções de acesso (opcional)',
-            hintText: 'Ex: portão de madeira ao lado da padaria; avise o porteiro.',
-            alignLabelWithHint: true,
-          ),
+          minLines: 2,
+          label: 'Ponto de referência / instruções de acesso (opcional)',
+          hint: 'Ex: portão de madeira ao lado da padaria; avise o porteiro.',
         ),
       ],
     );
@@ -530,23 +574,29 @@ class _AddressFormState extends State<AddressForm> {
 }
 
 class _StatusLine extends StatelessWidget {
-  const _StatusLine({required this.icon, required this.text, required this.color});
+  const _StatusLine({
+    required this.icon,
+    required this.text,
+    required this.color,
+    this.padding = const EdgeInsets.only(top: AppSpace.s8, left: AppSpace.s4),
+  });
 
   final IconData? icon;
   final String text;
   final Color color;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(top: 8, left: 4),
+        padding: padding,
         child: Row(
           children: [
             if (icon != null)
-              Icon(icon, size: 16, color: color)
+              Icon(icon, size: 18, color: color)
             else
-              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(width: 8),
-            Expanded(child: Text(text, style: TextStyle(fontSize: 13, color: color, fontWeight: FontWeight.w600))),
+              const AppSkeleton(width: 16, height: 16, circle: true),
+            const SizedBox(width: AppSpace.s8),
+            Expanded(child: Text(text, style: AppType.bodySm.copyWith(color: color, fontWeight: FontWeight.w600))),
           ],
         ),
       );

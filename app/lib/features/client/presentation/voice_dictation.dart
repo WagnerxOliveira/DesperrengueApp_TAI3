@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/speech_service.dart';
 import '../../../core/services/text_refine_service.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/utils/smart_transcript_formatter.dart';
 
 enum VoiceState { idle, starting, listening, unavailable }
@@ -291,7 +291,7 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
   void _onVoice() {
     final nowListening = _voice.isListening;
     if (nowListening) {
-      if (!_anim.isAnimating && !MediaQuery.disableAnimationsOf(context)) _anim.repeat();
+      if (!_anim.isAnimating && !AppMotion.reduced(context)) _anim.repeat();
     } else {
       _anim.stop();
       _anim.value = 0;
@@ -316,60 +316,69 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
   Widget build(BuildContext context) {
     final tk = context.tk;
     final listening = _voice.isListening;
-    final accent = listening ? tk.danger : tk.clientAccent;
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: tk.clientSoft,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withValues(alpha: listening ? 0.7 : 0.3)),
-      ),
+    final accent = listening ? tk.danger : tk.accent;
+    final accentInk = listening ? tk.dangerInk : tk.accentInk;
+    return AppCard(
+      variant: AppCardVariant.tonal,
+      color: listening ? tk.dangerSoft : tk.accentSoft,
+      borderColor: accent.withValues(alpha: listening ? 0.65 : 0.32),
+      padding: const EdgeInsets.all(AppSpace.s16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text.rich(
             TextSpan(
-              style: TextStyle(color: tk.text, fontSize: 13, height: 1.45),
-              children: const [
-                TextSpan(text: '🎙️ '),
-                TextSpan(text: 'Como usar a voz: ', style: TextStyle(fontWeight: FontWeight.w900)),
-                TextSpan(text: '1. Toque no microfone e solte'),
-                TextSpan(text: ' • ', style: TextStyle(fontWeight: FontWeight.w900)),
-                TextSpan(text: '2. Fale normalmente explicando o problema'),
-                TextSpan(text: ' • ', style: TextStyle(fontWeight: FontWeight.w900)),
-                TextSpan(text: '3. Toque novamente para parar e gerar o texto organizado.'),
+              style: AppType.bodySm.copyWith(color: tk.text),
+              children: [
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: AppSpace.s4),
+                    child: Icon(Icons.mic_none_rounded, size: 18, color: accentInk),
+                  ),
+                ),
+                TextSpan(text: 'Como usar a voz: ', style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: tk.text)),
+                const TextSpan(text: '1. Toque no microfone e solte'),
+                TextSpan(text: ' • ', style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: accentInk)),
+                const TextSpan(text: '2. Fale normalmente explicando o problema'),
+                TextSpan(text: ' • ', style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: accentInk)),
+                const TextSpan(text: '3. Toque novamente para parar e gerar o texto organizado.'),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           Center(
             child: Semantics(
               button: true,
               label: listening ? 'Parar gravação e organizar o texto' : 'Começar a falar',
-              child: GestureDetector(
-                key: const ValueKey('voice-mic'),
-                onTap: _voice.toggle,
-                behavior: HitTestBehavior.opaque,
-                child: RepaintBoundary(
-                  child: SizedBox(
-                    width: 120,
-                    height: 120,
-                    child: AnimatedBuilder(
-                      animation: _anim,
-                      builder: (context, child) => CustomPaint(
-                        painter: _RipplePainter(color: accent, t: _anim.value, active: listening, level: _voice.level),
-                        child: child,
-                      ),
-                      child: Center(
-                        child: Container(
-                          width: 68,
-                          height: 68,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: accent,
-                            boxShadow: [BoxShadow(color: accent.withValues(alpha: 0.4), blurRadius: 14, offset: const Offset(0, 4))],
+              child: AppPressScale(
+                child: GestureDetector(
+                  key: const ValueKey('voice-mic'),
+                  onTap: _voice.toggle,
+                  behavior: HitTestBehavior.opaque,
+                  child: RepaintBoundary(
+                    child: SizedBox(
+                      width: 120,
+                      height: 120,
+                      child: AnimatedBuilder(
+                        animation: _anim,
+                        builder: (context, child) => CustomPaint(
+                          painter: _RipplePainter(color: accent, t: _anim.value, active: listening, level: _voice.level),
+                          child: child,
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: accent,
+                              boxShadow: tk.isDark
+                                  ? const []
+                                  : [BoxShadow(color: accent.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 4))],
+                            ),
+                            child: Icon(listening ? Icons.stop_rounded : Icons.mic_rounded, color: AppTokens.onColor(accent), size: 34),
                           ),
-                          child: Icon(listening ? Icons.stop_rounded : Icons.mic_rounded, color: AppTokens.onColor(accent), size: 34),
                         ),
                       ),
                     ),
@@ -378,28 +387,35 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
               ),
             ),
           ),
-          const SizedBox(height: 4),
-          if (listening) Center(child: SoundWaveBars(animation: _anim, level: _voice.level, color: accent)),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpace.s4),
+          if (listening) Center(child: SoundWaveBars(animation: _anim, level: _voice.level, color: accentInk)),
+          const SizedBox(height: AppSpace.s8),
           Center(
             child: _voice.refining
                 ? Row(
                     key: const ValueKey('voice-refining'),
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: accent)),
-                      const SizedBox(width: 8),
-                      Text('Aperfeiçoando o texto…', style: TextStyle(fontWeight: FontWeight.w800, color: accent)),
+                      const AppSkeleton(width: 16, height: 16, circle: true),
+                      const SizedBox(width: AppSpace.s8),
+                      Flexible(
+                        child: Text(
+                          'Aperfeiçoando o texto…',
+                          textAlign: TextAlign.center,
+                          style: AppType.bodyStrong.copyWith(color: accentInk),
+                        ),
+                      ),
                     ],
                   )
                 : Text(
                     listening ? 'Ouvindo… toque no botão para parar' : 'Toque para falar',
-                    style: TextStyle(fontWeight: FontWeight.w800, color: accent),
+                    textAlign: TextAlign.center,
+                    style: AppType.bodyStrong.copyWith(color: accentInk),
                   ),
           ),
           if (_voice.message != null) ...[
-            const SizedBox(height: 8),
-            Text(_voice.message!, style: TextStyle(color: tk.danger, fontSize: 12.5, height: 1.35)),
+            const SizedBox(height: AppSpace.s8),
+            Text(_voice.message!, style: AppType.bodySm.copyWith(color: tk.dangerInk)),
           ],
         ],
       ),

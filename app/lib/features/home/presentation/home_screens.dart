@@ -1,8 +1,8 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/profile_service.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 
 /// Painel do administrador (placeholder). A revisão de KYC e a mediação de
 /// disputas são feitas hoje pelo dashboard do Supabase (RPCs
@@ -12,32 +12,29 @@ class HomeAdminScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(
-        title: const Text('Administração'),
+      appBar: AppAppBar(
+        title: 'Administração',
         actions: [
-          IconButton(
+          AppIconButton(
             tooltip: 'Sair da conta',
-            icon: const Icon(Icons.logout_rounded),
+            icon: Icons.logout_rounded,
             onPressed: () => ProfileService().signOut(),
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.admin_panel_settings_rounded, size: 72, color: context.tk.brand),
-              SizedBox(height: 16),
-              const Text(
-                'A validação de documentos (KYC) e a mediação de chamados são gerenciadas pela equipe de segurança no painel administrativo.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, height: 1.4),
-              ),
-            ],
-          ),
+      body: AppEmptyState(
+        icon: Icons.admin_panel_settings_rounded,
+        title: 'Painel de segurança',
+        message:
+            'A validação de documentos (KYC) e a mediação de chamados são gerenciadas pela equipe de segurança no painel administrativo.',
+        padding: EdgeInsets.all(context.layout.margin + AppSpace.s12),
+        illustration: Container(
+          width: 88,
+          height: 88,
+          decoration: BoxDecoration(color: tk.accentSoft, shape: BoxShape.circle),
+          child: Icon(Icons.admin_panel_settings_rounded, size: 44, color: tk.accentInk),
         ),
       ),
     );
