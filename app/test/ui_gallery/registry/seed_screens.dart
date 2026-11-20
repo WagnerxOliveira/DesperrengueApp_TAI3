@@ -3,7 +3,6 @@ import 'package:desperrengue_app/features/auth/presentation/login_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/carteira_cliente_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/category_picker.dart';
 import 'package:desperrengue_app/features/client/presentation/insufficient_funds_sheet.dart';
-import 'package:flutter/material.dart';
 
 import '../../support/screen_gallery/screen_gallery.dart';
 
@@ -18,7 +17,7 @@ List<GalleryScreen> seedScreens() => <GalleryScreen>[
         wave: 1,
         owner: 'auth_ui',
         modes: const <UserMode?>{null},
-        builder: (_, __) => const LoginScreen(),
+        builder: (_, _) => const LoginScreen(),
       ),
       GalleryScreen(
         id: 'client/carteira',
@@ -28,7 +27,7 @@ List<GalleryScreen> seedScreens() => <GalleryScreen>[
         owner: 'client_core_ui',
         modes: const <UserMode?>{UserMode.client},
         overrides: (_) => walletOverrides(),
-        builder: (_, __) => const CarteiraClienteScreen(),
+        builder: (_, _) => const CarteiraClienteScreen(),
       ),
       GalleryScreen(
         id: 'client/category_grid',
@@ -38,7 +37,7 @@ List<GalleryScreen> seedScreens() => <GalleryScreen>[
         owner: 'client_core_ui',
         kind: GalleryKind.widget,
         modes: const <UserMode?>{UserMode.client},
-        builder: (_, __) => CategoryGrid(onPick: (_) {}),
+        builder: (_, _) => CategoryGrid(onPick: (_) {}),
       ),
       GalleryScreen(
         id: 'client/insufficient_funds_sheet',
@@ -48,6 +47,6 @@ List<GalleryScreen> seedScreens() => <GalleryScreen>[
         owner: 'client_core_ui',
         kind: GalleryKind.sheet,
         modes: const <UserMode?>{UserMode.client},
-        builder: (_, __) => const InsufficientFundsBottomSheet(requiredCents: 22000, availableCents: 15000),
+        builder: (_, _) => const InsufficientFundsBottomSheet(requiredCents: 22000, availableCents: 15000),
       ),
     ];

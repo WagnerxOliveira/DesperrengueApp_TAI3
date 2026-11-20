@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/screen_gallery/screen_gallery.dart';
-import '../support/screen_gallery/ratchet.dart';
 import 'gallery_registry.dart';
 
 /// Layout: zero `RenderFlex overflow`, zero erro de render e nenhum texto
