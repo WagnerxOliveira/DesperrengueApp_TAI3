@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -8,7 +7,8 @@ import '../../../core/services/job_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/state/privacy_mode.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -111,11 +111,11 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
       final job = await JobService().fetchJob(d.jobId);
       if (!mounted) return;
       if (job == null) {
-        showSnack(context, 'Não foi possível abrir a conversa deste serviço.', error: true);
+        AppSnackbar.show(context, 'Não foi possível abrir a conversa deste serviço.', kind: AppSnackKind.error);
         return;
       }
       // Arquivo somente leitura: o serviço já acabou, não se envia mensagem nova.
-      await Navigator.of(context).push(MaterialPageRoute<void>(
+      await Navigator.of(context).push(AppRoute<void>(
         builder: (_) => ChatScreen(
           job: job,
           providerId: ProviderService().uid,
@@ -125,15 +125,15 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
         ),
       ));
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _openingChat = false);
     }
   }
 
   void _zoom(List<String> paths, int index) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      fullscreenDialog: true,
+    Navigator.of(context).push(AppRoute<void>(
+      fullscreenModal: true,
       builder: (_) => _ZoomGallery(paths: paths, initial: index, imageBuilder: _image),
     ));
   }
@@ -142,13 +142,14 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
   Widget build(BuildContext context) {
     final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(
-        title: const Text('Dossiê do serviço'),
+      appBar: AppAppBar(
+        title: 'Dossiê do serviço',
         actions: [
-          IconButton(
+          AppIconButton(
             tooltip: _hidden ? 'Mostrar valores' : 'Ocultar valores',
             onPressed: PrivacyMode.instance.toggle,
-            icon: Icon(_hidden ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: tk.textMuted),
+            icon: _hidden ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+            color: tk.textMuted,
           ),
         ],
       ),
@@ -157,14 +158,20 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
         child: FutureBuilder<ProviderJobDossier?>(
           future: _future,
           builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) return const LoadingView();
-            if (snap.hasError) return ErrorView(message: 'Não foi possível carregar o dossiê do serviço.', onRetry: _reload);
+            if (snap.connectionState != ConnectionState.done) return const AppLoading(message: 'Carregando dossiê...');
+            if (snap.hasError) {
+              return AppErrorState(
+                message: 'Não foi possível carregar o dossiê do serviço.',
+                retryLabel: 'Tentar novamente',
+                onRetry: _reload,
+              );
+            }
             final d = snap.data;
             if (d == null) {
-              return const EmptyView(
+              return const AppEmptyState(
                 icon: Icons.lock_outline_rounded,
                 title: 'Dossiê indisponível',
-                subtitle: 'Este serviço não existe ou você não é o profissional contratado.',
+                message: 'Este serviço não existe ou você não é o profissional contratado.',
               );
             }
             return _content(context, d);
@@ -176,33 +183,42 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
 
   Widget _content(BuildContext context, ProviderJobDossier d) {
     final tk = context.tk;
+    final margin = context.layout.margin;
     final photos = d.evidencePhotos;
     final video = d.evidenceVideo;
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 8, 20, MediaQuery.viewPaddingOf(context).bottom + 16),
+      padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, MediaQuery.viewPaddingOf(context).bottom + AppSpace.s24),
       children: [
         _header(context, d),
-        const SectionTitle('Financeiro'),
-        _financial(context, d),
-        const SectionTitle('Escopo e relatório'),
-        _scope(context, d),
-        const SectionTitle('Evidências'),
-        if (photos.isEmpty && video == null)
-          Text('Nenhuma evidência registrada para este serviço.', style: TextStyle(color: tk.textMuted))
-        else ...[
-          if (photos.isNotEmpty) _evidenceGrid(context, photos),
-          if (video != null) ...[
-            const SizedBox(height: 12),
-            _EvidenceVideo(path: video.path),
-          ],
-        ],
-        const SectionTitle('Avaliação do cliente'),
-        _review(context, d),
-        const SizedBox(height: 16),
-        SecondaryButton(
+        const SizedBox(height: AppSpace.section),
+        AppSection(title: 'Financeiro', child: _financial(context, d)),
+        const SizedBox(height: AppSpace.section),
+        AppSection(title: 'Escopo e relatório', child: _scope(context, d)),
+        const SizedBox(height: AppSpace.section),
+        AppSection(
+          title: 'Evidências',
+          child: (photos.isEmpty && video == null)
+              ? Text('Nenhuma evidência registrada para este serviço.', style: AppType.bodySm.copyWith(color: tk.textMuted))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (photos.isNotEmpty) _evidenceGrid(context, photos),
+                    if (video != null) ...[
+                      const SizedBox(height: AppSpace.s12),
+                      _EvidenceVideo(path: video.path),
+                    ],
+                  ],
+                ),
+        ),
+        const SizedBox(height: AppSpace.section),
+        AppSection(title: 'Avaliação do cliente', child: _review(context, d)),
+        const SizedBox(height: AppSpace.s20),
+        AppButton(
           label: 'Ver histórico de conversa com o cliente',
+          variant: AppButtonVariant.secondary,
           icon: Icons.forum_rounded,
+          loading: _openingChat,
           onPressed: _openingChat ? null : () => _openChat(d),
         ),
       ],
@@ -214,29 +230,37 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
   Widget _header(BuildContext context, ProviderJobDossier d) {
     final tk = context.tk;
     final tone = switch (d.status) {
-      DossierStatus.completed => tk.success,
-      DossierStatus.disputed => tk.warning,
-      DossierStatus.canceled => tk.danger,
-      _ => tk.info,
+      DossierStatus.completed => AppTone.success,
+      DossierStatus.disputed => AppTone.warning,
+      DossierStatus.canceled => AppTone.danger,
+      _ => AppTone.info,
     };
     return AppCard(
+      variant: AppCardVariant.elevated,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            alignment: WrapAlignment.spaceBetween,
             children: [
-              Expanded(child: Text(d.code, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w900, color: tk.textMuted, letterSpacing: 0.5))),
-              const SizedBox(width: 8),
-              Flexible(child: StatusChip(d.status.label, color: tone, icon: d.isCompleted ? Icons.check_circle_rounded : null)),
+              Text(d.code, style: AppType.overline.copyWith(color: tk.textMuted)),
+              AppStatusChip(
+                d.status.label,
+                tone: tone,
+                icon: d.isCompleted ? Icons.check_circle_rounded : null,
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          Text(d.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, height: 1.2)),
+          const SizedBox(height: AppSpace.s8),
+          Text(d.title, style: AppType.headline.copyWith(color: tk.text)),
           if (d.category != null) ...[
-            const SizedBox(height: 2),
-            Text(d.category!, style: TextStyle(color: tk.textMuted)),
+            const SizedBox(height: AppSpace.s4),
+            Text(d.category!, style: AppType.bodySm.copyWith(color: tk.textMuted)),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           _TimelineRow(icon: Icons.event_rounded, label: 'Agendado', value: d.scheduledFor == null ? '—' : dateLong(d.scheduledFor!)),
           _TimelineRow(
             icon: Icons.play_circle_outline_rounded,
@@ -263,20 +287,27 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
       child: Column(
         children: [
           _MoneyRow(label: 'Valor bruto do orçamento', value: gross),
-          const SizedBox(height: 10),
-          _MoneyRow(label: dossierFeeLabel(d.feePct), value: fee, valueColor: tk.danger),
-          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: tk.successSoft, borderRadius: BorderRadius.circular(14)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(d.isCompleted ? 'Valor líquido recebido' : 'Valor líquido a receber', style: TextStyle(color: tk.successInk, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(net, style: TextStyle(color: tk.successInk, fontSize: 30, fontWeight: FontWeight.w900)),
-              ],
+          const SizedBox(height: AppSpace.s12),
+          _MoneyRow(label: dossierFeeLabel(d.feePct), value: fee, valueColor: tk.dangerInk),
+          const Padding(padding: EdgeInsets.symmetric(vertical: AppSpace.s12), child: Divider(height: 1)),
+          AppCard(
+            variant: AppCardVariant.tonal,
+            color: tk.successSoft,
+            radius: AppGeometry.fieldRadius,
+            padding: const EdgeInsets.all(AppSpace.s16),
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    d.isCompleted ? 'Valor líquido recebido' : 'Valor líquido a receber',
+                    style: AppType.bodyStrong.copyWith(color: tk.successInk),
+                  ),
+                  const SizedBox(height: AppSpace.s4),
+                  Text(net, style: AppType.figure.copyWith(color: tk.successInk)),
+                ],
+              ),
             ),
           ),
         ],
@@ -294,14 +325,14 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
         children: [
           Row(
             children: [
-              UserAvatar(url: d.client.avatarUrl, name: d.client.name, radius: 20),
-              const SizedBox(width: 10),
+              AppAvatar(url: d.client.avatarUrl, name: d.client.name, radius: 20),
+              const SizedBox(width: AppSpace.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Cliente', style: TextStyle(color: tk.textMuted, fontSize: 12)),
-                    Text(d.client.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    Text('Cliente', style: AppType.caption.copyWith(color: tk.textMuted)),
+                    Text(d.client.name, style: AppType.titleSm.copyWith(color: tk.text)),
                   ],
                 ),
               ),
@@ -316,7 +347,7 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
               if (view == null) return const SizedBox.shrink();
               final unlocked = view.exactUnlocked;
               return Padding(
-                padding: const EdgeInsets.only(top: 14),
+                padding: const EdgeInsets.only(top: AppSpace.s16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -327,7 +358,7 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
                       onTap: unlocked ? () => openProviderLocation(context, view) : null,
                     ),
                     if (!unlocked) ...[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpace.s8),
                       GeoLockNotice(view: view),
                     ],
                   ],
@@ -335,27 +366,27 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
               );
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           _LabeledText(icon: Icons.description_rounded, label: 'Descrição original do pedido', text: d.description ?? 'Sem descrição.'),
           if (d.photoPaths.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text('Fotos do pedido', style: TextStyle(color: tk.textMuted, fontSize: 12.5, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.s16),
+            Text('Fotos do pedido', style: AppType.caption.copyWith(color: tk.textMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: AppSpace.s8),
             SizedBox(
               height: 96,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: d.photoPaths.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => InkWell(
-                  borderRadius: BorderRadius.circular(14),
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
+                itemBuilder: (_, i) => AppPressable(
+                  borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
                   onTap: () => _zoom(d.photoPaths, i),
-                  child: _image(context, d.photoPaths[i], width: 96, height: 96, radius: 14),
+                  child: _image(context, d.photoPaths[i], width: 96, height: 96, radius: AppGeometry.fieldRadius),
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           _LabeledText(
             icon: Icons.assignment_turned_in_rounded,
             label: 'Relatório técnico',
@@ -370,29 +401,36 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
   // ---------------------------------------------------------------- evidências
 
   Widget _evidenceGrid(BuildContext context, List<DossierEvidence> photos) {
+    final tk = context.tk;
     final paths = [for (final e in photos) e.path];
     return GridView.count(
       crossAxisCount: 2,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
+      mainAxisSpacing: AppSpace.s12,
+      crossAxisSpacing: AppSpace.s12,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       children: [
         for (var i = 0; i < photos.length; i++)
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
+          AppPressable(
+            borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
             onTap: () => _zoom(paths, i),
             child: Stack(
               fit: StackFit.expand,
               children: [
-                _image(context, photos[i].path, radius: 14),
+                _image(context, photos[i].path, radius: AppGeometry.fieldRadius),
                 Positioned(
-                  left: 6,
-                  bottom: 6,
+                  left: AppSpace.s8,
+                  bottom: AppSpace.s8,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)),
-                    child: Text(photos[i].slot.label, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8, vertical: AppSpace.s4),
+                    decoration: BoxDecoration(
+                      color: tk.scrim,
+                      borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+                    ),
+                    child: Text(
+                      photos[i].slot.label,
+                      style: AppType.caption.copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
               ],
@@ -412,8 +450,13 @@ class _DossieServicoProfissionalScreenState extends State<DossieServicoProfissio
         child: Row(
           children: [
             Icon(Icons.hourglass_empty_rounded, color: tk.textMuted),
-            const SizedBox(width: 10),
-            Expanded(child: Text('O cliente ainda não avaliou este serviço.', style: TextStyle(color: tk.textMuted, height: 1.4))),
+            const SizedBox(width: AppSpace.s12),
+            Expanded(
+              child: Text(
+                'O cliente ainda não avaliou este serviço.',
+                style: AppType.bodySm.copyWith(color: tk.textMuted),
+              ),
+            ),
           ],
         ),
       );
@@ -457,19 +500,23 @@ class _TimelineRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     return Padding(
-      padding: EdgeInsets.only(bottom: last ? 0 : 10),
+      padding: EdgeInsets.only(bottom: last ? 0 : AppSpace.s12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: tk.providerAccent),
-          const SizedBox(width: 10),
+          Icon(icon, size: 20, color: tk.accentInk),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(color: tk.textMuted, fontSize: 12)),
-                Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
-                if (note != null) Text(note!, style: TextStyle(color: tk.textMuted, fontSize: 11.5, fontStyle: FontStyle.italic)),
+                Text(label, style: AppType.caption.copyWith(color: tk.textMuted)),
+                Text(value, style: AppType.bodyStrong.copyWith(color: tk.text)),
+                if (note != null)
+                  Text(
+                    note!,
+                    style: AppType.caption.copyWith(color: tk.textMuted, fontStyle: FontStyle.italic),
+                  ),
               ],
             ),
           ),
@@ -488,12 +535,14 @@ class _MoneyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: Text(label, style: TextStyle(color: context.tk.textMuted))),
-        const SizedBox(width: 8),
-        Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: valueColor)),
-      ],
+    final tk = context.tk;
+    return AppInfoRow(
+      label: label,
+      valueWidget: Text(
+        value,
+        textAlign: context.layout.isLargeText ? TextAlign.start : TextAlign.end,
+        style: AppType.tabular(AppType.titleSm).copyWith(color: valueColor ?? tk.text),
+      ),
     );
   }
 }
@@ -513,25 +562,25 @@ class _LabeledText extends StatelessWidget {
     final row = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 20, color: tk.providerAccent),
-        const SizedBox(width: 10),
+        Icon(icon, size: 20, color: tk.accentInk),
+        const SizedBox(width: AppSpace.s12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: TextStyle(color: tk.textMuted, fontSize: 12.5, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(text, style: TextStyle(height: 1.4, color: muted ? tk.textMuted : null)),
+              Text(label, style: AppType.caption.copyWith(color: tk.textMuted, fontWeight: FontWeight.w700)),
+              const SizedBox(height: AppSpace.s2),
+              Text(text, style: AppType.body.copyWith(color: muted ? tk.textMuted : tk.text)),
               if (onTap != null) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpace.s4),
                 Row(
                   children: [
-                    Icon(Icons.map_outlined, size: 14, color: tk.providerAccent),
-                    const SizedBox(width: 4),
+                    Icon(Icons.map_outlined, size: 15, color: tk.accentInk),
+                    const SizedBox(width: AppSpace.s4),
                     Flexible(
                       child: Text(
                         'Toque para ver no mapa',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: tk.providerAccent),
+                        style: AppType.caption.copyWith(fontWeight: FontWeight.w700, color: tk.accentInk),
                       ),
                     ),
                   ],
@@ -544,11 +593,11 @@ class _LabeledText extends StatelessWidget {
       ],
     );
     if (onTap == null) return row;
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
+    return AppPressable(
+      borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.s4),
         child: row,
       ),
     );
@@ -580,7 +629,7 @@ class _ZoomGallery extends StatelessWidget {
   }
 }
 
-/// Player do vídeo opcional. Só baixa quando o usuário toca em ▶ (economiza dados).
+/// Player do vídeo opcional. Só baixa quando o usuário toca em reproduzir (economiza dados).
 class _EvidenceVideo extends StatefulWidget {
   const _EvidenceVideo({required this.path});
 
@@ -635,7 +684,7 @@ class _EvidenceVideoState extends State<_EvidenceVideo> {
     final tk = context.tk;
     final c = _c;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
       child: AspectRatio(
         aspectRatio: c?.value.aspectRatio ?? 16 / 9,
         child: c == null
@@ -645,11 +694,14 @@ class _EvidenceVideoState extends State<_EvidenceVideo> {
                   onTap: _loading ? null : _start,
                   child: Center(
                     child: _loading
-                        ? const CircularProgressIndicator()
+                        ? const AppLoading(message: 'Carregando vídeo...')
                         : Column(mainAxisSize: MainAxisSize.min, children: [
-                            Icon(Icons.play_circle_fill_rounded, size: 64, color: tk.providerAccent),
-                            const SizedBox(height: 6),
-                            Text(_error ?? 'Toque para assistir ao vídeo do serviço', style: TextStyle(color: tk.textMuted)),
+                            Icon(Icons.play_circle_fill_rounded, size: 64, color: tk.accentInk),
+                            const SizedBox(height: AppSpace.s8),
+                            Text(
+                              _error ?? 'Toque para assistir ao vídeo do serviço',
+                              style: AppType.bodySm.copyWith(color: tk.textMuted),
+                            ),
                           ]),
                   ),
                 ),
@@ -659,10 +711,12 @@ class _EvidenceVideoState extends State<_EvidenceVideo> {
                 ValueListenableBuilder<VideoPlayerValue>(
                   valueListenable: c,
                   builder: (context, v, _) => Container(
-                    color: Colors.black45,
+                    color: tk.scrim,
                     child: Row(children: [
-                      IconButton(
-                        icon: Icon(v.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white),
+                      AppIconButton(
+                        tooltip: v.isPlaying ? 'Pausar vídeo' : 'Reproduzir vídeo',
+                        icon: v.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: Colors.white,
                         onPressed: () => v.isPlaying ? c.pause() : c.play(),
                       ),
                       Expanded(
@@ -672,7 +726,7 @@ class _EvidenceVideoState extends State<_EvidenceVideo> {
                           colors: const VideoProgressColors(playedColor: Colors.white, bufferedColor: Colors.white30, backgroundColor: Colors.white12),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: AppSpace.s12),
                     ]),
                   ),
                 ),

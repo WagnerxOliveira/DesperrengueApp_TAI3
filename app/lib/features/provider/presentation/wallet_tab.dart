@@ -4,7 +4,7 @@ import '../../../core/models/marketplace_models.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/state/privacy_mode.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/support_screens.dart';
@@ -67,11 +67,11 @@ class _WalletTabState extends State<WalletTab> {
 
   Future<void> _openPix(double available, {bool hasOpenDispute = false}) async {
     if (available <= 0) {
-      showSnack(context, 'Você não tem saldo disponível para transferir.');
+      AppSnackbar.show(context, 'Você não tem saldo disponível para transferir.');
       return;
     }
     final done = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
+      AppRoute(
         builder: (_) => PixWithdrawScreen(
           available: available,
           hasOpenDispute: hasOpenDispute,
@@ -88,14 +88,14 @@ class _WalletTabState extends State<WalletTab> {
     await _future;
   }
 
-  void _soon(String what) => showSnack(
+  void _soon(String what) => AppSnackbar.show(
         context,
         '$what chega em breve. No MVP os repasses são simulados.',
       );
 
   void _openDossier(String jobId) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
+      AppRoute<void>(
         builder: (_) => DossieServicoProfissionalScreen(jobId: jobId),
       ),
     );
@@ -107,6 +107,8 @@ class _WalletTabState extends State<WalletTab> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return RefreshIndicator(
       onRefresh: _refresh,
       child: FutureBuilder<WalletData>(
@@ -115,314 +117,343 @@ class _WalletTabState extends State<WalletTab> {
           if (snap.hasError) {
             return ListView(
               children: [
-                ErrorView(
+                AppErrorState(
                   message: 'Não foi possível carregar a carteira.',
                   onRetry: _refresh,
                 ),
               ],
             );
           }
-          if (!snap.hasData) return const LoadingView();
-          final (payments, jobs, withdrawn) = snap.data!;
-          final w = ProviderService.summarize(payments, withdrawn: withdrawn);
-          final upcoming = payments.where((p) => p.status == 'escrow').toList();
-          final done = payments.where((p) => p.status == 'released').toList();
-          final hasOpenDispute =
-              jobs.values.any((j) => j.status == JobStatus.disputed);
+          final loading = !snap.hasData;
+          final data = snap.data;
+          final Widget content;
+          if (data == null) {
+            content = const SizedBox.shrink();
+          } else {
+            final (payments, jobs, withdrawn) = data;
+            final w = ProviderService.summarize(payments, withdrawn: withdrawn);
+            final upcoming = payments.where((p) => p.status == 'escrow').toList();
+            final done = payments.where((p) => p.status == 'released').toList();
+            final hasOpenDispute =
+                jobs.values.any((j) => j.status == JobStatus.disputed);
 
-          return ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            children: [
-              const Text(
-                'Carteira',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 14),
-              if (hasOpenDispute)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 12),
-                  child: InfoBanner(
-                    'Há um chamado de garantia em análise técnica. O valor deste serviço permanece protegido em custódia até a conclusão da mediação.',
-                    tone: BannerTone.warning,
-                  ),
+            final heroStart = tk.isDark ? tk.providerSoft : tk.providerAccent;
+            final heroEnd = tk.isDark ? tk.surfaceAt(4) : tk.brand;
+            final heroFg = tk.isDark ? tk.text : AppTokens.onColor(heroStart);
+            final heroMuted = tk.isDark ? tk.textMuted : heroFg.withValues(alpha: 0.84);
+            final heroBadgeBg = tk.isDark
+                ? tk.card.withValues(alpha: 0.6)
+                : heroFg.withValues(alpha: 0.14);
+
+            content = ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(margin, AppSpace.s16, margin, AppSpace.s24),
+              children: [
+                Text(
+                  'Carteira',
+                  style: AppType.display.copyWith(color: tk.text),
                 ),
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2F5596), Color(0xFF1B3366)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                const SizedBox(height: AppSpace.s16),
+                if (hasOpenDispute)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: AppSpace.s12),
+                    child: InfoBanner(
+                      'Há um chamado de garantia em análise técnica. O valor deste serviço permanece protegido em custódia até a conclusão da mediação.',
+                      tone: BannerTone.warning,
+                    ),
                   ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'Saldo disponível',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          onPressed: PrivacyMode.instance.toggle,
-                          icon: Icon(
-                            _hidden
-                                ? Icons.visibility_off_rounded
-                                : Icons.visibility_rounded,
-                            color: Colors.white70,
-                          ),
-                        ),
-                      ],
+                Container(
+                  padding: const EdgeInsets.all(AppSpace.cardLarge),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(AppGeometry.heroRadius),
+                    border: tk.isDark
+                        ? Border.all(color: tk.providerAccent.withValues(alpha: 0.3))
+                        : null,
+                    boxShadow: tk.elevation(2),
+                    gradient: LinearGradient(
+                      colors: [heroStart, heroEnd],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    Text(
-                      PrivacyMode.money(brl(w.available), hidden: _hidden),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Em custódia: ${_hidden ? '•••' : brl(w.held)}',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Icon(
-                            Icons.verified_user_rounded,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                          SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Pagamento protegido pela plataforma • 0% de taxa sobre peças e materiais',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              'Saldo disponível',
+                              style: AppType.bodySm.copyWith(color: heroMuted),
                             ),
+                          ),
+                          AppIconButton(
+                            onPressed: PrivacyMode.instance.toggle,
+                            tooltip: _hidden ? 'Mostrar valores' : 'Ocultar valores',
+                            icon: _hidden
+                                ? Icons.visibility_off_rounded
+                                : Icons.visibility_rounded,
+                            color: heroMuted,
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _Shortcut(
-                      icon: Icons.pix_rounded,
-                      label: 'Pix',
-                      onTap: () => _openPix(
-                        w.available,
-                        hasOpenDispute: hasOpenDispute,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _Shortcut(
-                      icon: Icons.receipt_long_rounded,
-                      label: 'Extrato',
-                      onTap: () => _soon('O extrato detalhado'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _Shortcut(
-                      icon: Icons.account_balance_rounded,
-                      label: 'Dados bancários',
-                      onTap: () => _soon('O cadastro bancário'),
-                    ),
-                  ),
-                ],
-              ),
-              const SectionTitle('Próximos lançamentos'),
-              if (upcoming.isEmpty)
-                Text(
-                  'Nenhum valor em custódia no momento.',
-                  style: TextStyle(color: context.tk.textMuted),
-                )
-              else
-                for (final p in upcoming)
-                  Builder(
-                    builder: (context) {
-                      final job = jobs[p.jobId];
-                      final disputed = job?.status == JobStatus.disputed;
-                      return AppCard(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ProviderJobScreen(jobId: p.jobId),
-                          ),
+                      if (_hidden)
+                        Text(
+                          PrivacyMode.mask,
+                          style: AppType.figureXl.copyWith(color: heroFg),
+                        )
+                      else
+                        AppCountText(
+                          value: w.available,
+                          format: brl,
+                          style: AppType.figureXl.copyWith(color: heroFg),
                         ),
-                        color: disputed
-                            ? context.tk.warningSoft
-                            : context.tk.card,
-                        borderColor:
-                            disputed ? context.tk.warning : context.tk.border,
+                      const SizedBox(height: AppSpace.s8),
+                      Text(
+                        'Em custódia: ${_hidden ? '•••' : brl(w.held)}',
+                        style: AppType.tabular(AppType.bodySm).copyWith(color: heroMuted),
+                      ),
+                      const SizedBox(height: AppSpace.s12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.s12,
+                          vertical: AppSpace.s8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: heroBadgeBg,
+                          borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+                        ),
                         child: Row(
                           children: [
                             Icon(
-                              disputed
-                                  ? Icons.warning_amber_rounded
-                                  : Icons.arrow_forward_rounded,
-                              color: disputed
-                                  ? context.tk.warningInk
-                                  : context.tk.success,
+                              Icons.verified_user_rounded,
+                              size: 16,
+                              color: heroFg,
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: AppSpace.s8),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    job?.title ?? 'Serviço',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  Text(
-                                    disputed
-                                        ? 'Em mediação • Toque para abrir'
-                                        : 'Libera na conclusão (PIN do cliente)',
-                                    style: TextStyle(
-                                      color: context.tk.textMuted,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                ],
+                              child: Text(
+                                'Pagamento protegido pela plataforma • 0% de taxa sobre peças e materiais',
+                                style: AppType.caption.copyWith(
+                                  color: heroFg,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                            ),
-                            Text(
-                              PrivacyMode.money(brl(p.netAmount), hidden: _hidden),
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                color: disputed
-                                    ? context.tk.warningInk
-                                    : context.tk.successInk,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              size: 18,
-                              color: context.tk.textMuted,
                             ),
                           ],
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
-              const SectionTitle('Desempenho da semana'),
-              AppCard(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+                ),
+                const SizedBox(height: AppSpace.s16),
+                Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Você já faturou',
-                            style: TextStyle(color: context.tk.textMuted),
-                          ),
-                          Text(
-                            PrivacyMode.money(brl(w.week), hidden: _hidden),
-                            style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.w900,
-                              color: context.tk.successInk,
-                            ),
-                          ),
-                          Text(
-                            'nesta semana',
-                            style: TextStyle(color: context.tk.textMuted),
-                          ),
-                        ],
+                      child: _Shortcut(
+                        icon: Icons.pix_rounded,
+                        label: 'Pix',
+                        onTap: () => _openPix(
+                          w.available,
+                          hasOpenDispute: hasOpenDispute,
+                        ),
                       ),
                     ),
-                    _WeekBars(values: w.perDay),
+                    const SizedBox(width: AppSpace.s8),
+                    Expanded(
+                      child: _Shortcut(
+                        icon: Icons.receipt_long_rounded,
+                        label: 'Extrato',
+                        onTap: () => _soon('O extrato detalhado'),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.s8),
+                    Expanded(
+                      child: _Shortcut(
+                        icon: Icons.account_balance_rounded,
+                        label: 'Dados bancários',
+                        onTap: () => _soon('O cadastro bancário'),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              const SectionTitle('Últimos serviços realizados'),
-              if (done.isEmpty)
-                Text(
-                  'Seus serviços concluídos aparecerão aqui.',
-                  style: TextStyle(color: context.tk.textMuted),
-                )
-              else
-                for (final p in done.take(10))
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    onTap: () => _openDossier(p.jobId),
-                    leading: CircleAvatar(
-                      backgroundColor: context.tk.successSoft,
-                      child: Icon(
-                        Icons.check_rounded,
-                        color: context.tk.success,
-                      ),
-                    ),
-                    title: Text(
-                      jobs[p.jobId]?.title ?? 'Serviço',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                    subtitle: Text(dateShort(p.releasedAt ?? p.createdAt)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
+                const SizedBox(height: AppSpace.section),
+                AppSection(
+                  title: 'Próximos lançamentos',
+                  child: upcoming.isEmpty
+                      ? Text(
+                          'Nenhum valor em custódia no momento.',
+                          style: AppType.bodySm.copyWith(color: tk.textMuted),
+                        )
+                      : Column(
+                          children: [
+                            for (final p in upcoming)
+                              Builder(
+                                builder: (context) {
+                                  final job = jobs[p.jobId];
+                                  final disputed = job?.status == JobStatus.disputed;
+                                  return AppCard(
+                                    variant: AppCardVariant.outlined,
+                                    margin: const EdgeInsets.only(bottom: AppSpace.s12),
+                                    onTap: () => Navigator.of(context).push(
+                                      AppRoute<void>(
+                                        builder: (_) => ProviderJobScreen(jobId: p.jobId),
+                                      ),
+                                    ),
+                                    color: disputed ? tk.warningSoft : tk.card,
+                                    borderColor: disputed ? tk.warning : tk.border,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          disputed
+                                              ? Icons.warning_amber_rounded
+                                              : Icons.lock_clock_rounded,
+                                          color: disputed
+                                              ? tk.warningInk
+                                              : tk.successInk,
+                                        ),
+                                        const SizedBox(width: AppSpace.s12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                job?.title ?? 'Serviço',
+                                                maxLines: 2,
+                                                style: AppType.bodyStrong.copyWith(color: tk.text),
+                                              ),
+                                              const SizedBox(height: AppSpace.s2),
+                                              Text(
+                                                disputed
+                                                    ? 'Em mediação • Toque para abrir'
+                                                    : 'Libera na conclusão (PIN do cliente)',
+                                                style: AppType.caption.copyWith(color: tk.textMuted),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppSpace.s8),
+                                        Text(
+                                          PrivacyMode.money(brl(p.netAmount), hidden: _hidden),
+                                          style: AppType.tabular(AppType.bodyStrong).copyWith(
+                                            color: disputed ? tk.warningInk : tk.successInk,
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppSpace.s4),
+                                        Icon(
+                                          Icons.chevron_right_rounded,
+                                          size: 18,
+                                          color: tk.textMuted,
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: AppSpace.section),
+                AppSection(
+                  title: 'Desempenho da semana',
+                  child: AppCard(
+                    variant: AppCardVariant.elevated,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          _hidden ? PrivacyMode.mask : '+ ${brl(p.netAmount)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: context.tk.successInk,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Você já faturou',
+                                style: AppType.bodySm.copyWith(color: tk.textMuted),
+                              ),
+                              const SizedBox(height: AppSpace.s4),
+                              if (_hidden)
+                                Text(
+                                  PrivacyMode.mask,
+                                  style: AppType.figure.copyWith(color: tk.successInk),
+                                )
+                              else
+                                AppCountText(
+                                  value: w.week,
+                                  format: brl,
+                                  style: AppType.figure.copyWith(color: tk.successInk),
+                                ),
+                              const SizedBox(height: AppSpace.s4),
+                              Text(
+                                'nesta semana',
+                                style: AppType.bodySm.copyWith(color: tk.textMuted),
+                              ),
+                            ],
                           ),
                         ),
-                        Icon(
-                          Icons.chevron_right_rounded,
-                          color: context.tk.textMuted,
-                        ),
+                        const SizedBox(width: AppSpace.s8),
+                        _WeekBars(values: w.perDay),
                       ],
                     ),
                   ),
-              const SizedBox(height: 10),
-              Center(
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SupportCenterScreen(),
+                ),
+                const SizedBox(height: AppSpace.section),
+                AppSection(
+                  title: 'Últimos serviços realizados',
+                  child: done.isEmpty
+                      ? Text(
+                          'Seus serviços concluídos aparecerão aqui.',
+                          style: AppType.bodySm.copyWith(color: tk.textMuted),
+                        )
+                      : Column(
+                          children: [
+                            for (final p in done.take(10))
+                              AppListTile(
+                                padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
+                                onTap: () => _openDossier(p.jobId),
+                                leadingIcon: Icons.check_rounded,
+                                leadingColor: tk.successInk,
+                                title: jobs[p.jobId]?.title ?? 'Serviço',
+                                subtitle: dateShort(p.releasedAt ?? p.createdAt),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      _hidden ? PrivacyMode.mask : '+ ${brl(p.netAmount)}',
+                                      style: AppType.tabular(AppType.bodyStrong).copyWith(
+                                        color: tk.successInk,
+                                      ),
+                                    ),
+                                    const SizedBox(width: AppSpace.s4),
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      color: tk.textMuted,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+                const SizedBox(height: AppSpace.s12),
+                Center(
+                  child: AppButton(
+                    label: 'Problemas com seus repasses? Fale com a central.',
+                    variant: AppButtonVariant.tertiary,
+                    expand: false,
+                    onPressed: () => Navigator.of(context).push(
+                      AppRoute(
+                        builder: (_) => const SupportCenterScreen(),
+                      ),
                     ),
                   ),
-                  child: const Text(
-                    'Problemas com seus repasses? Fale com a central.',
-                  ),
                 ),
-              ),
-            ],
+              ],
+            );
+          }
+
+          return AppSkeletonSwitcher(
+            loading: loading,
+            skeleton: const AppSkeletonList(count: 4),
+            child: content,
           );
         },
       ),
@@ -443,22 +474,24 @@ class _Shortcut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    final tk = context.tk;
+    return AppPressable(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
       child: Padding(
-        padding: const EdgeInsets.all(6),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s4, vertical: AppSpace.s8),
         child: Column(
           children: [
             CircleAvatar(
-              radius: 28,
-              backgroundColor: context.tk.surface,
-              child: Icon(icon, color: context.tk.providerAccent),
+              radius: 26,
+              backgroundColor: tk.providerSoft,
+              child: Icon(icon, color: tk.accentInk),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpace.s8),
             Text(
               label,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              textAlign: TextAlign.center,
+              style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: tk.text),
             ),
           ],
         ),
@@ -474,39 +507,37 @@ class _WeekBars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final max = values.fold<double>(0, (a, b) => b > a ? b : a);
     const labels = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
-    return SizedBox(
-      height: 84,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < 7; i++)
-            Padding(
-              padding: const EdgeInsets.only(left: 5),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    width: 12,
-                    height: max == 0 ? 4 : (4 + 54 * (values[i] / max)),
-                    decoration: BoxDecoration(
-                      color: values[i] > 0
-                          ? context.tk.providerAccent
-                          : context.tk.border,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (var i = 0; i < 7; i++)
+          Padding(
+            padding: EdgeInsets.only(left: i == 0 ? 0 : AppSpace.s4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  width: 12,
+                  height: max == 0 ? 4 : (4 + 54 * (values[i] / max)),
+                  decoration: BoxDecoration(
+                    color: values[i] > 0 ? tk.accent : tk.border,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    labels[i],
-                    style: TextStyle(fontSize: 10, color: context.tk.textMuted),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: AppSpace.s4),
+                Text(
+                  labels[i],
+                  style: AppType.caption.copyWith(color: tk.textMuted),
+                ),
+              ],
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

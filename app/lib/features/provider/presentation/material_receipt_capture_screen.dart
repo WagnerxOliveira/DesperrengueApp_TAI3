@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/security/perceptual_hash_guard.dart';
 import '../../../core/ui/app_scaffold.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/nfe_access_key.dart';
@@ -104,7 +104,13 @@ class _MaterialReceiptCaptureScreenState extends State<MaterialReceiptCaptureScr
         });
       }
     } catch (_) {
-      if (mounted) showSnack(context, 'Não foi possível abrir a câmera. Libere a permissão e tente de novo.', error: true);
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          'Não foi possível abrir a câmera. Libere a permissão e tente de novo.',
+          kind: AppSnackKind.error,
+        );
+      }
     } finally {
       if (mounted) setState(() => _pickingPhoto = false);
     }
@@ -149,17 +155,17 @@ class _MaterialReceiptCaptureScreenState extends State<MaterialReceiptCaptureScr
     final check = _keyCheck;
     final registered = _outcome?.registered ?? false;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Nota fiscal dos materiais')),
+      appBar: const AppAppBar(title: 'Nota fiscal dos materiais'),
       body: ListView(
         key: const ValueKey('material-receipt-list'),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(context.layout.margin, AppSpace.s8, context.layout.margin, AppSpace.s24),
         children: [
           Text(
             'Informe a chave de acesso (44 números) do cupom ou cole o link do QR Code. A nota fica anexada ao serviço para o cliente conferir.',
-            style: TextStyle(color: tk.textMuted, height: 1.4),
+            style: AppType.body.copyWith(color: tk.textMuted),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s16),
           TextField(
             key: const ValueKey('receipt-key-field'),
             controller: _key,
@@ -176,40 +182,40 @@ class _MaterialReceiptCaptureScreenState extends State<MaterialReceiptCaptureScr
               helperMaxLines: 2,
               errorText: (check != null && !check.valid) ? check.message : null,
               errorMaxLines: 3,
-              suffixIcon: IconButton(
+              suffixIcon: AppIconButton(
                 key: const ValueKey('receipt-paste-btn'),
                 tooltip: 'Colar',
-                icon: const Icon(Icons.content_paste_rounded),
+                icon: Icons.content_paste_rounded,
+                color: tk.accentInk,
                 onPressed: _busy || registered ? null : _paste,
               ),
             ),
           ),
           if (check?.info case final info?) ...[
-            const SizedBox(height: 8),
-            Container(
+            const SizedBox(height: AppSpace.s8),
+            AppCard(
               key: const ValueKey('receipt-key-ok'),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: tk.successSoft,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: tk.success.withValues(alpha: 0.5)),
-              ),
+              variant: AppCardVariant.tonal,
+              color: tk.successSoft,
+              borderColor: tk.success.withValues(alpha: 0.5),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
+              radius: AppGeometry.fieldRadius,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.check_circle_rounded, size: 18, color: tk.success),
-                  const SizedBox(width: 8),
+                  Icon(Icons.check_circle_rounded, size: 18, color: tk.successInk),
+                  const SizedBox(width: AppSpace.s8),
                   Expanded(
                     child: Text(
                       'Chave com formato válido • ${info.label} • ${info.uf} • CNPJ ${info.formattedCnpj}',
-                      style: TextStyle(color: tk.successInk, fontSize: 12.5, fontWeight: FontWeight.w700, height: 1.35),
+                      style: AppType.caption.copyWith(color: tk.successInk, fontWeight: FontWeight.w700),
                     ),
                   ),
                 ],
               ),
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s16),
           TextField(
             key: const ValueKey('receipt-amount-field'),
             controller: _amount,
@@ -218,24 +224,27 @@ class _MaterialReceiptCaptureScreenState extends State<MaterialReceiptCaptureScr
             onChanged: (_) => setState(() => _outcome = null),
             decoration: const InputDecoration(labelText: 'Valor total dos materiais', prefixText: 'R\$ ', hintText: '1.250,50'),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s16),
           _PhotoTile(
             photo: _photo,
             busy: _pickingPhoto,
             enabled: !_busy && !registered,
             onTap: _takePhoto,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s16),
           if (_busy)
-            const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppSpace.s8),
+              child: AppLoading(message: 'Validando nota fiscal...'),
+            )
           else if (_outcome != null)
             _OutcomeBanner(outcome: _outcome!),
         ],
       ),
-      bottomNavigationBar: BottomBar(
+      bottomNavigationBar: AppBottomBar(
         child: registered
-            ? PrimaryButton(key: const ValueKey('receipt-finish-btn'), label: 'Concluir', trailingArrow: true, onPressed: _finish)
-            : PrimaryButton(
+            ? AppButton(key: const ValueKey('receipt-finish-btn'), label: 'Concluir', trailingArrow: true, onPressed: _finish)
+            : AppButton(
                 key: const ValueKey('receipt-submit-btn'),
                 label: _outcome?.state == FiscalReceiptState.networkError ? 'Tentar de novo' : 'Registrar nota',
                 loading: _busy,
@@ -256,16 +265,14 @@ class _PhotoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tk = context.tk;
     final has = photo != null;
-    return OutlinedButton.icon(
+    return AppButton(
       key: const ValueKey('receipt-photo-btn'),
+      variant: AppButtonVariant.secondary,
+      loading: busy,
+      icon: has ? Icons.check_circle_rounded : Icons.photo_camera_rounded,
+      label: has ? 'Foto do cupom anexada • tocar para refazer' : 'Fotografar o cupom',
       onPressed: enabled && !busy ? onTap : null,
-      icon: busy
-          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-          : Icon(has ? Icons.check_circle_rounded : Icons.photo_camera_rounded, color: has ? tk.success : null),
-      label: Text(has ? 'Foto do cupom anexada • tocar para refazer' : 'Fotografar o cupom', textAlign: TextAlign.center),
-      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
     );
   }
 }
