@@ -7,8 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/welcome_cinema_tracker.dart';
 import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/desperrengue_brand_logo.dart';
-import '../../../core/ui/serene_route_transitions.dart';
 import 'auth_gate.dart';
 
 class CadastroSucessoRoutingScreen extends StatefulWidget {
@@ -22,10 +22,9 @@ class CadastroSucessoRoutingScreen extends StatefulWidget {
 class _CadastroSucessoRoutingScreenState
     extends State<CadastroSucessoRoutingScreen>
     with SingleTickerProviderStateMixin {
-  static const Color _quietLuxuryNavy = Color(0xFF0F172A);
-  static const Color _emeraldAccent = Color(0xFF10B981);
-  static const Color _warmGoldAccent = Color(0xFFFFB020);
-  static const Color _brandOrangeAccent = Color(0xFFFF6D00);
+  static const Color _quietLuxuryNavy = DesperrengueBrandLogoPainter.navyDeep;
+  static const Color _brandOrangeAccent =
+      DesperrengueBrandLogoPainter.brandOrange;
 
   late final AnimationController _pulseController;
 
@@ -70,14 +69,19 @@ class _CadastroSucessoRoutingScreenState
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
+      AppRoute<void>(builder: (_) => const AuthGate()),
       (route) => false,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final reduceMotion = AppMotion.reduced(context);
+    final dark = AppTokens.dark;
+    final emerald = dark.success;
+    final emeraldInk = dark.successInk;
+    final warmGold = dark.star;
+
     return PopScope(
       canPop: false,
       child: AppScaffold(
@@ -102,6 +106,10 @@ class _CadastroSucessoRoutingScreenState
                     painter: _CinematicBridgeHaloPainter(
                       progress: t,
                       pulse: breathe,
+                      emerald: emerald,
+                      warmGold: warmGold,
+                      brandOrange: _brandOrangeAccent,
+                      navy: _quietLuxuryNavy,
                     ),
                   ),
                 ),
@@ -110,8 +118,8 @@ class _CadastroSucessoRoutingScreenState
                     child: SingleChildScrollView(
                       physics: const NeverScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 24.0,
-                        vertical: 16.0,
+                        horizontal: AppSpace.s24,
+                        vertical: AppSpace.s16,
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -120,70 +128,69 @@ class _CadastroSucessoRoutingScreenState
                           Container(
                             key: const Key('cadastro-sucesso-emerald-seal'),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
+                              horizontal: AppSpace.s16,
+                              vertical: AppSpace.s8,
                             ),
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  _emeraldAccent.withValues(alpha: 0.20),
-                                  _warmGoldAccent.withValues(alpha: 0.12),
+                                  emerald.withValues(alpha: 0.20),
+                                  warmGold.withValues(alpha: 0.12),
                                 ],
                               ),
-                              borderRadius: BorderRadius.circular(999),
+                              borderRadius: BorderRadius.circular(
+                                AppGeometry.pillRadius,
+                              ),
                               border: Border.all(
                                 color: Color.lerp(
-                                  _emeraldAccent,
-                                  _warmGoldAccent,
+                                  emerald,
+                                  warmGold,
                                   0.25 * breathe,
                                 )!.withValues(alpha: 0.55),
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: _emeraldAccent.withValues(
+                                  color: emerald.withValues(
                                     alpha: 0.16 + 0.10 * breathe,
                                   ),
                                   blurRadius: 20,
                                 ),
                               ],
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
                                   Icons.verified_rounded,
-                                  color: _emeraldAccent,
+                                  color: emerald,
                                   size: 18,
                                 ),
-                                SizedBox(width: 8),
+                                const SizedBox(width: AppSpace.s8),
                                 Flexible(
                                   child: Text(
                                     'Cadastro confirmado!',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF6EE7B7),
-                                      letterSpacing: 0.2,
+                                    textAlign: TextAlign.center,
+                                    style: AppType.bodySm.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: emeraldInk,
                                     ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 22),
+                          const SizedBox(height: AppSpace.s24),
                           // Monograma oficial no eixo óptico central do Ato I
                           Transform.scale(
                             scale: logoScale,
                             child: Container(
-                              padding: const EdgeInsets.all(10),
+                              padding: const EdgeInsets.all(AppSpace.s12),
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: _quietLuxuryNavy.withValues(alpha: 0.78),
                                 border: Border.all(
                                   color: Color.lerp(
-                                    _emeraldAccent,
+                                    emerald,
                                     _brandOrangeAccent,
                                     t,
                                   )!.withValues(alpha: 0.52),
@@ -191,13 +198,13 @@ class _CadastroSucessoRoutingScreenState
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: _emeraldAccent.withValues(
+                                    color: emerald.withValues(
                                       alpha: 0.18 * (1.0 - 0.3 * t),
                                     ),
                                     blurRadius: 28,
                                   ),
                                   BoxShadow(
-                                    color: _warmGoldAccent.withValues(
+                                    color: warmGold.withValues(
                                       alpha: 0.22 * t,
                                     ),
                                     blurRadius: 32,
@@ -208,20 +215,17 @@ class _CadastroSucessoRoutingScreenState
                                 size: 74,
                                 variant:
                                     DesperrengueLogoVariant.quietLuxuryNavy,
-                                borderRadius: 999,
+                                borderRadius: AppGeometry.pillRadius,
                                 showShadow: false,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 22),
-                          const Text(
+                          const SizedBox(height: AppSpace.s24),
+                          Text(
                             'Preparando sua apresentação...',
                             textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFFCBD5E1),
-                              letterSpacing: -0.1,
+                            style: AppType.bodyStrong.copyWith(
+                              color: dark.text,
                             ),
                           ),
                         ],
@@ -242,10 +246,18 @@ class _CinematicBridgeHaloPainter extends CustomPainter {
   const _CinematicBridgeHaloPainter({
     required this.progress,
     required this.pulse,
+    required this.emerald,
+    required this.warmGold,
+    required this.brandOrange,
+    required this.navy,
   });
 
   final double progress;
   final double pulse;
+  final Color emerald;
+  final Color warmGold;
+  final Color brandOrange;
+  final Color navy;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -256,9 +268,9 @@ class _CinematicBridgeHaloPainter extends CustomPainter {
     final outerHalo = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFF10B981).withValues(alpha: 0.18 + 0.06 * pulse),
-          const Color(0xFFFFB020).withValues(alpha: 0.10 * progress),
-          const Color(0xFF0F172A).withValues(alpha: 0.0),
+          emerald.withValues(alpha: 0.18 + 0.06 * pulse),
+          warmGold.withValues(alpha: 0.10 * progress),
+          navy.withValues(alpha: 0.0),
         ],
         stops: const [0.0, 0.52, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: outerRadius));
@@ -267,9 +279,9 @@ class _CinematicBridgeHaloPainter extends CustomPainter {
     final innerHalo = Paint()
       ..shader = RadialGradient(
         colors: [
-          const Color(0xFFFF6D00).withValues(alpha: 0.16 * progress),
-          const Color(0xFF10B981).withValues(alpha: 0.12),
-          const Color(0xFF0F172A).withValues(alpha: 0.0),
+          brandOrange.withValues(alpha: 0.16 * progress),
+          emerald.withValues(alpha: 0.12),
+          navy.withValues(alpha: 0.0),
         ],
         stops: const [0.0, 0.55, 1.0],
       ).createShader(Rect.fromCircle(center: center, radius: innerRadius));

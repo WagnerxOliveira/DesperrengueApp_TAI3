@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -7,22 +6,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_session.dart';
 import '../../../core/services/profile_service.dart';
-import '../../../core/ui/app_tokens.dart';
-import '../../../core/ui/serene_route_transitions.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import 'auth_gate.dart';
 import 'desperrengue_welcome_cinema_screen.dart';
 
-/// Seleção de perfil (Módulo 4): visual "clean / glassmorphism".
+/// Seleção de perfil (Módulo 4): visual limpo, respiração generosa e cartões
+/// com contraste AA em modo claro e escuro.
 ///
 /// * Header mínimo: seta `<` (volta ao Login, com confirmação de saída), "Olá, [Nome]"
 ///   e "Como você deseja usar o Desperrengue hoje?".
-/// * Dois cartões grandes, clicáveis por inteiro (InkWell), sem clip-art.
-/// * Pílulas flutuantes no canto: 🟢 Perfil Ativo · ⚪ Criar Perfil — e, para o
-///   cadastro pela metade, "Termine o seu cadastro" / "Em análise".
+/// * Dois cartões grandes, clicáveis por inteiro (InkWell + AppPressScale), sem clip-art.
+/// * Selos de estado: Perfil Ativo · Criar Perfil · Termine o seu cadastro · Em análise.
 /// * Tema claro/escuro via tokens (`context.tk`); sem sombra no escuro.
-///
-/// Performance: o desfoque (BackdropFilter) fica só nos 2 cartões, cada um num
-/// RepaintBoundary; o fundo é gradiente estático (não anima).
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({super.key, this.profile});
 
@@ -33,25 +29,13 @@ class RoleSelectionScreen extends StatefulWidget {
   State<RoleSelectionScreen> createState() => _RoleSelectionScreenState();
 }
 
-class _RoleSelectionScreenState extends State<RoleSelectionScreen>
-    with SingleTickerProviderStateMixin {
+class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
   String _nomeUsuario = '';
-  late final AnimationController _entryController;
 
   @override
   void initState() {
     super.initState();
     _obterNomeUsuario();
-    _entryController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 420),
-    )..forward();
-  }
-
-  @override
-  void dispose() {
-    _entryController.dispose();
-    super.dispose();
   }
 
   void _obterNomeUsuario() {
@@ -74,7 +58,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
   void _abrirReplayWelcomeCinema() {
     final firstName = _nomeUsuario == 'você' ? '' : _nomeUsuario;
     Navigator.of(context).push(
-      SereneAuthPageRoute<void>(
+      AppRoute<void>(
         builder: (routeContext) => DesperrengueWelcomeCinemaScreen(
           userFirstName: firstName,
           isReplay: true,
@@ -97,155 +81,56 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
   }
 
   void _mostrarModalSair() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      barrierColor: SereneModalSheetConfig.barrierColor,
-      sheetAnimationStyle: SereneModalSheetConfig.sheetAnimationStyle,
+    AppSheet.show<void>(
+      context,
+      title: 'Deseja sair da conta?',
+      subtitle:
+          'Você precisará fazer login novamente com seu e-mail ou Google para acessar o Desperrengue.',
       builder: (sheetContext) {
         final tk = sheetContext.tk;
-        final mq = MediaQuery.of(sheetContext);
-        final textScale = mq.textScaler.scale(1.0);
-        final stackButtons = mq.size.width < 350 || textScale > 1.25;
-        final compactSheet = mq.size.height < 680 || textScale > 1.25;
-
-        final cancelBtn = OutlinedButton(
-          onPressed: () => Navigator.pop(sheetContext),
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size(44, 48),
-            padding: EdgeInsets.symmetric(
-              vertical: compactSheet ? 12 : 14,
-              horizontal: 16,
-            ),
-            foregroundColor: tk.text,
-            side: BorderSide(color: tk.border),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-          child: Text(
-            'Cancelar',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: compactSheet ? 15 : 16,
-            ),
-          ),
-        );
-
-        final signOutBtn = FilledButton(
-          onPressed: () async {
-            final navigator = Navigator.of(context);
-            Navigator.pop(sheetContext);
-            await ProfileService().signOut();
-            navigator.pushAndRemoveUntil(
-              SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
-              (route) => false,
-            );
-          },
-          style: FilledButton.styleFrom(
-            backgroundColor: tk.danger,
-            foregroundColor: AppTokens.onColor(tk.danger),
-            minimumSize: const Size(44, 48),
-            padding: EdgeInsets.symmetric(
-              vertical: compactSheet ? 12 : 14,
-              horizontal: 16,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-          child: Text(
-            'Sair da Conta',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: compactSheet ? 15 : 16,
-            ),
-          ),
-        );
-
-        return ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: mq.size.height * 0.92),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: tk.raised,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(28),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
+          child: Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: tk.dangerSoft,
+                shape: BoxShape.circle,
               ),
-              border: Border(top: BorderSide(color: tk.border, width: 1.2)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  compactSheet ? 18 : 24,
-                  compactSheet ? 14 : 20,
-                  compactSheet ? 18 : 24,
-                  compactSheet ? 16 : 24,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 48,
-                        height: 4,
-                        margin: EdgeInsets.only(bottom: compactSheet ? 14 : 20),
-                        decoration: BoxDecoration(
-                          color: tk.border,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Icon(
-                      Icons.logout_rounded,
-                      size: compactSheet ? 38 : 48,
-                      color: tk.danger,
-                    ),
-                    SizedBox(height: compactSheet ? 10 : 16),
-                    Text(
-                      'Deseja sair da conta?',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: compactSheet ? 19 : 22,
-                        fontWeight: FontWeight.bold,
-                        color: tk.text,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Você precisará fazer login novamente com seu e-mail ou Google para acessar o Desperrengue.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: compactSheet ? 13.5 : 15,
-                        color: tk.textMuted,
-                        height: 1.38,
-                      ),
-                    ),
-                    SizedBox(height: compactSheet ? 18 : 28),
-                    if (stackButtons) ...[
-                      signOutBtn,
-                      const SizedBox(height: 10),
-                      cancelBtn,
-                    ] else
-                      Row(
-                        children: [
-                          Expanded(child: cancelBtn),
-                          const SizedBox(width: 16),
-                          Expanded(child: signOutBtn),
-                        ],
-                      ),
-                  ],
-                ),
+              child: Icon(
+                Icons.logout_rounded,
+                size: 28,
+                color: tk.dangerInk,
               ),
             ),
           ),
         );
       },
+      actions: [
+        Builder(
+          builder: (ctx) => AppButton(
+            label: 'Cancelar',
+            variant: AppButtonVariant.secondary,
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ),
+        Builder(
+          builder: (ctx) => AppButton(
+            label: 'Sair da Conta',
+            variant: AppButtonVariant.destructive,
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              Navigator.pop(ctx);
+              await ProfileService().signOut();
+              navigator.pushAndRemoveUntil(
+                AppRoute<void>(builder: (_) => const AuthGate()),
+                (route) => false,
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -268,7 +153,8 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final layout = context.layout;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -283,194 +169,145 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
             SafeArea(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-                  final compact =
-                      constraints.maxHeight < 720 || textScale > 1.2;
-                  return AnimatedBuilder(
-                    animation: _entryController,
-                    builder: (context, _) {
-                      final rawT = disableAnimations
-                          ? 1.0
-                          : _entryController.value.clamp(0.0, 1.0);
-                      final clientT = disableAnimations
-                          ? 1.0
-                          : const Interval(
-                              0.0,
-                              0.82,
-                              curve: Curves.easeOutCubic,
-                            ).transform(rawT);
-                      final providerT = disableAnimations
-                          ? 1.0
-                          : const Interval(
-                              0.18,
-                              1.0,
-                              curve: Curves.easeOutCubic,
-                            ).transform(rawT);
-
-                      final clientOpacity = 0.92 + 0.08 * clientT;
-                      final clientScale = 0.985 + 0.015 * clientT;
-                      final providerOpacity = 0.92 + 0.08 * providerT;
-                      final providerScale = 0.985 + 0.015 * providerT;
-
-                      return Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          compact ? 16 : 20,
-                          compact ? 2 : 4,
-                          compact ? 16 : 20,
-                          compact ? 10 : 20,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                IconButton(
-                                  tooltip: 'Voltar',
-                                  style: IconButton.styleFrom(
-                                    minimumSize: const Size(44, 44),
-                                  ),
-                                  onPressed: _mostrarModalSair,
-                                  icon: Icon(
-                                    Icons.arrow_back_ios_new_rounded,
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      layout.margin,
+                      AppSpace.s8,
+                      layout.margin,
+                      AppSpace.s24,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: (constraints.maxHeight - AppSpace.s32)
+                            .clamp(0.0, double.infinity),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  AppIconButton(
+                                    icon: Icons.arrow_back_ios_new_rounded,
+                                    tooltip: 'Voltar',
                                     color: tk.text,
+                                    size: 20,
+                                    onPressed: _mostrarModalSair,
                                   ),
-                                ),
-                                Flexible(
-                                  child: TextButton(
-                                    key: const Key('btn-replay-welcome-cinema'),
-                                    onPressed: _abrirReplayWelcomeCinema,
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: tk.text,
-                                      backgroundColor: tk.isDark
-                                          ? tk.surface.withValues(alpha: 0.88)
-                                          : tk.surface,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: compact ? 10 : 14,
-                                        vertical: compact ? 8 : 10,
-                                      ),
-                                      minimumSize: const Size(44, 44),
-                                      visualDensity: VisualDensity.standard,
-                                      tapTargetSize:
-                                          MaterialTapTargetSize.padded,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                        side: BorderSide(
-                                          color: tk.isDark
-                                              ? tk.clientAccent.withValues(
-                                                  alpha: 0.38,
+                                  Flexible(
+                                    child: AppPressScale(
+                                      child: TextButton(
+                                        key: const Key(
+                                          'btn-replay-welcome-cinema',
+                                        ),
+                                        onPressed: _abrirReplayWelcomeCinema,
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: tk.text,
+                                          backgroundColor: tk.isDark
+                                              ? tk.surface.withValues(
+                                                  alpha: 0.9,
                                                 )
-                                              : tk.border,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.play_circle_outline_rounded,
-                                          size: compact ? 15 : 17,
-                                          color: tk.isDark
-                                              ? tk.clientAccent
-                                              : tk.brand,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Flexible(
-                                          child: Text(
-                                            'Rever apresentação',
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              fontSize: compact ? 11.5 : 12.5,
-                                              fontWeight: FontWeight.w700,
-                                              color: tk.text,
+                                              : tk.surface,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: AppSpace.s16,
+                                            vertical: AppSpace.s8,
+                                          ),
+                                          minimumSize: const Size(
+                                            AppGeometry.minTarget,
+                                            AppGeometry.minTarget,
+                                          ),
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.padded,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              AppGeometry.pillRadius,
                                             ),
+                                            side: BorderSide(color: tk.border),
                                           ),
                                         ),
-                                      ],
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.play_circle_outline_rounded,
+                                              size: 18,
+                                              color: tk.isDark
+                                                  ? tk.clientAccentInk
+                                                  : tk.accentInk,
+                                            ),
+                                            const SizedBox(width: AppSpace.s8),
+                                            Flexible(
+                                              child: Text(
+                                                'Rever apresentação',
+                                                style: AppType.caption.copyWith(
+                                                  fontWeight: FontWeight.w700,
+                                                  color: tk.text,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: compact ? 2 : 4),
-                            Text(
-                              _nomeUsuario.isEmpty
-                                  ? 'Olá!'
-                                  : 'Olá, $_nomeUsuario',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: compact ? 22 : 32,
-                                fontWeight: FontWeight.w800,
-                                color: tk.text,
-                                letterSpacing: -0.5,
+                                ],
                               ),
-                            ),
-                            SizedBox(height: compact ? 3 : 6),
-                            Text(
-                              'Como você deseja usar o Desperrengue hoje?',
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: compact ? 14.5 : 18,
-                                fontWeight: FontWeight.w600,
-                                color: tk.textMuted,
-                                height: 1.25,
+                              const SizedBox(height: AppSpace.s20),
+                              Text(
+                                _nomeUsuario.isEmpty
+                                    ? 'Olá!'
+                                    : 'Olá, $_nomeUsuario',
+                                style: AppType.display.copyWith(color: tk.text),
                               ),
-                            ),
-                            SizedBox(height: compact ? 4 : 8),
-                            Text(
-                              _intro,
-                              maxLines: compact ? 2 : 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: compact ? 11.5 : 13,
-                                color: tk.textMuted,
-                                height: 1.3,
-                              ),
-                            ),
-                            SizedBox(height: compact ? 8 : 18),
-                            Expanded(
-                              child: Opacity(
-                                opacity: clientOpacity,
-                                child: Transform.scale(
-                                  scale: clientScale,
-                                  child: _RoleCard(
-                                    mode: UserMode.client,
-                                    icon: Icons.manage_search_rounded,
-                                    title: 'Preciso de um serviço',
-                                    subtitle:
-                                        'Encontre profissionais para resolver seu problema',
-                                    stage: _stage(UserMode.client),
-                                    onTap: () => _escolher(UserMode.client),
-                                  ),
+                              const SizedBox(height: AppSpace.s8),
+                              Text(
+                                'Como você deseja usar o Desperrengue hoje?',
+                                style: AppType.title.copyWith(
+                                  color: tk.textMuted,
                                 ),
                               ),
-                            ),
-                            SizedBox(height: compact ? 8 : 14),
-                            Expanded(
-                              child: Opacity(
-                                opacity: providerOpacity,
-                                child: Transform.scale(
-                                  scale: providerScale,
-                                  child: _RoleCard(
-                                    mode: UserMode.provider,
-                                    icon: Icons.handyman_rounded,
-                                    title: 'Quero trabalhar',
-                                    subtitle:
-                                        'Acesse seu painel, veja pedidos e gerencie ganhos',
-                                    stage: _stage(UserMode.provider),
-                                    onTap: () => _escolher(UserMode.provider),
-                                  ),
+                              const SizedBox(height: AppSpace.s8),
+                              Text(
+                                _intro,
+                                style: AppType.bodySm.copyWith(
+                                  color: tk.textMuted,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                            ],
+                          ),
+                          const SizedBox(height: AppSpace.s24),
+                          AppStagger(
+                            spacing: AppSpace.s16,
+                            children: [
+                              _RoleCard(
+                                mode: UserMode.client,
+                                icon: Icons.manage_search_rounded,
+                                title: 'Preciso de um serviço',
+                                subtitle:
+                                    'Encontre profissionais para resolver seu problema',
+                                stage: _stage(UserMode.client),
+                                onTap: () => _escolher(UserMode.client),
+                              ),
+                              _RoleCard(
+                                mode: UserMode.provider,
+                                icon: Icons.handyman_rounded,
+                                title: 'Quero trabalhar',
+                                subtitle:
+                                    'Acesse seu painel, veja pedidos e gerencie ganhos',
+                                stage: _stage(UserMode.provider),
+                                onTap: () => _escolher(UserMode.provider),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpace.s16),
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
@@ -496,10 +333,7 @@ class _AmbientBackground extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              tk.background,
-              tk.isDark ? tk.surface : const Color(0xFFF1F5FC),
-            ],
+            colors: [tk.background, tk.surface],
           ),
         ),
         child: Stack(
@@ -508,9 +342,7 @@ class _AmbientBackground extends StatelessWidget {
               top: -90,
               right: -70,
               child: _Halo(
-                color: tk.clientAccent.withValues(
-                  alpha: tk.isDark ? 0.16 : 0.16,
-                ),
+                color: tk.clientAccent.withValues(alpha: 0.14),
                 size: 260,
               ),
             ),
@@ -519,7 +351,7 @@ class _AmbientBackground extends StatelessWidget {
               left: -80,
               child: _Halo(
                 color: tk.providerAccent.withValues(
-                  alpha: tk.isDark ? 0.18 : 0.14,
+                  alpha: tk.isDark ? 0.16 : 0.12,
                 ),
                 size: 300,
               ),
@@ -569,8 +401,9 @@ class _RoleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final isClient = mode == UserMode.client;
-    final accent = isClient ? tk.clientAccent : tk.providerAccent;
-    final onAccent = AppTokens.onColor(accent);
+    final accentFill = isClient ? tk.clientAccent : tk.providerAccent;
+    final accentInk = isClient ? tk.clientAccentInk : tk.providerAccentInk;
+    final onAccent = AppTokens.onColor(accentFill);
     final incomplete = stage == ModeStage.incomplete;
 
     final (String cta, IconData ctaIcon) = switch (stage) {
@@ -589,136 +422,106 @@ class _RoleCard extends StatelessWidget {
       ),
     };
 
-    // Vidro: superfície translúcida + borda de luz. No escuro, sem sombra (elevação tonal).
     final glass = tk.isDark
-        ? tk.card.withValues(alpha: 0.62)
-        : Colors.white.withValues(alpha: 0.66);
+        ? tk.card.withValues(alpha: 0.82)
+        : tk.card.withValues(alpha: 0.86);
     final rim = incomplete
         ? tk.warning
-        : (tk.isDark
-              ? Colors.white.withValues(alpha: 0.10)
-              : Colors.white.withValues(alpha: 0.9));
+        : (tk.isDark ? tk.border : tk.border.withValues(alpha: 0.85));
 
     return Semantics(
       button: true,
       label: '$title. $cta',
-      child: RepaintBoundary(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: tk.cardShadow(blur: 24, dy: 10),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(28),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              child: Material(
-                color: glass,
-                child: InkWell(
-                  onTap: onTap,
-                  child: LayoutBuilder(
-                    builder: (context, cardConstraints) {
-                      final cardCompact = cardConstraints.maxHeight < 235;
-                      return Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(28),
-                          border: Border.all(
-                            color: rim,
-                            width: incomplete ? 1.6 : 1.2,
+      child: AppPressScale(
+        child: RepaintBoundary(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(AppGeometry.heroRadius),
+              boxShadow: tk.elevation(2),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppGeometry.heroRadius),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                child: Material(
+                  color: glass,
+                  child: InkWell(
+                    onTap: onTap,
+                    borderRadius: BorderRadius.circular(AppGeometry.heroRadius),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                          AppGeometry.heroRadius,
+                        ),
+                        border: Border.all(
+                          color: rim,
+                          width: incomplete ? 1.5 : 1.0,
+                        ),
+                      ),
+                      padding: const EdgeInsets.all(AppSpace.cardLarge),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Wrap(
+                            spacing: AppSpace.s12,
+                            runSpacing: AppSpace.s8,
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(
+                                    AppGeometry.itemRadius,
+                                  ),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      accentFill,
+                                      Color.lerp(
+                                        accentFill,
+                                        tk.isDark ? tk.text : tk.brand,
+                                        0.20,
+                                      )!,
+                                    ],
+                                  ),
+                                ),
+                                child: Icon(icon, size: 28, color: onAccent),
+                              ),
+                              _StagePill(stage: stage),
+                            ],
                           ),
-                        ),
-                        padding: cardCompact
-                            ? const EdgeInsets.fromLTRB(16, 10, 16, 10)
-                            : const EdgeInsets.fromLTRB(22, 20, 22, 18),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: cardCompact ? 40 : 60,
-                                  height: cardCompact ? 40 : 60,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(
-                                      cardCompact ? 12 : 18,
-                                    ),
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        accent,
-                                        Color.lerp(
-                                          accent,
-                                          tk.isDark
-                                              ? Colors.white
-                                              : Colors.black,
-                                          0.22,
-                                        )!,
-                                      ],
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    icon,
-                                    size: cardCompact ? 22 : 32,
-                                    color: onAccent,
+                          const SizedBox(height: AppSpace.s20),
+                          Text(
+                            title,
+                            style: AppType.headline.copyWith(color: tk.text),
+                          ),
+                          const SizedBox(height: AppSpace.s4),
+                          Text(
+                            subtitle,
+                            style: AppType.bodySm.copyWith(color: tk.textMuted),
+                          ),
+                          const SizedBox(height: AppSpace.s16),
+                          Row(
+                            children: [
+                              Icon(ctaIcon, size: 18, color: accentInk),
+                              const SizedBox(width: AppSpace.s8),
+                              Expanded(
+                                child: Text(
+                                  cta,
+                                  style: AppType.bodyStrong.copyWith(
+                                    color: accentInk,
                                   ),
                                 ),
-                                const Spacer(),
-                                _StagePill(stage: stage),
-                              ],
-                            ),
-                            const Spacer(),
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: cardCompact ? 17.5 : 24,
-                                fontWeight: FontWeight.w800,
-                                color: tk.text,
-                                height: 1.1,
-                                letterSpacing: -0.3,
                               ),
-                            ),
-                            SizedBox(height: cardCompact ? 3 : 6),
-                            Text(
-                              subtitle,
-                              maxLines: cardCompact ? 1 : 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: cardCompact ? 11.5 : 14,
-                                color: tk.textMuted,
-                                height: 1.25,
-                              ),
-                            ),
-                            SizedBox(height: cardCompact ? 4 : 14),
-                            Row(
-                              children: [
-                                Icon(
-                                  ctaIcon,
-                                  size: cardCompact ? 15 : 18,
-                                  color: accent,
-                                ),
-                                const SizedBox(width: 6),
-                                Flexible(
-                                  child: Text(
-                                    cta,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: cardCompact ? 12 : 14,
-                                      fontWeight: FontWeight.w800,
-                                      color: accent,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -730,7 +533,7 @@ class _RoleCard extends StatelessWidget {
   }
 }
 
-/// Pílula flutuante de estado do perfil.
+/// Selo de estado do perfil usando o sistema de tons do DS.
 class _StagePill extends StatelessWidget {
   const _StagePill({required this.stage});
 
@@ -738,79 +541,27 @@ class _StagePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tk = context.tk;
-    final (String text, Color fg, Color bg, Widget lead) = switch (stage) {
-      ModeStage.ready => (
+    return switch (stage) {
+      ModeStage.ready => const AppStatusChip(
         'Perfil Ativo',
-        tk.successInk,
-        tk.successSoft,
-        _Dot(tk.success),
+        tone: AppTone.success,
+        icon: Icons.check_circle_rounded,
       ),
-      ModeStage.notEnrolled => (
+      ModeStage.notEnrolled => const AppStatusChip(
         'Criar Perfil',
-        tk.textMuted,
-        tk.surface,
-        _Dot(tk.textMuted.withValues(alpha: 0.55), ring: true),
+        tone: AppTone.neutral,
+        icon: Icons.radio_button_unchecked_rounded,
       ),
-      ModeStage.incomplete => (
+      ModeStage.incomplete => const AppStatusChip(
         'Termine o seu cadastro',
-        tk.warningInk,
-        tk.warningSoft,
-        Icon(Icons.edit_rounded, size: 12, color: tk.warningInk),
+        tone: AppTone.warning,
+        icon: Icons.edit_rounded,
       ),
-      ModeStage.awaitingReview => (
+      ModeStage.awaitingReview => const AppStatusChip(
         'Em análise',
-        tk.info,
-        tk.infoSoft,
-        Icon(Icons.schedule_rounded, size: 12, color: tk.info),
+        tone: AppTone.info,
+        icon: Icons.schedule_rounded,
       ),
     };
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 170),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            lead,
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                text,
-                maxLines: 2,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
-                  height: 1.1,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
-}
-
-class _Dot extends StatelessWidget {
-  const _Dot(this.color, {this.ring = false});
-
-  final Color color;
-  final bool ring;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 10,
-    height: 10,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: ring ? Colors.transparent : color,
-      border: ring ? Border.all(color: color, width: 1.6) : null,
-    ),
-  );
 }

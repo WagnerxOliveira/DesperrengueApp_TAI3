@@ -5,7 +5,7 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/widgets.dart';
 
 /// Tela de aceite de Termos de Uso específicos por perfil (**Cliente** ou **Profissional**)
@@ -80,7 +80,7 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
       if (!mounted) return;
       final msg = friendlyError(e);
       setState(() => _error = msg);
-      showSnack(context, msg, error: true);
+      AppSnackbar.show(context, msg, kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -89,6 +89,7 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final layout = context.layout;
     final isClientTarget = widget.mode == UserMode.client;
     final clauses = LegalMandateService.clausesForMode(widget.mode);
     final version = LegalMandateService.versionForMode(widget.mode);
@@ -114,43 +115,46 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
               : 'Aceitar Termos e Configurar Perfil Profissional');
 
     return AppScaffold(
-      appBar: AppBar(
-        leading: IconButton(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        title: isClientTarget
+            ? 'Ativar Modo Cliente'
+            : 'Ativar Modo Profissional',
+        leading: AppIconButton(
           key: const ValueKey('btn-back-previous-mode'),
+          icon: Icons.arrow_back_ios_new_rounded,
           tooltip: 'Voltar ao modo anterior',
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          size: 20,
           onPressed: _backToPreviousMode,
-        ),
-        title: Text(
-          isClientTarget ? 'Ativar Modo Cliente' : 'Ativar Modo Profissional',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        padding: EdgeInsets.fromLTRB(
+          layout.margin,
+          AppSpace.s12,
+          layout.margin,
+          AppSpace.s24,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (widget.isReuseFastTrack) ...[
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+                child: AppButton(
+                  label: 'Voltar ao modo anterior',
+                  icon: Icons.swap_horiz_rounded,
+                  variant: AppButtonVariant.tertiary,
+                  expand: false,
                   onPressed: _backToPreviousMode,
-                  icon: const Icon(Icons.swap_horiz_rounded, size: 18),
-                  label: const Text('Voltar ao modo anterior'),
                 ),
               ),
-              const SizedBox(height: 4),
-              Container(
+              const SizedBox(height: AppSpace.s8),
+              AppCard(
                 key: const ValueKey('fast-track-kyc-reused-banner'),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: tk.successSoft,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: tk.success, width: 2),
-                ),
+                variant: AppCardVariant.tonal,
+                color: tk.successSoft,
+                borderColor: tk.success,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -159,50 +163,43 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
                       children: [
                         Icon(
                           Icons.verified_user_rounded,
-                          color: tk.success,
+                          color: tk.successInk,
                           size: 26,
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: AppSpace.s12),
                         Expanded(
                           child: Text(
                             fastTrackBadgeTitle,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w900,
-                              fontSize: 14.5,
+                            style: AppType.bodyStrong.copyWith(
                               color: tk.successInk,
-                              height: 1.3,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpace.s8),
                     Text(
                       fastTrackBadgeBody,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: tk.successInk,
-                        height: 1.4,
-                      ),
+                      style: AppType.bodySm.copyWith(color: tk.successInk),
                     ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
+                    const SizedBox(height: AppSpace.s12),
+                    const Wrap(
+                      spacing: AppSpace.s8,
+                      runSpacing: AppSpace.s8,
                       children: [
-                        StatusChip(
+                        AppStatusChip(
                           'Zero Reenvio de Documentos',
-                          color: tk.success,
+                          tone: AppTone.success,
                           icon: Icons.check_circle_outline_rounded,
                         ),
-                        StatusChip(
+                        AppStatusChip(
                           'Zero Nova Cobrança de Validação',
-                          color: tk.success,
+                          tone: AppTone.success,
                           icon: Icons.savings_outlined,
                         ),
-                        StatusChip(
+                        AppStatusChip(
                           'Vigência de 6 Meses Ativa',
-                          color: tk.security,
+                          tone: AppTone.info,
                           icon: Icons.shield_outlined,
                         ),
                       ],
@@ -210,74 +207,53 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: AppSpace.s20),
             ],
             Text(
               headingTitle,
-              style: const TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.w900,
-                height: 1.25,
-              ),
+              style: AppType.headline.copyWith(color: tk.text),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpace.s8),
             Text(
               'Versão vigente: $version · Titular: ${widget.profile.officialCivilName}',
-              style: TextStyle(fontSize: 12.5, color: tk.textMuted),
+              style: AppType.caption.copyWith(color: tk.textMuted),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.s16),
             for (final clause in clauses)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: AppCard(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        clause.title,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14.5,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        clause.body,
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          color: tk.textMuted,
-                          height: 1.48,
-                        ),
-                      ),
-                    ],
-                  ),
+              AppCard(
+                margin: const EdgeInsets.only(bottom: AppSpace.s12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      clause.title,
+                      style: AppType.titleSm.copyWith(color: tk.text),
+                    ),
+                    const SizedBox(height: AppSpace.s8),
+                    Text(
+                      clause.body,
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
+                    ),
+                  ],
                 ),
               ),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: tk.surface,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: tk.border),
-              ),
+            AppCard(
+              variant: AppCardVariant.tonal,
+              borderColor: tk.border,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Selo Digital de Integridade Contratual (SHA-256)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
+                    style: AppType.caption.copyWith(
+                      fontWeight: FontWeight.w700,
                       color: tk.text,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: AppSpace.s4),
                   Text(
                     sha256Hex,
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: AppType.tabular(AppType.caption).copyWith(
                       fontFamily: 'monospace',
                       color: tk.textMuted,
                     ),
@@ -286,59 +262,64 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
               ),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.s16),
               InfoBanner(_error!, tone: BannerTone.danger),
             ],
-            const SizedBox(height: 16),
-            InkWell(
-              key: const ValueKey('checkbox-accept-role-terms'),
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => setState(() => _accepted = !_accepted),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _accepted ? tk.successSoft : tk.card,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: _accepted ? tk.success : tk.border,
-                    width: _accepted ? 2 : 1,
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Checkbox(
-                      value: _accepted,
-                      onChanged: (v) => setState(() => _accepted = v ?? false),
+            const SizedBox(height: AppSpace.s16),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                key: const ValueKey('checkbox-accept-role-terms'),
+                borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+                onTap: () => setState(() => _accepted = !_accepted),
+                child: AnimatedContainer(
+                  duration: AppMotion.d(context, AppMotion.fade),
+                  padding: const EdgeInsets.all(AppSpace.s12),
+                  decoration: BoxDecoration(
+                    color: _accepted ? tk.successSoft : tk.card,
+                    borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+                    border: Border.all(
+                      color: _accepted ? tk.success : tk.border,
+                      width: _accepted ? 2 : 1,
                     ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          isClientTarget
-                              ? 'Li e concordo com os Termos de Uso e Proteção do Cliente Desperrengue (incluindo Custódia Protegida, PIN de 4 dígitos, Garantia de 90 dias e Renovação Semestral de Segurança).'
-                              : 'Li e concordo com os Termos de Parceria e Cláusula-Mandato do Profissional Desperrengue (incluindo Mandato Art. 653 CC, 0% de taxa sobre peças com NF-e, Garantia de 90 dias e Renovação Semestral de Segurança).',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: _accepted
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                            color: tk.text,
-                            height: 1.38,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: _accepted,
+                        activeColor: tk.success,
+                        checkColor: AppTokens.onColor(tk.success),
+                        onChanged: (v) =>
+                            setState(() => _accepted = v ?? false),
+                      ),
+                      const SizedBox(width: AppSpace.s8),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: AppSpace.s8),
+                          child: Text(
+                            isClientTarget
+                                ? 'Li e concordo com os Termos de Uso e Proteção do Cliente Desperrengue (incluindo Custódia Protegida, PIN de 4 dígitos, Garantia de 90 dias e Renovação Semestral de Segurança).'
+                                : 'Li e concordo com os Termos de Parceria e Cláusula-Mandato do Profissional Desperrengue (incluindo Mandato Art. 653 CC, 0% de taxa sobre peças com NF-e, Garantia de 90 dias e Renovação Semestral de Segurança).',
+                            style: AppType.bodySm.copyWith(
+                              fontWeight: _accepted
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: tk.text,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           key: const ValueKey('btn-confirm-role-terms'),
           label: confirmButtonLabel,
           loading: _submitting,

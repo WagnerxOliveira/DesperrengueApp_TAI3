@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -7,8 +6,10 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/welcome_cinema_tracker.dart';
 import '../../../core/storage/local_prefs.dart';
+import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/app_theme.dart';
-import '../../../core/ui/serene_route_transitions.dart';
+import '../../../core/ui/design_system/design_system.dart';
+import '../../../core/ui/desperrengue_brand_logo.dart';
 import '../../../core/ui/widgets.dart';
 import '../../client/presentation/client_setup_screen.dart';
 import '../../client/presentation/client_shell.dart';
@@ -98,7 +99,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
     final navigator = Navigator.of(context);
     await ProfileService().signOut();
     navigator.pushAndRemoveUntil(
-      SereneAuthPageRoute<void>(builder: (_) => const AuthGate()),
+      AppRoute<void>(builder: (_) => const AuthGate()),
       (_) => false,
     );
   }
@@ -116,35 +117,43 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
               authCreatedAt: DateTime.tryParse(authUser?.createdAt ?? ''),
             );
         if (holdDarkCinemaBridge) {
-          return const AppScaffold(
-            key: Key('post-auth-cinema-dark-bridge'),
-            backgroundColor: Color(0xFF0F172A),
+          return AppScaffold(
+            key: const Key('post-auth-cinema-dark-bridge'),
+            backgroundColor: DesperrengueBrandLogoPainter.navyDeep,
             body: Center(
-              child: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.4,
-                  color: Color(0xFF10B981),
-                ),
+              child: AppProgressRing(
+                value: 0.72,
+                size: 28,
+                strokeWidth: 2.6,
+                color: AppTokens.dark.success,
+                semanticLabel: 'Preparando apresentação',
               ),
             ),
           );
         }
-        return const AppScaffold(body: LoadingView());
+        return const AppScaffold(body: AppLoading());
       }
       return AppScaffold(
-        body: ErrorView(
-          message: 'Não foi possível carregar o seu perfil.\nVerifique a conexão e tente novamente.',
+        body: AppErrorState(
+          message:
+              'Não foi possível carregar o seu perfil.\nVerifique a conexão e tente novamente.',
+          retryLabel: 'Tentar novamente',
           onRetry: () {
             setState(() => _loading = true);
             _load();
           },
         ),
         bottomNavigationBar: SafeArea(
-          child: TextButton(
-            onPressed: _signOut,
-            child: const Text('Sair da conta'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.s20,
+              vertical: AppSpace.s8,
+            ),
+            child: AppButton(
+              label: 'Sair da conta',
+              variant: AppButtonVariant.tertiary,
+              onPressed: _signOut,
+            ),
           ),
         ),
       );
@@ -191,20 +200,15 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
       case AppDestination.modeSelection:
         final showCinema =
             _showPostSignupCinema && !_session.forceSelection.value;
-        final disableAnimations = MediaQuery.disableAnimationsOf(context);
         return ColoredBox(
-          color: const Color(0xFF0F172A),
+          color: DesperrengueBrandLogoPainter.navyDeep,
           child: AnimatedSwitcher(
-            duration: disableAnimations
-                ? Duration.zero
-                : const Duration(milliseconds: 380),
-            reverseDuration: disableAnimations
-                ? Duration.zero
-                : const Duration(milliseconds: 280),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
+            duration: AppMotion.d(context, AppMotion.page),
+            reverseDuration: AppMotion.d(context, AppMotion.pageReverse),
+            switchInCurve: AppMotion.pageCurve,
+            switchOutCurve: AppMotion.pageReverseCurve,
             transitionBuilder: (child, animation) =>
-                SereneAuthPageRoute.buildSwitcherTransition(
+                AppRoute.buildSwitcherTransition(
                   context: context,
                   animation: animation,
                   child: child,
@@ -343,17 +347,28 @@ class _EnrollRunnerState extends State<_EnrollRunner> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return AppScaffold(
-        body: ErrorView(message: _error!, onRetry: _run),
+        body: AppErrorState(
+          message: _error!,
+          retryLabel: 'Tentar novamente',
+          onRetry: _run,
+        ),
         bottomNavigationBar: SafeArea(
-          child: TextButton(
-            onPressed: AppSession.instance.switchMode,
-            child: const Text('Voltar'),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.s20,
+              vertical: AppSpace.s8,
+            ),
+            child: AppButton(
+              label: 'Voltar',
+              variant: AppButtonVariant.tertiary,
+              onPressed: AppSession.instance.switchMode,
+            ),
           ),
         ),
       );
     }
     return const AppScaffold(
-      body: LoadingView(message: 'Preparando sua conta...'),
+      body: AppLoading(message: 'Preparando sua conta...'),
     );
   }
 }

@@ -1,10 +1,11 @@
-import '../../core/ui/app_scaffold.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../core/boot/app_initialization_service.dart';
+import '../../core/ui/app_scaffold.dart';
+import '../../core/ui/design_system/design_system.dart';
 import '../../core/ui/desperrengue_brand_logo.dart';
 
 /// Splash coreografada (Fase 2). A Fase 1 é a splash NATIVA do SO (mesmo azul-noite
@@ -32,7 +33,7 @@ class AnimatedSplashScreen extends StatefulWidget {
   final void Function(BootResult result) onFinished;
   final Duration duration;
 
-  static const Color navy = Color(0xFF0F172A);
+  static const Color navy = DesperrengueBrandLogoPainter.navyDeep;
 
   @override
   State<AnimatedSplashScreen> createState() => _AnimatedSplashScreenState();
@@ -108,16 +109,21 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                   child: Opacity(
                     opacity: 0.01,
                     child: SizedBox(
-                      width: 6,
-                      height: 6,
-                      child: FittedBox(
-                        child: Row(children: [
-                          Icon(Icons.manage_search_rounded),
-                          Icon(Icons.handyman_rounded),
-                          Icon(Icons.arrow_back_ios_new_rounded),
-                          Icon(Icons.visibility_rounded),
-                          Icon(Icons.dashboard_rounded),
-                        ]),
+                      width: 1,
+                      height: 1,
+                      child: OverflowBox(
+                        maxWidth: 160,
+                        maxHeight: 28,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.manage_search_rounded),
+                            Icon(Icons.handyman_rounded),
+                            Icon(Icons.arrow_back_ios_new_rounded),
+                            Icon(Icons.visibility_rounded),
+                            Icon(Icons.dashboard_rounded),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -141,30 +147,28 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 18),
+                    const SizedBox(height: AppSpace.s16 + 2),
                     Opacity(
                       opacity: textT,
                       child: Transform.scale(
                         scale: .86 + .14 * textT,
-                        child: const Text(
+                        child: Text(
                           'Desperrengue',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -.5,
+                          style: AppType.displayL.copyWith(
+                            color: DesperrengueBrandLogoPainter.pureWhite,
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Opacity(
+                    const SizedBox(height: AppSpace.s8),
+                    AnimatedOpacity(
                       opacity: _slow ? 1 : 0,
-                      child: const Text(
+                      duration: AppMotion.d(context, AppMotion.fade),
+                      child: Text(
                         'Conectando...',
-                        style: TextStyle(
-                          color: Color(0xCCFFFFFF),
-                          fontSize: 13,
+                        style: AppType.caption.copyWith(
+                          color: DesperrengueBrandLogoPainter.pureWhite
+                              .withValues(alpha: 0.8),
                         ),
                       ),
                     ),
@@ -227,11 +231,11 @@ class ConfettiPainter extends CustomPainter {
 
   final double progress;
 
-  static const _colors = [
-    Color(0xFFFFFFFF),
-    Color(0xFFFF6D00),
-    Color(0xFF7FB2FF),
-    Color(0xFFF5C84C),
+  static final List<Color> _colors = [
+    DesperrengueBrandLogoPainter.pureWhite,
+    DesperrengueBrandLogoPainter.brandOrange,
+    AppTokens.dark.providerAccent,
+    AppTokens.light.star,
   ];
   static final List<_Piece> _pieces = () {
     final r = math.Random(7);
