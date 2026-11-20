@@ -202,8 +202,10 @@ void main() {
           'lat': -21.79,
           'lng': -46.56,
           'radius_m': 650,
-          'scheduled_date': '2026-11-20',
-          'unlock_at': '2026-11-20T03:00:00+00:00',
+          // Data distante no futuro: `ProviderLocationView.lockMessage` compara
+          // `scheduledDate` com `DateTime.now()` (fuso SP); evita bomba-relógio.
+          'scheduled_date': '2099-01-15',
+          'unlock_at': '2099-01-15T03:00:00+00:00',
         };
 
     test('travado: descarta rua/número/etc. mesmo se o servidor enviar por engano', () {
@@ -225,11 +227,11 @@ void main() {
       expect(v.areaTitle, 'Country Club • Poços de Caldas - MG');
       expect(v.phase, GeoPrivacyPhase.confirmedFuture);
       expect(v.radiusM, 650);
-      expect(v.scheduledDate, DateTime.utc(2026, 11, 20));
-      expect(v.unlockAt, DateTime.utc(2026, 11, 20, 3));
+      expect(v.scheduledDate, DateTime.utc(2099, 1, 15));
+      expect(v.unlockAt, DateTime.utc(2099, 1, 15, 3));
       expect(v.canShowApproximateArea, isTrue);
       expect(v.canShowExactMap, isFalse);
-      expect(v.lockMessage, contains('20/11/2026'));
+      expect(v.lockMessage, contains('15/01/2099'));
     });
 
     test('flag exact_unlocked ausente ou com fase travada: trava', () {
