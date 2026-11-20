@@ -1,7 +1,7 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,10 +9,11 @@ import '../../../core/models/chat_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/social_service.dart';
-import '../../../core/ui/widgets.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
+import '../../../core/ui/widgets.dart' show friendlyError;
 import '../../../core/utils/format.dart';
 import '../../../core/utils/ids.dart';
-import '../../../core/ui/app_tokens.dart';
 
 /// Fonte de dados do chat. A tela só conhece esta interface; em produção é o
 /// [SupabaseChatBackend] e nos testes entra um fake (sem rede).
@@ -49,13 +50,15 @@ class SupabaseChatBackend implements ChatBackend {
   String get currentUserId => Supabase.instance.client.auth.currentUser!.id;
 
   @override
-  Stream<List<ChatMessage>> messages(String jobId, String providerId) => _social.streamMessages(jobId, providerId);
+  Stream<List<ChatMessage>> messages(String jobId, String providerId) =>
+      _social.streamMessages(jobId, providerId);
 
   @override
   Stream<Job?> job(String jobId) => _jobs.streamJob(jobId);
 
   @override
-  Future<ChatCounterpart?> counterpart(String jobId, String providerId) => _social.chatCounterpart(jobId, providerId);
+  Future<ChatCounterpart?> counterpart(String jobId, String providerId) =>
+      _social.chatCounterpart(jobId, providerId);
 
   @override
   Future<void> send({
@@ -175,14 +178,17 @@ class _ChatScreenState extends State<ChatScreen> {
   // ----------------------------------------------------------------- scroll
 
   /// Perto do fim = o usuário está acompanhando a conversa (não lendo histórico).
-  bool get _nearBottom => !_scroll.hasClients || _scroll.position.maxScrollExtent - _scroll.position.pixels < 120;
+  bool get _nearBottom =>
+      !_scroll.hasClients ||
+      _scroll.position.maxScrollExtent - _scroll.position.pixels < 120;
 
   void _scrollToEnd({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scroll.hasClients) return;
       final end = _scroll.position.maxScrollExtent;
-      if (animate) {
-        _scroll.animateTo(end, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      final dur = AppMotion.d(context, const Duration(milliseconds: 250));
+      if (animate && dur > Duration.zero) {
+        _scroll.animateTo(end, duration: dur, curve: AppMotion.fadeCurve);
       } else {
         _scroll.jumpTo(end);
       }
@@ -210,7 +216,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ------------------------------------------------------------------ envio
 
-  Future<void> _send({String? text, String kind = 'text', Map<String, dynamic>? meta}) async {
+  Future<void> _send({
+    String? text,
+    String kind = 'text',
+    Map<String, dynamic>? meta,
+  }) async {
     final body = (text ?? _controller.text).trim();
     if (body.isEmpty || _isSending || _readOnly) return;
     // O id nasce AQUI (uma vez por mensagem) e acompanha qualquer reenvio.
@@ -257,12 +267,16 @@ class _ChatScreenState extends State<ChatScreen> {
           _thread.discard(cid); // reenviar não adianta: o chat está arquivado
           _archivedByServer = true;
         });
-        showSnack(context, ChatArchivedException.userMessage, error: true);
+        AppSnackbar.show(
+          context,
+          ChatArchivedException.userMessage,
+          kind: AppSnackKind.error,
+        );
       }
     } catch (e) {
       if (mounted) {
         setState(() => _thread.markFailed(cid));
-        showSnack(context, friendlyError(e), error: true);
+        AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
       }
     } finally {
       if (mounted) setState(() => _isSending = false);
@@ -274,19 +288,34 @@ class _ChatScreenState extends State<ChatScreen> {
     _locating = true;
     try {
       var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        if (mounted) showSnack(context, 'Permissão de localização negada.', error: true);
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        if (mounted) {
+          AppSnackbar.show(
+            context,
+            'Permissão de localização negada.',
+            kind: AppSnackKind.error,
+          );
+        }
         return;
       }
       final pos = await Geolocator.getCurrentPosition();
       await _send(
-        text: '📍 Localização compartilhada',
+        text: 'Localização compartilhada',
         kind: 'location',
         meta: {'lat': pos.latitude, 'lng': pos.longitude},
       );
-    } catch (e) {
-      if (mounted) showSnack(context, 'Não foi possível obter a localização.', error: true);
+    } catch (_) {
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          'Não foi possível obter a localização.',
+          kind: AppSnackKind.error,
+        );
+      }
     } finally {
       _locating = false;
     }
@@ -295,30 +324,35 @@ class _ChatScreenState extends State<ChatScreen> {
   // ------------------------------------------------------------------- build
 
   Widget _title() {
+    final tk = context.tk;
     final peerIsProvider = _backend.currentUserId == _job.clientId;
     final name = pickDisplayName(
       [_peer?.name, widget.peerName],
       fallback: peerIsProvider ? 'Profissional' : 'Cliente',
     );
     final avatar = _peer?.avatarUrl ?? widget.peerAvatar;
-    final subtitle = _peer != null && _peer!.isProvider ? _peer!.subtitle?.trim() : null;
+    final subtitle =
+        _peer != null && _peer!.isProvider ? _peer!.subtitle?.trim() : null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        UserAvatar(url: avatar, name: name, radius: 18),
-        const SizedBox(width: 10),
+        AppAvatar(url: avatar, name: name, radius: 18),
+        const SizedBox(width: AppSpace.s12),
         Flexible(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17)),
+              Text(
+                name,
+                maxLines: 2,
+                style: AppType.bodyStrong.copyWith(color: tk.text),
+              ),
               if (subtitle != null && subtitle.isNotEmpty)
                 Text(
                   subtitle,
                   maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: context.tk.textMuted),
+                  style: AppType.caption.copyWith(color: tk.textMuted),
                 ),
             ],
           ),
@@ -327,17 +361,23 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _messages(Color accent) {
+  Widget _messages() {
     final items = _thread.items;
-    if (_loadFailed && items.isEmpty) return const ErrorView(message: 'Não foi possível carregar a conversa.');
-    if (!_loaded) return const LoadingView();
+    if (_loadFailed && items.isEmpty) {
+      return const AppErrorState(
+        message: 'Não foi possível carregar a conversa.',
+      );
+    }
     final readOnly = _readOnly;
     // [nota de segurança] + (vazio ? convite : balões). Lista NÃO reversa:
     // antiga no topo, nova na base.
     final extra = items.isEmpty ? 2 : 1;
-    return ListView.builder(
+    final list = ListView.builder(
       controller: _scroll,
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.symmetric(
+        horizontal: context.layout.margin,
+        vertical: AppSpace.s16,
+      ),
       itemCount: items.length + extra,
       itemBuilder: (context, i) {
         if (i == 0) {
@@ -347,74 +387,86 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         if (items.isEmpty) {
           return Padding(
-            padding: const EdgeInsets.only(top: 40),
-            child: Center(
-              child: Text(
-                readOnly ? 'Nenhuma mensagem nesta conversa.' : 'Diga olá 👋',
-                style: TextStyle(color: context.tk.textMuted),
+            padding: const EdgeInsets.only(top: AppSpace.s24),
+            child: AppEmptyState(
+              icon: readOnly
+                  ? Icons.chat_bubble_outline_rounded
+                  : Icons.waving_hand_rounded,
+              title: readOnly ? 'Nenhuma mensagem nesta conversa.' : 'Diga olá',
+              message: readOnly
+                  ? null
+                  : 'Envie uma mensagem para alinhar os detalhes do serviço.',
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s16,
+                vertical: AppSpace.s24,
               ),
             ),
           );
         }
         final item = items[i - 1];
-        return _Bubble(
+        return _MessageEntrance(
           key: ValueKey(item.key),
-          item: item,
-          accent: accent,
-          onRetry: item.status == ChatItemStatus.failed ? () => _retry(item) : null,
+          child: _Bubble(
+            item: item,
+            onRetry:
+                item.status == ChatItemStatus.failed ? () => _retry(item) : null,
+          ),
         );
       },
     );
+    return AppSkeletonSwitcher(
+      loading: !_loaded,
+      skeleton: const AppSkeletonList(count: 5),
+      child: list,
+    );
   }
 
-  Widget _composer(Color accent) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        color: context.tk.card,
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.location_on_outlined),
-              tooltip: 'Compartilhar localização',
-              onPressed: _shareLocation,
-            ),
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                minLines: 1,
-                maxLines: 4,
-                maxLength: 2000,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'Digitar mensagem...',
-                  counterText: '',
-                  filled: true,
-                  fillColor: context.tk.surface,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                onSubmitted: (_) => _send(),
+  Widget _composer() {
+    final tk = context.tk;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tk.surfaceAt(1),
+        border: Border(top: BorderSide(color: tk.border)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s8,
+            vertical: AppSpace.s8,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AppIconButton(
+                icon: Icons.location_on_outlined,
+                tooltip: 'Compartilhar localização',
+                color: tk.accentInk,
+                onPressed: _shareLocation,
               ),
-            ),
-            const SizedBox(width: 6),
-            CircleAvatar(
-              backgroundColor: accent,
-              child: IconButton(
+              const SizedBox(width: AppSpace.s4),
+              Expanded(
+                child: AppTextField(
+                  controller: _controller,
+                  hint: 'Digitar mensagem...',
+                  semanticLabel: 'Digitar mensagem',
+                  minLines: 1,
+                  maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  inputFormatters: [LengthLimitingTextInputFormatter(2000)],
+                  onSubmitted: (_) => _send(),
+                ),
+              ),
+              const SizedBox(width: AppSpace.s8),
+              AppIconButton(
                 tooltip: 'Enviar',
-                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                icon: Icons.send_rounded,
+                size: 20,
+                filled: true,
                 onPressed: _isSending ? null : _send,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -422,53 +474,132 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
     final readOnly = _readOnly;
     return AppScaffold(
-      backgroundColor: context.tk.surface,
-      appBar: AppBar(
-        title: _title(),
+      backgroundColor: tk.surface,
+      appBar: AppAppBar(
+        centerTitle: false,
+        titleWidget: _title(),
         actions: [
           if (!readOnly)
-            IconButton(
+            AppIconButton(
               tooltip: 'Chamada pelo app',
-              icon: const Icon(Icons.phone_in_talk_rounded),
-              onPressed: () => showSnack(context, 'Chamadas pelo app chegam em breve. Use o chat por enquanto.'),
+              icon: Icons.phone_in_talk_rounded,
+              color: tk.accentInk,
+              onPressed: () => AppSnackbar.show(
+                context,
+                'Chamadas pelo app chegam em breve. Use o chat por enquanto.',
+              ),
             ),
         ],
       ),
       body: Column(
         children: [
-          Container(
-            width: double.infinity,
-            color: context.tk.card,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
-              children: [
-                Icon(Icons.home_repair_service_rounded, size: 18, color: accent),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text.rich(
-                    TextSpan(children: [
-                      TextSpan(text: 'Serviço: ', style: TextStyle(color: context.tk.textMuted)),
-                      TextSpan(text: _job.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                      if (_job.scheduledFor != null)
-                        TextSpan(
-                          text: '  |  ${dateShort(_job.scheduledFor!)}',
-                          style: TextStyle(color: context.tk.textMuted),
-                        ),
-                    ]),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: tk.card,
+              border: Border(bottom: BorderSide(color: tk.border)),
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: context.layout.margin,
+                vertical: AppSpace.s12,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.home_repair_service_rounded,
+                    size: 18,
+                    color: tk.accentInk,
                   ),
-                ),
-              ],
+                  const SizedBox(width: AppSpace.s8),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'Serviço: ',
+                            style: AppType.bodySm.copyWith(color: tk.textMuted),
+                          ),
+                          TextSpan(
+                            text: _job.title,
+                            style: AppType.bodySm.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: tk.text,
+                            ),
+                          ),
+                          if (_job.scheduledFor != null)
+                            TextSpan(
+                              text: '  |  ${dateShort(_job.scheduledFor!)}',
+                              style: AppType.tabular(AppType.bodySm)
+                                  .copyWith(color: tk.textMuted),
+                            ),
+                        ],
+                      ),
+                      maxLines: 2,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          Expanded(child: _messages(accent)),
-          if (readOnly) _ArchivedBanner(job: _job) else _composer(accent),
+          Expanded(child: _messages()),
+          if (readOnly) _ArchivedBanner(job: _job) else _composer(),
         ],
+      ),
+    );
+  }
+}
+
+/// Entrada suave de mensagem: slide de 8 px + fade em 140 ms ([AppMotion.message]).
+/// Respeita `MediaQuery.disableAnimations` via [AppMotion.reduced].
+class _MessageEntrance extends StatefulWidget {
+  const _MessageEntrance({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<_MessageEntrance> createState() => _MessageEntranceState();
+}
+
+class _MessageEntranceState extends State<_MessageEntrance>
+    with SingleTickerProviderStateMixin {
+  AnimationController? _controller;
+  Animation<double>? _curve;
+  bool _initialized = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
+    _initialized = true;
+    if (AppMotion.reduced(context)) return;
+    final c = AnimationController(vsync: this, duration: AppMotion.message);
+    _controller = c;
+    _curve = CurvedAnimation(parent: c, curve: AppMotion.fadeCurve);
+    c.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curve = _curve;
+    if (curve == null) return widget.child;
+    return AnimatedBuilder(
+      animation: curve,
+      child: widget.child,
+      builder: (context, child) => FadeTransition(
+        opacity: curve,
+        child: Transform.translate(
+          offset: Offset(0, (1 - curve.value) * AppSpace.s8),
+          child: child,
+        ),
       ),
     );
   }
@@ -482,24 +613,50 @@ class _ArchivedBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final canceled = job.status == JobStatus.canceled;
     final when = job.approvedAt ?? job.finishedAt ?? job.createdAt;
     return SafeArea(
       top: false,
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: context.tk.securitySoft,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: context.tk.security.withValues(alpha: 0.35)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.s12,
+          AppSpace.s8,
+          AppSpace.s12,
+          AppSpace.s12,
         ),
-        child: Text(
-          '🔒 ${canceled ? 'Serviço cancelado' : 'Serviço finalizado'} em ${dateLong(when)}. '
-          'Este histórico de conversa está arquivado para sua segurança.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: context.tk.security, fontSize: 13, height: 1.35, fontWeight: FontWeight.w600),
+        child: AppCard(
+          variant: AppCardVariant.tonal,
+          color: tk.securitySoft,
+          borderColor: tk.security.withValues(alpha: 0.35),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s16,
+            vertical: AppSpace.s12,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: AppSpace.s2),
+                child: Icon(
+                  Icons.lock_outline_rounded,
+                  size: 18,
+                  color: tk.security,
+                ),
+              ),
+              const SizedBox(width: AppSpace.s8),
+              Expanded(
+                child: Text(
+                  '${canceled ? 'Serviço cancelado' : 'Serviço finalizado'} em ${dateLong(when)}. '
+                  'Este histórico de conversa está arquivado para sua segurança.',
+                  style: AppType.bodySm.copyWith(
+                    color: tk.text,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -511,81 +668,149 @@ class _SystemNote extends StatelessWidget {
   final String text;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: context.tk.card, borderRadius: BorderRadius.circular(12)),
-    child: Row(
-      children: [
-        Icon(Icons.shield_outlined, size: 18, color: context.tk.security),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: TextStyle(fontSize: 12.5, color: context.tk.textMuted))),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.s12),
+      child: AppCard(
+        variant: AppCardVariant.outlined,
+        padding: const EdgeInsets.all(AppSpace.s12),
+        radius: AppGeometry.itemRadius,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpace.s2),
+              child: Icon(
+                Icons.shield_outlined,
+                size: 18,
+                color: tk.security,
+              ),
+            ),
+            const SizedBox(width: AppSpace.s8),
+            Expanded(
+              child: Text(
+                text,
+                style: AppType.caption.copyWith(color: tk.textMuted),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _Bubble extends StatelessWidget {
-  const _Bubble({super.key, required this.item, required this.accent, this.onRetry});
+  const _Bubble({required this.item, this.onRetry});
 
   final ChatItem item;
-  final Color accent;
   final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final message = item.message;
     final mine = item.mine;
     final failed = item.status == ChatItemStatus.failed;
-    final fg = failed ? context.tk.danger : (mine ? Theme.of(context).colorScheme.onPrimary : context.tk.text);
-    final meta = failed ? context.tk.danger : (mine ? Colors.white70 : context.tk.textMuted);
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onTap: onRetry,
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: failed ? context.tk.dangerSoft : (mine ? accent : context.tk.border),
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(18),
-              topRight: const Radius.circular(18),
-              bottomLeft: Radius.circular(mine ? 18 : 4),
-              bottomRight: Radius.circular(mine ? 4 : 18),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+    final isLocation = message.kind == 'location';
+    final bg = failed ? tk.dangerSoft : (mine ? tk.accent : tk.card);
+    final fg = failed ? tk.dangerInk : (mine ? tk.onAccent : tk.text);
+    final meta = failed
+        ? tk.dangerInk
+        : (mine ? tk.onAccent.withValues(alpha: 0.78) : tk.textMuted);
+
+    final borderRadius = BorderRadius.only(
+      topLeft: const Radius.circular(18),
+      topRight: const Radius.circular(18),
+      bottomLeft: Radius.circular(mine ? 18 : 4),
+      bottomRight: Radius.circular(mine ? 4 : 18),
+    );
+
+    final bubble = Container(
+      margin: const EdgeInsets.symmetric(vertical: AppSpace.s4),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.s16,
+        vertical: AppSpace.s12,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: borderRadius,
+        border: mine || failed ? null : Border.all(color: tk.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (isLocation)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpace.s2),
+                  child: Icon(Icons.location_on_rounded, size: 18, color: fg),
+                ),
+                const SizedBox(width: AppSpace.s4),
+                Flexible(
+                  child: Text(
+                    message.body,
+                    style: AppType.body.copyWith(color: fg),
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(message.body, style: AppType.body.copyWith(color: fg)),
+          const SizedBox(height: AppSpace.s4),
+          Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(message.body, style: TextStyle(color: fg, height: 1.3)),
-              const SizedBox(height: 3),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (failed) ...[
-                    Icon(Icons.error_outline_rounded, size: 13, color: meta),
-                    const SizedBox(width: 4),
-                    Text('Toque para reenviar', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: meta)),
-                  ] else ...[
-                    Text(hhmm(message.createdAt.toLocal()), style: TextStyle(fontSize: 10, color: meta)),
-                    // Tique só nas MINHAS: 🕒 enviando → ✓✓ confirmada pelo banco.
-                    if (mine) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        item.status == ChatItemStatus.sending ? Icons.schedule : Icons.done_all,
-                        size: 13,
-                        color: meta,
-                      ),
-                    ],
-                  ],
+              if (failed) ...[
+                Icon(Icons.error_outline_rounded, size: 14, color: meta),
+                const SizedBox(width: AppSpace.s4),
+                Text(
+                  'Toque para reenviar',
+                  style: AppType.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: meta,
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  hhmm(message.createdAt.toLocal()),
+                  style: AppType.tabular(AppType.caption).copyWith(color: meta),
+                ),
+                // Tique só nas MINHAS: relógio enviando -> dois tiques confirmada.
+                if (mine) ...[
+                  const SizedBox(width: AppSpace.s4),
+                  Icon(
+                    item.status == ChatItemStatus.sending
+                        ? Icons.schedule
+                        : Icons.done_all,
+                    size: 14,
+                    color: meta,
+                  ),
                 ],
-              ),
+              ],
             ],
           ),
-        ),
+        ],
       ),
+    );
+
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: onRetry == null
+          ? bubble
+          : AppPressable(
+              onTap: onRetry,
+              borderRadius: borderRadius,
+              semanticLabel: 'Reenviar mensagem',
+              child: bubble,
+            ),
     );
   }
 }
