@@ -60,6 +60,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
   String _name = '';
   bool _loading = true;
   bool _saving = false;
+  String? _loadError;
   Timer? _saveTimer;
   String? _draftKey;
 
@@ -153,10 +154,12 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
       await _applyDraft();
     } catch (e) {
       if (mounted) {
-        setState(() => _loading = false);
-        if (widget.customPhotoPicker == null && widget.customAvatarUploader == null) {
-          AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
-        }
+        setState(() {
+          _loading = false;
+          if (widget.customPhotoPicker == null && widget.customAvatarUploader == null) {
+            _loadError = friendlyError(e);
+          }
+        });
       }
     }
   }
@@ -237,6 +240,10 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
         child: ListView(
           padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
           children: [
+            if (_loadError != null) ...[
+              InfoBanner(_loadError!, tone: BannerTone.warning),
+              const SizedBox(height: AppSpace.s12),
+            ],
             if (widget.setupMode) ...[
               const AppStepper(total: 3, current: 1),
               const SizedBox(height: AppSpace.s16),
@@ -260,17 +267,12 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
                         Positioned(
                           right: 0,
                           bottom: 0,
-                          child: Material(
-                            color: tk.accent,
-                            shape: const CircleBorder(),
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: _changePhoto,
-                              child: Padding(
-                                padding: const EdgeInsets.all(AppSpace.s12),
-                                child: Icon(Icons.photo_camera_rounded, color: tk.onAccent, size: 20),
-                              ),
-                            ),
+                          child: AppIconButton(
+                            icon: Icons.photo_camera_rounded,
+                            tooltip: _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
+                            filled: true,
+                            size: 20,
+                            onPressed: _changePhoto,
                           ),
                         ),
                       ],
@@ -373,15 +375,24 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
             const SizedBox(height: AppSpace.s20),
             LayoutBuilder(
               builder: (context, constraints) {
+                final floatingStyle = AppType.caption.copyWith(color: tk.textMuted).apply(fontSizeFactor: 1 / 0.75);
                 final visitField = TextField(
                   controller: _visit,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Taxa de visita (R\$)', prefixText: 'R\$ '),
+                  decoration: InputDecoration(
+                    labelText: 'Taxa de visita (R\$)',
+                    floatingLabelStyle: floatingStyle,
+                    prefixText: 'R\$ ',
+                  ),
                 );
                 final hourlyField = TextField(
                   controller: _hourly,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: 'Valor/hora (opcional)', prefixText: 'R\$ '),
+                  decoration: InputDecoration(
+                    labelText: 'Valor/hora (opcional)',
+                    floatingLabelStyle: floatingStyle,
+                    prefixText: 'R\$ ',
+                  ),
                 );
                 if (context.layout.isLargeText || constraints.maxWidth < 320) {
                   return Column(
@@ -814,7 +825,7 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
         controller: ctl,
         maxLines: 4,
         maxLength: 500,
-        autofocus: true,
+        autofocus: !AppMotion.reduced(ctx),
         hint: 'Escreva sua resposta...',
       ),
       actions: [

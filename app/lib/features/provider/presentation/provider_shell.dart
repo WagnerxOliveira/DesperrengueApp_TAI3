@@ -310,7 +310,7 @@ class _ProviderDashboardTabState extends State<ProviderDashboardTab> {
             children: [
               AppTextField(
                 controller: ctrl,
-                autofocus: true,
+                autofocus: !AppMotion.reduced(dialogCtx),
                 label: 'Meta de ganhos na semana (R\$)',
                 errorText: error,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -723,13 +723,22 @@ class _EarningsSimulatorSheetState extends State<EarningsSimulatorSheet> {
     super.dispose();
   }
 
-  Widget _field(Key key, TextEditingController c, String label) => TextField(
-        key: key,
-        controller: c,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(labelText: label, prefixText: 'R\$ ', border: const OutlineInputBorder()),
-      );
+  Widget _field(BuildContext context, Key key, TextEditingController c, String label) {
+    final tk = context.tk;
+    return TextField(
+      key: key,
+      controller: c,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      onChanged: (_) => setState(() {}),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: AppType.body.copyWith(color: tk.textMuted),
+        floatingLabelStyle: AppType.caption.copyWith(color: tk.textMuted).apply(fontSizeFactor: 1 / 0.75),
+        prefixText: 'R\$ ',
+        border: const OutlineInputBorder(),
+      ),
+    );
+  }
 
   Widget _line(String label, String value, TextStyle style, TextStyle valueStyle) => Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -788,8 +797,8 @@ class _EarningsSimulatorSheetState extends State<EarningsSimulatorSheet> {
             const SizedBox(height: AppSpace.s16),
             LayoutBuilder(
               builder: (context, c) {
-                final laborField = _field(const ValueKey('smart-split-labor-input'), _labor, 'Mão de obra');
-                final materialsField = _field(const ValueKey('smart-split-materials-input'), _materials, 'Peças e materiais');
+                final laborField = _field(context, const ValueKey('smart-split-labor-input'), _labor, 'Mão de obra');
+                final materialsField = _field(context, const ValueKey('smart-split-materials-input'), _materials, 'Peças e materiais');
                 if (c.maxWidth < 300 || context.layout.isLargeText) {
                   return Column(children: [laborField, const SizedBox(height: AppSpace.s12), materialsField]);
                 }
@@ -889,13 +898,14 @@ class _WeeklyGoalDialogState extends State<WeeklyGoalDialog> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final reduced = AppMotion.reduced(context);
     return AlertDialog(
       backgroundColor: tk.surfaceAt(12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.cardRadius)),
       title: Text('Definir meta da semana', style: AppType.title.copyWith(color: tk.text)),
       content: TextField(
         controller: _ctrl,
-        autofocus: true,
+        autofocus: !reduced,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         onChanged: (_) {
           if (_error != null) setState(() => _error = null);
@@ -903,6 +913,8 @@ class _WeeklyGoalDialogState extends State<WeeklyGoalDialog> {
         onSubmitted: (_) => _save(),
         decoration: InputDecoration(
           labelText: 'Meta de ganhos na semana',
+          labelStyle: AppType.body.copyWith(color: tk.textMuted),
+          floatingLabelStyle: AppType.caption.copyWith(color: tk.textMuted).apply(fontSizeFactor: 1 / 0.75),
           prefixText: 'R\$ ',
           errorText: _error,
           border: const OutlineInputBorder(),
