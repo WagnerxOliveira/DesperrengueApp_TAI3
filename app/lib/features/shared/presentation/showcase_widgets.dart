@@ -1,11 +1,11 @@
-import '../../../core/ui/app_scaffold.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/models/showcase_models.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/provider_service.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -18,7 +18,7 @@ import '../../../core/utils/format.dart';
 ///
 /// LIFO: quando o cliente valida o PIN e avalia, o serviço entra na posição [0] e
 /// empurra os antigos; o 5º cai para o histórico geral. Serviços FIXADOS pelo
-/// profissional (📌) mantêm a vaga. Toda a regra roda no banco (`provider_showcase`).
+/// profissional mantêm a vaga. Toda a regra roda no banco (`provider_showcase`).
 ///
 /// [isOwner] mostra o atalho "Gerenciar" (curadoria) e uma dica quando está vazia;
 /// na visão do cliente a seção some se não houver cases.
@@ -39,52 +39,59 @@ class _ShowcaseStripState extends State<ShowcaseStrip> {
   void _reload() => setState(() => _future = _providers.showcase(widget.providerId));
 
   Future<void> _manage() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CaseCurationScreen()));
+    await Navigator.of(context).push(AppRoute(builder: (_) => const CaseCurationScreen()));
     if (mounted) _reload();
   }
 
   @override
   Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.5);
+    final stripHeight = 264.0 + ((textScale - 1.0) * 112.0).clamp(0.0, 64.0);
     return FutureBuilder<List<ShowcaseCase>>(
       future: _future,
       builder: (context, snap) {
         final cases = snap.data ?? const <ShowcaseCase>[];
         if (snap.connectionState != ConnectionState.done) {
-          return const SizedBox(height: 60, child: LoadingView());
+          return const AppSkeletonCard(height: 112);
         }
         if (cases.isEmpty && !widget.isOwner) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SectionTitle(
-              'Vitrine de cases',
-              trailing: widget.isOwner ? TextButton.icon(onPressed: _manage, icon: const Icon(Icons.push_pin_outlined, size: 18), label: const Text('Gerenciar')) : null,
-            ),
-            if (cases.isEmpty)
-              InfoBanner(
-                'Sua vitrine é montada sozinha: cada serviço concluído e avaliado com 4★ ou mais entra aqui, '
-                'do mais recente para o mais antigo. Capriche nas fotos e no relatório técnico!',
-                tone: BannerTone.info,
-                icon: Icons.auto_awesome_rounded,
-              )
-            else
-              SizedBox(
-                height: 232,
-                // ListView.builder: só desenha os cartões visíveis (no máx. 4).
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: cases.length,
-                  itemExtent: 236,
-                  itemBuilder: (context, i) => Padding(
-                    padding: const EdgeInsets.only(right: 12),
-                    child: _ShowcaseCard(
-                      item: cases[i],
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => CaseDetailScreen(jobId: cases[i].jobId, preview: cases[i]))),
+        return AppSection(
+          title: 'Vitrine de cases',
+          action: widget.isOwner
+              ? AppButton(
+                  label: 'Gerenciar',
+                  icon: Icons.push_pin_outlined,
+                  variant: AppButtonVariant.tertiary,
+                  expand: false,
+                  compact: true,
+                  onPressed: _manage,
+                )
+              : null,
+          child: cases.isEmpty
+              ? const InfoBanner(
+                  'Sua vitrine é montada sozinha: cada serviço concluído e avaliado com 4 estrelas ou mais entra aqui, '
+                  'do mais recente para o mais antigo. Capriche nas fotos e no relatório técnico!',
+                  tone: BannerTone.info,
+                  icon: Icons.auto_awesome_rounded,
+                )
+              : SizedBox(
+                  height: stripHeight,
+                  // ListView.builder: só desenha os cartões visíveis (no máx. 4).
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: cases.length,
+                    itemExtent: 248,
+                    itemBuilder: (context, i) => Padding(
+                      padding: const EdgeInsets.only(right: AppSpace.s12),
+                      child: _ShowcaseCard(
+                        item: cases[i],
+                        onTap: () => Navigator.of(context).push(
+                          AppRoute(builder: (_) => CaseDetailScreen(jobId: cases[i].jobId, preview: cases[i])),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
         );
       },
     );
@@ -100,96 +107,81 @@ class _ShowcaseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Semantics(
-      button: true,
-      label: 'Case: ${item.title}, ${item.rating} estrelas',
-      child: Material(
-        color: tk.card,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: tk.border),
-              boxShadow: tk.cardShadow(),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return AppCard(
+      variant: AppCardVariant.elevated,
+      padding: EdgeInsets.zero,
+      semanticLabel: 'Case: ${item.title}, ${item.rating} estrelas',
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
               children: [
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                      child: SizedBox(
-                        height: 108,
-                        width: double.infinity,
-                        child: item.coverPath == null
-                            ? Container(color: tk.surface, child: Icon(Icons.image_outlined, color: tk.textMuted, size: 36))
-                            : SignedImage(path: item.coverPath!, radius: 0, height: 108, width: double.infinity),
-                      ),
-                    ),
-                    if (item.pinned)
-                      Positioned(
-                        left: 8,
-                        top: 8,
-                        child: _Pill(icon: Icons.push_pin_rounded, text: 'Fixado', bg: tk.warningSoft, fg: tk.warningInk),
-                      ),
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: _Pill(icon: Icons.verified_rounded, text: 'Verificado', bg: tk.successSoft, fg: tk.successInk),
-                    ),
-                  ],
+                SizedBox(
+                  height: 108,
+                  width: double.infinity,
+                  child: item.coverPath == null
+                      ? Container(color: tk.surface, child: Icon(Icons.image_outlined, color: tk.textMuted, size: 36))
+                      : SignedImage(path: item.coverPath!, radius: 0, height: 108, width: double.infinity),
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                Positioned(
+                  left: AppSpace.s8,
+                  right: AppSpace.s8,
+                  top: AppSpace.s8,
+                  child: Wrap(
+                    spacing: AppSpace.s4,
+                    runSpacing: AppSpace.s4,
+                    alignment: item.pinned ? WrapAlignment.spaceBetween : WrapAlignment.end,
                     children: [
-                      Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, color: tk.text)),
-                      const SizedBox(height: 4),
-                      RatingStars(value: item.rating.toDouble(), size: 15),
-                      const SizedBox(height: 6),
-                      Text(
-                        item.comment?.trim().isNotEmpty == true ? '“${item.comment!.trim()}”' : 'Cliente satisfeito.',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12.5, height: 1.3, color: tk.textMuted),
-                      ),
-                      const SizedBox(height: 2),
-                      Text('— ${item.clientName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: tk.textMuted)),
+                      if (item.pinned)
+                        const AppStatusChip('Fixado', tone: AppTone.warning, icon: Icons.push_pin_rounded),
+                      const AppStatusChip('Verificado', tone: AppTone.success, icon: Icons.verified_rounded),
                     ],
                   ),
                 ),
               ],
             ),
-          ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpace.s12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.fade,
+                      style: AppType.bodyStrong.copyWith(color: tk.text),
+                    ),
+                    const SizedBox(height: AppSpace.s4),
+                    AppRating(value: item.rating.toDouble(), size: 15),
+                    const SizedBox(height: AppSpace.s4),
+                    Expanded(
+                      child: Text(
+                        item.comment?.trim().isNotEmpty == true ? '“${item.comment!.trim()}”' : 'Cliente satisfeito.',
+                        maxLines: 2,
+                        overflow: TextOverflow.fade,
+                        style: AppType.caption.copyWith(color: tk.textMuted),
+                      ),
+                    ),
+                    Text(
+                      '— ${item.clientName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.fade,
+                      softWrap: false,
+                      style: AppType.caption.copyWith(fontWeight: FontWeight.w700, color: tk.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.icon, required this.text, required this.bg, required this.fg});
-
-  final IconData icon;
-  final String text;
-  final Color bg;
-  final Color fg;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(color: bg.withValues(alpha: 0.94), borderRadius: BorderRadius.circular(12)),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 11, color: fg),
-          const SizedBox(width: 3),
-          Text(text, style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: fg)),
-        ]),
-      );
 }
 
 // =============================================================================
@@ -214,15 +206,21 @@ class _CaseDetailScreenState extends State<CaseDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      appBar: AppBar(title: const Text('Case de sucesso')),
+      appBar: const AppAppBar(title: 'Case de sucesso'),
       body: FutureBuilder<CaseDetail?>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
-          if (snap.hasError) return ErrorView(message: 'Não foi possível abrir este case.', onRetry: () => setState(() {}));
+          if (snap.connectionState != ConnectionState.done) return const AppSkeletonList(count: 3);
+          if (snap.hasError) {
+            return AppErrorState(message: 'Não foi possível abrir este case.', onRetry: () => setState(() {}));
+          }
           final d = snap.data;
           if (d == null) {
-            return const EmptyView(icon: Icons.lock_outline_rounded, title: 'Case indisponível', subtitle: 'Este serviço não está mais disponível na vitrine.');
+            return const AppEmptyState(
+              icon: Icons.lock_outline_rounded,
+              title: 'Case indisponível',
+              message: 'Este serviço não está mais disponível na vitrine.',
+            );
           }
           return _CaseBody(detail: d);
         },
@@ -253,161 +251,238 @@ class _CaseBodyState extends State<_CaseBody> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final margin = context.layout.margin;
     final d = widget.detail;
+    final photoBadgeBg = tk.scrim;
+    final photoBadgeFg = AppTokens.onColor(photoBadgeBg);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s32),
       children: [
-        Row(children: [
-          StatusChip('Serviço verificado pelo Desperrengue', color: tk.success, icon: Icons.verified_rounded),
-          if (d.pinned) ...[const SizedBox(width: 8), StatusChip('Fixado', color: tk.warningInk, icon: Icons.push_pin_rounded)],
-        ]),
-        const SizedBox(height: 12),
-        Text(d.title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: tk.text, height: 1.15)),
-        const SizedBox(height: 4),
-        Text([if (d.category.isNotEmpty) d.category, if (d.finishedAt != null) 'Concluído em ${dateShort(d.finishedAt!.toLocal())}'].join(' · '), style: TextStyle(color: tk.textMuted)),
+        Wrap(
+          spacing: AppSpace.s8,
+          runSpacing: AppSpace.s8,
+          children: [
+            const AppStatusChip('Serviço verificado pelo Desperrengue', tone: AppTone.success, icon: Icons.verified_rounded),
+            if (d.pinned) const AppStatusChip('Fixado', tone: AppTone.warning, icon: Icons.push_pin_rounded),
+          ],
+        ),
+        const SizedBox(height: AppSpace.s12),
+        Text(d.title, style: AppType.headline.copyWith(color: tk.text)),
+        const SizedBox(height: AppSpace.s4),
+        Text(
+          [if (d.category.isNotEmpty) d.category, if (d.finishedAt != null) 'Concluído em ${dateShort(d.finishedAt!.toLocal())}'].join(' · '),
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
+        ),
         if (d.video != null) ...[
-          const SectionTitle('Vídeo do serviço'),
-          _CaseVideo(path: d.video!),
+          const SizedBox(height: AppSpace.section),
+          AppSection(title: 'Vídeo do serviço', child: _CaseVideo(path: d.video!)),
         ],
         if (d.photos.isNotEmpty) ...[
-          SectionTitle(
-            'Galeria (${_photoIndex + 1} de ${d.photos.length})',
-            trailing: Text(
-              'Arraste para o lado ➔',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: tk.providerAccent),
-            ),
-          ),
-          SizedBox(
-            height: 224,
-            child: Stack(
-              alignment: Alignment.center,
+          const SizedBox(height: AppSpace.section),
+          AppSection(
+            title: 'Galeria (${_photoIndex + 1} de ${d.photos.length})',
+            action: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                PageView.builder(
-                  key: const ValueKey('case-detail-photo-pageview'),
-                  controller: _pageController,
-                  itemCount: d.photos.length,
-                  onPageChanged: (idx) => setState(() => _photoIndex = idx),
-                  itemBuilder: (context, i) => Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: GestureDetector(
-                      onTap: () => _zoom(context, d.photos, i),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          SignedImage(path: d.photos[i], radius: 14, height: 224, width: double.infinity),
-                          Positioned(
-                            top: 10,
-                            left: 10,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.65), borderRadius: BorderRadius.circular(999)),
-                              child: Text('Foto ${i + 1} de ${d.photos.length}', style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w800)),
+                Text(
+                  'Arraste para o lado',
+                  style: AppType.caption.copyWith(fontWeight: FontWeight.w700, color: tk.accentInk),
+                ),
+                const SizedBox(width: AppSpace.s4),
+                Icon(Icons.arrow_forward_rounded, size: 16, color: tk.accentInk),
+              ],
+            ),
+            child: SizedBox(
+              height: 224,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  PageView.builder(
+                    key: const ValueKey('case-detail-photo-pageview'),
+                    controller: _pageController,
+                    itemCount: d.photos.length,
+                    onPageChanged: (idx) => setState(() => _photoIndex = idx),
+                    itemBuilder: (context, i) => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s2),
+                      child: GestureDetector(
+                        onTap: () => _zoom(context, d.photos, i),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            SignedImage(path: d.photos[i], radius: AppGeometry.fieldRadius, height: 224, width: double.infinity),
+                            Positioned(
+                              top: AppSpace.s12,
+                              left: AppSpace.s12,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4),
+                                decoration: BoxDecoration(
+                                  color: photoBadgeBg,
+                                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                                ),
+                                child: Text(
+                                  'Foto ${i + 1} de ${d.photos.length}',
+                                  style: AppType.tabular(AppType.caption).copyWith(fontWeight: FontWeight.w700, color: photoBadgeFg),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                if (d.photos.length > 1 && _photoIndex > 0)
-                  Positioned(
-                    left: 8,
-                    child: IconButton.filledTonal(
-                      onPressed: () => _pageController.previousPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic),
-                      icon: const Icon(Icons.chevron_left_rounded),
+                  if (d.photos.length > 1 && _photoIndex > 0)
+                    Positioned(
+                      left: AppSpace.s8,
+                      child: AppIconButton(
+                        tooltip: 'Foto anterior',
+                        filled: true,
+                        onPressed: () => _pageController.previousPage(
+                          duration: AppMotion.d(context, AppMotion.page),
+                          curve: AppMotion.pageCurve,
+                        ),
+                        icon: Icons.chevron_left_rounded,
+                      ),
                     ),
-                  ),
-                if (d.photos.length > 1 && _photoIndex < d.photos.length - 1)
-                  Positioned(
-                    right: 8,
-                    child: IconButton.filledTonal(
-                      onPressed: () => _pageController.nextPage(duration: const Duration(milliseconds: 220), curve: Curves.easeOutCubic),
-                      icon: const Icon(Icons.chevron_right_rounded),
+                  if (d.photos.length > 1 && _photoIndex < d.photos.length - 1)
+                    Positioned(
+                      right: AppSpace.s8,
+                      child: AppIconButton(
+                        tooltip: 'Próxima foto',
+                        filled: true,
+                        onPressed: () => _pageController.nextPage(
+                          duration: AppMotion.d(context, AppMotion.page),
+                          curve: AppMotion.pageCurve,
+                        ),
+                        icon: Icons.chevron_right_rounded,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
         if (d.hasClientRequestDescription) ...[
-          const SectionTitle('O que foi solicitado pelo cliente'),
-          AppCard(
+          const SizedBox(height: AppSpace.section),
+          AppSection(
+            title: 'O que foi solicitado pelo cliente',
+            child: AppCard(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.assignment_outlined, color: tk.info),
+                const SizedBox(width: AppSpace.s12),
+                Expanded(
+                  child: Text(d.clientRequestDescription!.trim(), style: AppType.body.copyWith(color: tk.text)),
+                ),
+              ]),
+            ),
+          ),
+        ],
+        const SizedBox(height: AppSpace.section),
+        AppSection(
+          title: 'Relatório técnico',
+          child: AppCard(
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.assignment_outlined, color: tk.info),
-              const SizedBox(width: 12),
+              Icon(Icons.description_outlined, color: tk.accentInk),
+              const SizedBox(width: AppSpace.s12),
               Expanded(
                 child: Text(
-                  d.clientRequestDescription!.trim(),
-                  style: TextStyle(height: 1.4, color: tk.text),
+                  d.hasReport ? d.report!.trim() : 'O profissional não registrou um relatório técnico para este serviço.',
+                  style: AppType.body.copyWith(color: d.hasReport ? tk.text : tk.textMuted),
                 ),
               ),
             ]),
           ),
-        ],
-        const SectionTitle('Relatório técnico'),
-        AppCard(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(Icons.description_outlined, color: tk.providerAccent),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                d.hasReport ? d.report!.trim() : 'O profissional não registrou um relatório técnico para este serviço.',
-                style: TextStyle(height: 1.4, color: d.hasReport ? tk.text : tk.textMuted),
-              ),
-            ),
-          ]),
         ),
         if (d.hasComplementaryNotes) ...[
-          const SectionTitle('Notas Técnicas Complementares'),
-          AppCard(
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.engineering_rounded, color: tk.providerAccent),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  d.complementaryNotes!.trim(),
-                  style: TextStyle(height: 1.4, color: tk.text),
+          const SizedBox(height: AppSpace.section),
+          AppSection(
+            title: 'Notas Técnicas Complementares',
+            child: AppCard(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.engineering_rounded, color: tk.accentInk),
+                const SizedBox(width: AppSpace.s12),
+                Expanded(
+                  child: Text(d.complementaryNotes!.trim(), style: AppType.body.copyWith(color: tk.text)),
                 ),
-              ),
-            ]),
+              ]),
+            ),
           ),
         ],
-        const SectionTitle('Avaliação do cliente'),
-        AppCard(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              RatingStars(value: d.rating.toDouble(), size: 22),
-              const SizedBox(width: 8),
-              Text('${d.rating}.0', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: tk.text)),
-              const Spacer(),
-              Text(d.clientName, style: TextStyle(fontWeight: FontWeight.w700, color: tk.textMuted)),
+        const SizedBox(height: AppSpace.section),
+        AppSection(
+          title: 'Avaliação do cliente',
+          child: AppCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppRating(value: d.rating.toDouble(), size: 22),
+                      const SizedBox(width: AppSpace.s8),
+                      Text(
+                        '${d.rating}.0',
+                        style: AppType.tabular(AppType.titleSm).copyWith(color: tk.text),
+                      ),
+                    ],
+                  ),
+                  Text(d.clientName, style: AppType.bodyStrong.copyWith(color: tk.textMuted)),
+                ],
+              ),
+              if (d.tags.isNotEmpty) ...[
+                const SizedBox(height: AppSpace.s12),
+                Wrap(
+                  spacing: AppSpace.s8,
+                  runSpacing: AppSpace.s8,
+                  children: [for (final t in d.tags) AppStatusChip(t, tone: AppTone.success)],
+                ),
+              ],
+              if (d.comment?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: AppSpace.s12),
+                Text(
+                  '“${d.comment!.trim()}”',
+                  style: AppType.body.copyWith(fontStyle: FontStyle.italic, color: tk.text),
+                ),
+              ],
+              if (d.reply?.trim().isNotEmpty == true) ...[
+                const Divider(height: AppSpace.s24),
+                Text('Resposta do profissional', style: AppType.caption.copyWith(fontWeight: FontWeight.w700, color: tk.textMuted)),
+                const SizedBox(height: AppSpace.s4),
+                Text(d.reply!.trim(), style: AppType.body.copyWith(color: tk.text)),
+              ],
             ]),
-            if (d.tags.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: [for (final t in d.tags) StatusChip(t, color: tk.success)]),
-            ],
-            if (d.comment?.trim().isNotEmpty == true) ...[
-              const SizedBox(height: 10),
-              Text('“${d.comment!.trim()}”', style: TextStyle(height: 1.4, fontStyle: FontStyle.italic, color: tk.text)),
-            ],
-            if (d.reply?.trim().isNotEmpty == true) ...[
-              const Divider(height: 24),
-              Text('Resposta do profissional', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tk.textMuted)),
-              const SizedBox(height: 4),
-              Text(d.reply!.trim(), style: TextStyle(height: 1.4, color: tk.text)),
-            ],
-          ]),
+          ),
         ),
       ],
     );
   }
 
   void _zoom(BuildContext context, List<String> photos, int start) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => Dialog.fullscreen(
-        backgroundColor: Colors.black,
-        child: Stack(children: [
+    Navigator.of(context).push<void>(
+      AppRoute<void>(
+        fullscreenModal: true,
+        builder: (_) => _ShowcasePhotoZoomScreen(photos: photos, start: start),
+      ),
+    );
+  }
+}
+
+class _ShowcasePhotoZoomScreen extends StatelessWidget {
+  const _ShowcasePhotoZoomScreen({required this.photos, required this.start});
+
+  final List<String> photos;
+  final int start;
+
+  @override
+  Widget build(BuildContext context) {
+    final darkTk = AppTokens.dark;
+    return Scaffold(
+      backgroundColor: darkTk.surfaceInset,
+      body: Stack(
+        children: [
           PageView.builder(
             controller: PageController(initialPage: start),
             itemCount: photos.length,
@@ -417,14 +492,27 @@ class _CaseBodyState extends State<_CaseBody> {
               child: Center(child: SignedImage(path: photos[i], radius: 0, fit: BoxFit.contain)),
             ),
           ),
-          SafeArea(child: Align(alignment: Alignment.topRight, child: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(context)))),
-        ]),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpace.s8),
+                child: AppIconButton(
+                  tooltip: 'Fechar',
+                  icon: Icons.close_rounded,
+                  color: darkTk.text,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Player do vídeo do serviço. Só baixa o vídeo quando o usuário toca em ▶
+/// Player do vídeo do serviço. Só baixa o vídeo quando o usuário toca em reproduzir
 /// (economiza dados e memória; nada é carregado ao abrir a tela).
 class _CaseVideo extends StatefulWidget {
   const _CaseVideo({required this.path});
@@ -478,24 +566,24 @@ class _CaseVideoState extends State<_CaseVideo> {
 
   @override
   Widget build(BuildContext context) {
-    final tk = context.tk;
+    final darkTk = AppTokens.dark;
     final c = _c;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
       child: AspectRatio(
         aspectRatio: c?.value.aspectRatio ?? 16 / 9,
         child: c == null
             ? Material(
-                color: tk.isDark ? tk.surface : const Color(0xFF111827),
+                color: darkTk.surface,
                 child: InkWell(
                   onTap: _loading ? null : _start,
                   child: Center(
                     child: _loading
-                        ? const CircularProgressIndicator(color: Colors.white)
+                        ? const AppLoading()
                         : Column(mainAxisSize: MainAxisSize.min, children: [
-                            const Icon(Icons.play_circle_fill_rounded, size: 64, color: Colors.white),
-                            const SizedBox(height: 6),
-                            Text(_error ?? 'Toque para assistir', style: const TextStyle(color: Colors.white70)),
+                            Icon(Icons.play_circle_fill_rounded, size: 64, color: darkTk.text),
+                            const SizedBox(height: AppSpace.s8),
+                            Text(_error ?? 'Toque para assistir', style: AppType.bodySm.copyWith(color: darkTk.textMuted)),
                           ]),
                   ),
                 ),
@@ -516,17 +604,30 @@ class _Controls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final darkTk = AppTokens.dark;
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: controller,
       builder: (context, v, _) => Container(
-        color: Colors.black45,
+        color: darkTk.scrim,
         child: Row(children: [
-          IconButton(
-            icon: Icon(v.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white),
+          AppIconButton(
+            tooltip: v.isPlaying ? 'Pausar vídeo' : 'Reproduzir vídeo',
+            icon: v.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: darkTk.text,
             onPressed: () => v.isPlaying ? controller.pause() : controller.play(),
           ),
-          Expanded(child: VideoProgressIndicator(controller, allowScrubbing: true, colors: const VideoProgressColors(playedColor: Colors.white, bufferedColor: Colors.white30, backgroundColor: Colors.white12))),
-          const SizedBox(width: 12),
+          Expanded(
+            child: VideoProgressIndicator(
+              controller,
+              allowScrubbing: true,
+              colors: VideoProgressColors(
+                playedColor: darkTk.text,
+                bufferedColor: darkTk.textMuted.withValues(alpha: 0.45),
+                backgroundColor: darkTk.border.withValues(alpha: 0.4),
+              ),
+            ),
+          ),
+          const SizedBox(width: AppSpace.s12),
         ]),
       ),
     );
@@ -534,7 +635,7 @@ class _Controls extends StatelessWidget {
 }
 
 // =============================================================================
-// Curadoria: histórico geral + "Fixar" (📌)
+// Curadoria: histórico geral + "Fixar"
 // =============================================================================
 
 class CaseCurationScreen extends StatefulWidget {
@@ -561,7 +662,7 @@ class _CaseCurationScreenState extends State<CaseCurationScreen> {
       }
       _reload();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = null);
     }
@@ -570,51 +671,75 @@ class _CaseCurationScreenState extends State<CaseCurationScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Gerenciar vitrine')),
+      appBar: const AppAppBar(title: 'Gerenciar vitrine'),
       body: FutureBuilder<List<CaseHistoryItem>>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
-          if (snap.hasError) return ErrorView(message: 'Não foi possível carregar o histórico.', onRetry: _reload);
+          if (snap.connectionState != ConnectionState.done) return const AppSkeletonList(count: 4);
+          if (snap.hasError) {
+            return AppErrorState(message: 'Não foi possível carregar o histórico.', onRetry: _reload);
+          }
           final items = snap.data ?? const <CaseHistoryItem>[];
           final pinned = items.where((i) => i.pinned).length;
           if (items.isEmpty) {
-            return const EmptyView(icon: Icons.push_pin_outlined, title: 'Nada para fixar ainda', subtitle: 'Seus serviços concluídos e avaliados aparecem aqui.');
+            return const AppEmptyState(
+              icon: Icons.push_pin_outlined,
+              title: 'Nada para fixar ainda',
+              message: 'Seus serviços concluídos e avaliados aparecem aqui.',
+            );
           }
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
             children: [
               InfoBanner(
-                'A vitrine mostra $kShowcaseSlots serviços: os mais recentes (4★+) entram sozinhos. '
-                'Fixe até $kMaxPinnedCases serviços de 5★ para mantê-los lá para sempre. Fixados: $pinned/$kMaxPinnedCases.',
+                'A vitrine mostra $kShowcaseSlots serviços: os mais recentes (4 estrelas ou mais) entram sozinhos. '
+                'Fixe até $kMaxPinnedCases serviços com 5 estrelas para mantê-los lá para sempre. Fixados: $pinned/$kMaxPinnedCases.',
                 tone: BannerTone.info,
                 icon: Icons.push_pin_rounded,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.s12),
               for (final it in items)
                 AppCard(
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: AppSpace.s12),
                   child: Row(children: [
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, color: tk.text)),
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          RatingStars(value: it.rating.toDouble(), size: 15),
-                          const SizedBox(width: 8),
-                          if (it.inShowcase) Text('Na vitrine', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: tk.success)),
-                        ]),
-                        if (!it.canPin) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Só serviços com 5★ podem ser fixados.', style: TextStyle(fontSize: 11.5, color: tk.textMuted))),
+                        Text(it.title, maxLines: 2, style: AppType.bodyStrong.copyWith(color: tk.text)),
+                        const SizedBox(height: AppSpace.s4),
+                        Wrap(
+                          spacing: AppSpace.s8,
+                          runSpacing: AppSpace.s4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            AppRating(value: it.rating.toDouble(), size: 15),
+                            if (it.inShowcase)
+                              const AppStatusChip('Na vitrine', tone: AppTone.success),
+                          ],
+                        ),
+                        if (!it.canPin)
+                          Padding(
+                            padding: const EdgeInsets.only(top: AppSpace.s4),
+                            child: Text(
+                              'Só serviços com 5 estrelas podem ser fixados.',
+                              style: AppType.caption.copyWith(color: tk.textMuted),
+                            ),
+                          ),
                       ]),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: AppSpace.s8),
                     _busy == it.jobId
-                        ? const SizedBox(width: 40, height: 40, child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator(strokeWidth: 2.4)))
-                        : IconButton.filledTonal(
+                        ? const SizedBox(
+                            width: AppGeometry.minTarget,
+                            height: AppGeometry.minTarget,
+                            child: AppLoading(),
+                          )
+                        : AppIconButton(
                             tooltip: it.pinned ? 'Soltar' : 'Fixar',
+                            filled: it.pinned,
                             onPressed: (it.pinned || (it.canPin && pinned < kMaxPinnedCases)) ? () => _toggle(it) : null,
-                            icon: Icon(it.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined),
+                            icon: it.pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                           ),
                   ]),
                 ),
