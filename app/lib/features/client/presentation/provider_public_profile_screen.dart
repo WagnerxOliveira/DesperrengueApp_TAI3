@@ -1,24 +1,29 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/state/provider_portfolio_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
-import '../../../core/ui/widgets.dart';
-import '../../../core/utils/format.dart';
+import '../../../core/ui/widgets.dart' show BannerTone, InfoBanner;
 import '../../provider/presentation/provider_portfolio_widgets.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/review_widgets.dart';
 import '../../shared/presentation/showcase_widgets.dart';
 import 'request_wizard.dart';
-import '../../../core/state/provider_portfolio_controller.dart';
-import '../../../core/ui/app_tokens.dart';
 
 /// Perfil público do profissional (protótipos 3, 4 e 5).
 class ProviderPublicProfileScreen extends StatefulWidget {
-  const ProviderPublicProfileScreen({super.key, required this.provider, this.category, required this.profile, this.hideCta = false});
+  const ProviderPublicProfileScreen({
+    super.key,
+    required this.provider,
+    this.category,
+    required this.profile,
+    this.hideCta = false,
+  });
 
   final ProviderCard provider;
   final String? category;
@@ -76,23 +81,32 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final p = widget.provider;
+    final margin = context.layout.margin;
+    final stack = context.layout.isLargeText;
+    final headerBg = tk.clientAccent;
+    final headerFg = AppTokens.onColor(headerBg);
+
     return AppScaffold(
-      backgroundColor: context.tk.card,
+      backgroundColor: tk.card,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
             pinned: true,
             expandedHeight: 120,
-            backgroundColor: context.tk.clientAccent,
-            foregroundColor: Colors.white,
+            backgroundColor: headerBg,
+            foregroundColor: headerFg,
             flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
+              background: DecoratedBox(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFF26B0F), Color(0xFFFF9A4D)],
+                    colors: [
+                      tk.clientAccent,
+                      tk.clientAccent.withValues(alpha: tk.isDark ? 0.78 : 0.86),
+                    ],
                   ),
                 ),
               ),
@@ -101,215 +115,317 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
           SliverToBoxAdapter(
             child: Container(
               decoration: BoxDecoration(
-                color: context.tk.card,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                color: tk.card,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(AppGeometry.heroRadius),
+                ),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+              padding: EdgeInsets.fromLTRB(margin, AppSpace.s20, margin, AppSpace.s32),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      UserAvatar(url: p.avatarUrl, name: p.fullName, radius: 40, verified: true),
-                      const SizedBox(width: 16),
+                      AppHero(
+                        tag: 'provider-avatar-${p.id}',
+                        child: AppAvatar(
+                          url: p.avatarUrl,
+                          name: p.fullName,
+                          radius: 40,
+                          verified: true,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpace.s16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(p.fullName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 2),
-                            Text(p.title, style: TextStyle(color: context.tk.clientAccent, fontWeight: FontWeight.w800, fontSize: 16)),
+                            Text(
+                              p.fullName,
+                              style: AppType.headline.copyWith(color: tk.text),
+                            ),
+                            const SizedBox(height: AppSpace.s2),
+                            Text(
+                              p.title,
+                              style: AppType.titleSm.copyWith(color: tk.clientAccentInk),
+                            ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
-                    if (_isSelf) ...[
-                      const InfoBanner(
-                        'É assim que os clientes veem você. Só você enxerga este aviso.',
-                        tone: BannerTone.promo,
-                        icon: Icons.visibility_outlined,
-                        title: 'Visão do cliente',
-                      ),
-                      const SizedBox(height: 14),
-                    ],
-                    AppCard(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              children: [
-                                Text(p.ratingCount > 0 ? p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',') : '—',
-                                    style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900)),
-                                RatingStars(value: p.ratingAvg, size: 16),
-                                const SizedBox(height: 2),
-                                Text('(${p.ratingCount} avaliações)', style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                          Container(width: 1, height: 56, color: context.tk.border),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                Icon(Icons.check_circle_rounded, color: context.tk.clientAccent, size: 30),
-                                const SizedBox(height: 2),
-                                Text('${p.jobsDone} serviços', style: const TextStyle(fontWeight: FontWeight.w900)),
-                                Text('finalizados', style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                  const SizedBox(height: AppSpace.s20),
+                  if (_isSelf) ...[
+                    const InfoBanner(
+                      'É assim que os clientes veem você. Só você enxerga este aviso.',
+                      tone: BannerTone.promo,
+                      icon: Icons.visibility_outlined,
+                      title: 'Visão do cliente',
                     ),
-                    const SectionTitle('Sobre o Profissional'),
-                    Text(
+                    const SizedBox(height: AppSpace.s16),
+                  ],
+                  AppCard(
+                    variant: AppCardVariant.elevated,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.s16,
+                      vertical: AppSpace.s16,
+                    ),
+                    child: stack
+                        ? Column(
+                            children: [
+                              _RatingSummaryBlock(provider: p),
+                              Divider(height: AppSpace.s24, color: tk.border),
+                              _JobsDoneSummaryBlock(provider: p),
+                            ],
+                          )
+                        : IntrinsicHeight(
+                            child: Row(
+                              children: [
+                                Expanded(child: _RatingSummaryBlock(provider: p)),
+                                VerticalDivider(
+                                  width: AppSpace.s24,
+                                  thickness: 1,
+                                  color: tk.border,
+                                ),
+                                Expanded(child: _JobsDoneSummaryBlock(provider: p)),
+                              ],
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: AppSpace.section),
+                  AppSection(
+                    title: 'Sobre o Profissional',
+                    child: Text(
                       (p.bio != null && p.bio!.trim().isNotEmpty)
                           ? p.bio!
                           : 'Este profissional ainda não escreveu uma apresentação, mas teve a identidade e o registro verificados pela Desperrengue.',
-                      style: TextStyle(height: 1.5, color: context.tk.text),
+                      style: AppType.body.copyWith(color: tk.text),
                     ),
-                    if (p.specialties.isNotEmpty) ...[
-                      const SectionTitle('Especialidades'),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [for (final s in p.specialties) Chip(label: Text(s), avatar: Icon(categoryIcon(s), size: 16))],
+                  ),
+                  if (p.specialties.isNotEmpty) ...[
+                    const SizedBox(height: AppSpace.section),
+                    AppSection(
+                      title: 'Especialidades',
+                      child: Wrap(
+                        spacing: AppSpace.s8,
+                        runSpacing: AppSpace.s8,
+                        children: [
+                          for (final s in p.specialties)
+                            Chip(
+                              label: Text(s, style: AppType.bodySm.copyWith(color: tk.text)),
+                              avatar: Icon(categoryIcon(s), size: 16, color: tk.accentInk),
+                            ),
+                        ],
                       ),
-                    ],
-                    // Vitrine de serviços verificados: Top 3 recentes (LIFO) + até 5 destaques escolhidos.
-                    ShowcaseStrip(providerId: p.id),
-                    ListenableBuilder(
-                      listenable: ProviderPortfolioStore.instance,
-                      builder: (context, _) {
-                        final publicServices = ProviderPortfolioStore
-                            .instance
-                            .state
-                            .publicPortfolioServices;
-                        if (publicServices.isEmpty) {
-                          return const SizedBox.shrink();
-                        }
-                        return const Padding(
-                          padding: EdgeInsets.only(top: 16),
-                          child: ProviderSmartPortfolioSection(
-                            isOwner: false,
-                            syncOnMount: false,
-                          ),
-                        );
-                      },
-                    ),
-                    const SectionTitle('Portfólio'),
-                    FutureBuilder<List<PortfolioItem>>(
-                      future: _portfolio,
-                      builder: (context, snap) {
-                        final items = snap.data ?? const [];
-                        if (snap.connectionState != ConnectionState.done) {
-                          return const SizedBox(height: 90, child: LoadingView());
-                        }
-                        if (items.isEmpty) {
-                          return Text('Ainda sem trabalhos publicados.', style: TextStyle(color: context.tk.textMuted));
-                        }
-                        final allPaths = items.map((e) => e.imagePath).toList();
-                        return SizedBox(
-                          height: 130,
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: items.length,
-                            separatorBuilder: (_, _) => const SizedBox(width: 10),
-                            itemBuilder: (_, i) => GestureDetector(
-                              onTap: () => PortfolioFullScreenPhotoViewer.open(
-                                context,
-                                photos: allPaths,
-                                initialIndex: i,
-                                serviceTitle: items[i].caption ?? p.fullName,
-                                usePublicBucket: true,
-                              ),
-                              child: PublicImage(path: items[i].imagePath, width: 130, height: 130, radius: 16),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    if (p.badges.isNotEmpty) ...[
-                      const SectionTitle('Selos conquistados'),
-                      BadgeWall(earned: p.badges),
-                    ],
-                    const SectionTitle('Conquistas'),
-                    AchievementsSection(providerId: p.id, providerName: p.fullName),
-                    const SectionTitle('Avaliações de clientes'),
-                    FutureBuilder<List<PublicReview>>(
-                      future: _reviews,
-                      builder: (context, snap) {
-                        final items = snap.data ?? const <PublicReview>[];
-                        if (snap.connectionState != ConnectionState.done) return const SizedBox(height: 60, child: LoadingView());
-                        final photos = [for (final r in items) ...r.photoPaths];
-                        if (items.isEmpty) {
-                          return Text('Ainda não há avaliações.', style: TextStyle(color: context.tk.textMuted));
-                        }
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SegmentedButton<int>(
-                              showSelectedIcon: false,
-                              segments: [
-                                ButtonSegment(value: 0, label: Text('Avaliações (${items.length})')),
-                                ButtonSegment(value: 1, label: Text('Fotos de clientes (${photos.length})'), icon: const Icon(Icons.photo_library_outlined, size: 18)),
-                              ],
-                              selected: {_tab},
-                              onSelectionChanged: (s) => setState(() => _tab = s.first),
-                            ),
-                            const SizedBox(height: 12),
-                            if (_tab == 0)
-                              for (final r in items) ReviewCard(review: r)
-                            else if (photos.isEmpty)
-                              Text('Nenhum cliente enviou fotos ainda.', style: TextStyle(color: context.tk.textMuted))
-                            else
-                              GridView.count(
-                                crossAxisCount: 3,
-                                mainAxisSpacing: 8,
-                                crossAxisSpacing: 8,
-                                shrinkWrap: true,
-                                physics: const NeverScrollableScrollPhysics(),
-                                children: [
-                                  for (final path in photos)
-                                    Stack(
-                                      fit: StackFit.expand,
-                                      children: [
-                                        PublicImage(path: path, radius: 12),
-                                        Positioned(
-                                          left: 4,
-                                          bottom: 4,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                            decoration: BoxDecoration(color: context.tk.success, borderRadius: BorderRadius.circular(8)),
-                                            child: const Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.verified_rounded, size: 11, color: Colors.white),
-                                                SizedBox(width: 2),
-                                                Text('Verificado', style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800)),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                ],
-                              ),
-                          ],
-                        );
-                      },
                     ),
                   ],
-                ),
+                  // Vitrine de serviços verificados: Top 3 recentes (LIFO) + até 5 destaques escolhidos.
+                  ShowcaseStrip(providerId: p.id),
+                  ListenableBuilder(
+                    listenable: ProviderPortfolioStore.instance,
+                    builder: (context, _) {
+                      final publicServices =
+                          ProviderPortfolioStore.instance.state.publicPortfolioServices;
+                      if (publicServices.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return const Padding(
+                        padding: EdgeInsets.only(top: AppSpace.s16),
+                        child: ProviderSmartPortfolioSection(
+                          isOwner: false,
+                          syncOnMount: false,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: AppSpace.section),
+                  AppSection(
+                    title: 'Portfólio',
+                    child: FutureBuilder<List<PortfolioItem>>(
+                      future: _portfolio,
+                      builder: (context, snap) {
+                        final loading = snap.connectionState != ConnectionState.done;
+                        final items = snap.data ?? const <PortfolioItem>[];
+                        return AppSkeletonSwitcher(
+                          loading: loading,
+                          skeleton: const SizedBox(
+                            height: 130,
+                            child: Row(
+                              children: [
+                                AppSkeleton(width: 130, height: 130, radius: AppGeometry.itemRadius),
+                                SizedBox(width: AppSpace.s12),
+                                AppSkeleton(width: 130, height: 130, radius: AppGeometry.itemRadius),
+                              ],
+                            ),
+                          ),
+                          child: items.isEmpty
+                              ? Text(
+                                  'Ainda sem trabalhos publicados.',
+                                  style: AppType.body.copyWith(color: tk.textMuted),
+                                )
+                              : SizedBox(
+                                  height: 130,
+                                  child: ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: items.length,
+                                    separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s12),
+                                    itemBuilder: (_, i) {
+                                      final allPaths = items.map((e) => e.imagePath).toList();
+                                      return AppPressable(
+                                        borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                                        semanticLabel: items[i].caption ?? 'Foto do portfólio',
+                                        onTap: () => PortfolioFullScreenPhotoViewer.open(
+                                          context,
+                                          photos: allPaths,
+                                          initialIndex: i,
+                                          serviceTitle: items[i].caption ?? p.fullName,
+                                          usePublicBucket: true,
+                                        ),
+                                        child: PublicImage(
+                                          path: items[i].imagePath,
+                                          width: 130,
+                                          height: 130,
+                                          radius: AppGeometry.itemRadius,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                        );
+                      },
+                    ),
+                  ),
+                  if (p.badges.isNotEmpty) ...[
+                    const SizedBox(height: AppSpace.section),
+                    AppSection(
+                      title: 'Selos conquistados',
+                      child: BadgeWall(earned: p.badges),
+                    ),
+                  ],
+                  const SizedBox(height: AppSpace.section),
+                  AppSection(
+                    title: 'Conquistas',
+                    child: AchievementsSection(providerId: p.id, providerName: p.fullName),
+                  ),
+                  const SizedBox(height: AppSpace.section),
+                  AppSection(
+                    title: 'Avaliações de clientes',
+                    child: FutureBuilder<List<PublicReview>>(
+                      future: _reviews,
+                      builder: (context, snap) {
+                        final loading = snap.connectionState != ConnectionState.done;
+                        final items = snap.data ?? const <PublicReview>[];
+                        final photos = [for (final r in items) ...r.photoPaths];
+                        return AppSkeletonSwitcher(
+                          loading: loading,
+                          skeleton: const AppSkeletonList(count: 2, padding: EdgeInsets.zero),
+                          child: items.isEmpty
+                              ? Text(
+                                  'Ainda não há avaliações.',
+                                  style: AppType.body.copyWith(color: tk.textMuted),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    AppSegmented<int>(
+                                      segments: [
+                                        AppSegment(
+                                          value: 0,
+                                          label: 'Avaliações (${items.length})',
+                                        ),
+                                        AppSegment(
+                                          value: 1,
+                                          label: 'Fotos de clientes (${photos.length})',
+                                          icon: Icons.photo_library_outlined,
+                                        ),
+                                      ],
+                                      selected: _tab,
+                                      onChanged: (v) => setState(() => _tab = v),
+                                    ),
+                                    const SizedBox(height: AppSpace.s12),
+                                    if (_tab == 0)
+                                      for (final r in items) ReviewCard(review: r)
+                                    else if (photos.isEmpty)
+                                      Text(
+                                        'Nenhum cliente enviou fotos ainda.',
+                                        style: AppType.body.copyWith(color: tk.textMuted),
+                                      )
+                                    else
+                                      GridView.count(
+                                        crossAxisCount: context.layout.isCompact ? 2 : 3,
+                                        mainAxisSpacing: AppSpace.s8,
+                                        crossAxisSpacing: AppSpace.s8,
+                                        shrinkWrap: true,
+                                        physics: const NeverScrollableScrollPhysics(),
+                                        children: [
+                                          for (final path in photos)
+                                            Stack(
+                                              fit: StackFit.expand,
+                                              children: [
+                                                PublicImage(
+                                                  path: path,
+                                                  radius: AppGeometry.iconTileRadius,
+                                                ),
+                                                Positioned(
+                                                  left: AppSpace.s4,
+                                                  right: AppSpace.s4,
+                                                  bottom: AppSpace.s4,
+                                                  child: Align(
+                                                    alignment: Alignment.bottomLeft,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: AppSpace.s8,
+                                                        vertical: AppSpace.s2,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: tk.successSoft,
+                                                        borderRadius: BorderRadius.circular(
+                                                          AppGeometry.pillRadius,
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            Icons.verified_rounded,
+                                                            size: 13,
+                                                            color: tk.successInk,
+                                                          ),
+                                                          const SizedBox(width: AppSpace.s4),
+                                                          Flexible(
+                                                            child: Text(
+                                                              'Verificado',
+                                                              style: AppType.caption.copyWith(
+                                                                fontWeight: FontWeight.w600,
+                                                                color: tk.successInk,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
       bottomNavigationBar: _isSelf
-          ? BottomBar(
-              child: const InfoBanner(
+          ? const AppBottomBar(
+              child: InfoBanner(
                 'Você não pode solicitar serviços a si mesmo. Para editar este perfil, entre no modo profissional.',
                 tone: BannerTone.info,
                 icon: Icons.lock_outline_rounded,
@@ -317,35 +433,146 @@ class _ProviderPublicProfileScreenState extends State<ProviderPublicProfileScree
               ),
             )
           : widget.hideCta
-          ? null
-          : BottomBar(
-              child: Row(
-                children: [
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Taxa de visita:', style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
-                      Text(brl(p.visitFee), style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: context.tk.clientAccent)),
-                    ],
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: PrimaryButton(
-                      label: 'Solicitar Serviço',
-                      trailingArrow: true,
-                      onPressed: p.accepting
-                          ? () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => RequestWizardScreen(profile: widget.profile, provider: p, category: widget.category),
+              ? null
+              : AppBottomBar(
+                  child: stack
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AppInfoRow(
+                              label: 'Taxa de visita',
+                              valueWidget: AppPrice(
+                                value: p.visitFee,
+                                size: AppPriceSize.sm,
+                                color: tk.clientAccentInk,
                               ),
-                            )
-                          : null,
-                    ),
+                            ),
+                            const SizedBox(height: AppSpace.s8),
+                            _RequestCtaButton(
+                              provider: p,
+                              profile: widget.profile,
+                              category: widget.category,
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Taxa de visita:',
+                                  style: AppType.caption.copyWith(color: tk.textMuted),
+                                ),
+                                AppPrice(
+                                  value: p.visitFee,
+                                  size: AppPriceSize.sm,
+                                  color: tk.clientAccentInk,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: AppSpace.s16),
+                            Expanded(
+                              child: _RequestCtaButton(
+                                provider: p,
+                                profile: widget.profile,
+                                category: widget.category,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+    );
+  }
+}
+
+class _RatingSummaryBlock extends StatelessWidget {
+  const _RatingSummaryBlock({required this.provider});
+
+  final ProviderCard provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          provider.ratingCount > 0
+              ? provider.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')
+              : '—',
+          style: AppType.figure.copyWith(color: tk.text),
+        ),
+        const SizedBox(height: AppSpace.s4),
+        AppRating(value: provider.ratingAvg, size: 16),
+        const SizedBox(height: AppSpace.s4),
+        Text(
+          '(${provider.ratingCount} avaliações)',
+          textAlign: TextAlign.center,
+          style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+class _JobsDoneSummaryBlock extends StatelessWidget {
+  const _JobsDoneSummaryBlock({required this.provider});
+
+  final ProviderCard provider;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.check_circle_rounded, color: tk.clientAccentInk, size: 30),
+        const SizedBox(height: AppSpace.s4),
+        Text(
+          '${provider.jobsDone} serviços',
+          textAlign: TextAlign.center,
+          style: AppType.tabular(AppType.titleSm).copyWith(color: tk.text),
+        ),
+        Text(
+          'finalizados',
+          textAlign: TextAlign.center,
+          style: AppType.caption.copyWith(color: tk.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+class _RequestCtaButton extends StatelessWidget {
+  const _RequestCtaButton({
+    required this.provider,
+    required this.profile,
+    required this.category,
+  });
+
+  final ProviderCard provider;
+  final UserProfile profile;
+  final String? category;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppButton(
+      label: 'Solicitar Serviço',
+      trailingArrow: true,
+      onPressed: provider.accepting
+          ? () => Navigator.of(context).push(
+                AppRoute(
+                  builder: (_) => RequestWizardScreen(
+                    profile: profile,
+                    provider: provider,
+                    category: category,
                   ),
-                ],
-              ),
-            ),
+                ),
+              )
+          : null,
     );
   }
 }

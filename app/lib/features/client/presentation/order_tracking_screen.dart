@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -11,6 +10,8 @@ import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/state/anti_bypass_fintech_controller.dart';
 import '../../../core/state/smart_triage_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -18,7 +19,6 @@ import '../../shared/presentation/chat_screen.dart';
 import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
-import '../../../core/ui/app_tokens.dart';
 
 /// "Acompanhe seu Pedido" (protótipos 16 e 05): timeline, endereço, PIN de
 /// confirmação, evidências enviadas pelo profissional e contato.
@@ -212,30 +212,43 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final layout = context.layout;
     final job = widget.job;
     final disputed = job.status == JobStatus.disputed;
+    final steps = _steps(job);
     return AppScaffold(
-      backgroundColor: context.tk.surface,
-      appBar: AppBar(
-        backgroundColor: context.tk.surface,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+      backgroundColor: tk.surface,
+      appBar: AppAppBar(
+        backgroundColor: tk.surface,
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
           tooltip: 'Voltar',
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const BrandLogo(),
+        titleWidget: const BrandLogo(),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(layout.margin, AppSpace.s4, layout.margin, AppSpace.s24),
         children: [
-          Text('Acompanhe seu Pedido', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: context.tk.brand)),
-          const SizedBox(height: 12),
-          if (_triage.hasEmergencyContainment) ...[
-            EmergencyContainmentBanner(
-              guide: _triage.containmentGuide!,
-              onToggleStep: _toggleContainmentStep,
+          Semantics(
+            header: true,
+            child: Text(
+              'Acompanhe seu Pedido',
+              style: AppType.display.copyWith(color: tk.brand),
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(height: AppSpace.item),
+          if (_triage.hasEmergencyContainment) ...[
+            AppStaggerItem(
+              index: 0,
+              scope: 'order-tracking-${job.id}',
+              child: EmergencyContainmentBanner(
+                guide: _triage.containmentGuide!,
+                onToggleStep: _toggleContainmentStep,
+              ),
+            ),
+            const SizedBox(height: AppSpace.item),
           ],
           if (disputed) ...[
             const InfoBanner(
@@ -244,61 +257,105 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               title: 'Em mediação',
               icon: Icons.gavel_rounded,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.item),
           ],
-          AppCard(
-            radius: 18,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (job.isEmergency)
-                  StatusChip('🚨 EMERGÊNCIA ATIVA', color: context.tk.danger, background: context.tk.dangerSoft)
-                else
-                  StatusChip('AGENDAMENTO CONFIRMADO', color: Color(0xFF0B58A8), background: context.tk.infoSoft),
-                const SizedBox(height: 8),
-                Text('Código do pedido: ${job.code}', style: TextStyle(color: context.tk.textMuted, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 14),
-                for (final s in _steps(job)) _TimelineTile(step: s, last: s == _steps(job).last),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          AppCard(
-            key: const ValueKey('client-readonly-address-card'),
-            radius: 18,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(backgroundColor: context.tk.clientSoft, child: Icon(Icons.place_rounded, color: context.tk.clientAccent)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(_address ?? job.addressSummary ?? '—', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3)),
-                      if (_reference != null && _reference!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text('Ref: $_reference', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
-                        ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Endereço registrado para o atendimento',
-                        style: TextStyle(fontSize: 12, color: context.tk.textMuted),
-                      ),
-                    ],
+          AppStaggerItem(
+            index: 1,
+            scope: 'order-tracking-${job.id}',
+            child: AppCard(
+              variant: AppCardVariant.elevated,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (job.isEmergency)
+                    const AppStatusChip(
+                      'EMERGÊNCIA ATIVA',
+                      tone: AppTone.danger,
+                      icon: Icons.emergency_rounded,
+                    )
+                  else
+                    const AppStatusChip(
+                      'AGENDAMENTO CONFIRMADO',
+                      tone: AppTone.info,
+                      icon: Icons.event_available_rounded,
+                    ),
+                  const SizedBox(height: AppSpace.s8),
+                  AppInfoRow(
+                    label: 'Código do pedido',
+                    value: job.code,
+                    icon: Icons.tag_rounded,
+                    strong: true,
                   ),
-                ),
-              ],
+                  if (job.agreedPrice != null)
+                    AppInfoRow(
+                      label: 'Valor em custódia',
+                      icon: Icons.shield_outlined,
+                      valueWidget: AppPrice(
+                        value: job.agreedPrice!,
+                        size: AppPriceSize.sm,
+                        color: tk.text,
+                      ),
+                    ),
+                  const SizedBox(height: AppSpace.s12),
+                  for (final s in steps) _TimelineTile(step: s, last: s == steps.last),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 12),
-          SmartTriageCard(
-            result: _triage,
-            selectedCategory: job.category,
-            onToggleMaterial: _toggleMaterial,
+          const SizedBox(height: AppSpace.item),
+          AppStaggerItem(
+            index: 2,
+            scope: 'order-tracking-${job.id}',
+            child: AppCard(
+              key: const ValueKey('client-readonly-address-card'),
+              variant: AppCardVariant.outlined,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    backgroundColor: tk.accentSoft,
+                    child: Icon(Icons.place_rounded, color: tk.accentInk),
+                  ),
+                  const SizedBox(width: AppSpace.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _address ?? job.addressSummary ?? '—',
+                          style: AppType.bodyStrong.copyWith(color: tk.text),
+                        ),
+                        if (_reference != null && _reference!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: AppSpace.s4),
+                            child: Text(
+                              'Ref: $_reference',
+                              style: AppType.bodySm.copyWith(color: tk.textMuted),
+                            ),
+                          ),
+                        const SizedBox(height: AppSpace.s4),
+                        Text(
+                          'Endereço registrado para o atendimento',
+                          style: AppType.caption.copyWith(color: tk.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.item),
+          AppStaggerItem(
+            index: 3,
+            scope: 'order-tracking-${job.id}',
+            child: SmartTriageCard(
+              result: _triage,
+              selectedCategory: job.category,
+              onToggleMaterial: _toggleMaterial,
+            ),
+          ),
+          const SizedBox(height: AppSpace.item),
           ValueListenableBuilder(
             valueListenable: FintechLedgerStore.instance,
             builder: (context, _, _) {
@@ -347,7 +404,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       );
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpace.item),
                   ForensicCheckInOutCard(
                     dossier: dossier,
                     onOpenThreeLayerWarranty: () =>
@@ -358,7 +415,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             },
           ),
           if (job.status == JobStatus.inProgress && _pin != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.item),
             _PinCard(pin: _pin!),
           ],
           Builder(
@@ -366,100 +423,185 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               final photos = _evidence.where((e) => e['slot'] != 'video').toList();
               if (photos.isEmpty) return const SizedBox.shrink();
               return Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: AppCard(
-                  radius: 18,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Fotos do serviço', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 96,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: photos.length,
-                          separatorBuilder: (_, _) => const SizedBox(width: 10),
-                          itemBuilder: (_, i) => SignedImage(
-                            path: photos[i]['path'] as String,
-                            width: 96,
-                            height: 96,
-                            radius: 14,
-                          ),
+                padding: const EdgeInsets.only(top: AppSpace.section),
+                child: AppSection(
+                  title: 'Fotos do serviço',
+                  child: AppCard(
+                    variant: AppCardVariant.outlined,
+                    child: SizedBox(
+                      height: 96,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: photos.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s12),
+                        itemBuilder: (_, i) => SignedImage(
+                          path: photos[i]['path'] as String,
+                          width: 96,
+                          height: 96,
+                          radius: AppGeometry.fieldRadius,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               );
             },
           ),
-          const SizedBox(height: 12),
-          if (_provider != null)
-            AppCard(
-              radius: 18,
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      UserAvatar(url: _provider!.avatarUrl, name: _provider!.fullName, radius: 28, verified: true),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(_provider!.fullName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
-                            Text(_provider!.title, style: TextStyle(color: context.tk.textMuted)),
-                            if (_provider!.ratingCount > 0)
-                              Text('${_provider!.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} ★', style: const TextStyle(fontWeight: FontWeight.w700)),
-                          ],
+          if (_provider != null) ...[
+            const SizedBox(height: AppSpace.section),
+            AppSection(
+              title: 'Profissional',
+              child: AppCard(
+                variant: AppCardVariant.elevated,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        AppHero(
+                          tag: 'provider-avatar-${_provider!.id}',
+                          child: AppAvatar(
+                            url: _provider!.avatarUrl,
+                            name: _provider!.fullName,
+                            radius: 28,
+                            verified: true,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => ChatScreen(
-                              job: job,
-                              providerId: _provider!.id,
-                              peerName: _provider!.fullName,
-                              peerAvatar: _provider!.avatarUrl,
+                        const SizedBox(width: AppSpace.s12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _provider!.fullName,
+                                style: AppType.titleSm.copyWith(color: tk.text),
+                              ),
+                              Text(
+                                _provider!.title,
+                                style: AppType.bodySm.copyWith(color: tk.textMuted),
+                              ),
+                              if (_provider!.ratingCount > 0) ...[
+                                const SizedBox(height: AppSpace.s4),
+                                AppRating(
+                                  value: _provider!.ratingAvg,
+                                  count: _provider!.ratingCount,
+                                  showValue: true,
+                                  size: 16,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.s16),
+                    if (layout.isLargeText || layout.isCompact)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          AppButton(
+                            label: 'Abrir chat',
+                            icon: Icons.chat_bubble_outline_rounded,
+                            variant: AppButtonVariant.secondary,
+                            compact: true,
+                            onPressed: () => Navigator.of(context).push(
+                              AppRoute(
+                                builder: (_) => ChatScreen(
+                                  job: job,
+                                  providerId: _provider!.id,
+                                  peerName: _provider!.fullName,
+                                  peerAvatar: _provider!.avatarUrl,
+                                ),
+                              ),
                             ),
-                          )),
-                          icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                          label: const Text('Abrir chat'),
-                          style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(46)),
-                        ),
+                          ),
+                          const SizedBox(height: AppSpace.s8),
+                          AppButton(
+                            label: 'Ligar',
+                            icon: Icons.phone_rounded,
+                            variant: AppButtonVariant.primary,
+                            compact: true,
+                            onPressed: () => AppSnackbar.show(
+                              context,
+                              'Chamadas pelo app chegam em breve. Use o chat.',
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: AppButton(
+                              label: 'Abrir chat',
+                              icon: Icons.chat_bubble_outline_rounded,
+                              variant: AppButtonVariant.secondary,
+                              compact: true,
+                              onPressed: () => Navigator.of(context).push(
+                                AppRoute(
+                                  builder: (_) => ChatScreen(
+                                    job: job,
+                                    providerId: _provider!.id,
+                                    peerName: _provider!.fullName,
+                                    peerAvatar: _provider!.avatarUrl,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: AppSpace.s12),
+                          Expanded(
+                            child: AppButton(
+                              label: 'Ligar',
+                              icon: Icons.phone_rounded,
+                              variant: AppButtonVariant.primary,
+                              compact: true,
+                              onPressed: () => AppSnackbar.show(
+                                context,
+                                'Chamadas pelo app chegam em breve. Use o chat.',
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () => showSnack(context, 'Chamadas pelo app chegam em breve. Use o chat.'),
-                          icon: const Icon(Icons.phone_rounded, size: 18),
-                          label: const Text('Ligar'),
-                          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46), backgroundColor: const Color(0xFF4B5563)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
+          ],
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: Row(
+      bottomNavigationBar: AppBottomBar(
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppSpace.s8,
+          runSpacing: AppSpace.s4,
           children: [
-            Icon(Icons.help_outline_rounded, color: context.tk.textMuted),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Preciso de ajuda?', style: TextStyle(fontWeight: FontWeight.w700))),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.help_outline_rounded, color: tk.textMuted),
+                const SizedBox(width: AppSpace.s8),
+                Text(
+                  'Preciso de ajuda?',
+                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                ),
+              ],
+            ),
             TextButton(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReportProblemScreen(job: job, asProvider: false))),
-              child: Text('Relatar problema', style: TextStyle(color: context.tk.danger, fontWeight: FontWeight.w800)),
+              onPressed: () => Navigator.of(context).push(
+                AppRoute(
+                  builder: (_) => ReportProblemScreen(job: job, asProvider: false),
+                ),
+              ),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(AppGeometry.minTarget, AppGeometry.minTarget),
+                foregroundColor: tk.dangerInk,
+              ),
+              child: Text(
+                'Relatar problema',
+                style: AppType.bodyStrong.copyWith(color: tk.dangerInk),
+              ),
             ),
           ],
         ),
@@ -486,10 +628,16 @@ class _TimelineTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final color = switch (step.state) {
-      _State.done => const Color(0xFF0B58A8),
-      _State.current => context.tk.clientAccent,
-      _State.pending => context.tk.border,
+      _State.done => tk.providerAccentInk,
+      _State.current => tk.accentInk,
+      _State.pending => tk.border,
+    };
+    final lineColor = switch (step.state) {
+      _State.done => tk.providerAccent,
+      _State.current => tk.accent,
+      _State.pending => tk.border,
     };
     return IntrinsicHeight(
       child: Row(
@@ -499,22 +647,42 @@ class _TimelineTile extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 14,
-                backgroundColor: step.state == _State.pending ? context.tk.card : color.withValues(alpha: 0.14),
-                child: Icon(step.state == _State.done ? Icons.check_rounded : step.icon, size: 16, color: color),
+                backgroundColor: step.state == _State.pending
+                    ? tk.surface
+                    : lineColor.withValues(alpha: 0.14),
+                child: Icon(
+                  step.state == _State.done ? Icons.check_rounded : step.icon,
+                  size: 16,
+                  color: step.state == _State.pending ? tk.textMuted : color,
+                ),
               ),
-              if (!last) Expanded(child: Container(width: 2, color: color.withValues(alpha: 0.4))),
+              if (!last)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    color: lineColor.withValues(alpha: 0.4),
+                  ),
+                ),
             ],
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.only(bottom: AppSpace.s16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(step.title, style: TextStyle(fontWeight: FontWeight.w900, color: step.state == _State.pending ? context.tk.textMuted : context.tk.text)),
-                  const SizedBox(height: 2),
-                  Text(step.subtitle, style: TextStyle(color: context.tk.textMuted, fontSize: 13, height: 1.3)),
+                  Text(
+                    step.title,
+                    style: AppType.bodyStrong.copyWith(
+                      color: step.state == _State.pending ? tk.textMuted : tk.text,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s2),
+                  Text(
+                    step.subtitle,
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
+                  ),
                 ],
               ),
             ),
@@ -532,44 +700,56 @@ class _PinCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppCard(
-      color: context.tk.securitySoft,
-      borderColor: context.tk.security.withValues(alpha: 0.5),
-      radius: 18,
+      variant: AppCardVariant.tonal,
+      color: tk.securitySoft,
+      borderColor: tk.security.withValues(alpha: 0.5),
       child: Column(
         children: [
           Row(
             children: [
-              Icon(Icons.lock_rounded, color: context.tk.security),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Text('Código de confirmação', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+              Icon(Icons.lock_rounded, color: tk.security),
+              const SizedBox(width: AppSpace.s8),
+              Expanded(
+                child: Text(
+                  'Código de confirmação',
+                  style: AppType.titleSm.copyWith(color: tk.text),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (final d in pin.split(''))
-                  Container(
-                    width: 52,
-                    height: 62,
-                    margin: const EdgeInsets.symmetric(horizontal: 5),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(color: context.tk.card, borderRadius: BorderRadius.circular(12)),
-                    child: Text(d, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: context.tk.brand)),
+          const SizedBox(height: AppSpace.s12),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s8,
+            children: [
+              for (final d in pin.split(''))
+                Container(
+                  constraints: const BoxConstraints(minWidth: 48, minHeight: 58),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.s12,
+                    vertical: AppSpace.s8,
                   ),
-              ],
-            ),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: tk.card,
+                    borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                    border: Border.all(color: tk.border),
+                  ),
+                  child: Text(
+                    d,
+                    style: AppType.tabular(AppType.display).copyWith(color: tk.brand),
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           Text(
             'Informe este código ao profissional SOMENTE quando o serviço estiver concluído e aprovado por você. Ao digitá-lo, o pagamento é liberado.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, height: 1.4, color: context.tk.security),
+            style: AppType.bodySm.copyWith(color: tk.text),
           ),
         ],
       ),
