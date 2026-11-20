@@ -1232,7 +1232,7 @@ class _TopSegmentedProgressBars extends StatelessWidget {
     return RepaintBoundary(
       child: SizedBox(
         key: const Key('welcome-cinema-progress-bar'),
-        height: 44.0,
+        height: 48.0,
         child: AnimatedBuilder(
           animation: Listenable.merge([
             storyProgressController,
@@ -1260,7 +1260,7 @@ class _TopSegmentedProgressBars extends StatelessWidget {
                     behavior: HitTestBehavior.opaque,
                     onTap: () => onTapChapter(i),
                     child: SizedBox(
-                      height: 44.0,
+                      height: 48.0,
                       child: Center(
                         child: Padding(
                           padding: EdgeInsets.only(
