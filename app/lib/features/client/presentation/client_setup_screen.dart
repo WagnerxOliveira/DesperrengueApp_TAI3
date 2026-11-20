@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
+
 import '../../../core/models/user_profile.dart';
 import '../../../core/security/kyc_session_anti_swap_guard.dart';
 import '../../../core/services/app_session.dart';
@@ -18,7 +20,6 @@ import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/registration_guard_service.dart';
 import '../../../core/ui/app_scaffold.dart';
-import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
 import '../../../core/ui/widgets.dart';
 import '../../auth/presentation/auth_gate.dart';
@@ -93,7 +94,11 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
 
   Future<void> _save() async {
     if (!_address.isValid) {
-      showSnack(context, 'Preencha rua, número, bairro e cidade.', error: true);
+      AppSnackbar.show(
+        context,
+        'Preencha rua, número, bairro e cidade.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
     setState(() => _saving = true);
@@ -101,7 +106,9 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
       final saved = await saveProfileAddress(_address);
       if (mounted) Navigator.pop(context, saved);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) {
+        AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -109,24 +116,33 @@ class _EditAddressScreenState extends State<EditAddressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Editar localização')),
+      appBar: const AppAppBar(title: 'Editar localização'),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (widget.currentLine != null && widget.currentLine!.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InfoBanner(widget.currentLine!, title: 'Endereço atual', icon: Icons.place_outlined),
+                padding: const EdgeInsets.only(bottom: AppSpace.s8),
+                child: InfoBanner(
+                  widget.currentLine!,
+                  title: 'Endereço atual',
+                  icon: Icons.place_outlined,
+                ),
               ),
             AddressForm(onChanged: (a) => _address = a),
           ],
         ),
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(label: 'Salvar endereço', onPressed: _save, loading: _saving),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Salvar endereço',
+          onPressed: _save,
+          loading: _saving,
+        ),
       ),
     );
   }
@@ -312,7 +328,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     }
     setState(() => _restoring = false);
     if (_restored && mounted) {
-      showSnack(context, 'Recuperamos o que você já tinha preenchido.');
+      AppSnackbar.show(context, 'Recuperamos o que você já tinha preenchido.');
     }
     if (_step == 2 && widget.customCameraCapture == null) {
       unawaited(_startInteractiveLivenessChallenge());
@@ -380,7 +396,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         ? const AuthGate()
         : const LoginScreen();
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => rootTarget),
+      AppRoute(builder: (_) => rootTarget),
       (_) => false,
     );
   }
@@ -389,22 +405,38 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     if (_checkingCpfConflict) return;
     if (!DocumentOcrAndLivenessService.isValidCivilFullName(_name.text)) {
       setState(() => _error = 'Informe seu nome e sobrenome completos conforme o documento.');
-      showSnack(context, 'Informe seu nome e sobrenome completos.', error: true);
+      AppSnackbar.show(
+        context,
+        'Informe seu nome e sobrenome completos.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
     if (!DocumentOcrAndLivenessService.isValidPhoneBr(_phone.text)) {
       setState(() => _error = 'Informe seu telefone celular válido com DDD.');
-      showSnack(context, 'Informe seu telefone válido com DDD.', error: true);
+      AppSnackbar.show(
+        context,
+        'Informe seu telefone válido com DDD.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
     if (!DocumentOcrAndLivenessService.isValidCpfMod11(_cpf.text)) {
       setState(() => _error = 'CPF inválido. Verifique os 11 dígitos informados.');
-      showSnack(context, 'CPF inválido. Verifique os 11 dígitos.', error: true);
+      AppSnackbar.show(
+        context,
+        'CPF inválido. Verifique os 11 dígitos.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
     if (!_termsAccepted) {
       setState(() => _error = 'Confirme a leitura e o aceite dos Termos de Uso para continuar.');
-      showSnack(context, 'Confirme o aceite dos Termos de Uso.', error: true);
+      AppSnackbar.show(
+        context,
+        'Confirme o aceite dos Termos de Uso.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
 
@@ -420,7 +452,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         if (mounted) {
           final msg = KycHumanFeedbackTranslator.translateError(e);
           setState(() => _error = msg);
-          showSnack(context, msg, error: true);
+          AppSnackbar.show(context, msg, kind: AppSnackKind.error);
         }
         return;
       }
@@ -440,7 +472,11 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   void _validateStep1AndAdvance() {
     if (!_address.isValid) {
       setState(() => _error = 'Preencha rua, número, bairro e cidade.');
-      showSnack(context, 'Preencha rua, número, bairro e cidade.', error: true);
+      AppSnackbar.show(
+        context,
+        'Preencha rua, número, bairro e cidade.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
     _setStep(2);
@@ -884,8 +920,8 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         bytes = await widget.customCameraCapture!(slot: isFront ? 'front' : 'back');
       } else {
         bytes = await Navigator.of(context).push<Uint8List>(
-          MaterialPageRoute(
-            fullscreenDialog: true,
+          AppRoute<Uint8List>(
+            fullscreenModal: true,
             builder: (_) => DocumentGuidedScannerModal(
               isFront: isFront,
               documentType: _docType,
@@ -1079,7 +1115,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
             ? KycHumanFeedbackTranslator.translateError(e)
             : friendlyError(e);
         setState(() => _error = msg);
-        showSnack(context, msg, error: true);
+        AppSnackbar.show(context, msg, kind: AppSnackKind.error);
         if (isDuplicateCpf) {
           unawaited(_openExistingCpfAccountSheet());
         }
@@ -1091,8 +1127,8 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
 
   Future<void> _openFullRoleTermsModal() async {
     final accepted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
+      AppRoute<bool>(
+        fullscreenModal: true,
         builder: (_) => RoleTermsAcceptanceScreen(
           profile: widget.profile,
           mode: widget.targetMode,
@@ -1111,6 +1147,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final margin = context.layout.margin;
     final cpfDigits = DocumentOcrAndLivenessService.digitsOnly(_cpf.text);
     final cpfValid = DocumentOcrAndLivenessService.isValidCpfMod11(cpfDigits);
     final effectiveCriminal =
@@ -1128,9 +1165,10 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         }
       },
       child: AppScaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        appBar: AppAppBar(
+          leading: AppIconButton(
+            icon: Icons.arrow_back_ios_new_rounded,
+            tooltip: 'Voltar',
             onPressed: () {
               if (_step > 0) {
                 _setStep(_step - 1);
@@ -1140,59 +1178,64 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               }
             },
           ),
-          title: const BrandLogo(),
+          titleWidget: const BrandLogo(),
         ),
-        body: _restoring
-            ? const LoadingView()
-            : SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (widget.isSixMonthRenewal) ...[
-                      Container(
-                        key: const ValueKey('banner-six-month-renewal'),
-                        margin: const EdgeInsets.only(bottom: 14),
-                        child: const InfoBanner(
-                          'Seus dados cadastrais, histórico e carteira estão preservados. '
-                          'Para manter a segurança de todos dentro das residências, basta revalidar '
-                          'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 6 meses.',
-                          title: 'Renovação Semestral de Segurança (a cada 6 meses)',
-                          tone: BannerTone.security,
-                          icon: Icons.event_repeat_rounded,
-                        ),
-                      ),
-                    ],
-                    StepperBar(total: _totalSteps, current: _step + 1),
-                    const SizedBox(height: 18),
-                    if (_step == 0) _buildStep0Identity(tk, cpfDigits, cpfValid),
-                    if (_step == 1) _buildStep1Address(),
-                    if (_step == 2) _buildStep2ActiveLiveness(tk),
-                    if (_step == 3) _buildStep3DocumentForensicsAndOcr(tk),
-                    if (_step == 4) _buildStep4CriminalBackground(),
-                    if (_error != null) ...[
-                      const SizedBox(height: 14),
-                      InfoBanner(_error!, tone: BannerTone.danger),
-                    ],
-                  ],
-                ),
-              ),
-        bottomNavigationBar: BottomBar(
+        body: AppSkeletonSwitcher(
+          loading: _restoring,
+          skeleton: AppSkeletonList(
+            count: 3,
+            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
+          ),
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.isSixMonthRenewal) ...[
+                  Padding(
+                    key: const ValueKey('banner-six-month-renewal'),
+                    padding: const EdgeInsets.only(bottom: AppSpace.s12),
+                    child: const InfoBanner(
+                      'Seus dados cadastrais, histórico e carteira estão preservados. '
+                      'Para manter a segurança de todos dentro das residências, basta revalidar '
+                      'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 6 meses.',
+                      title: 'Renovação Semestral de Segurança (a cada 6 meses)',
+                      tone: BannerTone.security,
+                      icon: Icons.event_repeat_rounded,
+                    ),
+                  ),
+                ],
+                AppStepper(total: _totalSteps, current: _step + 1),
+                const SizedBox(height: AppSpace.s16),
+                if (_step == 0) _buildStep0Identity(tk, cpfDigits, cpfValid),
+                if (_step == 1) _buildStep1Address(tk),
+                if (_step == 2) _buildStep2ActiveLiveness(tk),
+                if (_step == 3) _buildStep3DocumentForensicsAndOcr(tk),
+                if (_step == 4) _buildStep4CriminalBackground(),
+                if (_error != null) ...[
+                  const SizedBox(height: AppSpace.s12),
+                  InfoBanner(_error!, tone: BannerTone.danger),
+                ],
+              ],
+            ),
+          ),
+        ),
+        bottomNavigationBar: AppBottomBar(
           child: switch (_step) {
-            0 => PrimaryButton(
+            0 => AppButton(
                 key: const ValueKey('client-setup-step0-continue'),
                 label: 'Continuar',
                 trailingArrow: true,
                 onPressed: _validateStep0AndAdvance,
               ),
-            1 => PrimaryButton(
+            1 => AppButton(
                 key: const ValueKey('client-setup-step1-continue'),
                 label: 'Continuar para Validação Facial e Documentos',
                 trailingArrow: true,
                 onPressed: _validateStep1AndAdvance,
               ),
-            2 => PrimaryButton(
+            2 => AppButton(
                 key: const ValueKey('client-setup-step2-continue'),
                 label: 'Continuar para Fotos do Documento',
                 trailingArrow: true,
@@ -1201,7 +1244,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     : null,
               ),
             3 => _isLegacyFourStepTestMode
-                ? PrimaryButton(
+                ? AppButton(
                     key: const ValueKey('client-setup-step3-submit'),
                     label: 'Concluir Validação e Entrar no Aplicativo',
                     loading: _saving,
@@ -1211,7 +1254,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         ? _finish
                         : null,
                   )
-                : PrimaryButton(
+                : AppButton(
                     key: const ValueKey('client-setup-step3-continue'),
                     label: 'Continuar para Antecedentes Criminais',
                     trailingArrow: true,
@@ -1220,7 +1263,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         ? () => _setStep(4)
                         : null,
                   ),
-            _ => PrimaryButton(
+            _ => AppButton(
                 key: const ValueKey('client-setup-step4-submit'),
                 label: widget.isSixMonthRenewal
                     ? 'Concluir Renovação por Mais 6 Meses'
@@ -1252,98 +1295,80 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
       children: [
         Text(
           'Bem-vindo, ${widget.profile.firstName}!',
-          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+          style: AppType.headline.copyWith(color: tk.text),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpace.s8),
         Text(
           isProviderTarget
               ? 'Vamos configurar sua conta de profissional com validação unificada de identidade, documento e antecedentes criminais (válida por 6 meses também para o modo Cliente).'
               : 'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
-          style: TextStyle(color: tk.textMuted, height: 1.4),
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
-        const SizedBox(height: 24),
-        TextField(
+        const SizedBox(height: AppSpace.s24),
+        AppTextField(
           key: const ValueKey('client-setup-name'),
           controller: _name,
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Como podemos te chamar?',
-            hintText: 'Nome e sobrenome completos',
-            prefixIcon: Icon(Icons.person_outline),
-          ),
+          label: 'Como podemos te chamar?',
+          hint: 'Nome e sobrenome completos',
+          prefixIcon: Icons.person_outline,
         ),
-        const SizedBox(height: 14),
-        TextField(
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
           key: const ValueKey('client-setup-phone'),
           controller: _phone,
           keyboardType: TextInputType.phone,
           inputFormatters: const [BrPhoneInputFormatter()],
-          decoration: const InputDecoration(
-            labelText: 'Telefone com DDD',
-            hintText: '(35) 99999-9999',
-            prefixIcon: Icon(Icons.phone_outlined),
-            helperText: 'Obrigatório para avisos de chegada e segurança do pedido.',
-          ),
+          label: 'Telefone com DDD',
+          hint: '(35) 99999-9999',
+          prefixIcon: Icons.phone_outlined,
+          helper: 'Obrigatório para avisos de chegada e segurança do pedido.',
         ),
-        const SizedBox(height: 14),
-        TextField(
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
           key: const ValueKey('client-setup-cpf'),
           controller: _cpf,
           keyboardType: TextInputType.number,
           inputFormatters: const [CpfInputFormatter()],
-          decoration: InputDecoration(
-            labelText: 'CPF do Titular',
-            hintText: '000.000.000-00',
-            prefixIcon: const Icon(Icons.badge_outlined),
-            suffixIcon: cpfDigits.length == 11
-                ? Icon(
-                    cpfValid ? Icons.verified_rounded : Icons.error_outline_rounded,
-                    color: cpfValid ? tk.success : tk.danger,
-                  )
-                : null,
-            helperText: cpfDigits.length == 11
-                ? (cpfValid
-                    ? 'CPF válido e verificado com sucesso'
-                    : 'Dígito verificador do CPF inválido')
-                : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
-          ),
+          label: 'CPF do Titular',
+          hint: '000.000.000-00',
+          prefixIcon: Icons.badge_outlined,
+          success: cpfDigits.length == 11 && cpfValid,
+          errorText: cpfDigits.length == 11 && !cpfValid
+              ? 'Dígito verificador do CPF inválido'
+              : null,
+          helper: cpfDigits.length == 11 && cpfValid
+              ? 'CPF válido e verificado com sucesso'
+              : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
         ),
-        const SizedBox(height: 16),
-        Container(
+        const SizedBox(height: AppSpace.s16),
+        AppCard(
           key: const ValueKey('card-initial-role-terms'),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: tk.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: _termsAccepted ? tk.success.withValues(alpha: 0.6) : tk.border,
-            ),
-          ),
+          variant: AppCardVariant.tonal,
+          padding: const EdgeInsets.all(AppSpace.s12),
+          borderColor:
+              _termsAccepted ? tk.success.withValues(alpha: 0.6) : tk.border,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: Checkbox(
-                      key: const ValueKey('checkbox-accept-initial-terms'),
-                      value: _termsAccepted,
-                      onChanged: (v) {
-                        final next = v ?? false;
-                        if (next) {
-                          ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
-                        }
-                        setState(() {
-                          _termsAccepted = next;
-                          if (next) _error = null;
-                        });
-                      },
-                    ),
+                  Checkbox(
+                    key: const ValueKey('checkbox-accept-initial-terms'),
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    value: _termsAccepted,
+                    onChanged: (v) {
+                      final next = v ?? false;
+                      if (next) {
+                        ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+                      }
+                      setState(() {
+                        _termsAccepted = next;
+                        if (next) _error = null;
+                      });
+                    },
                   ),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: GestureDetector(
                       onTap: () {
@@ -1356,26 +1381,31 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                           if (next) _error = null;
                         });
                       },
-                      child: Text(
-                        'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: tk.text,
-                          height: 1.35,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
+                        child: Text(
+                          'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
+                          style: AppType.bodySm.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: tk.text,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: AppSpace.s4),
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton.icon(
+                child: AppButton(
                   key: const ValueKey('btn-read-full-terms'),
+                  variant: AppButtonVariant.tertiary,
+                  expand: false,
+                  compact: true,
+                  icon: Icons.description_outlined,
+                  label: 'Ler termos completos',
                   onPressed: _openFullRoleTermsModal,
-                  icon: const Icon(Icons.description_outlined, size: 16),
-                  label: const Text('Ler termos completos'),
                 ),
               ),
             ],
@@ -1409,7 +1439,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   // ---------------------------------------------------------------------------
   // PASSO 2: Endereço Residencial (Cliente) ou Localização Base (Profissional)
   // ---------------------------------------------------------------------------
-  Widget _buildStep1Address() {
+  Widget _buildStep1Address(AppTokens tk) {
     final isProviderTarget = widget.targetMode == UserMode.provider;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1418,16 +1448,16 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           isProviderTarget
               ? 'Qual é sua localização base de atendimento?'
               : 'Onde você precisa do serviço?',
-          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          style: AppType.headline.copyWith(color: tk.text),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpace.s8),
         Text(
           isProviderTarget
               ? 'Usamos sua cidade e endereço base para conectar você aos chamados próximos na sua região com total segurança.'
               : 'O endereço completo só é compartilhado com o profissional contratado.',
-          style: TextStyle(color: context.tk.textMuted, height: 1.4),
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.s8),
         AddressForm(
           initial: _address.isEmpty ? null : _address,
           onChanged: (a) {
@@ -1453,31 +1483,28 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         ? tk.success
         : (hasFaceNow
             ? tk.success
-            : (_livenessRunning ? tk.clientAccent : tk.border));
+            : (_livenessRunning ? tk.accent : tk.border));
+    final badgeBg = (done || hasFaceNow) ? tk.successInk : tk.scrim;
+    final badgeFg = AppTokens.onColor(badgeBg);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Registro Facial de Segurança (Prova de Vida)',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          style: AppType.headline.copyWith(color: tk.text),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpace.s8),
         Text(
           'A câmera frontal é exibida ao vivo dentro da moldura oval abaixo. Olhe para ela e execute os 3 desafios físicos ao vivo (centralizar, piscar e girar levemente o rosto).',
-          style: TextStyle(color: tk.textMuted, height: 1.4),
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: tk.card,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: done ? tk.success : tk.clientAccent.withValues(alpha: 0.45),
-              width: 2,
-            ),
-          ),
+        const SizedBox(height: AppSpace.s16),
+        AppCard(
+          variant: AppCardVariant.outlined,
+          radius: AppGeometry.heroRadius,
+          padding: const EdgeInsets.all(AppSpace.s16),
+          borderColor: done ? tk.success : tk.accent.withValues(alpha: 0.45),
           child: Column(
             children: [
               // MOLDURA OVAL COM CÂMERA FRONTAL AO VIVO (ActiveLivenessOvalCamera - 120 FPS RepaintBoundary)
@@ -1490,7 +1517,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                       width: 222,
                       height: 280,
                       decoration: BoxDecoration(
-                        color: Colors.black,
+                        color: AppTokens.dark.background,
                         borderRadius: BorderRadius.circular(140),
                         border: Border.all(
                           color: borderColor,
@@ -1514,18 +1541,18 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     ),
                     if (cameraReady && !done && _availableCameras.length > 1)
                       Positioned(
-                        right: 4,
-                        top: 6,
-                        child: Material(
-                          color: Colors.black.withValues(alpha: 0.65),
-                          shape: const CircleBorder(),
-                          child: IconButton(
+                        right: AppSpace.s4,
+                        top: AppSpace.s4,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: tk.scrim,
+                            shape: BoxShape.circle,
+                          ),
+                          child: AppIconButton(
                             tooltip: 'Alternar lente da câmera',
-                            icon: const Icon(
-                              Icons.cameraswitch_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                            icon: Icons.cameraswitch_rounded,
+                            color: AppTokens.onColor(tk.scrim),
+                            size: 20,
                             onPressed: () => _startInteractiveLivenessChallenge(
                               switchCameraLens: true,
                             ),
@@ -1533,99 +1560,96 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         ),
                       ),
                     Positioned(
-                      bottom: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: done
-                              ? tk.success
-                              : (hasFaceNow
-                                  ? tk.success.withValues(alpha: 0.92)
-                                  : Colors.black.withValues(alpha: 0.78)),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              done
-                                  ? Icons.verified_rounded
-                                  : (hasFaceNow
-                                      ? Icons.face_retouching_natural_rounded
-                                      : Icons.remove_red_eye_outlined),
-                              size: 14,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
+                      bottom: AppSpace.s8,
+                      left: AppSpace.s8,
+                      right: AppSpace.s8,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpace.s12,
+                            vertical: AppSpace.s4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: badgeBg,
+                            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
                                 done
-                                    ? 'Prova de Vida Homologada!'
+                                    ? Icons.verified_rounded
                                     : (hasFaceNow
-                                        ? 'Rosto Humano Detectado'
-                                        : 'Aguardando Rosto no Oval'),
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
+                                        ? Icons.face_retouching_natural_rounded
+                                        : Icons.remove_red_eye_outlined),
+                                size: 14,
+                                color: badgeFg,
+                              ),
+                              const SizedBox(width: AppSpace.s4),
+                              Flexible(
+                                child: Text(
+                                  done
+                                      ? 'Prova de Vida Homologada!'
+                                      : (hasFaceNow
+                                          ? 'Rosto Humano Detectado'
+                                          : 'Aguardando Rosto no Oval'),
+                                  textAlign: TextAlign.center,
+                                  style: AppType.caption.copyWith(
+                                    color: badgeFg,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.s16),
               Text(
                 _livenessStep.title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 15,
-                ),
+                style: AppType.titleSm.copyWith(color: tk.text),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.s8),
               LinearProgressIndicator(
                 value: _livenessStep.progress,
-                minHeight: 8,
-                borderRadius: BorderRadius.circular(4),
-                color: done ? tk.success : tk.clientAccent,
+                minHeight: AppSpace.s8,
+                borderRadius: BorderRadius.circular(AppSpace.s4),
+                color: done ? tk.success : tk.accent,
+                backgroundColor: tk.border,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.s12),
               ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 54),
-                child: Container(
-                  width: double.infinity,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: tk.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: hasFaceNow || done ? tk.success.withValues(alpha: 0.5) : tk.border,
-                    ),
+                child: AppCard(
+                  variant: AppCardVariant.tonal,
+                  radius: AppGeometry.fieldRadius,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.s12,
+                    vertical: AppSpace.s12,
                   ),
-                  child: Text(
-                    KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
-                      _liveDiagnosticMessage,
-                    ),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: hasFaceNow || done ? tk.text : tk.textMuted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
+                  borderColor: hasFaceNow || done
+                      ? tk.success.withValues(alpha: 0.5)
+                      : tk.border,
+                  child: Center(
+                    child: Text(
+                      KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
+                        _liveDiagnosticMessage,
+                      ),
+                      textAlign: TextAlign.center,
+                      style: AppType.bodySm.copyWith(
+                        color: hasFaceNow || done ? tk.text : tk.textMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: AppSpace.s16),
               _LivenessChallengeRow(
                 label: '1. Rosto humano real centralizado no oval (anti-monitor ativo)',
                 completed: _livenessStep.stepIndex >= 1 || done,
@@ -1639,23 +1663,22 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 completed: done,
               ),
               if (done && _livenessResult != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: tk.success.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
+                const SizedBox(height: AppSpace.s12),
+                AppCard(
+                  variant: AppCardVariant.tonal,
+                  color: tk.successSoft,
+                  radius: AppGeometry.fieldRadius,
+                  padding: const EdgeInsets.all(AppSpace.s12),
                   child: Row(
                     children: [
-                      Icon(Icons.shield_rounded, color: tk.success, size: 20),
-                      const SizedBox(width: 10),
+                      Icon(Icons.shield_rounded, color: tk.successInk, size: 20),
+                      const SizedBox(width: AppSpace.s12),
                       Expanded(
                         child: Text(
                           'Prova de Vida Aprovada (${_livenessResult!.livenessScore.toStringAsFixed(1)}%) • Selo: ${_livenessResult!.faceLivenessHash}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
+                          style: AppType.tabular(AppType.bodySm).copyWith(
+                            color: tk.successInk,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -1663,30 +1686,23 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: const ValueKey('btn-start-liveness'),
-                  onPressed: _cameraInitializing
-                      ? null
-                      : () => _startInteractiveLivenessChallenge(),
-                  icon: Icon(
-                    done
-                        ? Icons.refresh_rounded
-                        : (cameraReady
-                            ? Icons.restart_alt_rounded
-                            : Icons.videocam_rounded),
-                  ),
-                  label: Text(
-                    done
-                        ? 'Refazer Registro Facial Ao Vivo'
-                        : (cameraReady
-                            ? 'Reiniciar Leitura da Câmera Frontal'
-                            : 'Iniciar Registro Facial (Prova de Vida)'),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+              const SizedBox(height: AppSpace.s16),
+              AppButton(
+                key: const ValueKey('btn-start-liveness'),
+                loading: _cameraInitializing,
+                onPressed: _cameraInitializing
+                    ? null
+                    : () => _startInteractiveLivenessChallenge(),
+                icon: done
+                    ? Icons.refresh_rounded
+                    : (cameraReady
+                        ? Icons.restart_alt_rounded
+                        : Icons.videocam_rounded),
+                label: done
+                    ? 'Refazer Registro Facial Ao Vivo'
+                    : (cameraReady
+                        ? 'Reiniciar Leitura da Câmera Frontal'
+                        : 'Iniciar Registro Facial (Prova de Vida)'),
               ),
             ],
           ),
@@ -1722,8 +1738,10 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           Transform.scale(
             scaleX: -1.0,
             scaleY: 1.0,
-            child: FittedBox(
-              fit: BoxFit.cover,
+            child: OverflowBox(
+              maxWidth: double.infinity,
+              maxHeight: double.infinity,
+              alignment: Alignment.center,
               child: SizedBox(
                 width: 240,
                 height: 320,
@@ -1736,6 +1754,8 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               painter: _OvalBiometricGuidePainter(
                 hasFace: _latestOvalAnalysis?.hasRealHumanFace ?? false,
                 isCentered: _latestOvalAnalysis?.isFaceCentered ?? false,
+                activeColor: tk.success,
+                idleColor: AppTokens.dark.text,
               ),
             ),
           ),
@@ -1745,27 +1765,27 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
 
     return Container(
       color: tk.surface,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpace.s16),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           if (_cameraInitializing)
-            const CircularProgressIndicator()
+            const AppLoading()
           else
             Icon(
               Icons.camera_front_rounded,
               size: 64,
-              color: tk.clientAccent,
+              color: tk.accentInk,
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           Text(
             _cameraInitializing
                 ? 'Abrindo câmera frontal...'
                 : 'Câmera Frontal no Oval',
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 13.5,
+            style: AppType.bodySm.copyWith(
+              fontWeight: FontWeight.w700,
+              color: tk.text,
             ),
           ),
         ],
@@ -1780,44 +1800,44 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Validação Oficial do Documento (Frente e Verso)',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+          style: AppType.headline.copyWith(color: tk.text),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpace.s8),
         Text(
           'Enquadre a frente e o verso do seu documento (CNH, CIN, RG ou CPF) dentro da moldura retangular guiada. Apenas o documento será recortado e os dados serão transcritos automaticamente abaixo.',
-          style: TextStyle(color: tk.textMuted, height: 1.4),
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
-        const SizedBox(height: 16),
-        const Text(
-          'Tipo de Documento Oficial',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        const SizedBox(height: AppSpace.s16),
+        AppSection(
+          title: 'Tipo de Documento Oficial',
+          spacing: AppSpace.s8,
+          child: Wrap(
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s8,
+            children: [
+              for (final t in OfficialDocumentType.values)
+                ChoiceChip(
+                  key: ValueKey('doc-type-${t.code}'),
+                  label: Text(t.label),
+                  selected: _docType == t,
+                  onSelected: (_) {
+                    setState(() {
+                      _docType = t;
+                      _ocrResult = null;
+                    });
+                    if (_docFrontBytes != null && _docBackBytes != null) {
+                      _runForensicDocumentOcrValidation();
+                    }
+                  },
+                ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final t in OfficialDocumentType.values)
-              ChoiceChip(
-                key: ValueKey('doc-type-${t.code}'),
-                label: Text(t.label),
-                selected: _docType == t,
-                onSelected: (_) {
-                  setState(() {
-                    _docType = t;
-                    _ocrResult = null;
-                  });
-                  if (_docFrontBytes != null && _docBackBytes != null) {
-                    _runForensicDocumentOcrValidation();
-                  }
-                },
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpace.s16),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: _DocumentCaptureCard(
@@ -1828,7 +1848,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 onTap: () => _captureDocumentSide(isFront: true),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpace.s12),
             Expanded(
               child: _DocumentCaptureCard(
                 key: const ValueKey('capture-doc-back'),
@@ -1841,22 +1861,16 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           ],
         ),
         if (_analyzingOcr) ...[
-          const SizedBox(height: 16),
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 8),
-                  Text('Verificando autenticidade forense e transcrevendo OCR...'),
-                ],
-              ),
+          const SizedBox(height: AppSpace.s16),
+          const Padding(
+            padding: EdgeInsets.all(AppSpace.s12),
+            child: AppLoading(
+              message: 'Verificando autenticidade forense e transcrevendo OCR...',
             ),
           ),
         ],
         if (_ocrResult != null) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: AppSpace.s20),
           _OcrTranscribedSummaryCard(
             ocr: _ocrResult!,
             typedName: _name.text.trim(),
@@ -1872,17 +1886,21 @@ class _OvalBiometricGuidePainter extends CustomPainter {
   const _OvalBiometricGuidePainter({
     required this.hasFace,
     required this.isCentered,
+    required this.activeColor,
+    required this.idleColor,
   });
 
   final bool hasFace;
   final bool isCentered;
+  final Color activeColor;
+  final Color idleColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.6
-      ..color = (hasFace && isCentered ? const Color(0xFF10B981) : Colors.white)
+      ..color = (hasFace && isCentered ? activeColor : idleColor)
           .withValues(alpha: 0.45);
 
     final insetRect = Rect.fromLTWH(
@@ -1904,7 +1922,10 @@ class _OvalBiometricGuidePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _OvalBiometricGuidePainter oldDelegate) {
-    return oldDelegate.hasFace != hasFace || oldDelegate.isCentered != isCentered;
+    return oldDelegate.hasFace != hasFace ||
+        oldDelegate.isCentered != isCentered ||
+        oldDelegate.activeColor != activeColor ||
+        oldDelegate.idleColor != idleColor;
   }
 }
 
@@ -2148,6 +2169,23 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
 
   @override
   Widget build(BuildContext context) {
+    final darkTk = AppTokens.dark.forAccent(
+      accent: AppTokens.dark.clientAccent,
+      accentInk: AppTokens.dark.clientAccentInk,
+      accentSoft: AppTokens.dark.clientSoft,
+    );
+    final baseTheme = Theme.of(context);
+    final scannerTheme = baseTheme.copyWith(
+      brightness: Brightness.dark,
+      colorScheme: ColorScheme.dark(
+        primary: darkTk.accent,
+        onPrimary: darkTk.onAccent,
+        surface: darkTk.surface,
+        onSurface: darkTk.text,
+      ),
+      extensions: <ThemeExtension<dynamic>>[darkTk],
+    );
+
     final sharpEnough = _liveSharpness >= 95.0;
     final sideTitle = widget.isFront
         ? '1. FRENTE DO DOCUMENTO (${widget.documentType.code})'
@@ -2156,243 +2194,184 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         ? 'Encaixe a FRENTE (com sua Foto 3×4 e Nome) dentro do retângulo abaixo'
         : 'Encaixe o VERSO (com QR Code e CPF) dentro do retângulo abaixo';
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // 1. Preview da câmera traseira ao vivo
-            if (_controller != null && _controller!.value.isInitialized)
-              Center(
-                child: CameraPreview(_controller!),
-              )
-            else if (_initializing)
-              const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: Colors.white),
-                    SizedBox(height: 12),
-                    Text(
-                      'Abrindo câmera traseira com moldura guiada...',
-                      style: TextStyle(color: Colors.white),
+    return Theme(
+      data: scannerTheme,
+      child: Scaffold(
+        backgroundColor: darkTk.background,
+        body: SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Preview da câmera traseira ao vivo
+              if (_controller != null && _controller!.value.isInitialized)
+                Center(
+                  child: CameraPreview(_controller!),
+                )
+              else if (_initializing)
+                const AppLoading(
+                  message: 'Abrindo câmera traseira com moldura guiada...',
+                )
+              else
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpace.s24),
+                    child: Text(
+                      _errorMessage ?? 'Câmera indisponível.',
+                      textAlign: TextAlign.center,
+                      style: AppType.body.copyWith(color: darkTk.text),
                     ),
-                  ],
+                  ),
                 ),
-              )
-            else
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _errorMessage ?? 'Câmera indisponível.',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
+
+              // 2. Máscara escura semi-transparente com recorte retangular (120 FPS RepaintBoundary)
+              RepaintBoundary(
+                child: IgnorePointer(
+                  child: CustomPaint(
+                    painter: DocumentScannerOverlayPainter(
+                      isFront: widget.isFront,
+                      isVertical: _isVerticalOrientation,
+                      isSharpEnough: sharpEnough,
+                      scrimColor: darkTk.scrim,
+                      sharpColor: darkTk.success,
+                      accentColor: darkTk.accent,
+                      guideColor: darkTk.text,
+                    ),
                   ),
                 ),
               ),
 
-            // 2. Máscara escura semi-transparente com recorte retangular (120 FPS RepaintBoundary)
-            RepaintBoundary(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: DocumentScannerOverlayPainter(
-                    isFront: widget.isFront,
-                    isVertical: _isVerticalOrientation,
-                    isSharpEnough: sharpEnough,
-                  ),
-                ),
-              ),
-            ),
-
-            // 3. Barra superior: Fechar + Título + Alternar Orientação (Horizontal / Vertical)
-            Positioned(
-              top: 12,
-              left: 14,
-              right: 14,
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Material(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        shape: const CircleBorder(),
-                        child: IconButton(
-                          icon: const Icon(Icons.close_rounded, color: Colors.white),
-                          onPressed: () => Navigator.of(context).pop(),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
+              // 3. Barra superior: Fechar + Título + Alternar Orientação (Horizontal / Vertical)
+              Positioned(
+                top: AppSpace.s12,
+                left: AppSpace.s16,
+                right: AppSpace.s16,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        DecoratedBox(
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.72),
-                            borderRadius: BorderRadius.circular(14),
+                            color: darkTk.scrim,
+                            shape: BoxShape.circle,
                           ),
-                          child: Column(
-                            children: [
-                              Text(
-                                sideTitle,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                sideHint,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
+                          child: AppIconButton(
+                            icon: Icons.close_rounded,
+                            tooltip: 'Fechar',
+                            color: darkTk.text,
+                            onPressed: () => Navigator.of(context).pop(),
                           ),
                         ),
-                      ),
-                      if (_cameras.length > 1) ...[
-                        const SizedBox(width: 8),
-                        Material(
-                          color: Colors.black.withValues(alpha: 0.65),
-                          shape: const CircleBorder(),
-                          child: IconButton(
-                            tooltip: 'Trocar câmera',
-                            icon: const Icon(
-                              Icons.cameraswitch_rounded,
-                              color: Colors.white,
+                        const SizedBox(width: AppSpace.s12),
+                        Expanded(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: darkTk.scrim,
+                              borderRadius: BorderRadius.circular(
+                                AppGeometry.fieldRadius,
+                              ),
                             ),
-                            onPressed: () => _initRearCamera(switchLens: true),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Botão de alternância entre Moldura Horizontal (Deitada) e Vertical (Em pé)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SegmentedButton<bool>(
-                        style: ButtonStyle(
-                          backgroundColor: WidgetStateProperty.resolveWith(
-                            (states) => states.contains(WidgetState.selected)
-                                ? const Color(0xFFFF6D00)
-                                : Colors.black.withValues(alpha: 0.70),
-                          ),
-                          foregroundColor: const WidgetStatePropertyAll(Colors.white),
-                        ),
-                        segments: const [
-                          ButtonSegment<bool>(
-                            value: false,
-                            icon: Icon(Icons.crop_landscape_rounded, size: 18),
-                            label: Text(
-                              'Horizontal (Deitada)',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpace.s12,
+                                vertical: AppSpace.s8,
+                              ),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    sideTitle,
+                                    textAlign: TextAlign.center,
+                                    style: AppType.bodyStrong.copyWith(
+                                      color: darkTk.text,
+                                    ),
+                                  ),
+                                  const SizedBox(height: AppSpace.s2),
+                                  Text(
+                                    sideHint,
+                                    textAlign: TextAlign.center,
+                                    style: AppType.caption.copyWith(
+                                      color: darkTk.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          ButtonSegment<bool>(
-                            value: true,
-                            icon: Icon(Icons.crop_portrait_rounded, size: 18),
-                            label: Text(
-                              'Vertical (Em pé)',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                        if (_cameras.length > 1) ...[
+                          const SizedBox(width: AppSpace.s8),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: darkTk.scrim,
+                              shape: BoxShape.circle,
+                            ),
+                            child: AppIconButton(
+                              tooltip: 'Trocar câmera',
+                              icon: Icons.cameraswitch_rounded,
+                              color: darkTk.text,
+                              onPressed: () => _initRearCamera(switchLens: true),
                             ),
                           ),
                         ],
-                        selected: {_isVerticalOrientation},
-                        onSelectionChanged: (s) {
-                          setState(() => _isVerticalOrientation = s.first);
-                        },
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.s12),
+                    // Botão de alternância entre Moldura Horizontal (Deitada) e Vertical (Em pé)
+                    AppSegmented<bool>(
+                      segments: const [
+                        AppSegment<bool>(
+                          value: false,
+                          icon: Icons.crop_landscape_rounded,
+                          label: 'Horizontal (Deitada)',
+                        ),
+                        AppSegment<bool>(
+                          value: true,
+                          icon: Icons.crop_portrait_rounded,
+                          label: 'Vertical (Em pé)',
+                        ),
+                      ],
+                      selected: _isVerticalOrientation,
+                      onChanged: (v) => setState(() => _isVerticalOrientation = v),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // 4. Rodapé: Status de nitidez + Botão de disparo com recorte automático de ROI
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 20,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: (sharpEnough
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFFFF6D00))
-                          .withValues(alpha: 0.90),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
+              // 4. Rodapé: Status de nitidez + Botão de disparo com recorte automático de ROI
+              Positioned(
+                left: AppSpace.s20,
+                right: AppSpace.s20,
+                bottom: AppSpace.s20,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppStatusChip(
                       sharpEnough
                           ? 'Foco e Nitidez Ideais (Recorte automático da moldura ativo)'
                           : 'Aproxime o documento da moldura retangular para focar',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
+                      tone: sharpEnough ? AppTone.success : AppTone.accent,
+                      icon: sharpEnough
+                          ? Icons.center_focus_strong_rounded
+                          : Icons.crop_free_rounded,
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: FilledButton.icon(
+                    const SizedBox(height: AppSpace.s16),
+                    AppButton(
                       key: const ValueKey('btn-capture-guided-document'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF6D00),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
+                      loading: _capturing,
+                      icon: Icons.camera_alt_rounded,
+                      label: _capturing
+                          ? 'Recortando Documento na Moldura...'
+                          : (widget.isFront
+                              ? 'Capturar Frente do Documento'
+                              : 'Capturar Verso do Documento'),
                       onPressed: _capturing || _initializing
                           ? null
                           : _captureAndCropDocument,
-                      icon: _capturing
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.camera_alt_rounded, size: 24),
-                      label: Text(
-                        _capturing
-                            ? 'Recortando Documento na Moldura...'
-                            : (widget.isFront
-                                ? 'Capturar Frente do Documento'
-                                : 'Capturar Verso do Documento'),
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -2407,14 +2386,28 @@ class DocumentScannerOverlayPainter extends CustomPainter {
     required this.isFront,
     required this.isVertical,
     required this.isSharpEnough,
+    this.scrimColor,
+    this.sharpColor,
+    this.accentColor,
+    this.guideColor,
   });
 
   final bool isFront;
   final bool isVertical;
   final bool isSharpEnough;
+  final Color? scrimColor;
+  final Color? sharpColor;
+  final Color? accentColor;
+  final Color? guideColor;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final dark = AppTokens.dark;
+    final resolvedScrim = scrimColor ?? dark.scrim;
+    final resolvedSharp = sharpColor ?? dark.success;
+    final resolvedAccent = accentColor ?? dark.clientAccent;
+    final resolvedGuide = guideColor ?? dark.text;
+
     // Calcula o retângulo central na proporção ISO/IEC 7810 ID-1 (1.5858)
     const isoRatio = 85.60 / 53.98;
     final double rectWidth;
@@ -2447,27 +2440,25 @@ class DocumentScannerOverlayPainter extends CustomPainter {
 
     canvas.drawPath(
       maskPath,
-      Paint()..color = Colors.black.withValues(alpha: 0.68),
+      Paint()..color = resolvedScrim,
     );
 
-    // 2. Borda do retângulo + Cantoneiras em L (Verde #10B981 ou Laranja #FF6D00)
-    final accentColor = isSharpEnough
-        ? const Color(0xFF10B981)
-        : const Color(0xFFFF6D00);
+    // 2. Borda do retângulo + Cantoneiras em L (token de sucesso ou acento)
+    final cornerColor = isSharpEnough ? resolvedSharp : resolvedAccent;
 
     canvas.drawRRect(
       cutoutRRect,
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.0
-        ..color = Colors.white.withValues(alpha: 0.65),
+        ..color = resolvedGuide.withValues(alpha: 0.65),
     );
 
     final cornerPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.5
       ..strokeCap = StrokeCap.round
-      ..color = accentColor;
+      ..color = cornerColor;
 
     const cornerLen = 28.0;
     final l = cutoutRect.left;
@@ -2492,7 +2483,7 @@ class DocumentScannerOverlayPainter extends CustomPainter {
     final guidePaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.4
-      ..color = Colors.white.withValues(alpha: 0.55);
+      ..color = resolvedGuide.withValues(alpha: 0.55);
 
     if (isFront) {
       final portraitRect = isVertical
@@ -2530,7 +2521,11 @@ class DocumentScannerOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant DocumentScannerOverlayPainter oldDelegate) {
     return oldDelegate.isFront != isFront ||
         oldDelegate.isVertical != isVertical ||
-        oldDelegate.isSharpEnough != isSharpEnough;
+        oldDelegate.isSharpEnough != isSharpEnough ||
+        oldDelegate.scrimColor != scrimColor ||
+        oldDelegate.sharpColor != sharpColor ||
+        oldDelegate.accentColor != accentColor ||
+        oldDelegate.guideColor != guideColor;
   }
 }
 
@@ -2547,21 +2542,22 @@ class _LivenessChallengeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.s4),
       child: Row(
         children: [
           Icon(
-            completed ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+            completed
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
             size: 18,
-            color: completed ? tk.success : tk.textMuted,
+            color: completed ? tk.successInk : tk.textMuted,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpace.s8),
           Expanded(
             child: Text(
               label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: completed ? FontWeight.w800 : FontWeight.w500,
+              style: AppType.bodySm.copyWith(
+                fontWeight: completed ? FontWeight.w600 : FontWeight.w400,
                 color: completed ? tk.text : tk.textMuted,
               ),
             ),
@@ -2590,57 +2586,48 @@ class _DocumentCaptureCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final hasPhoto = imageBytes != null && imageBytes!.isNotEmpty;
-    return InkWell(
+    return AppCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: hasPhoto ? tk.success.withValues(alpha: 0.08) : tk.card,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: hasPhoto ? tk.success : tk.border,
-            width: hasPhoto ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            if (hasPhoto)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: SizedBox(
-                  height: 78,
-                  width: double.infinity,
-                  child: Image.memory(
-                    imageBytes!,
-                    fit: BoxFit.cover,
-                  ),
+      variant: hasPhoto ? AppCardVariant.tonal : AppCardVariant.outlined,
+      color: hasPhoto ? tk.successSoft : null,
+      borderColor: hasPhoto ? tk.success : tk.border,
+      padding: const EdgeInsets.all(AppSpace.s12),
+      child: Column(
+        children: [
+          if (hasPhoto)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+              child: SizedBox(
+                height: 78,
+                width: double.infinity,
+                child: Image.memory(
+                  imageBytes!,
+                  fit: BoxFit.cover,
                 ),
-              )
-            else
-              Icon(
-                Icons.document_scanner_rounded,
-                size: 36,
-                color: tk.clientAccent,
               ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
+            )
+          else
+            Icon(
+              Icons.document_scanner_rounded,
+              size: 36,
+              color: tk.accentInk,
             ),
-            const SizedBox(height: 4),
-            Text(
-              hasPhoto ? 'Imagem nítida capturada • Toque p/ refazer' : subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: hasPhoto ? tk.success : tk.textMuted,
-                fontWeight: hasPhoto ? FontWeight.w700 : FontWeight.w500,
-              ),
+          const SizedBox(height: AppSpace.s8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: AppType.bodyStrong.copyWith(color: tk.text),
+          ),
+          const SizedBox(height: AppSpace.s4),
+          Text(
+            hasPhoto ? 'Imagem nítida capturada • Toque p/ refazer' : subtitle,
+            textAlign: TextAlign.center,
+            style: AppType.caption.copyWith(
+              color: hasPhoto ? tk.successInk : tk.textMuted,
+              fontWeight: hasPhoto ? FontWeight.w700 : FontWeight.w500,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2681,187 +2668,141 @@ class _OcrTranscribedSummaryCardState extends State<_OcrTranscribedSummaryCard> 
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: Container(
+        constraints: const BoxConstraints(maxWidth: AppGeometry.phoneColumnWidth),
+        child: AppCard(
           key: const ValueKey('ocr-transcribed-card'),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: tk.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: tk.success, width: 2.0),
-          ),
+          variant: AppCardVariant.elevated,
+          borderColor: tk.success,
+          padding: const EdgeInsets.all(AppSpace.card),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(Icons.verified_rounded, color: tk.success, size: 24),
-                  const SizedBox(width: 8),
-                  const Expanded(
+                  Icon(Icons.verified_rounded, color: tk.successInk, size: 24),
+                  const SizedBox(width: AppSpace.s8),
+                  Expanded(
                     child: Text(
                       'Dados Transcritos Automaticamente do Documento (OCR)',
-                      style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                      style: AppType.titleSm.copyWith(color: tk.text),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpace.s4),
               Text(
                 'Autenticidade física e biométrica homologada • Pronto para concluir seu cadastro.',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: tk.success,
+                style: AppType.caption.copyWith(
+                  color: tk.successInk,
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const Divider(height: 20),
-              _OcrFieldRow('Nome Civil Confirmado', ocr.extractedFullName),
+              const Divider(height: AppSpace.s20),
+              AppInfoRow(
+                label: 'Nome Civil Confirmado',
+                value: ocr.extractedFullName,
+                strong: true,
+              ),
               if (typedName.isNotEmpty)
-                _OcrFieldRow(
-                  'Nome na Etapa 1',
-                  '$typedName (${namePct.toStringAsFixed(0)}% compatível com o documento)',
+                AppInfoRow(
+                  label: 'Nome na Etapa 1',
+                  valueWidget: Text(
+                    '$typedName (${namePct.toStringAsFixed(0)}% compatível com o documento)',
+                    textAlign: context.layout.isLargeText
+                        ? TextAlign.start
+                        : TextAlign.end,
+                    style: AppType.tabular(AppType.bodyStrong)
+                        .copyWith(color: tk.text),
+                  ),
                 ),
-              _OcrFieldRow(
-                'CPF do Titular',
-                '$displayedCpf (Confirmado)',
-                trailing: InkWell(
-                  key: const ValueKey('toggle-cpf-reveal'),
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: () => setState(() => _revealCpf = !_revealCpf),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
+              AppInfoRow(
+                label: 'CPF do Titular',
+                valueWidget: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '$displayedCpf (Confirmado)',
+                        textAlign: context.layout.isLargeText
+                            ? TextAlign.start
+                            : TextAlign.end,
+                        style: AppType.tabular(AppType.bodyStrong)
+                            .copyWith(color: tk.text),
+                      ),
                     ),
-                    child: Icon(
-                      _revealCpf
+                    AppIconButton(
+                      key: const ValueKey('toggle-cpf-reveal'),
+                      tooltip: _revealCpf ? 'Ocultar CPF' : 'Mostrar CPF',
+                      icon: _revealCpf
                           ? Icons.visibility_off_outlined
                           : Icons.visibility_outlined,
                       size: 18,
-                      color: tk.clientAccent,
+                      color: tk.accentInk,
+                      onPressed: () => setState(() => _revealCpf = !_revealCpf),
                     ),
-                  ),
+                  ],
                 ),
               ),
-              _OcrFieldRow(
-                'Tipo de Documento',
-                '${ocr.documentType.code} • Nº ${ocr.extractedDocumentNumber}',
+              AppInfoRow(
+                label: 'Tipo de Documento',
+                valueWidget: Text(
+                  '${ocr.documentType.code} • Nº ${ocr.extractedDocumentNumber}',
+                  textAlign: context.layout.isLargeText
+                      ? TextAlign.start
+                      : TextAlign.end,
+                  style: AppType.tabular(AppType.bodyStrong)
+                      .copyWith(color: tk.text),
+                ),
               ),
-              _OcrFieldRow('Data de Nascimento', ocr.extractedBirthDateFormatted),
-              _OcrFieldRow(
-                'Órgão Emissor',
-                KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
+              AppInfoRow(
+                label: 'Data de Nascimento',
+                valueWidget: Text(
+                  ocr.extractedBirthDateFormatted,
+                  textAlign: context.layout.isLargeText
+                      ? TextAlign.start
+                      : TextAlign.end,
+                  style: AppType.tabular(AppType.bodyStrong)
+                      .copyWith(color: tk.text),
+                ),
+              ),
+              AppInfoRow(
+                label: 'Órgão Emissor',
+                value: KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
                   ocr.extractedIssuingAuthority,
                 ),
+                strong: true,
               ),
-              const Divider(height: 20),
+              const Divider(height: AppSpace.s20),
               Wrap(
-                spacing: 8,
-                runSpacing: 6,
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s8,
                 children: [
-                  StatusChip(
+                  AppStatusChip(
                     'Identidade Protegida (${facePct.toStringAsFixed(1)}%)',
-                    color: tk.success,
+                    tone: AppTone.success,
                   ),
-                  StatusChip(
+                  const AppStatusChip(
                     'Leitura Óptica Nítida e Sem Reflexos',
-                    color: tk.success,
+                    tone: AppTone.success,
                   ),
-                  StatusChip(
+                  const AppStatusChip(
                     'Frente e Verso Autenticados',
-                    color: tk.success,
+                    tone: AppTone.success,
                   ),
-                  StatusChip(
+                  AppStatusChip(
                     'Verificação Local Homologada (${namePct.toStringAsFixed(0)}%)',
-                    color: tk.success,
+                    tone: AppTone.success,
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.s8),
               Text(
                 'Selo de Identidade Protegida: ${ocr.forensicVerificationSeal}',
-                style: TextStyle(fontSize: 11, color: tk.textMuted),
+                style: AppType.caption.copyWith(color: tk.textMuted),
               ),
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _OcrFieldRow extends StatelessWidget {
-  const _OcrFieldRow(this.label, this.value, {this.trailing});
-
-  final String label;
-  final String value;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 290) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: context.tk.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        value,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    ?trailing,
-                  ],
-                ),
-              ],
-            );
-          }
-          final labelWidth = math.min(138.0, constraints.maxWidth * 0.42);
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: labelWidth,
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: context.tk.textMuted,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  value,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
-          );
-        },
       ),
     );
   }
