@@ -12,12 +12,18 @@ const int kHomeCategoryCount = 11;
 
 double _categoryGridAspectRatio(BuildContext context) {
   final layout = context.layout;
-  final base = layout.isCompact ? 0.78 : (layout.isWide ? 0.96 : 0.88);
+  final cols = _categoryColumns(context);
+  final base = cols == 2 ? 1.12 : (layout.isWide ? 0.96 : 0.88);
   final extraScale = (layout.textScale - 1.0).clamp(0.0, 0.6);
-  return (base - extraScale * 0.24).clamp(0.60, 0.98);
+  return (base - extraScale * 0.24).clamp(0.68, 1.15);
 }
 
-int _categoryColumns(BuildContext context) => context.layout.isWide ? 4 : 3;
+int _categoryColumns(BuildContext context) {
+  final layout = context.layout;
+  if (layout.isCompact || (!layout.isWide && layout.isLargeText)) return 2;
+  if (layout.isWide) return 4;
+  return 3;
+}
 
 /// Categorias cujo nome OU sinônimo contém [query] ("eletricista" → Elétrica).
 /// Passagem única sobre as categorias + `Set` com os slugs encontrados nos sinônimos.
@@ -101,13 +107,10 @@ class CategoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final trimmed = category.name.trim();
-    final words = trimmed.split(RegExp(r'\s+'));
-    final isSingleWord = words.length <= 1;
     final labelStyle = AppType.caption.copyWith(
       fontWeight: FontWeight.w700,
-      letterSpacing: -0.2,
-      height: 1.15,
+      letterSpacing: -0.1,
+      height: 1.2,
       color: tk.text,
     );
 
@@ -118,7 +121,7 @@ class CategoryTile extends StatelessWidget {
       semanticLabel: 'Categoria ${category.name}',
       excludeSemantics: true,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s2, vertical: AppSpace.s2),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s4, vertical: AppSpace.s2),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -128,27 +131,13 @@ class CategoryTile extends StatelessWidget {
             ),
             const SizedBox(height: AppSpace.s8 - 2),
             Flexible(
-              child: isSingleWord
-                  ? SizedBox(
-                      width: double.infinity,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          category.name,
-                          maxLines: 1,
-                          softWrap: false,
-                          textAlign: TextAlign.center,
-                          style: labelStyle,
-                        ),
-                      ),
-                    )
-                  : Text(
-                      category.name,
-                      maxLines: 2,
-                      softWrap: true,
-                      textAlign: TextAlign.center,
-                      style: labelStyle,
-                    ),
+              child: Text(
+                category.name,
+                maxLines: 2,
+                softWrap: true,
+                textAlign: TextAlign.center,
+                style: labelStyle,
+              ),
             ),
           ],
         ),

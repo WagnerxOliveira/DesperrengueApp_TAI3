@@ -196,7 +196,7 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
                                       Text(
                                         _body,
                                         textAlign: TextAlign.center,
-                                        style: AppType.caption.copyWith(color: tk.textMuted),
+                                        style: AppType.bodySm.copyWith(color: tk.textMuted),
                                       ),
                                     ],
                                   ),
@@ -213,7 +213,7 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
                 Text(
                   'Acompanhe o andamento em Meus Pedidos',
                   textAlign: TextAlign.center,
-                  style: AppType.caption.copyWith(color: AppTokens.onColor(tk.scrim)),
+                  style: AppType.bodySm.copyWith(color: AppTokens.onColor(tk.scrim)),
                 ),
                 const SizedBox(height: AppSpace.s12),
                 AppButton(
@@ -221,7 +221,6 @@ class _PublishedOrderOverlayState extends State<PublishedOrderOverlay>
                   label: 'Fechar',
                   icon: Icons.close_rounded,
                   expand: false,
-                  compact: true,
                   onPressed: () => Navigator.of(context).pop(),
                 ),
               ],

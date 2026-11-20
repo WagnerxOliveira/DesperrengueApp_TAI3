@@ -399,7 +399,6 @@ class _AddressFormState extends State<AddressForm> {
       child: AppButton(
         key: const Key('pin-confirm'),
         variant: AppButtonVariant.secondary,
-        compact: true,
         loading: _locatingPin,
         icon: Icons.pin_drop_outlined,
         label: _locatingPin ? 'Localizando o endereço...' : 'Confirmar o ponto exato no mapa',
@@ -459,7 +458,6 @@ class _AddressFormState extends State<AddressForm> {
           title: 'Acesso rápido',
           child: AppButton(
             variant: AppButtonVariant.secondary,
-            compact: true,
             loading: _loadingGps,
             icon: Icons.my_location_rounded,
             label: _loadingGps ? 'Buscando seu endereço...' : 'Usar minha localização atual',
@@ -561,12 +559,16 @@ class _AddressFormState extends State<AddressForm> {
           ),
         _pinSection(),
         const SizedBox(height: AppSpace.s12),
-        AppTextField(
-          controller: _reference,
-          maxLines: 3,
-          minLines: 2,
-          label: 'Ponto de referência / instruções de acesso (opcional)',
-          hint: 'Ex: portão de madeira ao lado da padaria; avise o porteiro.',
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: AppGeometry.inputHeight),
+          child: AppTextField(
+            controller: _reference,
+            maxLines: 4,
+            minLines: 3,
+            label: 'Ponto de referência (opcional)',
+            hint: 'Ex: portão de madeira ao lado da padaria; avise o porteiro.',
+            helper: 'Instruções de acesso para facilitar a chegada do profissional.',
+          ),
         ),
       ],
     );

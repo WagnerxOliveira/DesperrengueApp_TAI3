@@ -199,20 +199,11 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
                       ])
                         Padding(
                           padding: const EdgeInsets.only(right: AppSpace.s8),
-                          child: ChoiceChip(
-                            avatar: Icon(
-                              icon,
-                              size: 16,
-                              color: _sort == s ? tk.onAccent : tk.accentInk,
-                            ),
-                            label: Text(label),
+                          child: _SortFilterPill(
+                            label: label,
+                            icon: icon,
                             selected: _sort == s,
-                            onSelected: (_) => setState(() => _sort = s),
-                            labelStyle: AppType.bodySm.copyWith(
-                              color: _sort == s ? tk.onAccent : tk.text,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            showCheckmark: false,
+                            onTap: () => setState(() => _sort = s),
                           ),
                         ),
                     ],
@@ -269,6 +260,60 @@ class _ProviderSearchScreenState extends State<ProviderSearchScreen> {
             child: content,
           );
         },
+      ),
+    );
+  }
+}
+
+class _SortFilterPill extends StatelessWidget {
+  const _SortFilterPill({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final bg = selected ? tk.accent : tk.surface;
+    final fg = selected ? tk.onAccent : tk.text;
+    final iconColor = selected ? tk.onAccent : tk.accentInk;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: AppPressable(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+        isButton: false,
+        child: AnimatedContainer(
+          duration: AppMotion.d(context, AppMotion.fadeShort),
+          curve: AppMotion.fadeCurve,
+          constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: AppSpace.s8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+            border: Border.all(color: selected ? tk.accent : tk.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: iconColor),
+              const SizedBox(width: AppSpace.s8 - 2),
+              Text(
+                label,
+                style: AppType.bodySm.copyWith(color: fg, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

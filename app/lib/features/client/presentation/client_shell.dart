@@ -443,16 +443,18 @@ class _PulseDot extends StatefulWidget {
 }
 
 class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 1));
+  late final AnimationController _c = AnimationController(vsync: this, duration: AppMotion.success);
+  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
     if (AppMotion.reduced(context)) {
-      if (_c.isAnimating) _c.stop();
       _c.value = 1.0;
-    } else if (!_c.isAnimating) {
-      _c.repeat(reverse: true);
+    } else {
+      _c.forward(from: 0.0);
     }
   }
 
@@ -465,7 +467,9 @@ class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) => RepaintBoundary(
         child: FadeTransition(
-          opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
+          opacity: Tween(begin: 0.45, end: 1.0).animate(
+            CurvedAnimation(parent: _c, curve: AppMotion.fadeCurve),
+          ),
           child: Container(
             width: 12,
             height: 12,
