@@ -1,6 +1,6 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,9 +9,8 @@ import '../../../core/models/client_achievements.dart';
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/profile_and_achievement_emblems.dart';
-import '../../../core/ui/widgets.dart';
-import '../../../core/ui/app_tokens.dart';
 
 export '../../../core/ui/profile_and_achievement_emblems.dart';
 
@@ -48,19 +47,41 @@ String _resolveTrackCodeFromIcon(IconData icon) {
   return 'services';
 }
 
-/// Paleta de cada metal: (topo do degradê, base do degradê, cor do ícone).
-({Color top, Color bottom, Color ink}) tierPalette(AchievementTier t) => switch (t) {
-      AchievementTier.bronze => (top: const Color(0xFFE2AE78), bottom: const Color(0xFF9A5B2B), ink: const Color(0xFF6E3C17)),
-      AchievementTier.silver => (top: const Color(0xFFEDF0F5), bottom: const Color(0xFF9AA3B2), ink: const Color(0xFF515C6D)),
-      AchievementTier.gold => (top: const Color(0xFFFFE07A), bottom: const Color(0xFFD59A0A), ink: const Color(0xFF7A5300)),
-      AchievementTier.platinum => (top: const Color(0xFFD7F1F8), bottom: const Color(0xFF63AFC9), ink: const Color(0xFF245F76)),
-      AchievementTier.diamond => (top: const Color(0xFFB4EAFF), bottom: const Color(0xFF3F86FF), ink: const Color(0xFF1B49B3)),
-    };
+/// Paleta de cada metal: (topo do degradê, base do degradê, cor do ícone), derivada dos tokens.
+({Color top, Color bottom, Color ink}) tierPalette(AchievementTier t) {
+  const tk = AppTokens.light;
+  return switch (t) {
+    AchievementTier.bronze => (
+        top: Color.lerp(tk.clientAccent, tk.card, 0.35)!,
+        bottom: tk.warningInk,
+        ink: tk.clientAccentInk,
+      ),
+    AchievementTier.silver => (
+        top: tk.surface,
+        bottom: tk.textMuted,
+        ink: tk.text,
+      ),
+    AchievementTier.gold => (
+        top: tk.warningSoft,
+        bottom: tk.star,
+        ink: tk.warningInk,
+      ),
+    AchievementTier.platinum => (
+        top: tk.securitySoft,
+        bottom: tk.security,
+        ink: tk.brand,
+      ),
+    AchievementTier.diamond => (
+        top: tk.infoSoft,
+        bottom: tk.info,
+        ink: tk.providerAccent,
+      ),
+  };
+}
 
 /// Medalha vetorial forjada nativamente via GPU (`AchievementMedalForge`).
 ///
-/// - **Bloqueada (`locked: true`)**: Padrão *Cinza Claro Prateado* (`#CBD5E1` sobre `#1E293B`
-///   com aro `#94A3B8` e cadeado `#E2E8F0`), despertando o Efeito Zeigarnik.
+/// - **Bloqueada (`locked: true`)**: Padrão *Cinza Claro Prateado*, despertando o Efeito Zeigarnik.
 /// - **Desbloqueada (`locked: false`)**: Medalha colorida viva com evolução geométrica
 ///   por nível (`Bronze` -> `Prata Viva` -> `Ouro com Louros` -> `Platina Octogonal` -> `Diamante Coroado`).
 class MedalBadge extends StatelessWidget {
@@ -140,20 +161,18 @@ class MedalTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.tk.isDark;
-    final labelColor = locked
-        ? (isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B))
-        : context.tk.text;
+    final tk = context.tk;
+    final labelColor = locked ? tk.textMuted : tk.text;
     return Semantics(
       button: onTap != null,
       label: '$title, ${locked ? "bloqueada" : "desbloqueada"}',
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
         onTap: onTap,
         child: SizedBox(
           width: width,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.s2),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -165,17 +184,16 @@ class MedalTile extends StatelessWidget {
                   size: size,
                   locked: locked,
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpace.s8),
                 Flexible(
                   child: Text(
                     title,
                     maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                    overflow: TextOverflow.fade,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: locked ? FontWeight.w600 : FontWeight.w800,
-                      height: 1.15,
+                    style: AppType.caption.copyWith(
+                      fontWeight: locked ? FontWeight.w500 : FontWeight.w700,
+                      height: 1.2,
                       color: labelColor,
                     ),
                   ),
@@ -213,7 +231,7 @@ class AchievementTile extends StatelessWidget {
       );
 }
 
-/// Carrossel horizontal com suavização lateral (`ShaderMask` de 16px) para nunca cortar
+/// Carrossel horizontal com suavização lateral (`ShaderMask`) para nunca cortar
 /// medalhas ou sílabas de forma brusca nas extremidades.
 class _EdgeFadeMedalCarousel extends StatelessWidget {
   const _EdgeFadeMedalCarousel({required this.height, required this.child});
@@ -223,22 +241,20 @@ class _EdgeFadeMedalCarousel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.45);
-    final effectiveHeight = height + ((textScale - 1.0) * 68.0).clamp(0.0, 34.0);
+    final tk = context.tk;
+    final textScale = MediaQuery.textScalerOf(context).scale(1.0).clamp(1.0, 1.5);
+    final effectiveHeight = height + ((textScale - 1.0) * 84.0).clamp(0.0, 48.0);
+    final opaque = tk.background;
+    final clear = opaque.withValues(alpha: 0.0);
     return SizedBox(
       height: effectiveHeight,
       child: ShaderMask(
         blendMode: BlendMode.dstIn,
-        shaderCallback: (rect) => const LinearGradient(
+        shaderCallback: (rect) => LinearGradient(
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
-          colors: [
-            Color(0x00FFFFFF),
-            Color(0xFFFFFFFF),
-            Color(0xFFFFFFFF),
-            Color(0x00FFFFFF),
-          ],
-          stops: [0.0, 0.03, 0.97, 1.0],
+          colors: [clear, opaque, opaque, clear],
+          stops: const [0.0, 0.03, 0.97, 1.0],
         ).createShader(rect),
         child: child,
       ),
@@ -250,60 +266,58 @@ class _EdgeFadeMedalCarousel extends StatelessWidget {
 Future<void> showAchievementDetail(BuildContext context, Achievement a, {DateTime? unlockedAt, int? count}) {
   unawaited(HapticFeedback.selectionClick().catchError((Object _) {}));
   final unlocked = unlockedAt != null;
-  final spec = resolveAchievementTrackSpec(a.category.code);
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-    builder: (ctx) => SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AchievementMedal(achievement: a, size: 112, locked: !unlocked),
-            const SizedBox(height: 14),
-            Text(a.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 6),
-            StatusChip(
-              '${a.category.name} • ${a.tier.label} • nível ${a.level}/10',
-              color: unlocked ? spec.primaryColor : context.tk.textMuted,
-            ),
-            const SizedBox(height: 12),
-            Text(a.description, textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-            const SizedBox(height: 14),
-            if (unlocked)
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.check_circle_rounded, color: context.tk.success, size: 20),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text('Desbloqueada em ${_date(unlockedAt)}', style: TextStyle(fontWeight: FontWeight.w800, color: context.tk.successInk)),
+  return AppSheet.show<void>(
+    context,
+    builder: (ctx) {
+      final tk = ctx.tk;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AchievementMedal(achievement: a, size: 112, locked: !unlocked),
+          const SizedBox(height: AppSpace.s16),
+          Text(a.title, textAlign: TextAlign.center, style: AppType.headline.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s8),
+          AppStatusChip(
+            '${a.category.name} • ${a.tier.label} • nível ${a.level}/10',
+            tone: unlocked ? AppTone.accent : AppTone.neutral,
+          ),
+          const SizedBox(height: AppSpace.s12),
+          Text(a.description, textAlign: TextAlign.center, style: AppType.body.copyWith(color: tk.textMuted)),
+          const SizedBox(height: AppSpace.s16),
+          if (unlocked)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_rounded, color: tk.successInk, size: 20),
+                const SizedBox(width: AppSpace.s8),
+                Flexible(
+                  child: Text(
+                    'Desbloqueada em ${_date(unlockedAt)}',
+                    style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.successInk),
                   ),
-                ],
-              )
-            else if (count != null) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: LinearProgressIndicator(
-                  value: (count / a.threshold).clamp(0.0, 1.0),
-                  minHeight: 8,
-                  color: spec.primaryColor,
-                  backgroundColor: context.tk.border,
                 ),
+              ],
+            )
+          else if (count != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppSpace.s8),
+              child: LinearProgressIndicator(
+                value: (count / a.threshold).clamp(0.0, 1.0),
+                minHeight: 8,
+                color: tk.accent,
+                backgroundColor: tk.border,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Faltam ${(a.threshold - count).clamp(0, a.threshold)} para desbloquear',
-                style: const TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ] else
-              Text('Ainda não desbloqueada', style: TextStyle(fontWeight: FontWeight.w800, color: context.tk.textMuted)),
-          ],
-        ),
-      ),
-    ),
+            ),
+            const SizedBox(height: AppSpace.s8),
+            Text(
+              'Faltam ${(a.threshold - count).clamp(0, a.threshold)} para desbloquear',
+              style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.text),
+            ),
+          ] else
+            Text('Ainda não desbloqueada', style: AppType.bodyStrong.copyWith(color: tk.textMuted)),
+        ],
+      );
+    },
   );
 }
 
@@ -318,42 +332,47 @@ class AchievementsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return FutureBuilder<List<({String code, DateTime unlockedAt})>>(
       future: ProviderService().achievements(providerId),
       builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) return const SizedBox(height: 60, child: LoadingView());
+        if (snap.connectionState != ConnectionState.done) return const AppSkeletonCard(height: 96);
         final list = snap.data ?? const [];
         final progress = buildProgress(list.map((e) => e.code));
         final best = [for (final c in progress) if (c.highest != null) c.highest!]..sort((a, b) => b.level.compareTo(a.level));
         final total = list.length;
         if (total == 0) {
-          return Text('Este profissional ainda não desbloqueou conquistas.', style: TextStyle(color: context.tk.textMuted));
+          return Text(
+            'Este profissional ainda não desbloqueou conquistas.',
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
+          );
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _EdgeFadeMedalCarousel(
-              height: 128,
+              height: 136,
               child: ListView.separated(
                 physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 6),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
                 scrollDirection: Axis.horizontal,
                 itemCount: best.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
                 itemBuilder: (_, i) => AchievementTile(
                   achievement: best[i],
                   size: 58,
-                  width: 92,
+                  width: 96,
                   onTap: () => showAchievementDetail(context, best[i], unlockedAt: list.firstWhere((e) => e.code == best[i].code).unlockedAt),
                 ),
               ),
             ),
-            const SizedBox(height: 6),
-            SecondaryButton(
+            const SizedBox(height: AppSpace.s8),
+            AppButton(
               label: 'Ver todas as conquistas ($total de ${allAchievements().length})',
               icon: Icons.emoji_events_outlined,
+              variant: AppButtonVariant.secondary,
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => AchievementsScreen(providerId: providerId, providerName: providerName)),
+                AppRoute(builder: (_) => AchievementsScreen(providerId: providerId, providerName: providerName)),
               ),
             ),
           ],
@@ -396,13 +415,16 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: Text(widget.isOwner ? 'Minhas conquistas' : 'Conquistas de ${widget.providerName.split(' ').first}')),
+      appBar: AppAppBar(title: widget.isOwner ? 'Minhas conquistas' : 'Conquistas de ${widget.providerName.split(' ').first}'),
       body: FutureBuilder<({List<({String code, DateTime unlockedAt})> unlocked, Map<String, int>? counts})>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
-          if (snap.hasError) return ErrorView(message: 'Não foi possível carregar as conquistas.', onRetry: _reload);
+          if (snap.connectionState != ConnectionState.done) return const AppSkeletonList(count: 4);
+          if (snap.hasError) {
+            return AppErrorState(message: 'Não foi possível carregar as conquistas.', onRetry: _reload);
+          }
           final unlocked = snap.data!.unlocked;
           final counts = snap.data!.counts;
           final dates = {for (final u in unlocked) u.code: u.unlockedAt};
@@ -412,10 +434,10 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
           return RefreshIndicator(
             onRefresh: () async => _reload(),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+              padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s32),
               children: [
                 _Summary(unlocked: unlocked.length, total: total, last: last),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpace.s16),
                 for (final cp in progress) _CategoryCard(cp: cp, dates: dates, isOwner: widget.isOwner),
               ],
             ),
@@ -437,41 +459,43 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
     return AppCard(
+      variant: AppCardVariant.elevated,
       child: Row(
         children: [
-          SizedBox(
-            width: 78,
-            height: 78,
-            child: Stack(
-              alignment: Alignment.center,
+          AppProgressRing(
+            value: total == 0 ? 0 : unlocked / total,
+            size: 86,
+            strokeWidth: 8,
+            color: tk.accent,
+            semanticLabel: 'Conquistas desbloqueadas: $unlocked de $total',
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  width: 78,
-                  height: 78,
-                  child: CircularProgressIndicator(value: total == 0 ? 0 : unlocked / total, strokeWidth: 8, color: accent, backgroundColor: context.tk.border),
+                Text(
+                  '$unlocked',
+                  style: AppType.tabular(AppType.headline).copyWith(color: tk.text, height: 1.0),
                 ),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('$unlocked', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, height: 1)),
-                    Text('de $total', style: TextStyle(fontSize: 11, color: context.tk.textMuted)),
-                  ],
+                Text(
+                  'de $total',
+                  style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted, height: 1.1),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpace.s16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Conquistas desbloqueadas', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 4),
+                Text('Conquistas desbloqueadas', style: AppType.titleSm.copyWith(color: tk.text)),
+                const SizedBox(height: AppSpace.s4),
                 Text(
-                  (last == null && lastTitle == null) ? (emptyHint ?? 'Conclua serviços e receba avaliações para desbloquear as primeiras.') : 'Mais recente: ${last?.title ?? lastTitle}',
-                  style: TextStyle(color: context.tk.textMuted, height: 1.35, fontSize: 13),
+                  (last == null && lastTitle == null)
+                      ? (emptyHint ?? 'Conclua serviços e receba avaliações para desbloquear as primeiras.')
+                      : 'Mais recente: ${last?.title ?? lastTitle}',
+                  style: AppType.bodySm.copyWith(color: tk.textMuted),
                 ),
               ],
             ),
@@ -491,49 +515,53 @@ class _CategoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final next = cp.next;
     final progress = cp.progressToNext;
-    final spec = resolveAchievementTrackSpec(cp.category.code);
+    final hasAny = cp.unlockedLevels.isNotEmpty;
     return AppCard(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: AppSpace.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               AchievementTrackHeaderEmblem(trackCode: cp.category.code, size: 30),
-              const SizedBox(width: 10),
-              Expanded(child: Text(cp.category.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
+              const SizedBox(width: AppSpace.s12),
+              Expanded(child: Text(cp.category.name, style: AppType.titleSm.copyWith(color: tk.text))),
+              const SizedBox(width: AppSpace.s8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4),
                 decoration: BoxDecoration(
-                  color: spec.primaryColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: spec.primaryColor.withValues(alpha: 0.35)),
+                  color: hasAny ? tk.accentSoft : tk.surface,
+                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                 ),
                 child: Text(
                   '${cp.unlockedLevels.length}/${kAchievementThresholds.length}',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: spec.primaryColor),
+                  style: AppType.tabular(AppType.caption).copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: hasAny ? tk.accentInk : tk.textMuted,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           _EdgeFadeMedalCarousel(
-            height: 128,
+            height: 136,
             child: ListView.separated(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
               scrollDirection: Axis.horizontal,
               itemCount: kAchievementThresholds.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
               itemBuilder: (_, i) {
                 final a = Achievement(cp.category, kAchievementThresholds[i]);
                 final isUnlocked = cp.unlockedLevels.contains(a.threshold);
                 return AchievementTile(
                   achievement: a,
                   size: 56,
-                  width: 88,
+                  width: 92,
                   locked: !isUnlocked,
                   onTap: () => showAchievementDetail(context, a, unlockedAt: dates[a.code], count: cp.count),
                 );
@@ -541,27 +569,27 @@ class _CategoryCard extends StatelessWidget {
             ),
           ),
           if (isOwner && next != null) ...[
-            const SizedBox(height: 10),
-            Text('Próxima: ${next.title}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpace.s12),
+            Text('Próxima: ${next.title}', style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: tk.text)),
+            const SizedBox(height: AppSpace.s8),
             ClipRRect(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(AppSpace.s8),
               child: LinearProgressIndicator(
                 value: progress ?? 0,
                 minHeight: 8,
-                color: spec.primaryColor,
-                backgroundColor: context.tk.border,
+                color: tk.accent,
+                backgroundColor: tk.border,
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpace.s4),
             Text(
               cp.count == null ? '' : '${Achievement.formatCount(cp.count!)} / ${Achievement.formatCount(next.threshold)}',
-              style: TextStyle(fontSize: 12, color: context.tk.textMuted),
+              style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
             ),
           ] else if (isOwner && next == null)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text('Categoria completa!', style: TextStyle(fontWeight: FontWeight.w900, color: context.tk.successInk)),
+              padding: const EdgeInsets.only(top: AppSpace.s12),
+              child: Text('Categoria completa!', style: AppType.bodyStrong.copyWith(color: tk.successInk)),
             ),
         ],
       ),
@@ -570,21 +598,35 @@ class _CategoryCard extends StatelessWidget {
 }
 
 /// Cores do cartão "Conquista desbloqueada". Escuro: superfície #1E1E24 com rótulo
-/// âmbar #F5B041, título branco e subtítulo cinza claro; claro: superfície creme com
+/// âmbar #F5B041, título branco e subtítulo nos tokens; claro: superfície creme com
 /// rótulo âmbar escuro #8A5A00 e textos dos tokens. Todos os pares >= 4,5:1 (WCAG),
 /// verificado em `test/completion_redesign_test.dart`.
 typedef AchievementCardColors = ({Color surface, Color label, Color title, Color subtitle});
 
-AchievementCardColors achievementCardColors(AppTokens tk) => tk.isDark
-    ? (surface: const Color(0xFF1E1E24), label: const Color(0xFFF5B041), title: const Color(0xFFFFFFFF), subtitle: const Color(0xFFC4C8D0))
-    : (surface: const Color(0xFFFFF7E8), label: const Color(0xFF8A5A00), title: tk.text, subtitle: tk.textMuted);
+AchievementCardColors achievementCardColors(AppTokens tk) {
+  if (tk.isDark) {
+    const surface = Color(0xFF1E1E24);
+    return (
+      surface: surface,
+      label: const Color(0xFFF5B041),
+      title: AppTokens.onColor(surface),
+      subtitle: tk.textMuted,
+    );
+  }
+  return (
+    surface: Color.lerp(tk.warningSoft, tk.card, 0.65)!,
+    label: const Color(0xFF8A5A00),
+    title: tk.text,
+    subtitle: tk.textMuted,
+  );
+}
 
-/// Borda em degradê bronze/dourado metálico do cartão de conquista.
-const List<Color> kAchievementBorderGradient = [
-  Color(0xFFE2AE78),
-  Color(0xFFF7D774),
-  Color(0xFF9A5B2B),
-  Color(0xFFD59A0A),
+/// Borda em degradê bronze/dourado metálico do cartão de conquista, derivada dos tokens.
+final List<Color> kAchievementBorderGradient = [
+  Color.lerp(AppTokens.light.clientAccent, AppTokens.light.card, 0.35)!,
+  AppTokens.light.warning,
+  AppTokens.light.warningInk,
+  AppTokens.light.star,
 ];
 
 /// Hero de sucesso: halo suave em degradê verde-esmeralda → azul com o ícone no centro.
@@ -597,6 +639,7 @@ class SuccessHeroHalo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final core = size * 0.66;
     return SizedBox(
       width: size,
@@ -612,7 +655,7 @@ class SuccessHeroHalo extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [const Color(0xFF10B981).withValues(alpha: 0.28), const Color(0xFF3B82F6).withValues(alpha: 0.18)],
+                colors: [tk.success.withValues(alpha: 0.28), tk.info.withValues(alpha: 0.18)],
               ),
             ),
           ),
@@ -624,18 +667,22 @@ class SuccessHeroHalo extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [const Color(0xFF10B981).withValues(alpha: 0.30), const Color(0xFF3B82F6).withValues(alpha: 0.26)],
+                colors: [tk.success.withValues(alpha: 0.30), tk.info.withValues(alpha: 0.26)],
               ),
             ),
           ),
           Container(
             width: core,
             height: core,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF0E9F6E), Color(0xFF2563EB)]),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [tk.success, tk.info],
+              ),
             ),
-            child: Icon(icon, size: core * 0.58, color: Colors.white),
+            child: Icon(icon, size: core * 0.58, color: AppTokens.onColor(tk.info)),
           ),
         ],
       ),
@@ -678,7 +725,7 @@ class _AchievementUnlockedCardState extends State<AchievementUnlockedCard> with 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_started && !MediaQuery.disableAnimationsOf(context)) {
+    if (!_started && !AppMotion.reduced(context)) {
       _started = true;
       _shine.forward();
     }
@@ -695,7 +742,8 @@ class _AchievementUnlockedCardState extends State<AchievementUnlockedCard> with 
     final a = widget.achievement;
     final tk = context.tk;
     final c = achievementCardColors(tk);
-    final reduce = MediaQuery.disableAnimationsOf(context);
+    final reduce = AppMotion.reduced(context);
+    final shine = AppTokens.light.card;
 
     final medal = AnimatedBuilder(
       animation: _shine,
@@ -708,7 +756,7 @@ class _AchievementUnlockedCardState extends State<AchievementUnlockedCard> with 
           shaderCallback: (rect) => LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
-            colors: const [Color(0x00FFFFFF), Color(0xD9FFFFFF), Color(0x00FFFFFF)],
+            colors: [shine.withValues(alpha: 0.0), shine.withValues(alpha: 0.85), shine.withValues(alpha: 0.0)],
             stops: const [0.35, 0.5, 0.65],
             transform: _SlideGradient(1.4 * t - 0.7),
           ).createShader(rect),
@@ -720,26 +768,26 @@ class _AchievementUnlockedCardState extends State<AchievementUnlockedCard> with 
     final card = Container(
       padding: const EdgeInsets.all(1.6),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kAchievementBorderGradient),
-        boxShadow: tk.cardShadow(blur: 14, dy: 5),
+        borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: kAchievementBorderGradient),
+        boxShadow: tk.elevation(1),
       ),
       child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(18.4)),
+        padding: const EdgeInsets.all(AppSpace.s16),
+        decoration: BoxDecoration(color: c.surface, borderRadius: BorderRadius.circular(AppGeometry.cardRadius - 1.6)),
         child: Row(
           children: [
             medal,
-            const SizedBox(width: 14),
+            const SizedBox(width: AppSpace.s16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('CONQUISTA DESBLOQUEADA', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: c.label)),
-                  const SizedBox(height: 3),
-                  Text(a.title, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17, height: 1.2, color: c.title)),
-                  const SizedBox(height: 2),
-                  Text('${a.category.name} • Nível ${a.tier.label}', style: TextStyle(fontSize: 12.5, color: c.subtitle)),
+                  Text('CONQUISTA DESBLOQUEADA', style: AppType.overline.copyWith(color: c.label)),
+                  const SizedBox(height: AppSpace.s4),
+                  Text(a.title, style: AppType.titleSm.copyWith(color: c.title)),
+                  const SizedBox(height: AppSpace.s2),
+                  Text('${a.category.name} • Nível ${a.tier.label}', style: AppType.caption.copyWith(color: c.subtitle)),
                 ],
               ),
             ),
@@ -774,7 +822,7 @@ class NewAchievementsBanner extends StatelessWidget {
       children: [
         for (final a in achievements)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: AppSpace.s12),
             child: AchievementUnlockedCard(key: ValueKey(a.code), achievement: a),
           ),
       ],
@@ -841,13 +889,16 @@ class _ClientAchievementsScreenState extends State<ClientAchievementsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Minhas conquistas')),
+      appBar: const AppAppBar(title: 'Minhas conquistas'),
       body: FutureBuilder<ClientAchievementInput>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
-          if (snap.hasError) return ErrorView(message: 'Não foi possível carregar as conquistas.', onRetry: _reload);
+          if (snap.connectionState != ConnectionState.done) return const AppSkeletonList(count: 4);
+          if (snap.hasError) {
+            return AppErrorState(message: 'Não foi possível carregar as conquistas.', onRetry: _reload);
+          }
           final progress = computeClientAchievements(snap.data!);
           final unlocked = progress.fold<int>(0, (a, p) => a + p.unlockedCount);
           final last = progress.where((p) => p.highest != null).fold<ClientLevel?>(null, (best, p) {
@@ -857,10 +908,16 @@ class _ClientAchievementsScreenState extends State<ClientAchievementsScreen> {
           return RefreshIndicator(
             onRefresh: () async => _reload(),
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+              padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s32),
               children: [
-                _Summary(unlocked: unlocked, total: kClientMedalTotal, last: null, lastTitle: last?.title, emptyHint: 'Faça pedidos, avalie e complete o perfil para desbloquear as primeiras.'),
-                const SizedBox(height: 14),
+                _Summary(
+                  unlocked: unlocked,
+                  total: kClientMedalTotal,
+                  last: null,
+                  lastTitle: last?.title,
+                  emptyHint: 'Faça pedidos, avalie e complete o perfil para desbloquear as primeiras.',
+                ),
+                const SizedBox(height: AppSpace.s16),
                 for (final p in progress) ClientAchievementCard(progress: p),
               ],
             ),
@@ -882,43 +939,46 @@ class ClientAchievementCard extends StatelessWidget {
     final def = progress.def;
     final tk = context.tk;
     final next = progress.next;
-    final spec = resolveAchievementTrackSpec(def.code.name);
+    final hasAny = progress.unlockedCount > 0;
     return AppCard(
       key: ValueKey('client-ach:${def.code.name}'),
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: AppSpace.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               AchievementTrackHeaderEmblem(trackCode: def.code.name, size: 30),
-              const SizedBox(width: 10),
-              Expanded(child: Text(def.name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
+              const SizedBox(width: AppSpace.s12),
+              Expanded(child: Text(def.name, style: AppType.titleSm.copyWith(color: tk.text))),
+              const SizedBox(width: AppSpace.s8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4),
                 decoration: BoxDecoration(
-                  color: spec.primaryColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: spec.primaryColor.withValues(alpha: 0.35)),
+                  color: hasAny ? tk.accentSoft : tk.surface,
+                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                 ),
                 child: Text(
                   '${progress.unlockedCount}/${def.levels.length}',
-                  style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: spec.primaryColor),
+                  style: AppType.tabular(AppType.caption).copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: hasAny ? tk.accentInk : tk.textMuted,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
-          Text(def.title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: tk.textMuted)),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s2),
+          Text(def.title, style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600, color: tk.textMuted)),
+          const SizedBox(height: AppSpace.s12),
           _EdgeFadeMedalCarousel(
-            height: 128,
+            height: 136,
             child: ListView.separated(
               physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
               scrollDirection: Axis.horizontal,
               itemCount: def.levels.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
               itemBuilder: (_, i) {
                 final l = def.levels[i];
                 final isUnlocked = progress.current >= l.threshold;
@@ -929,7 +989,7 @@ class ClientAchievementCard extends StatelessWidget {
                   level: i + 1,
                   title: l.title,
                   size: 56,
-                  width: 88,
+                  width: 92,
                   locked: !isUnlocked,
                   onTap: () => _showLevelDetail(context, progress, l, i + 1, isUnlocked),
                 );
@@ -937,19 +997,27 @@ class ClientAchievementCard extends StatelessWidget {
             ),
           ),
           if (next != null) ...[
-            const SizedBox(height: 10),
-            Text('Próxima: ${next.title}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpace.s12),
+            Text('Próxima: ${next.title}', style: AppType.bodySm.copyWith(fontWeight: FontWeight.w700, color: tk.text)),
+            const SizedBox(height: AppSpace.s8),
             ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(value: progress.fractionToNext, minHeight: 8, color: spec.primaryColor, backgroundColor: tk.border),
+              borderRadius: BorderRadius.circular(AppSpace.s8),
+              child: LinearProgressIndicator(
+                value: progress.fractionToNext,
+                minHeight: 8,
+                color: tk.accent,
+                backgroundColor: tk.border,
+              ),
             ),
-            const SizedBox(height: 4),
-            Text('${progress.current} / ${next.threshold} ${def.unit}', style: TextStyle(fontSize: 12, color: tk.textMuted)),
+            const SizedBox(height: AppSpace.s4),
+            Text(
+              '${progress.current} / ${next.threshold} ${def.unit}',
+              style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
+            ),
           ] else
             Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text('Categoria completa!', style: TextStyle(fontWeight: FontWeight.w900, color: tk.successInk)),
+              padding: const EdgeInsets.only(top: AppSpace.s12),
+              child: Text('Categoria completa!', style: AppType.bodyStrong.copyWith(color: tk.successInk)),
             ),
         ],
       ),
@@ -959,60 +1027,58 @@ class ClientAchievementCard extends StatelessWidget {
   void _showLevelDetail(BuildContext context, ClientAchievementProgress p, ClientLevel l, int levelIndex, bool unlocked) {
     unawaited(HapticFeedback.selectionClick().catchError((Object _) {}));
     final def = p.def;
-    final spec = resolveAchievementTrackSpec(def.code.name);
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              MedalBadge(
-                icon: clientAchievementIcon(def.code),
-                tier: l.tier,
-                trackCode: def.code.name,
-                level: levelIndex,
-                size: 112,
-                locked: !unlocked,
-              ),
-              const SizedBox(height: 14),
-              Text(l.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 6),
-              StatusChip('${def.name} • ${l.tier.label}', color: unlocked ? spec.primaryColor : ctx.tk.textMuted),
-              const SizedBox(height: 12),
-              Text(def.description, textAlign: TextAlign.center, style: TextStyle(color: ctx.tk.textMuted, height: 1.4)),
-              const SizedBox(height: 14),
-              if (unlocked)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle_rounded, color: ctx.tk.success, size: 20),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text('Conquista desbloqueada!', style: TextStyle(fontWeight: FontWeight.w800, color: ctx.tk.successInk)),
-                    ),
-                  ],
-                )
-              else ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: (p.current / l.threshold).clamp(0.0, 1.0),
-                    minHeight: 8,
-                    color: spec.primaryColor,
-                    backgroundColor: ctx.tk.border,
+    AppSheet.show<void>(
+      context,
+      builder: (ctx) {
+        final tk = ctx.tk;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MedalBadge(
+              icon: clientAchievementIcon(def.code),
+              tier: l.tier,
+              trackCode: def.code.name,
+              level: levelIndex,
+              size: 112,
+              locked: !unlocked,
+            ),
+            const SizedBox(height: AppSpace.s16),
+            Text(l.title, textAlign: TextAlign.center, style: AppType.headline.copyWith(color: tk.text)),
+            const SizedBox(height: AppSpace.s8),
+            AppStatusChip('${def.name} • ${l.tier.label}', tone: unlocked ? AppTone.accent : AppTone.neutral),
+            const SizedBox(height: AppSpace.s12),
+            Text(def.description, textAlign: TextAlign.center, style: AppType.body.copyWith(color: tk.textMuted)),
+            const SizedBox(height: AppSpace.s16),
+            if (unlocked)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_circle_rounded, color: tk.successInk, size: 20),
+                  const SizedBox(width: AppSpace.s8),
+                  Flexible(
+                    child: Text('Conquista desbloqueada!', style: AppType.bodyStrong.copyWith(color: tk.successInk)),
                   ),
+                ],
+              )
+            else ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpace.s8),
+                child: LinearProgressIndicator(
+                  value: (p.current / l.threshold).clamp(0.0, 1.0),
+                  minHeight: 8,
+                  color: tk.accent,
+                  backgroundColor: tk.border,
                 ),
-                const SizedBox(height: 8),
-                Text('Progresso: ${p.current}/${l.threshold} ${def.unit}', style: const TextStyle(fontWeight: FontWeight.w800)),
-              ],
+              ),
+              const SizedBox(height: AppSpace.s8),
+              Text(
+                'Progresso: ${p.current}/${l.threshold} ${def.unit}',
+                style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.text),
+              ),
             ],
-          ),
-        ),
-      ),
+          ],
+        );
+      },
     );
   }
 }
