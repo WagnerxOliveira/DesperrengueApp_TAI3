@@ -8,9 +8,20 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/ui/app_scaffold.dart';
-import '../../../core/ui/category_brand_emblem.dart';
+import '../../../core/ui/typography/cinema_type_scale.dart';
+import '../../../core/ui/typography/font_licenses.dart';
+import 'widgets/cinema_motion.dart';
+import 'widgets/cinema_story_cards_a.dart';
+import 'widgets/cinema_story_cards_b.dart';
+import 'widgets/story_nav_circle_button.dart';
 
-/// Apresentação interativa pós-cadastro em 6 etapas a 120 FPS (v2.26.0).
+/// Apresentação interativa pós-cadastro em 6 etapas a 120 FPS (v2.27.0).
+///
+/// v2.27.0 — tipografia premium embarcada (Plus Jakarta Sans + Inter, escala
+/// em `cinema_type_scale.dart`, fonte NUNCA reduzida por modo compacto),
+/// botões `<` / `>` idênticos (`StoryNavCircleButton`), cards redesenhados
+/// com `flutter_animate` + `lottie` somente em folhas, coluna central máx.
+/// 480 e atalhos de teclado (←/→/Espaço/Esc) na Web.
 ///
 /// Arquitetura visual e de engenharia:
 /// - **Composição Porcelana sobre Aurora**: cartões heróis claros de porcelana
@@ -80,7 +91,7 @@ class WelcomeStoryHeroCard extends StatelessWidget {
       onActiveHeroBuild?.call(storyIndex);
     }
 
-    final radius = BorderRadius.circular(isCompact ? 22 : 26);
+    final radius = BorderRadius.circular(CinemaGeometry.heroRadius);
 
     return RepaintBoundary(
       child: DecoratedBox(
@@ -89,11 +100,7 @@ class WelcomeStoryHeroCard extends StatelessWidget {
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFFFFFFF),
-              Color(0xFFFAFBFD),
-              Color(0xFFF8FAFC),
-            ],
+            colors: [Color(0xFFFFFFFF), Color(0xFFFAFBFD), Color(0xFFF8FAFC)],
             stops: [0.0, 0.55, 1.0],
           ),
           border: Border.all(
@@ -123,9 +130,10 @@ class WelcomeStoryHeroCard extends StatelessWidget {
               accentColor: accentColor,
             ),
             child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 12 : 18,
-                vertical: isCompact ? 11 : 17,
+              padding: EdgeInsets.all(
+                isCompact
+                    ? CinemaGeometry.heroPaddingCompact
+                    : CinemaGeometry.heroPadding,
               ),
               child: child,
             ),
@@ -166,7 +174,7 @@ class _PorcelainCardSpecularPainter extends CustomPainter {
 
 class _DesperrengueWelcomeCinemaScreenState
     extends State<DesperrengueWelcomeCinemaScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const int _kStoryCount = DesperrengueWelcomeCinemaScreen.storyCount;
   static const Duration _kHoldPauseDelay = Duration(milliseconds: 220);
 
@@ -176,9 +184,11 @@ class _DesperrengueWelcomeCinemaScreenState
   final ValueNotifier<int> _activeStoryNotifier = ValueNotifier<int>(0);
   final ValueNotifier<bool> _isHoldPausedNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<int> _storyZeroRestartEpoch = ValueNotifier<int>(0);
+  final GlobalKey _stageKey = GlobalKey(debugLabel: 'cinema-stage');
 
   bool _completedDispatched = false;
   bool _isProgrammaticPageJump = false;
+  bool _lifecyclePaused = false;
 
   int? _activePointerId;
   int? _interactiveControlPointerId;
@@ -187,21 +197,53 @@ class _DesperrengueWelcomeCinemaScreenState
   bool _didHoldPause = false;
   bool _isDragging = false;
   int _settledPageAtPointerDown = 0;
-  double _stageWidth = 360.0;
+
+  double get _stageWidth {
+    final size = _stageKey.currentContext?.size;
+    return math.max(1.0, size?.width ?? 360.0);
+  }
 
   @override
   void initState() {
     super.initState();
+    // Licenças OFL das fontes embarcadas (Plus Jakarta Sans e Inter): uma vez.
+    registerCinemaFontLicenses();
+    WidgetsBinding.instance.addObserver(this);
     _pageController = PageController(initialPage: 0);
-    _storyProgressController = AnimationController(
-      vsync: this,
-      duration: _safeTotalDuration(widget.totalDuration),
-      animationBehavior: AnimationBehavior.preserve,
-    )
-      ..addListener(_onTimelineBoundaryCheck)
-      ..addStatusListener(_onTimelineStatus);
+    _storyProgressController =
+        AnimationController(
+            vsync: this,
+            duration: _safeTotalDuration(widget.totalDuration),
+            animationBehavior: AnimationBehavior.preserve,
+          )
+          ..addListener(_onTimelineBoundaryCheck)
+          ..addStatusListener(_onTimelineStatus);
 
     _storyProgressController.forward();
+  }
+
+  /// Pausa ao perder o foco da aba/app (Web: `visibilitychange`) e retoma ao
+  /// voltar, sem mostrar o selo "Pausado" de gesto.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_completedDispatched) return;
+    if (state == AppLifecycleState.resumed) {
+      if (!_lifecyclePaused) return;
+      _lifecyclePaused = false;
+      if (_activePointerId == null) {
+        if (_isHoldPausedNotifier.value) {
+          _isHoldPausedNotifier.value = false;
+        }
+        _resumeTimelineIfSettled();
+      }
+    } else {
+      if (_lifecyclePaused) return;
+      _lifecyclePaused = true;
+      _storyProgressController.stop(canceled: false);
+      if (!_isHoldPausedNotifier.value) {
+        _isHoldPausedNotifier.value = true;
+      }
+    }
   }
 
   static Duration _safeTotalDuration(Duration raw) {
@@ -216,6 +258,7 @@ class _DesperrengueWelcomeCinemaScreenState
         widget.totalDuration,
       );
       if (!_completedDispatched &&
+          !_lifecyclePaused &&
           _activePointerId == null &&
           !_isHoldPausedNotifier.value &&
           _storyProgressController.value < 1.0) {
@@ -226,6 +269,7 @@ class _DesperrengueWelcomeCinemaScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _holdPauseTimer?.cancel();
     _holdPauseTimer = null;
     _storyProgressController.removeListener(_onTimelineBoundaryCheck);
@@ -253,8 +297,10 @@ class _DesperrengueWelcomeCinemaScreenState
       _completeShowcase();
       return;
     }
-    final computedStory =
-        ((t * _kStoryCount) + 1e-9).floor().clamp(0, _kStoryCount - 1);
+    final computedStory = ((t * _kStoryCount) + 1e-9).floor().clamp(
+      0,
+      _kStoryCount - 1,
+    );
     if (computedStory != _activeStoryNotifier.value) {
       _activeStoryNotifier.value = computedStory;
       _settledPageAtPointerDown = computedStory;
@@ -284,7 +330,10 @@ class _DesperrengueWelcomeCinemaScreenState
     widget.onCompleted();
   }
 
-  void _jumpToStoryImmediate(int targetStory, {bool playSelectionHaptic = true}) {
+  void _jumpToStoryImmediate(
+    int targetStory, {
+    bool playSelectionHaptic = true,
+  }) {
     if (_completedDispatched) return;
     final clamped = targetStory.clamp(0, _kStoryCount - 1);
     _holdPauseTimer?.cancel();
@@ -299,8 +348,7 @@ class _DesperrengueWelcomeCinemaScreenState
       HapticFeedback.selectionClick();
     }
 
-    final wasAlreadyStoryZero =
-        clamped == 0 && _activeStoryNotifier.value == 0;
+    final wasAlreadyStoryZero = clamped == 0 && _activeStoryNotifier.value == 0;
 
     _activeStoryNotifier.value = clamped;
     _settledPageAtPointerDown = clamped;
@@ -320,7 +368,7 @@ class _DesperrengueWelcomeCinemaScreenState
     _storyProgressController.forward(from: startFraction);
   }
 
-  void _handleNextAction({bool fromStageTap = false}) {
+  void _handleNextAction({bool fromStageTap = false, bool playHaptic = true}) {
     if (_completedDispatched) return;
     final current = _activeStoryNotifier.value;
     if (current >= _kStoryCount - 1) {
@@ -330,17 +378,17 @@ class _DesperrengueWelcomeCinemaScreenState
       _completeShowcase();
       return;
     }
-    _jumpToStoryImmediate(current + 1, playSelectionHaptic: true);
+    _jumpToStoryImmediate(current + 1, playSelectionHaptic: playHaptic);
   }
 
-  void _handlePreviousAction() {
+  void _handlePreviousAction({bool playHaptic = true}) {
     if (_completedDispatched) return;
     final current = _activeStoryNotifier.value;
     if (current <= 0) {
-      _jumpToStoryImmediate(0, playSelectionHaptic: true);
+      _jumpToStoryImmediate(0, playSelectionHaptic: playHaptic);
       return;
     }
-    _jumpToStoryImmediate(current - 1, playSelectionHaptic: true);
+    _jumpToStoryImmediate(current - 1, playSelectionHaptic: playHaptic);
   }
 
   void _registerInteractiveControlPointerDown(int pointerId) {
@@ -387,8 +435,7 @@ class _DesperrengueWelcomeCinemaScreenState
 
   void _handleStagePointerUp(PointerUpEvent event) {
     if (event.pointer != _activePointerId) return;
-    final wasInteractiveControl =
-        event.pointer == _interactiveControlPointerId;
+    final wasInteractiveControl = event.pointer == _interactiveControlPointerId;
     _activePointerId = null;
     _interactiveControlPointerId = null;
     _holdPauseTimer?.cancel();
@@ -436,6 +483,7 @@ class _DesperrengueWelcomeCinemaScreenState
 
   void _resumeTimelineIfSettled() {
     if (_completedDispatched ||
+        _lifecyclePaused ||
         _activePointerId != null ||
         _isHoldPausedNotifier.value) {
       return;
@@ -452,10 +500,14 @@ class _DesperrengueWelcomeCinemaScreenState
     if (clamped != _activeStoryNotifier.value) {
       _activeStoryNotifier.value = clamped;
       HapticFeedback.selectionClick();
-      _storyProgressController.value =
-          (clamped / _kStoryCount).clamp(0.0, 0.999999);
+      _storyProgressController.value = (clamped / _kStoryCount).clamp(
+        0.0,
+        0.999999,
+      );
     }
-    if (_activePointerId == null && !_isHoldPausedNotifier.value) {
+    if (_activePointerId == null &&
+        !_isHoldPausedNotifier.value &&
+        !_lifecyclePaused) {
       _storyProgressController.forward();
     }
   }
@@ -464,167 +516,178 @@ class _DesperrengueWelcomeCinemaScreenState
   Widget build(BuildContext context) {
     return PopScope(
       canPop: widget.isReplay,
-      child: AppScaffold(
-        backgroundColor: const Color(0xFF0D1B20),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            _SharedAmbientCanvas(
-              pageController: _pageController,
-              activeStoryListenable: _activeStoryNotifier,
-              isProgrammaticJumpGetter: () => _isProgrammaticPageJump,
+      child: CallbackShortcuts(
+        bindings: <ShortcutActivator, VoidCallback>{
+          const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
+              _handlePreviousAction(),
+          const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
+              _handleNextAction(),
+          const SingleActivator(LogicalKeyboardKey.space): () =>
+              _handleNextAction(),
+          const SingleActivator(LogicalKeyboardKey.escape): _completeShowcase,
+        },
+        child: Focus(
+          autofocus: true,
+          debugLabel: 'welcome-cinema-keyboard',
+          child: AppScaffold(
+            backgroundColor: const Color(0xFF0D1B20),
+            // Palco com escala de fonte limitada a 1.0–1.5: a fonte nunca
+            // encolhe; o excesso vira reflow e rolagem interna do card.
+            body: MediaQuery.withClampedTextScaling(
+              minScaleFactor: 1.0,
+              maxScaleFactor: 1.5,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _SharedAmbientCanvas(
+                    pageController: _pageController,
+                    activeStoryListenable: _activeStoryNotifier,
+                    isProgrammaticJumpGetter: () => _isProgrammaticPageJump,
+                  ),
+                  SafeArea(child: _buildStageColumn()),
+                ],
+              ),
             ),
-            SafeArea(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final textScale =
-                      MediaQuery.textScalerOf(context).scale(10.0) / 10.0;
-                  final isCompact = constraints.maxHeight < 720 ||
-                      constraints.maxWidth < 365 ||
-                      textScale > 1.20;
-                  final isUltraCompact = constraints.maxHeight < 680 ||
-                      (constraints.maxWidth <= 335 && textScale >= 1.30);
-                  final horizontalPad = isCompact ? 12.0 : 20.0;
+          ),
+        ),
+      ),
+    );
+  }
 
-                  return Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPad,
-                      isUltraCompact ? 2.0 : (isCompact ? 4.0 : 8.0),
-                      horizontalPad,
-                      isUltraCompact ? 4.0 : (isCompact ? 6.0 : 12.0),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _TopSegmentedProgressBars(
-                          storyProgressController: _storyProgressController,
-                          activeStoryListenable: _activeStoryNotifier,
-                          onTapChapter: (index) => _jumpToStoryImmediate(index),
-                        ),
-                        _TopStageHeaderRow(
-                          activeStoryListenable: _activeStoryNotifier,
-                          isReplay: widget.isReplay,
-                          isCompact: isCompact,
-                          holdPausedListenable: _isHoldPausedNotifier,
-                          onExitPressed: _completeShowcase,
-                        ),
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, stageConstraints) {
-                              _stageWidth = math.max(
-                                1.0,
-                                stageConstraints.maxWidth,
-                              );
-                              return Listener(
-                                behavior: HitTestBehavior.opaque,
-                                onPointerDown: _handleStagePointerDown,
-                                onPointerMove: _handleStagePointerMove,
-                                onPointerUp: _handleStagePointerUp,
-                                onPointerCancel: _handleStagePointerCancel,
-                                child: NotificationListener<ScrollNotification>(
-                                  onNotification: (notification) {
-                                    if (notification is ScrollEndNotification) {
-                                      _settledPageAtPointerDown =
-                                          _activeStoryNotifier.value;
-                                      _resumeTimelineIfSettled();
-                                    }
-                                    return false;
-                                  },
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      PageView.builder(
-                                        controller: _pageController,
-                                        allowImplicitScrolling: false,
-                                        physics:
-                                            _SereneStoryPageScrollPhysics(
-                                          settledPageGetter: () =>
-                                              _settledPageAtPointerDown,
-                                        ),
-                                        itemCount: _kStoryCount,
-                                        onPageChanged: _handlePageChangedBySwipe,
-                                        itemBuilder: (context, index) {
-                                          return _StorySlidePage(
-                                            key: Key(
-                                              'cinema-story-${index + 1}',
-                                            ),
-                                            storyIndex: index,
-                                            isActiveStory: index ==
-                                                _activeStoryNotifier.value,
-                                            totalDuration: widget.totalDuration,
-                                            isCompact: isCompact,
-                                            isUltraCompact: isUltraCompact,
-                                            pageController: _pageController,
-                                            holdPausedListenable:
-                                                _isHoldPausedNotifier,
-                                            restartEpochListenable: index == 0
-                                                ? _storyZeroRestartEpoch
-                                                : null,
-                                            onInteractiveControlPointerDown:
-                                                _registerInteractiveControlPointerDown,
-                                            onActiveHeroBuild:
-                                                widget.onActiveHeroBuild,
-                                          );
-                                        },
-                                      ),
-                                      Positioned.fill(
-                                        child: _PassThroughTapZoneOverlay(
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: const [
-                                              Expanded(
-                                                flex: 32,
-                                                child: ColoredBox(
-                                                  key: Key(
-                                                    'story-tap-zone-prev',
-                                                  ),
-                                                  color: Colors.transparent,
-                                                  child: SizedBox.expand(),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                flex: 68,
-                                                child: ColoredBox(
-                                                  key: Key(
-                                                    'story-tap-zone-next',
-                                                  ),
-                                                  color: Colors.transparent,
-                                                  child: SizedBox.expand(),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        SizedBox(height: isUltraCompact ? 4.0 : 8.0),
-                        _BottomStoryNavigationBar(
-                          activeStoryListenable: _activeStoryNotifier,
-                          isCompact: isCompact,
-                          isUltraCompact: isUltraCompact,
-                          onPrevious: _handlePreviousAction,
-                          onNext: () => _handleNextAction(fromStageTap: false),
-                        ),
-                      ],
-                    ),
+  Widget _buildStageColumn() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Apenas espaçamentos mudam no modo compacto; a fonte NUNCA encolhe.
+        final isCompact =
+            constraints.maxHeight < 720 || constraints.maxWidth < 365;
+        final horizontalPad = isCompact ? CinemaSpace.s16 : CinemaSpace.s20;
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            horizontalPad,
+            isCompact ? CinemaSpace.s4 : CinemaSpace.s8,
+            horizontalPad,
+            isCompact ? CinemaSpace.s8 : CinemaSpace.s12,
+          ),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: CinemaGeometry.maxColumnWidth,
+                minHeight: constraints.maxHeight,
+                maxHeight: constraints.maxHeight,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _TopSegmentedProgressBars(
+                    storyProgressController: _storyProgressController,
+                    activeStoryListenable: _activeStoryNotifier,
+                    onTapChapter: (index) => _jumpToStoryImmediate(index),
+                  ),
+                  _TopStageHeaderRow(
+                    activeStoryListenable: _activeStoryNotifier,
+                    isReplay: widget.isReplay,
+                    holdPausedListenable: _isHoldPausedNotifier,
+                    onExitPressed: _completeShowcase,
+                  ),
+                  Expanded(child: _buildStage(isCompact: isCompact)),
+                  const SizedBox(height: CinemaSpace.s12),
+                  _BottomStoryNavigationBar(
+                    activeStoryListenable: _activeStoryNotifier,
+                    onPrevious: () => _handlePreviousAction(playHaptic: false),
+                    onNext: () => _handleNextAction(playHaptic: false),
+                    onStart: () => _handleNextAction(playHaptic: false),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStage({required bool isCompact}) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _handleStagePointerDown,
+        onPointerMove: _handleStagePointerMove,
+        onPointerUp: _handleStagePointerUp,
+        onPointerCancel: _handleStagePointerCancel,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (notification) {
+            if (notification is ScrollEndNotification &&
+                notification.metrics.axis == Axis.horizontal) {
+              _settledPageAtPointerDown = _activeStoryNotifier.value;
+              _resumeTimelineIfSettled();
+            }
+            return false;
+          },
+          child: Stack(
+            key: _stageKey,
+            fit: StackFit.expand,
+            children: [
+              PageView.builder(
+                controller: _pageController,
+                allowImplicitScrolling: false,
+                physics: _SereneStoryPageScrollPhysics(
+                  settledPageGetter: () => _settledPageAtPointerDown,
+                ),
+                itemCount: _kStoryCount,
+                onPageChanged: _handlePageChangedBySwipe,
+                itemBuilder: (context, index) {
+                  return _StorySlidePage(
+                    key: Key('cinema-story-${index + 1}'),
+                    storyIndex: index,
+                    isActiveStory: index == _activeStoryNotifier.value,
+                    totalDuration: widget.totalDuration,
+                    isCompact: isCompact,
+                    pageController: _pageController,
+                    holdPausedListenable: _isHoldPausedNotifier,
+                    restartEpochListenable: index == 0
+                        ? _storyZeroRestartEpoch
+                        : null,
+                    onInteractiveControlPointerDown:
+                        _registerInteractiveControlPointerDown,
+                    onActiveHeroBuild: widget.onActiveHeroBuild,
                   );
                 },
               ),
-            ),
-          ],
+              const Positioned.fill(
+                child: _PassThroughTapZoneOverlay(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        flex: 32,
+                        child: ColoredBox(
+                          key: Key('story-tap-zone-prev'),
+                          color: Colors.transparent,
+                          child: SizedBox.expand(),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 68,
+                        child: ColoredBox(
+                          key: Key('story-tap-zone-next'),
+                          color: Colors.transparent,
+                          child: SizedBox.expand(),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
-
 // =============================================================================
 // OVERLAY DE DESCOBERTA DE ZONAS DE TOQUE (PASS-THROUGH HIT-TEST ZERO ARENA)
 // =============================================================================
@@ -856,8 +919,8 @@ class _SharedAmbientCanvasState extends State<_SharedAmbientCanvas>
         .toDouble();
 
     final livePage = _tryReadLivePage();
-    final isActivelySwiping = livePage != null &&
-        (livePage - livePage.roundToDouble()).abs() > 1e-3;
+    final isActivelySwiping =
+        livePage != null && (livePage - livePage.roundToDouble()).abs() > 1e-3;
 
     if (isActivelySwiping) {
       return;
@@ -908,20 +971,20 @@ class _SharedAmbientCanvasState extends State<_SharedAmbientCanvas>
 
 class _SharedAmbientPainter extends CustomPainter {
   _SharedAmbientPainter({required this.ambientPageListenable})
-      : super(repaint: ambientPageListenable);
+    : super(repaint: ambientPageListenable);
 
   final ValueListenable<double> ambientPageListenable;
 
   static const List<(double, double, double)> _kAmbientStars =
       <(double, double, double)>[
-    (0.14, 0.24, 1.8),
-    (0.86, 0.28, 2.2),
-    (0.18, 0.72, 2.4),
-    (0.82, 0.76, 2.0),
-    (0.32, 0.84, 1.6),
-    (0.71, 0.86, 2.3),
-    (0.52, 0.18, 1.5),
-  ];
+        (0.14, 0.24, 1.8),
+        (0.86, 0.28, 2.2),
+        (0.18, 0.72, 2.4),
+        (0.82, 0.76, 2.0),
+        (0.32, 0.84, 1.6),
+        (0.71, 0.86, 2.3),
+        (0.52, 0.18, 1.5),
+      ];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1045,17 +1108,15 @@ class _SharedAmbientPainter extends CustomPainter {
           center,
           star.$3 * 3.0,
           Paint()
-            ..color = const Color(0xFFFDE68A).withValues(
-              alpha: 0.10 * stardust,
-            ),
+            ..color = const Color(0xFFFDE68A)
+                .withValues(alpha: 0.10 * stardust),
         );
         canvas.drawCircle(
           center,
           star.$3,
           Paint()
-            ..color = const Color(0xFFFEF3C7).withValues(
-              alpha: 0.46 * stardust,
-            ),
+            ..color = const Color(0xFFFEF3C7)
+                .withValues(alpha: 0.46 * stardust),
         );
       }
     }
@@ -1089,10 +1150,10 @@ class _SereneStoryPageScrollPhysics extends PageScrollPhysics {
 
   @override
   SpringDescription get spring => SpringDescription.withDampingRatio(
-        mass: 1.0,
-        stiffness: 420.0,
-        ratio: 1.0,
-      );
+    mass: 1.0,
+    stiffness: 420.0,
+    ratio: 1.0,
+  );
 
   double _pageFromMetrics(ScrollMetrics position) {
     if (position is PageMetrics && position.page != null) {
@@ -1247,14 +1308,12 @@ class _TopStageHeaderRow extends StatelessWidget {
   const _TopStageHeaderRow({
     required this.activeStoryListenable,
     required this.isReplay,
-    required this.isCompact,
     required this.holdPausedListenable,
     required this.onExitPressed,
   });
 
   final ValueListenable<int> activeStoryListenable;
   final bool isReplay;
-  final bool isCompact;
   final ValueListenable<bool> holdPausedListenable;
   final VoidCallback onExitPressed;
 
@@ -1263,68 +1322,56 @@ class _TopStageHeaderRow extends StatelessWidget {
     const total = DesperrengueWelcomeCinemaScreen.storyCount;
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 44.0),
+      constraints: const BoxConstraints(minHeight: 48.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
-            child: Row(
+            child: Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: CinemaSpace.s8,
+              runSpacing: CinemaSpace.s4,
               children: [
-                Flexible(
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: activeStoryListenable,
-                    builder: (context, storyIndex, _) {
-                      final safeStep = (storyIndex + 1).clamp(1, total);
-                      return Text(
-                        'Etapa $safeStep de $total',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFCBD5E1),
-                          fontSize: isCompact ? 12.5 : 13.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.1,
-                        ),
-                      );
-                    },
-                  ),
+                ValueListenableBuilder<int>(
+                  valueListenable: activeStoryListenable,
+                  builder: (context, storyIndex, _) {
+                    final safeStep = (storyIndex + 1).clamp(1, total);
+                    return Text(
+                      'Etapa $safeStep de $total',
+                      style: CinemaType.chrome,
+                    );
+                  },
                 ),
                 ValueListenableBuilder<bool>(
                   valueListenable: holdPausedListenable,
                   builder: (context, isPaused, _) {
                     if (!isPaused) return const SizedBox.shrink();
-                    return const Flexible(
-                      child: Padding(
-                        padding: EdgeInsets.only(left: 8),
-                        child: _FadeInPausedBadge(
-                          key: Key('cinema-paused-badge'),
-                        ),
-                      ),
+                    return const _FadeInPausedBadge(
+                      key: Key('cinema-paused-badge'),
                     );
                   },
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: CinemaSpace.s8),
           TextButton(
             key: Key(
-              isReplay
-                  ? 'btn-close-replay-cinema'
-                  : 'btn-skip-welcome-cinema',
+              isReplay ? 'btn-close-replay-cinema' : 'btn-skip-welcome-cinema',
             ),
             onPressed: onExitPressed,
             style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFFF8FAFC),
+              foregroundColor: CinemaColors.onAurora,
               backgroundColor: const Color(0xFF13222A).withValues(alpha: 0.72),
-              minimumSize: const Size(60, 44),
-              padding: EdgeInsets.symmetric(
-                horizontal: isCompact ? 14 : 16,
-                vertical: 8,
+              minimumSize: const Size(64, 48),
+              padding: const EdgeInsets.symmetric(
+                horizontal: CinemaSpace.s16,
+                vertical: CinemaSpace.s8,
               ),
               tapTargetSize: MaterialTapTargetSize.padded,
+              enabledMouseCursor: SystemMouseCursors.click,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(CinemaGeometry.pillRadius),
                 side: BorderSide(
                   color: Colors.white.withValues(alpha: 0.34),
                   width: 1.0,
@@ -1333,11 +1380,8 @@ class _TopStageHeaderRow extends StatelessWidget {
             ),
             child: Text(
               isReplay ? 'Fechar' : 'Pular',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: const Color(0xFFF8FAFC),
-                fontSize: isCompact ? 12.0 : 13.0,
+              style: CinemaType.chrome.copyWith(
+                color: CinemaColors.onAurora,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1394,30 +1438,28 @@ class _FadeInPausedBadgeState extends State<_FadeInPausedBadge>
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: const Color(0xFF14242E).withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: BorderRadius.circular(CinemaGeometry.pillRadius),
           border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
         ),
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: CinemaSpace.s12,
+            vertical: CinemaSpace.s4,
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              const Icon(
                 Icons.pause_rounded,
-                size: 12,
-                color: Color(0xFFF8FAFC),
+                size: 16,
+                color: CinemaColors.onAurora,
               ),
-              SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  'Pausado',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Color(0xFFF8FAFC),
-                    fontSize: 11.0,
-                    fontWeight: FontWeight.w700,
-                  ),
+              const SizedBox(width: CinemaSpace.s4),
+              Text(
+                'Pausado',
+                style: CinemaType.caption.copyWith(
+                  color: CinemaColors.onAurora,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -1429,23 +1471,21 @@ class _FadeInPausedBadgeState extends State<_FadeInPausedBadge>
 }
 
 // =============================================================================
-// RODAPÉ FIEL AO VÍDEO (6 PONTOS CENTRALIZADOS + PÍLULA LARGA + VOLTAR DISCRETO)
+// RODAPÉ SIMÉTRICO: [ < ]  ● ● ● ● ● ●  [ > ]  +  CTA "Começar agora" (ETAPA 6)
 // =============================================================================
 
 class _BottomStoryNavigationBar extends StatelessWidget {
   const _BottomStoryNavigationBar({
     required this.activeStoryListenable,
-    required this.isCompact,
-    required this.isUltraCompact,
     required this.onPrevious,
     required this.onNext,
+    required this.onStart,
   });
 
   final ValueListenable<int> activeStoryListenable;
-  final bool isCompact;
-  final bool isUltraCompact;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
+  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
@@ -1457,94 +1497,71 @@ class _BottomStoryNavigationBar extends StatelessWidget {
         final isFirst = storyIndex <= 0;
         final isLast = storyIndex >= total - 1;
         final reduceMotion = MediaQuery.disableAnimationsOf(context);
-        final buttonHeight = isCompact ? 50.0 : 54.0;
 
         return Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(
-              key: const Key('story-pagination-dots'),
-              height: 12.0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(total, (i) {
-                  final active = i == storyIndex;
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 3.5),
-                    child: AnimatedContainer(
-                      duration: reduceMotion
-                          ? Duration.zero
-                          : const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      width: active ? 18.0 : 6.0,
-                      height: 6.0,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        color: active
-                            ? const Color(0xFFF8FAFC)
-                            : Colors.white.withValues(alpha: 0.34),
-                      ),
-                    ),
-                  );
-                }),
+            if (isLast) ...[
+              _StartCtaButton(
+                key: const Key('btn-story-start'),
+                onPressed: onStart,
+                animateEntrance: !reduceMotion,
               ),
-            ),
-            SizedBox(height: isUltraCompact ? 6.0 : 10.0),
-            ConstrainedBox(
-              constraints: BoxConstraints(minHeight: buttonHeight),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (!isFirst) ...[
-                    Semantics(
-                      button: true,
-                      label: 'Voltar',
-                      child: Tooltip(
-                        message: 'Voltar',
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            key: const Key('btn-story-prev'),
-                            onTap: onPrevious,
-                            customBorder: const CircleBorder(),
-                            child: DecoratedBox(
+              const SizedBox(height: CinemaSpace.s12),
+            ],
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                StoryNavCircleButton(
+                  key: const Key('btn-story-prev'),
+                  direction: StoryNavDirection.previous,
+                  enabled: !isFirst,
+                  onPressed: onPrevious,
+                ),
+                Expanded(
+                  child: Center(
+                    child: SizedBox(
+                      key: const Key('story-pagination-dots'),
+                      height: 16.0,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: List.generate(total, (i) {
+                          final active = i == storyIndex;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: CinemaSpace.s4,
+                            ),
+                            child: AnimatedContainer(
+                              duration: reduceMotion
+                                  ? Duration.zero
+                                  : const Duration(milliseconds: 220),
+                              curve: Curves.easeOutCubic,
+                              width: active ? 24.0 : 8.0,
+                              height: 8.0,
                               decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFF14232B)
-                                    .withValues(alpha: 0.72),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.30),
+                                borderRadius: BorderRadius.circular(
+                                  CinemaGeometry.pillRadius,
                                 ),
-                              ),
-                              child: const SizedBox(
-                                width: 48.0,
-                                height: 48.0,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.chevron_left_rounded,
-                                    size: 24,
-                                    color: Color(0xFFF8FAFC),
-                                  ),
-                                ),
+                                color: active
+                                    ? CinemaColors.onAurora
+                                    : Colors.white.withValues(alpha: 0.34),
                               ),
                             ),
-                          ),
-                        ),
+                          );
+                        }),
                       ),
                     ),
-                    const SizedBox(width: 10.0),
-                  ],
-                  Expanded(
-                    child: _PrimaryWidePillActionButton(
-                      key: const Key('btn-story-next'),
-                      isAuroraCta: isLast,
-                      height: buttonHeight,
-                      isCompact: isCompact,
-                      onPressed: onNext,
-                    ),
                   ),
-                ],
-              ),
+                ),
+                StoryNavCircleButton(
+                  key: const Key('btn-story-next'),
+                  direction: StoryNavDirection.next,
+                  enabled: !isLast,
+                  onPressed: onNext,
+                ),
+              ],
             ),
           ],
         );
@@ -1553,30 +1570,57 @@ class _BottomStoryNavigationBar extends StatelessWidget {
   }
 }
 
-class _PrimaryWidePillActionButton extends StatelessWidget {
-  const _PrimaryWidePillActionButton({
+/// CTA aurora de largura total (56 px) da Etapa 6: entra com fade + 12 px.
+class _StartCtaButton extends StatefulWidget {
+  const _StartCtaButton({
     super.key,
-    required this.isAuroraCta,
-    required this.height,
-    required this.isCompact,
     required this.onPressed,
+    required this.animateEntrance,
   });
 
-  final bool isAuroraCta;
-  final double height;
-  final bool isCompact;
   final VoidCallback onPressed;
+  final bool animateEntrance;
+
+  @override
+  State<_StartCtaButton> createState() => _StartCtaButtonState();
+}
+
+class _StartCtaButtonState extends State<_StartCtaButton> {
+  bool _focused = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(999);
+    final radius = BorderRadius.circular(CinemaGeometry.pillRadius);
+    final highlighted = _focused || _hovered;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: radius,
-        color: isAuroraCta ? null : const Color(0xFFF8FAFC),
-        gradient: isAuroraCta
-            ? const LinearGradient(
+    Widget button = Semantics(
+      button: true,
+      label: 'Começar agora',
+      excludeSemantics: true,
+      child: FocusableActionDetector(
+        mouseCursor: SystemMouseCursors.click,
+        onShowFocusHighlight: (value) => setState(() => _focused = value),
+        onShowHoverHighlight: (value) => setState(() => _hovered = value),
+        shortcuts: const <ShortcutActivator, Intent>{
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        },
+        actions: <Type, Action<Intent>>{
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onPressed();
+              return null;
+            },
+          ),
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onPressed,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              gradient: const LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
                 colors: [
@@ -1586,58 +1630,45 @@ class _PrimaryWidePillActionButton extends StatelessWidget {
                   Color(0xFFFDBA74),
                 ],
                 stops: [0.0, 0.36, 0.72, 1.0],
-              )
-            : null,
-        border: Border.all(
-          color: isAuroraCta
-              ? Colors.white.withValues(alpha: 0.65)
-              : const Color(0xFFFFFFFF),
-          width: 1.0,
-        ),
-        boxShadow: isAuroraCta
-            ? [
+              ),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.65)),
+              boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF6EE7B7).withValues(alpha: 0.28),
+                  color: const Color(0xFF6EE7B7)
+                      .withValues(alpha: highlighted ? 0.42 : 0.28),
                   blurRadius: 20,
                   offset: const Offset(-6, 6),
                 ),
                 BoxShadow(
-                  color: const Color(0xFFFDBA74).withValues(alpha: 0.30),
+                  color: const Color(0xFFFDBA74)
+                      .withValues(alpha: highlighted ? 0.44 : 0.30),
                   blurRadius: 22,
                   offset: const Offset(6, 6),
                 ),
-              ]
-            : [
-                BoxShadow(
-                  color: const Color(0xFF040B14).withValues(alpha: 0.24),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
               ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: radius,
-          child: SizedBox(
-            height: height,
-            width: double.infinity,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Center(
-                child: Text(
-                  isAuroraCta ? 'Começar agora' : 'Próximo',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: isAuroraCta
-                        ? const Color(0xFF0B1320)
-                        : const Color(0xFF0F172A),
-                    fontSize: isCompact ? 14.5 : 15.8,
-                    fontWeight:
-                        isAuroraCta ? FontWeight.w900 : FontWeight.w800,
-                    letterSpacing: -0.2,
+            ),
+            position: DecorationPosition.background,
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                border: _focused
+                    ? Border.all(color: Colors.white, width: 3)
+                    : null,
+              ),
+              child: SizedBox(
+                height: CinemaGeometry.ctaHeight,
+                width: double.infinity,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: CinemaSpace.s20,
+                    ),
+                    child: Text(
+                      'Começar agora',
+                      textAlign: TextAlign.center,
+                      style: CinemaType.button,
+                    ),
                   ),
                 ),
               ),
@@ -1646,6 +1677,11 @@ class _PrimaryWidePillActionButton extends StatelessWidget {
         ),
       ),
     );
+
+    if (widget.animateEntrance) {
+      button = IntroFx(child: button);
+    }
+    return button;
   }
 }
 
@@ -1660,7 +1696,6 @@ class _StorySlidePage extends StatefulWidget {
     required this.isActiveStory,
     required this.totalDuration,
     required this.isCompact,
-    required this.isUltraCompact,
     required this.pageController,
     required this.holdPausedListenable,
     required this.onInteractiveControlPointerDown,
@@ -1672,7 +1707,6 @@ class _StorySlidePage extends StatefulWidget {
   final bool isActiveStory;
   final Duration totalDuration;
   final bool isCompact;
-  final bool isUltraCompact;
   final PageController pageController;
   final ValueListenable<bool> holdPausedListenable;
   final ValueChanged<int> onInteractiveControlPointerDown;
@@ -1690,7 +1724,8 @@ class _StorySlidePageState extends State<_StorySlidePage>
   bool _startedInitialChoreography = false;
 
   Duration _computeActDuration() {
-    final perStoryMs = widget.totalDuration.inMilliseconds /
+    final perStoryMs =
+        widget.totalDuration.inMilliseconds /
         DesperrengueWelcomeCinemaScreen.storyCount;
     final ms = math.min(3100, math.max(180, (perStoryMs * 0.72).round()));
     return Duration(milliseconds: ms);
@@ -1767,13 +1802,6 @@ class _StorySlidePageState extends State<_StorySlidePage>
     super.dispose();
   }
 
-  Animation<double> _interval(double begin, double end) {
-    return CurvedAnimation(
-      parent: _actController,
-      curve: Interval(begin, end, curve: Curves.easeOutQuart),
-    );
-  }
-
   (String, String) _copyForStory(int index) {
     switch (index) {
       case 0:
@@ -1809,43 +1837,21 @@ class _StorySlidePageState extends State<_StorySlidePage>
     }
   }
 
-  Widget _buildHeroDemoContent(int index, bool isCompact, bool isUltraCompact) {
+  Widget _buildHeroDemoContent(int index) {
     switch (index) {
       case 0:
-        return _Story1SearchAndSpecialtiesDemo(
-          actAnimation: _actController,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        );
+        return CinemaStory1Card(act: _actController);
       case 1:
-        return _Story2PrivacyAndQuotesDemo(
-          actAnimation: _actController,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        );
+        return CinemaStory2Card(act: _actController);
       case 2:
-        return _Story3ProtectedVaultPinDemo(
-          actAnimation: _actController,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        );
+        return CinemaStory3Card(act: _actController);
       case 3:
-        return _Story4PropertyHealthHistoryDemo(
-          actAnimation: _actController,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        );
+        return CinemaStory4Card(act: _actController);
       case 4:
-        return _Story5FairProviderPanelDemo(
-          actAnimation: _actController,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        );
+        return CinemaStory5Card(act: _actController);
       default:
-        return _Story6DualAccountSwitchDemo(
-          actAnimation: _actController,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
+        return CinemaStory6Card(
+          act: _actController,
           onInteractivePointerDown: widget.onInteractiveControlPointerDown,
         );
     }
@@ -1855,50 +1861,33 @@ class _StorySlidePageState extends State<_StorySlidePage>
   Widget build(BuildContext context) {
     final spec = _kStorySpecs[widget.storyIndex];
     final (titleText, subtitleText) = _copyForStory(widget.storyIndex);
-    final isCompact = widget.isCompact;
-    final isUltraCompact = widget.isUltraCompact;
 
     // Ato 1 (0.0s – 0.75s = 0.00 .. 0.242 de 3.10s): cascata sedosa sem quique
-    final titleFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      _interval(0.00, 0.16),
+    final titleFx = ActFx(
+      act: _actController,
+      effects: cascadeEffects(0.00, 0.16),
+      child: Text(titleText, style: CinemaType.display),
     );
-    final titleSlide = Tween<Offset>(
-      begin: const Offset(0, 0.14),
-      end: Offset.zero,
-    ).animate(_interval(0.00, 0.16));
-
-    final subFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      _interval(0.04, 0.20),
-    );
-    final subSlide = Tween<Offset>(
-      begin: const Offset(0, 0.14),
-      end: Offset.zero,
-    ).animate(_interval(0.04, 0.20));
-
-    final heroOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-      _interval(0.08, 0.242),
-    );
-    final heroRise = Tween<double>(begin: 18.0, end: 0.0).animate(
-      _interval(0.08, 0.242),
+    final leadFx = ActFx(
+      act: _actController,
+      effects: cascadeEffects(0.04, 0.20),
+      child: Text(subtitleText, style: CinemaType.lead),
     );
 
     final heroCard = WelcomeStoryHeroCard(
       storyIndex: widget.storyIndex,
       isActiveStory: widget.isActiveStory,
       accentColor: spec.accent,
-      isCompact: isCompact,
+      isCompact: widget.isCompact,
       onActiveHeroBuild: widget.onActiveHeroBuild,
-      child: _buildHeroDemoContent(
-        widget.storyIndex,
-        isCompact,
-        isUltraCompact,
-      ),
+      child: _buildHeroDemoContent(widget.storyIndex),
     );
 
     final animatedHero = AnimatedBuilder(
-      animation: Listenable.merge([heroRise, widget.pageController]),
-      child: FadeTransition(
-        opacity: heroOpacity,
+      animation: widget.pageController,
+      child: ActFx(
+        act: _actController,
+        effects: cascadeEffects(0.08, 0.242, dy: 18),
         child: heroCard,
       ),
       builder: (context, cachedHero) {
@@ -1916,7 +1905,7 @@ class _StorySlidePageState extends State<_StorySlidePage>
           }
         }
         return Transform.translate(
-          offset: Offset(parallaxX, heroRise.value),
+          offset: Offset(parallaxX, 0),
           child: cachedHero,
         );
       },
@@ -1948,67 +1937,42 @@ class _StorySlidePageState extends State<_StorySlidePage>
           )
         : animatedHero;
 
-    final titleSize = isUltraCompact ? 18.0 : (isCompact ? 21.0 : 27.5);
-    final subSize = isUltraCompact ? 11.4 : (isCompact ? 12.6 : 14.8);
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        titleFx,
+        const SizedBox(height: CinemaSpace.s8),
+        leadFx,
+        const SizedBox(height: CinemaSpace.s20),
+        heroStageWithOptionalStardust,
+      ],
+    );
 
-    return CustomScrollView(
-      key: spec.legacyKey,
-      physics: const NeverScrollableScrollPhysics(),
-      slivers: [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Spacer(flex: 4),
-                  FadeTransition(
-                    opacity: titleFade,
-                    child: SlideTransition(
-                      position: titleSlide,
-                      child: Text(
-                        titleText,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFF8FAFC),
-                          fontSize: titleSize,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.6,
-                          height: 1.14,
-                        ),
-                      ),
-                    ),
+    // Rolagem vertical interna da página: se o conteúdo exceder a altura
+    // (fonte ampliada, telas baixas) a página rola — a fonte nunca encolhe.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          key: spec.legacyKey,
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Align(
+              alignment: const Alignment(0, -0.12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: CinemaSpace.s8),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: CinemaGeometry.maxColumnWidth,
                   ),
-                  SizedBox(height: isUltraCompact ? 4 : (isCompact ? 6 : 10)),
-                  FadeTransition(
-                    opacity: subFade,
-                    child: SlideTransition(
-                      position: subSlide,
-                      child: Text(
-                        subtitleText,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFFE2E8F0),
-                          fontSize: subSize,
-                          fontWeight: FontWeight.w400,
-                          height: 1.32,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: isUltraCompact ? 10 : (isCompact ? 14 : 22)),
-                  heroStageWithOptionalStardust,
-                  const Spacer(flex: 5),
-                ],
+                  child: content,
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
@@ -2026,17 +1990,17 @@ class _GoldenCelebrationStardustPainter extends CustomPainter {
 
   static const List<(double, double, double, bool)> _kParticles =
       <(double, double, double, bool)>[
-    (0.06, 0.88, 3.2, true),
-    (0.14, 0.96, 2.2, false),
-    (0.24, 0.99, 2.8, false),
-    (0.76, 0.98, 2.5, false),
-    (0.88, 0.92, 3.4, true),
-    (0.95, 0.80, 2.6, true),
-    (0.03, 0.72, 2.1, false),
-    (0.92, 0.22, 2.4, true),
-    (0.08, 0.18, 2.0, false),
-    (0.50, 1.01, 2.2, false),
-  ];
+        (0.06, 0.88, 3.2, true),
+        (0.14, 0.96, 2.2, false),
+        (0.24, 0.99, 2.8, false),
+        (0.76, 0.98, 2.5, false),
+        (0.88, 0.92, 3.4, true),
+        (0.95, 0.80, 2.6, true),
+        (0.03, 0.72, 2.1, false),
+        (0.92, 0.22, 2.4, true),
+        (0.08, 0.18, 2.0, false),
+        (0.50, 1.01, 2.2, false),
+      ];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2045,8 +2009,9 @@ class _GoldenCelebrationStardustPainter extends CustomPainter {
     if (raw <= 0.001) return;
 
     final p = Curves.easeOutQuart.transform(raw);
-    final primaryGold =
-        isWarmSunset ? const Color(0xFFFDE68A) : const Color(0xFFFCD34D);
+    final primaryGold = isWarmSunset
+        ? const Color(0xFFFDE68A)
+        : const Color(0xFFFCD34D);
     final coreCream = const Color(0xFFFFFBEB);
 
     for (var i = 0; i < _kParticles.length; i++) {
@@ -2102,2058 +2067,5 @@ class _GoldenCelebrationStardustPainter extends CustomPainter {
   bool shouldRepaint(covariant _GoldenCelebrationStardustPainter oldDelegate) {
     return oldDelegate.actAnimation != actAnimation ||
         oldDelegate.isWarmSunset != isWarmSunset;
-  }
-}
-
-// =============================================================================
-// ETAPA 1 (00:00–00:01): BUSCA + GRADE 2x2 VERIFICADA + ATENDIMENTO RÁPIDO
-// =============================================================================
-
-class _Story1SearchAndSpecialtiesDemo extends StatelessWidget {
-  const _Story1SearchAndSpecialtiesDemo({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  static const String _kFullQuery = 'Trocar resistência do chuveiro';
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = isUltraCompact ? 7.0 : (isCompact ? 9.0 : 12.0);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _Story1SearchFieldLeaf(
-          actAnimation: actAnimation,
-          fullQuery: _kFullQuery,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        ),
-        SizedBox(height: gap),
-        _Story1VerifiedGrid2x2Leaf(
-          actAnimation: actAnimation,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        ),
-        SizedBox(height: gap),
-        _Story1RegionSealLeaf(
-          actAnimation: actAnimation,
-          isCompact: isCompact,
-        ),
-      ],
-    );
-  }
-}
-
-class _Story1SearchFieldLeaf extends StatelessWidget {
-  const _Story1SearchFieldLeaf({
-    required this.actAnimation,
-    required this.fullQuery,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final String fullQuery;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        // 0.8s..1.8s de 3.10s -> [0.258 .. 0.581]
-        final raw = ((actAnimation.value - 0.258) / (0.581 - 0.258)).clamp(
-          0.0,
-          1.0,
-        );
-        final progress = Curves.easeOutCubic.transform(raw);
-        const minChars = 13; // "Trocar resist"
-        final visibleCount = (minChars +
-                ((fullQuery.length - minChars) * progress).round())
-            .clamp(minChars, fullQuery.length);
-        final isFinished = visibleCount >= fullQuery.length;
-        final visibleText = fullQuery.substring(0, visibleCount);
-
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFFFFF),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Color.lerp(
-                const Color(0xFF6EE7B7),
-                const Color(0xFF10B981),
-                progress,
-              )!,
-              width: 1.35,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isCompact ? 10 : 13,
-              vertical: isUltraCompact ? 7.5 : (isCompact ? 9 : 11),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.search_rounded,
-                  size: 18,
-                  color: Color(0xFF047857),
-                ),
-                const SizedBox(width: 8),
-                if (isFinished) ...[
-                  Expanded(
-                    child: Text(
-                      visibleText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF0F172A),
-                        fontSize: isCompact ? 11.8 : 13.4,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    key: Key('search-completed-check'),
-                    size: 17,
-                    color: Color(0xFF10B981),
-                  ),
-                ] else ...[
-                  Flexible(
-                    child: Text(
-                      visibleText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF0F172A),
-                        fontSize: isCompact ? 11.8 : 13.4,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  const DecoratedBox(
-                    key: Key('search-typing-caret'),
-                    decoration: BoxDecoration(
-                      color: Color(0xFF10B981),
-                      borderRadius: BorderRadius.all(Radius.circular(1)),
-                    ),
-                    child: SizedBox(width: 2, height: 15),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _Story1VerifiedGrid2x2Leaf extends StatelessWidget {
-  const _Story1VerifiedGrid2x2Leaf({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  static const List<(String, String)> _kItems = <(String, String)>[
-    ('Eletricista Verificado', 'Elétrica'),
-    ('Encanador', 'Encanador'),
-    ('Climatização', 'Ar-condicionado'),
-    ('Reparos Gerais', 'Pequenos Reparos'),
-  ];
-
-  Widget _buildSpecialtyPill({
-    required int index,
-    required String displayLabel,
-    required String emblemCategory,
-    required double progress,
-  }) {
-    final emblemSize = isUltraCompact ? 20.0 : (isCompact ? 22.0 : 28.0);
-
-    return Opacity(
-      opacity: (0.30 + (0.70 * progress)).clamp(0.0, 1.0),
-      child: Transform.translate(
-        offset: Offset(0, (1.0 - progress) * 7.0),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFFFFF),
-            borderRadius: BorderRadius.circular(13),
-            border: Border.all(
-              color: index == 0
-                  ? const Color(0xFF6EE7B7)
-                  : const Color(0xFFE2E8F0),
-              width: 1.1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isCompact ? 7 : 10,
-              vertical: isUltraCompact ? 5.5 : (isCompact ? 7 : 8.5),
-            ),
-            child: Row(
-              children: [
-                CategoryBrandEmblem(
-                  categoryName: emblemCategory,
-                  size: emblemSize,
-                  showCornerBadge: false,
-                ),
-                SizedBox(width: isCompact ? 6 : 8),
-                Expanded(
-                  child: Text(
-                    displayLabel,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFF0F172A),
-                      fontSize: isUltraCompact
-                          ? 10.2
-                          : (isCompact ? 10.8 : 12.0),
-                      fontWeight: FontWeight.w700,
-                      height: 1.14,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Color(0xFF10B981),
-                  ),
-                  child: SizedBox(
-                    width: 15,
-                    height: 15,
-                    child: Center(
-                      child: Icon(
-                        Icons.check_rounded,
-                        size: 10.5,
-                        color: Color(0xFFFFFFFF),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final spacing = isCompact ? 6.0 : 8.0;
-
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        double itemProgress(int i) {
-          final start = 0.36 + (i * 0.075);
-          final end = (start + 0.24).clamp(0.0, 1.0);
-          return Curves.easeOutQuart.transform(
-            ((actAnimation.value - start) / (end - start)).clamp(0.0, 1.0),
-          );
-        }
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSpecialtyPill(
-                    index: 0,
-                    displayLabel: _kItems[0].$1,
-                    emblemCategory: _kItems[0].$2,
-                    progress: itemProgress(0),
-                  ),
-                ),
-                SizedBox(width: spacing),
-                Expanded(
-                  child: _buildSpecialtyPill(
-                    index: 1,
-                    displayLabel: _kItems[1].$1,
-                    emblemCategory: _kItems[1].$2,
-                    progress: itemProgress(1),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: spacing),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSpecialtyPill(
-                    index: 2,
-                    displayLabel: _kItems[2].$1,
-                    emblemCategory: _kItems[2].$2,
-                    progress: itemProgress(2),
-                  ),
-                ),
-                SizedBox(width: spacing),
-                Expanded(
-                  child: _buildSpecialtyPill(
-                    index: 3,
-                    displayLabel: _kItems[3].$1,
-                    emblemCategory: _kItems[3].$2,
-                    progress: itemProgress(3),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _Story1RegionSealLeaf extends StatelessWidget {
-  const _Story1RegionSealLeaf({
-    required this.actAnimation,
-    required this.isCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        final p = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.62) / 0.28).clamp(0.0, 1.0),
-        );
-        return Opacity(
-          opacity: (0.38 + (0.62 * p)).clamp(0.0, 1.0),
-          child: Center(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFECFDF5),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFA7F3D0)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 11 : 14,
-                  vertical: isCompact ? 5.5 : 7.0,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.check_circle_rounded,
-                      size: 15,
-                      color: Color(0xFF059669),
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'Atendimento rápido na sua região',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: const Color(0xFF064E3B),
-                          fontSize: isCompact ? 11.0 : 12.2,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// =============================================================================
-// ETAPA 2 (00:02): PEDIDO PROTEGIDO + RUA OCULTA + 3 PROPOSTAS CLARAS
-// =============================================================================
-
-class _Story2PrivacyAndQuotesDemo extends StatelessWidget {
-  const _Story2PrivacyAndQuotesDemo({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  static const List<(String, String, String)> _kProposals =
-      <(String, String, String)>[
-    ('Proposta 1', 'R\$ 120,00', '4,9'),
-    ('Proposta 2', 'R\$ 150,00', '4,8'),
-    ('Proposta 3', 'R\$ 180,00', '4,7'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = isUltraCompact ? 6.5 : (isCompact ? 8.5 : 11.0);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Pedido Protegido',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: const Color(0xFF0F172A),
-            fontSize: isCompact ? 14.0 : 16.5,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.3,
-          ),
-        ),
-        SizedBox(height: gap),
-        _Story2AddressShieldLeaf(
-          actAnimation: actAnimation,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        ),
-        SizedBox(height: gap),
-        _Story2ProposalsListLeaf(
-          actAnimation: actAnimation,
-          proposals: _kProposals,
-          isCompact: isCompact,
-          isUltraCompact: isUltraCompact,
-        ),
-      ],
-    );
-  }
-}
-
-class _Story2AddressShieldLeaf extends StatelessWidget {
-  const _Story2AddressShieldLeaf({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        // 0.85s..1.75s de 3.10s -> [0.274 .. 0.565]
-        final shieldProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.274) / (0.565 - 0.274)).clamp(0.0, 1.0),
-        );
-        final shielded = shieldProgress >= 0.45;
-        final bg = Color.lerp(
-          const Color(0xFFF1F5F9),
-          const Color(0xFFDCFCE7),
-          shieldProgress,
-        )!;
-        final border = Color.lerp(
-          const Color(0xFFCBD5E1),
-          const Color(0xFF86EFAC),
-          shieldProgress,
-        )!;
-
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: border, width: 1.15),
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: isCompact ? 10 : 13,
-              vertical: isUltraCompact ? 6.5 : (isCompact ? 8 : 9.5),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  shielded ? Icons.lock_rounded : Icons.place_outlined,
-                  size: 15,
-                  color: shielded
-                      ? const Color(0xFF047857)
-                      : const Color(0xFF334155),
-                ),
-                const SizedBox(width: 7),
-                Expanded(
-                  child: Text(
-                    shielded
-                        ? '🔒 Rua e número protegidos'
-                        : 'Ocultando rua e número...',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: shielded
-                          ? const Color(0xFF064E3B)
-                          : const Color(0xFF334155),
-                      fontSize: isCompact ? 11.5 : 13.0,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _Story2ProposalsListLeaf extends StatelessWidget {
-  const _Story2ProposalsListLeaf({
-    required this.actAnimation,
-    required this.proposals,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final List<(String, String, String)> proposals;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        // Destaque suave da Proposta 1 aos 2.1s (0.677 de 3.10s)
-        final selectProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.65) / 0.24).clamp(0.0, 1.0),
-        );
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(proposals.length, (i) {
-            final item = proposals[i];
-            final isBest = i == 0;
-            final highlight = isBest ? selectProgress : 0.0;
-
-            return Padding(
-              padding: EdgeInsets.only(
-                top: i == 0 ? 0 : (isUltraCompact ? 5.0 : 7.0),
-              ),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color.lerp(
-                    const Color(0xFFFFFFFF),
-                    const Color(0xFFECFDF5),
-                    highlight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Color.lerp(
-                      const Color(0xFFE2E8F0),
-                      const Color(0xFF10B981),
-                      highlight,
-                    )!,
-                    width: isBest && highlight > 0.4 ? 1.35 : 1.0,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isCompact ? 10 : 13,
-                    vertical: isUltraCompact ? 6.5 : (isCompact ? 8 : 10),
-                  ),
-                  child: Row(
-                    children: [
-                      if (isBest && highlight > 0.5) ...[
-                        const Icon(
-                          Icons.check_circle_rounded,
-                          size: 15,
-                          color: Color(0xFF059669),
-                        ),
-                        const SizedBox(width: 6),
-                      ],
-                      Expanded(
-                        child: Text(
-                          item.$1,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: const Color(0xFF0F172A),
-                            fontSize: isCompact ? 11.8 : 13.2,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        item.$2,
-                        maxLines: 1,
-                        style: TextStyle(
-                          color: isBest && highlight > 0.5
-                              ? const Color(0xFF064E3B)
-                              : const Color(0xFF0F172A),
-                          fontSize: isCompact ? 11.8 : 13.4,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      SizedBox(width: isCompact ? 7 : 10),
-                      const Icon(
-                        Icons.star_rounded,
-                        size: 15,
-                        color: Color(0xFFF59E0B),
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        item.$3,
-                        maxLines: 1,
-                        style: TextStyle(
-                          color: const Color(0xFF0F172A),
-                          fontSize: isCompact ? 11.5 : 12.8,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        );
-      },
-    );
-  }
-}
-
-// =============================================================================
-// ETAPA 3 (00:03–00:04): COFRE 3D + CARTÃO SAFIRA + DÍGITOS 4 · 8 · 2 · (9)
-// =============================================================================
-
-class _Story3ProtectedVaultPinDemo extends StatelessWidget {
-  const _Story3ProtectedVaultPinDemo({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  static const List<String> _kPinDigits = <String>['4', '8', '2', '9'];
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = isUltraCompact ? 6.5 : (isCompact ? 8.5 : 11.5);
-
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        final t = actAnimation.value;
-        final approvedOpacity = Curves.easeOutQuart.transform(
-          ((t - 0.52) / 0.34).clamp(0.0, 1.0),
-        );
-        final vaultProgress = Curves.easeOutQuart.transform(
-          ((t - 0.20) / 0.65).clamp(0.0, 1.0),
-        );
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Opacity(
-              opacity: (0.28 + (0.72 * approvedOpacity)).clamp(0.0, 1.0),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.check_rounded,
-                    size: 16,
-                    color: Color(0xFF059669),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Serviço aprovado · 90 dias de garantia',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF065F46),
-                        fontSize: isCompact ? 11.4 : 12.8,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: gap),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5F0),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFCFE8DE)),
-              ),
-              child: SizedBox(
-                height: isUltraCompact ? 68.0 : (isCompact ? 80.0 : 98.0),
-                width: double.infinity,
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: _ProtectedEscrowVaultArtPainter(
-                      lockProgress: vaultProgress,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: gap),
-            Text(
-              'R\$ 180,00 · Guardado com segurança',
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: const Color(0xFF0F172A),
-                fontSize: isCompact ? 12.0 : 13.6,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            SizedBox(height: gap),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFEEF2F6),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: const Color(0xFFD8E1EB)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 12 : 16,
-                  vertical: isUltraCompact ? 4.5 : (isCompact ? 6.0 : 7.5),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: List.generate(_kPinDigits.length, (i) {
-                    // 1.0s..2.4s -> [0.323 .. 0.774]
-                    final threshold = 0.33 + (i * 0.115);
-                    final lit = Curves.easeOutQuart.transform(
-                      ((t - threshold) / 0.11).clamp(0.0, 1.0),
-                    );
-                    final isLit = lit >= 0.45;
-                    final isFinalConfirmed = i == _kPinDigits.length - 1;
-                    final ringSize =
-                        isUltraCompact ? 28.0 : (isCompact ? 31.0 : 35.0);
-
-                    return SizedBox(
-                      width: ringSize,
-                      height: ringSize,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isFinalConfirmed
-                              ? Color.lerp(
-                                  const Color(0xFFE2E8F0),
-                                  const Color(0xFFDCFCE7),
-                                  lit,
-                                )
-                              : Colors.transparent,
-                          border: isFinalConfirmed
-                              ? Border.all(
-                                  color: Color.lerp(
-                                    const Color(0xFFCBD5E1),
-                                    const Color(0xFF10B981),
-                                    lit,
-                                  )!,
-                                  width: 2.0,
-                                )
-                              : null,
-                        ),
-                        child: Center(
-                          child: Text(
-                            isLit ? _kPinDigits[i] : '•',
-                            style: TextStyle(
-                              color: isFinalConfirmed && isLit
-                                  ? const Color(0xFF064E3B)
-                                  : const Color(0xFF0F172A),
-                              fontSize: isCompact ? 15.0 : 17.5,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Ilustração Vetorial 3D de Cofre Metálico Escovado + Cartão Safira com Chip
-/// Dourado sobre palco menta-pérola (fiel a `00:03–00:04` do vídeo).
-class _ProtectedEscrowVaultArtPainter extends CustomPainter {
-  const _ProtectedEscrowVaultArtPainter({required this.lockProgress});
-
-  final double lockProgress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final s = math.min(size.width / 220.0, size.height / 96.0);
-    canvas.save();
-    canvas.translate(
-      (size.width - (220.0 * s)) / 2.0,
-      (size.height - (96.0 * s)) / 2.0,
-    );
-    canvas.scale(s, s);
-
-    // Sombra macia de contato no palco menta-pérola
-    canvas.drawOval(
-      const Rect.fromLTWH(34, 72, 152, 14),
-      Paint()..color = const Color(0xFF0F172A).withValues(alpha: 0.12),
-    );
-
-    // 1) COFRE METÁLICO TITÂNIO ESCOVADO 3D (ESQUERDA/CENTRO)
-    // Lateral esquerda 3D em perspectiva
-    final sideDepth = RRect.fromRectAndRadius(
-      const Rect.fromLTWH(46, 16, 16, 58),
-      const Radius.circular(6),
-    );
-    canvas.drawRRect(
-      sideDepth,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF64748B), Color(0xFF334155)],
-        ).createShader(const Rect.fromLTWH(46, 16, 16, 58)),
-    );
-
-    // Pés de apoio do cofre
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(56, 72, 12, 5),
-        const Radius.circular(2),
-      ),
-      Paint()..color = const Color(0xFF1E293B),
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        const Rect.fromLTWH(102, 72, 12, 5),
-        const Radius.circular(2),
-      ),
-      Paint()..color = const Color(0xFF1E293B),
-    );
-
-    // Corpo frontal de titânio escovado
-    const vaultRect = Rect.fromLTWH(53, 14, 68, 60);
-    final vaultRRect = RRect.fromRectAndRadius(
-      vaultRect,
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(
-      vaultRRect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFFF1F5F9),
-            Color(0xFFCBD5E1),
-            Color(0xFF94A3B8),
-          ],
-          stops: [0.0, 0.52, 1.0],
-        ).createShader(vaultRect),
-    );
-    canvas.drawRRect(
-      vaultRRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..color = const Color(0xFF64748B),
-    );
-
-    // Porta rebaixada do cofre + dobradiças cromadas
-    const doorRect = Rect.fromLTWH(60, 21, 54, 46);
-    final doorRRect = RRect.fromRectAndRadius(
-      doorRect,
-      const Radius.circular(5),
-    );
-    canvas.drawRRect(
-      doorRRect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFE2E8F0), Color(0xFF94A3B8)],
-        ).createShader(doorRect),
-    );
-    canvas.drawRRect(
-      doorRRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0
-        ..color = const Color(0xFF475569),
-    );
-
-    for (final hy in const [27.0, 53.0]) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(57, hy, 5, 8),
-          const Radius.circular(1.5),
-        ),
-        Paint()..color = const Color(0xFF334155),
-      );
-    }
-
-    // Volante circular central da trava do cofre (gira suavemente até travar)
-    const dialCenter = Offset(87, 44);
-    canvas.drawCircle(
-      dialCenter,
-      12.5,
-      Paint()..color = const Color(0xFF1E293B),
-    );
-    canvas.drawCircle(
-      dialCenter,
-      10.2,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.8
-        ..color = Color.lerp(
-          const Color(0xFF94A3B8),
-          const Color(0xFF34D399),
-          lockProgress,
-        )!,
-    );
-
-    final angleBase = lockProgress * (math.pi * 0.25);
-    final spokePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFFF8FAFC);
-    for (var k = 0; k < 4; k++) {
-      final a = angleBase + (k * math.pi / 2);
-      canvas.drawLine(
-        dialCenter,
-        Offset(
-          dialCenter.dx + math.cos(a) * 7.2,
-          dialCenter.dy + math.sin(a) * 7.2,
-        ),
-        spokePaint,
-      );
-    }
-    canvas.drawCircle(
-      dialCenter,
-      3.0,
-      Paint()..color = const Color(0xFFE2E8F0),
-    );
-
-    // 2) CARTÃO SAFIRA PROTEGIDO COM CHIP DOURADO (SOBREPOSTO À DIREITA)
-    const cardRect = Rect.fromLTWH(105, 24, 74, 48);
-    final cardRRect = RRect.fromRectAndRadius(
-      cardRect,
-      const Radius.circular(8),
-    );
-
-    // Sombra projetada sobre o cofre
-    canvas.drawRRect(
-      cardRRect.shift(const Offset(-3, 4)),
-      Paint()..color = const Color(0xFF0F172A).withValues(alpha: 0.24),
-    );
-
-    // Gradiente Safira Real
-    canvas.drawRRect(
-      cardRRect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF3B82F6),
-            Color(0xFF1D4ED8),
-            Color(0xFF1E3A8A),
-          ],
-          stops: [0.0, 0.55, 1.0],
-        ).createShader(cardRect),
-    );
-
-    // Reflexo acetinado diagonal no cartão
-    canvas.save();
-    canvas.clipRRect(cardRRect);
-    final sheen = Path()
-      ..moveTo(118, 24)
-      ..lineTo(148, 24)
-      ..lineTo(130, 72)
-      ..lineTo(105, 72)
-      ..close();
-    canvas.drawPath(
-      sheen,
-      Paint()..color = Colors.white.withValues(alpha: 0.12),
-    );
-    canvas.restore();
-
-    canvas.drawRRect(
-      cardRRect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.0
-        ..color = const Color(0xFF93C5FD).withValues(alpha: 0.65),
-    );
-
-    // Chip EMV Dourado esculpido
-    const chipRect = Rect.fromLTWH(114, 37, 15, 11);
-    final chipRRect = RRect.fromRectAndRadius(
-      chipRect,
-      const Radius.circular(2.5),
-    );
-    canvas.drawRRect(
-      chipRRect,
-      Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFDE68A), Color(0xFFF59E0B)],
-        ).createShader(chipRect),
-    );
-    canvas.drawLine(
-      const Offset(114, 42.5),
-      const Offset(129, 42.5),
-      Paint()
-        ..strokeWidth = 0.8
-        ..color = const Color(0xFFB45309),
-    );
-
-    // Pontos prateados e selo esmeralda no canto do cartão
-    for (var d = 0; d < 4; d++) {
-      canvas.drawCircle(
-        Offset(116.0 + (d * 5.0), 59.0),
-        1.3,
-        Paint()..color = const Color(0xFFDBEAFE),
-      );
-    }
-    canvas.drawCircle(
-      const Offset(166, 58),
-      6.5,
-      Paint()..color = const Color(0xFF10B981),
-    );
-    final check = Path()
-      ..moveTo(163.2, 58.0)
-      ..lineTo(165.3, 60.1)
-      ..lineTo(169.2, 56.0);
-    canvas.drawPath(
-      check,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..color = Colors.white,
-    );
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant _ProtectedEscrowVaultArtPainter oldDelegate) {
-    return oldDelegate.lockProgress != lockProgress;
-  }
-}
-
-// =============================================================================
-// ETAPA 4 (00:05): SAÚDE DO IMÓVEL 96% (ARCO 180° ESMERALDA) + HISTÓRICO PDF
-// =============================================================================
-
-class _Story4PropertyHealthHistoryDemo extends StatelessWidget {
-  const _Story4PropertyHealthHistoryDemo({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  static const List<String> _kCertifiedRows = <String>[
-    'Revisão Elétrica · 12/10/2026',
-    'Climatização · 05/11/2026',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = isUltraCompact ? 6.0 : (isCompact ? 8.0 : 11.0);
-
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        final arcProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.22) / 0.58).clamp(0.0, 1.0),
-        );
-        final displayedPercent = (72 + (24 * arcProgress).round()).clamp(0, 96);
-        final gaugeHeight = isUltraCompact ? 78.0 : (isCompact ? 90.0 : 108.0);
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Saúde do Imóvel',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFF0F172A),
-                      fontSize: isCompact ? 14.0 : 16.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 5,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(3, (index) {
-                        return Padding(
-                          padding: EdgeInsets.only(left: index == 0 ? 0 : 3),
-                          child: const DecoratedBox(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Color(0xFF475569),
-                            ),
-                            child: SizedBox(width: 3.5, height: 3.5),
-                          ),
-                        );
-                      }),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: gap),
-            SizedBox(
-              height: gaugeHeight,
-              child: Stack(
-                alignment: Alignment.bottomCenter,
-                children: [
-                  Positioned.fill(
-                    child: RepaintBoundary(
-                      child: CustomPaint(
-                        painter: _PropertyHealthSemiArchPainter(
-                          progress: 0.96 * arcProgress,
-                          strokeWidth: isUltraCompact ? 10.5 : 13.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.only(
-                      bottom: isUltraCompact ? 14.0 : 18.0,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '$displayedPercent%',
-                          maxLines: 1,
-                          style: TextStyle(
-                            color: const Color(0xFF0F172A),
-                            fontSize: isUltraCompact
-                                ? 21.0
-                                : (isCompact ? 24.0 : 30.0),
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: -0.8,
-                            height: 1.0,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Em dia',
-                          maxLines: 1,
-                          style: TextStyle(
-                            color: const Color(0xFF334155),
-                            fontSize: isCompact ? 11.2 : 12.6,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Positioned(
-                    left: isCompact ? 16 : 28,
-                    bottom: 0,
-                    child: Text(
-                      '0%',
-                      style: TextStyle(
-                        color: const Color(0xFF334155),
-                        fontSize: isCompact ? 10.2 : 11.2,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: isCompact ? 12 : 22,
-                    bottom: 0,
-                    child: Text(
-                      '100%',
-                      style: TextStyle(
-                        color: const Color(0xFF334155),
-                        fontSize: isCompact ? 10.2 : 11.2,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: gap),
-            for (var i = 0; i < _kCertifiedRows.length; i++) ...[
-              if (i > 0) SizedBox(height: isUltraCompact ? 5.0 : 7.0),
-              Opacity(
-                opacity: (0.35 +
-                        0.65 *
-                            Curves.easeOutQuart.transform(
-                              ((actAnimation.value - (0.44 + i * 0.14)) / 0.25)
-                                  .clamp(0.0, 1.0),
-                            ))
-                    .clamp(0.0, 1.0),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(11),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isCompact ? 9 : 12,
-                      vertical: isUltraCompact ? 6.0 : (isCompact ? 7.5 : 9.0),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.check_rounded,
-                          size: 16,
-                          color: Color(0xFF059669),
-                        ),
-                        const SizedBox(width: 7),
-                        Expanded(
-                          child: Text(
-                            _kCertifiedRows[i],
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: const Color(0xFF0F172A),
-                              fontSize: isCompact ? 11.4 : 12.8,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        const DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Color(0xFF991B1B),
-                            borderRadius: BorderRadius.all(Radius.circular(6)),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 6.5,
-                              vertical: 2.5,
-                            ),
-                            child: Text(
-                              'PDF',
-                              style: TextStyle(
-                                color: Color(0xFFFFFFFF),
-                                fontSize: 9.8,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _PropertyHealthSemiArchPainter extends CustomPainter {
-  const _PropertyHealthSemiArchPainter({
-    required this.progress,
-    required this.strokeWidth,
-  });
-
-  final double progress;
-  final double strokeWidth;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final radius = math.min(
-      (size.width / 2) - strokeWidth - 8.0,
-      size.height - strokeWidth - 10.0,
-    );
-    if (radius <= 8.0) return;
-
-    final center = Offset(size.width / 2, size.height - 14.0);
-    final rect = Rect.fromCircle(center: center, radius: radius);
-
-    final trackPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..color = const Color(0xFFE2E8F0);
-
-    canvas.drawArc(rect, math.pi, math.pi, false, trackPaint);
-
-    final clamped = progress.clamp(0.0, 1.0);
-    if (clamped <= 0.001) return;
-
-    final activePaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..shader = LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: const [
-          Color(0xFF34D399),
-          Color(0xFF10B981),
-          Color(0xFF059669),
-        ],
-      ).createShader(rect);
-
-    canvas.drawArc(rect, math.pi, math.pi * clamped, false, activePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _PropertyHealthSemiArchPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.strokeWidth != strokeWidth;
-  }
-}
-
-// =============================================================================
-// ETAPA 5 (00:06–00:07): PAINEL DO PROFISSIONAL + R$ 0,00 + REPUTAÇÃO VERIFICADA
-// =============================================================================
-
-class _Story5FairProviderPanelDemo extends StatelessWidget {
-  const _Story5FairProviderPanelDemo({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = isUltraCompact ? 7.0 : (isCompact ? 9.0 : 13.0);
-
-    return AnimatedBuilder(
-      animation: actAnimation,
-      builder: (context, _) {
-        final barProgress = Curves.easeOutQuart.transform(
-          ((actAnimation.value - 0.26) / 0.56).clamp(0.0, 1.0),
-        );
-        final fillFactor = (0.36 + (0.64 * barProgress)).clamp(0.0, 1.0);
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Painel do Profissional',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: const Color(0xFF0F172A),
-                fontSize: isCompact ? 14.0 : 16.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-              ),
-            ),
-            SizedBox(height: gap),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 11 : 15,
-                  vertical: isUltraCompact ? 8.0 : (isCompact ? 10.0 : 13.0),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Custo para orçar:',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF334155),
-                        fontSize: isCompact ? 11.4 : 12.6,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'R\$ 0,00',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF0F172A),
-                        fontSize: isUltraCompact
-                            ? 20.0
-                            : (isCompact ? 22.5 : 26.0),
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.6,
-                        height: 1.12,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Valor do cliente já garantido antes de sair',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: const Color(0xFF334155),
-                        fontSize: isCompact ? 11.4 : 12.6,
-                        fontWeight: FontWeight.w600,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: gap),
-            Text(
-              'Reputação Verificada',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: const Color(0xFF0F172A),
-                fontSize: isCompact ? 12.2 : 13.8,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            SizedBox(height: isUltraCompact ? 5.0 : 7.0),
-            SizedBox(
-              height: isCompact ? 8.0 : 9.5,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: DecoratedBox(
-                  decoration: const BoxDecoration(color: Color(0xFFE2E8F0)),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FractionallySizedBox(
-                      widthFactor: fillFactor,
-                      heightFactor: 1.0,
-                      child: const DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Color(0xFF10B981),
-                              Color(0xFF0D9488),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: isUltraCompact ? 6.0 : 8.0),
-            Row(
-              children: [
-                const Icon(
-                  Icons.star_rounded,
-                  size: 17,
-                  color: Color(0xFFF59E0B),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: Text(
-                    '5,0 · Profissional Destaque',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFF0F172A),
-                      fontSize: isCompact ? 11.8 : 13.2,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// =============================================================================
-// ETAPA 6 (00:08–00:09): CHAVE SELETORA DUPLA ESCULPIDA DE ALTÍSSIMO PADRÃO
-// =============================================================================
-
-class _Story6DualAccountSwitchDemo extends StatefulWidget {
-  const _Story6DualAccountSwitchDemo({
-    required this.actAnimation,
-    required this.isCompact,
-    required this.isUltraCompact,
-    required this.onInteractivePointerDown,
-  });
-
-  final Animation<double> actAnimation;
-  final bool isCompact;
-  final bool isUltraCompact;
-  final ValueChanged<int> onInteractivePointerDown;
-
-  @override
-  State<_Story6DualAccountSwitchDemo> createState() =>
-      _Story6DualAccountSwitchDemoState();
-}
-
-class _Story6DualAccountSwitchDemoState
-    extends State<_Story6DualAccountSwitchDemo>
-    with SingleTickerProviderStateMixin {
-  int? _manualSelectedMode; // null = segue coreografia; 0 = Cliente; 1 = Profissional
-  late final AnimationController _manualSwitchController;
-  double _manualFrom = 0.0;
-  double _manualTo = 1.0;
-
-  @override
-  void initState() {
-    super.initState();
-    _manualSwitchController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 280),
-    );
-  }
-
-  @override
-  void dispose() {
-    _manualSwitchController.dispose();
-    super.dispose();
-  }
-
-  double _autoChoreographedPosition(double t) {
-    // 0.0s–1.10s (0.00..0.355): Modo Cliente (0.0)
-    // 1.10s–2.10s (0.355..0.677): desliza com mola suave para Modo Profissional (1.0)
-    // 2.20s–3.00s (0.710..0.968): retorna suavemente estacionando em Modo Cliente (0.0)
-    if (t <= 0.355) return 0.0;
-    if (t < 0.710) {
-      return Curves.easeOutQuart.transform(
-        ((t - 0.355) / (0.580 - 0.355)).clamp(0.0, 1.0),
-      );
-    }
-    final backToClient = Curves.easeOutQuart.transform(
-      ((t - 0.710) / (0.968 - 0.710)).clamp(0.0, 1.0),
-    );
-    return (1.0 - backToClient).clamp(0.0, 1.0);
-  }
-
-  double _currentCursorPosition() {
-    if (_manualSelectedMode == null) {
-      return _autoChoreographedPosition(widget.actAnimation.value);
-    }
-    final curved = Curves.easeOutQuart.transform(
-      _manualSwitchController.value.clamp(0.0, 1.0),
-    );
-    return _manualFrom + ((_manualTo - _manualFrom) * curved);
-  }
-
-  void _handleSelectMode(int targetMode) {
-    final currentPos = _currentCursorPosition();
-    final targetPos = targetMode == 0 ? 0.0 : 1.0;
-    HapticFeedback.selectionClick();
-    setState(() {
-      _manualSelectedMode = targetMode;
-      _manualFrom = currentPos;
-      _manualTo = targetPos;
-    });
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _manualSwitchController.value = 1.0;
-    } else {
-      _manualSwitchController.forward(from: 0.0);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompact = widget.isCompact;
-    final isUltraCompact = widget.isUltraCompact;
-    final gap = isUltraCompact ? 7.0 : (isCompact ? 9.5 : 13.0);
-
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        widget.actAnimation,
-        _manualSwitchController,
-      ]),
-      builder: (context, _) {
-        final cursorPos = _currentCursorPosition().clamp(0.0, 1.0);
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Escolha Seu Perfil',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: const Color(0xFF0F172A),
-                      fontSize: isCompact ? 14.0 : 16.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2F6),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: isCompact ? 9 : 11,
-                      vertical: 4,
-                    ),
-                    child: Text(
-                      '1 toque',
-                      maxLines: 1,
-                      style: TextStyle(
-                        color: const Color(0xFF0F172A),
-                        fontSize: isCompact ? 10.6 : 11.6,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: gap),
-            _LuxuryDualModeSegmentedSwitch(
-              key: const Key('dual-mode-luxury-switch'),
-              cursorPosition: cursorPos,
-              isCompact: isCompact,
-              isUltraCompact: isUltraCompact,
-              onInteractivePointerDown: widget.onInteractivePointerDown,
-              onSelectMode: _handleSelectMode,
-            ),
-            SizedBox(height: gap),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: isCompact ? 9 : 12,
-                  vertical: isUltraCompact ? 6.0 : (isCompact ? 7.5 : 9.0),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.shield_outlined,
-                            size: 14,
-                            color: cursorPos < 0.5
-                                ? const Color(0xFF1E3A8A)
-                                : const Color(0xFF334155),
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              'Contratar com garantia',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: const Color(0xFF0F172A),
-                                fontSize: isCompact ? 10.3 : 11.4,
-                                fontWeight: cursorPos < 0.5
-                                    ? FontWeight.w700
-                                    : FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 5),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Color(0xFF94A3B8),
-                        ),
-                        child: SizedBox(width: 4, height: 4),
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Icon(
-                            Icons.bolt_rounded,
-                            size: 14,
-                            color: cursorPos >= 0.5
-                                ? const Color(0xFF047857)
-                                : const Color(0xFF334155),
-                          ),
-                          const SizedBox(width: 3),
-                          Flexible(
-                            child: Text(
-                              'Atender sem pagar para orçar',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: const Color(0xFF0F172A),
-                                fontSize: isCompact ? 10.3 : 11.4,
-                                fontWeight: cursorPos >= 0.5
-                                    ? FontWeight.w700
-                                    : FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: gap),
-            Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: const Color(0xFF86EFAC)),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isCompact ? 12 : 16,
-                    vertical: isUltraCompact ? 5.5 : (isCompact ? 6.5 : 8.0),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        size: 16,
-                        color: Color(0xFF047857),
-                      ),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          'Identidade Verificada',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: const Color(0xFF064E3B),
-                            fontSize: isCompact ? 11.5 : 12.8,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Chave Seletora Dupla Esculpida de Altíssimo Padrão (`Modo Cliente` <->
-/// `Modo Profissional`): trilho acetinado rebaixado `#E8EEF5` com sombra
-/// interna sutil + 1 único cursor pílula lapidado com chanfro luminoso superior
-/// e sombra colorida em 2 camadas.
-class _LuxuryDualModeSegmentedSwitch extends StatelessWidget {
-  const _LuxuryDualModeSegmentedSwitch({
-    super.key,
-    required this.cursorPosition,
-    required this.isCompact,
-    required this.isUltraCompact,
-    required this.onInteractivePointerDown,
-    required this.onSelectMode,
-  });
-
-  final double cursorPosition;
-  final bool isCompact;
-  final bool isUltraCompact;
-  final ValueChanged<int> onInteractivePointerDown;
-  final ValueChanged<int> onSelectMode;
-
-  @override
-  Widget build(BuildContext context) {
-    final pos = cursorPosition.clamp(0.0, 1.0);
-    final isClientActive = pos < 0.5;
-    final isProviderActive = pos >= 0.5;
-    final switchHeight = isUltraCompact ? 52.0 : (isCompact ? 52.0 : 54.0);
-
-    final thumbStart = Color.lerp(
-      const Color(0xFF1E3A8A),
-      const Color(0xFF047857),
-      pos,
-    )!;
-    final thumbEnd = Color.lerp(
-      const Color(0xFF2563EB),
-      const Color(0xFF0F766E),
-      pos,
-    )!;
-
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) => onInteractivePointerDown(event.pointer),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFDFE7F0),
-              Color(0xFFE8EEF5),
-              Color(0xFFEDF2F8),
-            ],
-            stops: [0.0, 0.24, 1.0],
-          ),
-          border: Border.all(
-            color: const Color(0xFFCBD5E1),
-            width: 1.15,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(4.0),
-          child: SizedBox(
-            height: switchHeight - 8.0,
-            child: Stack(
-              children: [
-                // 1 único cursor pílula flutuante esculpido (chanfro luminoso + sombra dupla)
-                Align(
-                  alignment: Alignment((pos * 2.0) - 1.0, 0.0),
-                  child: FractionallySizedBox(
-                    widthFactor: 0.50,
-                    heightFactor: 1.0,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [thumbStart, thumbEnd],
-                        ),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.30),
-                          width: 1.0,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: thumbEnd.withValues(alpha: 0.28),
-                            blurRadius: 14,
-                            offset: const Offset(0, 5),
-                          ),
-                          BoxShadow(
-                            color:
-                                const Color(0xFF0F172A).withValues(alpha: 0.16),
-                            blurRadius: 4,
-                            offset: const Offset(0, 1.5),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: SizedBox(
-                            height: 11,
-                            width: double.infinity,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.white.withValues(alpha: 0.24),
-                                    Colors.white.withValues(alpha: 0.0),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Opções interativas de toque direto sobre o trilho acetinado
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        key: const Key('dual-mode-option-client'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => onSelectMode(0),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isCompact ? 6 : 10,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.home_rounded,
-                                size: isCompact ? 15 : 17,
-                                color: isClientActive
-                                    ? const Color(0xFFFFFFFF)
-                                    : const Color(0xFF1E3A8A),
-                              ),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  'Modo Cliente',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isClientActive
-                                        ? const Color(0xFFFFFFFF)
-                                        : const Color(0xFF0F172A),
-                                    fontSize: isUltraCompact
-                                        ? 10.6
-                                        : (isCompact ? 11.2 : 12.5),
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        key: const Key('dual-mode-option-provider'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => onSelectMode(1),
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isCompact ? 6 : 10,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.handyman_rounded,
-                                size: isCompact ? 14 : 16,
-                                color: isProviderActive
-                                    ? const Color(0xFFFFFFFF)
-                                    : const Color(0xFF047857),
-                              ),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  'Modo Profissional',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: isProviderActive
-                                        ? const Color(0xFFFFFFFF)
-                                        : const Color(0xFF0F172A),
-                                    fontSize: isUltraCompact
-                                        ? 10.6
-                                        : (isCompact ? 11.2 : 12.5),
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
