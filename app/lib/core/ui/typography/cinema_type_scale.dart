@@ -1,5 +1,3 @@
-import 'dart:ui' show FontFeature;
-
 import 'package:flutter/painting.dart';
 
 /// Escala tipográfica, espaçamento e geometria da apresentação pós-cadastro
@@ -201,7 +199,6 @@ abstract final class CinemaType {
   );
 
   /// Aplica algarismos tabulares a qualquer estilo numérico.
-  static TextStyle tabular(TextStyle base) => base.copyWith(
-        fontFeatures: _tabular,
-      );
+  static TextStyle tabular(TextStyle base) =>
+      base.copyWith(fontFeatures: _tabular);
 }

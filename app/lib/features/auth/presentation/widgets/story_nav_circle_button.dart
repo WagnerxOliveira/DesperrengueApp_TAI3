@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
@@ -83,9 +81,7 @@ class _StoryNavCircleButtonState extends State<StoryNavCircleButton>
       _scale.value = target;
       return;
     }
-    _scale.animateWith(
-      SpringSimulation(_spring, _scale.value, target, 0.0),
-    );
+    _scale.animateWith(SpringSimulation(_spring, _scale.value, target, 0.0));
   }
 
   void _handleTapDown(TapDownDetails _) {
@@ -120,9 +116,7 @@ class _StoryNavCircleButtonState extends State<StoryNavCircleButton>
       ),
       child: Center(
         child: Icon(
-          isPrevious
-              ? Icons.chevron_left_rounded
-              : Icons.chevron_right_rounded,
+          isPrevious ? Icons.chevron_left_rounded : Icons.chevron_right_rounded,
           size: StoryNavCircleButton.iconSize,
           color: StoryNavCircleButton.iconColor,
         ),
@@ -136,10 +130,7 @@ class _StoryNavCircleButtonState extends State<StoryNavCircleButton>
         child: DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(
-              color: StoryNavCircleButton.focusRing,
-              width: 2,
-            ),
+            border: Border.all(color: StoryNavCircleButton.focusRing, width: 2),
           ),
         ),
       ),
@@ -157,8 +148,9 @@ class _StoryNavCircleButtonState extends State<StoryNavCircleButton>
           height: StoryNavCircleButton.size,
           child: FocusableActionDetector(
             enabled: enabled,
-            mouseCursor:
-                enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+            mouseCursor: enabled
+                ? SystemMouseCursors.click
+                : SystemMouseCursors.basic,
             onShowFocusHighlight: (value) => setState(() => _focused = value),
             onShowHoverHighlight: (value) => setState(() => _hovered = value),
             actions: <Type, Action<Intent>>{
@@ -180,10 +172,7 @@ class _StoryNavCircleButtonState extends State<StoryNavCircleButton>
                 opacity: enabled ? 1.0 : StoryNavCircleButton.disabledOpacity,
                 child: ScaleTransition(
                   scale: _scale,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [glass, ring],
-                  ),
+                  child: Stack(fit: StackFit.expand, children: [glass, ring]),
                 ),
               ),
             ),

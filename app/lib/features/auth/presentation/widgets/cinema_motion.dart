@@ -11,9 +11,8 @@ import 'package:lottie/lottie.dart';
 /// retomada e `disableAnimations ⇒ estado final` herdados sem custo).
 const int kCinemaActMs = 3100;
 
-Duration _actDuration(double fraction) => Duration(
-      microseconds: (fraction * kCinemaActMs * 1000).round(),
-    );
+Duration _actDuration(double fraction) =>
+    Duration(microseconds: (fraction * kCinemaActMs * 1000).round());
 
 /// Progresso 0..1 de [act] entre as frações [start] e [end] (com [curve]).
 double actProgress(
@@ -35,6 +34,7 @@ List<Effect<dynamic>> cascadeEffects(
   double end, {
   double dy = 12,
   double? scaleFrom,
+  double fadeFrom = 0.0,
 }) {
   final delay = _actDuration(start);
   final duration = _actDuration(end - start);
@@ -42,7 +42,7 @@ List<Effect<dynamic>> cascadeEffects(
     FadeEffect(
       delay: delay,
       duration: duration,
-      begin: 0.0,
+      begin: fadeFrom,
       end: 1.0,
       curve: Curves.easeOutQuart,
     ),
@@ -65,38 +65,41 @@ List<Effect<dynamic>> cascadeEffects(
   ];
 }
 
-/// Adaptador do `flutter_animate` que segue uma [Animation] existente
-/// (o controlador do ato da etapa) sem jamais alterar a duração dela.
-class CinemaActAdapter extends Adapter {
-  CinemaActAdapter(this.animation) : super(animated: false);
-
-  final Animation<double> animation;
-  AnimationController? _target;
-
-  void _sync() {
-    final target = _target;
-    if (target == null) return;
-    target.value = animation.value.clamp(0.0, 1.0);
+/// Efeitos `flutter_animate` compostos sem o widget `Animate` (que agenda um
+/// `Future.delayed` por instância): cada [EffectEntry] é criado aqui e o
+/// resultado é ligado a um [AnimationController] próprio da folha.
+Widget composeEffects({
+  required BuildContext context,
+  required Widget child,
+  required AnimationController controller,
+  required List<Effect<dynamic>> effects,
+}) {
+  var out = child;
+  for (final effect in effects) {
+    out = effect.build(
+      context,
+      out,
+      controller,
+      EffectEntry(
+        effect: effect,
+        delay: effect.delay ?? Duration.zero,
+        duration: effect.duration ?? Duration.zero,
+        curve: effect.curve ?? Curves.linear,
+        owner: _effectOwner,
+      ),
+    );
   }
-
-  @override
-  void attach(AnimationController controller) {
-    _target = controller;
-    controller.value = animation.value.clamp(0.0, 1.0);
-    animation.addListener(_sync);
-  }
-
-  @override
-  void detach() {
-    animation.removeListener(_sync);
-    _target = null;
-    super.detach();
-  }
+  return out;
 }
 
+// Proprietário inerte exigido por `EffectEntry` (nunca é montado).
+final Animate _effectOwner = Animate(child: const SizedBox.shrink());
+
 /// Folha declarativa: aplica [effects] (`flutter_animate`) ao [child] seguindo
-/// a linha do tempo [act] da etapa. Vive somente em folhas, preservando
-/// `WelcomeStoryHeroCard.build() == 1`.
+/// a linha do tempo [act] da etapa (pausa, retomada e
+/// `disableAnimations ⇒ estado final` herdados do controlador real). Vive
+/// somente em folhas, preservando `WelcomeStoryHeroCard.build() == 1`, e não
+/// cria `Timer`.
 class ActFx extends StatefulWidget {
   const ActFx({
     super.key,
@@ -113,31 +116,117 @@ class ActFx extends StatefulWidget {
   State<ActFx> createState() => _ActFxState();
 }
 
-class _ActFxState extends State<ActFx> {
-  late CinemaActAdapter _adapter = CinemaActAdapter(widget.act);
+class _ActFxState extends State<ActFx> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Widget? _composed;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: kCinemaActMs),
+      value: widget.act.value.clamp(0.0, 1.0),
+    );
+    widget.act.addListener(_sync);
+  }
+
+  void _sync() {
+    _controller.value = widget.act.value.clamp(0.0, 1.0);
+  }
 
   @override
   void didUpdateWidget(covariant ActFx oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.act != widget.act) {
-      _adapter = CinemaActAdapter(widget.act);
+      oldWidget.act.removeListener(_sync);
+      widget.act.addListener(_sync);
+      _sync();
+    }
+    if (!identical(oldWidget.child, widget.child) ||
+        oldWidget.effects.length != widget.effects.length) {
+      _composed = null;
     }
   }
 
   @override
+  void dispose() {
+    widget.act.removeListener(_sync);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Animate(
-      adapter: _adapter,
+    return _composed ??= composeEffects(
+      context: context,
+      child: widget.child,
+      controller: _controller,
+      effects: widget.effects,
+    );
+  }
+}
+
+/// Entrada única (fade + deslize) de uma folha, tocada uma vez ao montar.
+class IntroFx extends StatefulWidget {
+  const IntroFx({
+    super.key,
+    required this.child,
+    this.duration = const Duration(milliseconds: 320),
+    this.dy = 12,
+  });
+
+  final Widget child;
+  final Duration duration;
+  final double dy;
+
+  @override
+  State<IntroFx> createState() => _IntroFxState();
+}
+
+class _IntroFxState extends State<IntroFx> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Widget? _composed;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration)
+      ..forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant IntroFx oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.child, widget.child)) _composed = null;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _composed ??= composeEffects(
+      context: context,
+      child: widget.child,
+      controller: _controller,
       effects: <Effect<dynamic>>[
-        ...widget.effects,
-        // Cauda de 1 ms ancorada em 3,10 s: normaliza o tempo total do ato.
-        CustomEffect(
-          delay: Duration(milliseconds: kCinemaActMs - 1),
-          duration: const Duration(milliseconds: 1),
-          builder: (context, value, child) => child,
+        FadeEffect(
+          duration: widget.duration,
+          begin: 0.0,
+          end: 1.0,
+          curve: Curves.easeOutQuart,
+        ),
+        MoveEffect(
+          duration: widget.duration,
+          begin: Offset(0, widget.dy),
+          end: Offset.zero,
+          curve: Curves.easeOutQuart,
         ),
       ],
-      child: widget.child,
     );
   }
 }
@@ -176,10 +265,8 @@ class _CinemaLottieState extends State<CinemaLottie> {
   late Animation<double> _progress = _buildProgress();
 
   Animation<double> _buildProgress() => widget.act.drive(
-        CurveTween(
-          curve: Interval(widget.begin, widget.end, curve: widget.curve),
-        ),
-      );
+    CurveTween(curve: Interval(widget.begin, widget.end, curve: widget.curve)),
+  );
 
   @override
   void didUpdateWidget(covariant CinemaLottie oldWidget) {
