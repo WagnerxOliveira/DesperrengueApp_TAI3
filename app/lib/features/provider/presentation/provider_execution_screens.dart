@@ -905,11 +905,26 @@ class _ReleasePaymentScreenState extends State<ReleasePaymentScreen> {
                   ),
                 ),
                 Center(
-                  child: LinkButton(
-                    label: 'Tive um problema / o cliente não tem o código',
-                    color: tk.dangerInk,
-                    onPressed: () => Navigator.of(context).push(
-                      AppRoute(builder: (_) => SafetyScreen(job: widget.job)),
+                  child: AppPressScale(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        AppRoute(builder: (_) => SafetyScreen(job: widget.job)),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: tk.dangerInk,
+                        minimumSize: const Size(
+                          AppGeometry.minTarget,
+                          AppGeometry.minTarget,
+                        ),
+                      ),
+                      child: Text(
+                        'Tive um problema / o cliente não tem o código',
+                        textAlign: TextAlign.center,
+                        style: AppType.bodyStrong.copyWith(
+                          decoration: TextDecoration.underline,
+                          color: tk.dangerInk,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -924,37 +939,44 @@ class _ReleasePaymentScreenState extends State<ReleasePaymentScreen> {
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 400),
-                  child: GridView.count(
-                    crossAxisCount: 3,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    childAspectRatio: 2.1,
-                    mainAxisSpacing: AppSpace.s12,
-                    crossAxisSpacing: AppSpace.s12,
-                    children: [
-                      for (final k in ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', ''])
-                        k.isEmpty
-                            ? const SizedBox.shrink()
-                            : Material(
-                                color: tk.card,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(AppGeometry.buttonRadius),
-                                  side: BorderSide(color: tk.border),
-                                ),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(AppGeometry.buttonRadius),
-                                  onTap: () => k == 'back' ? _back() : _press(k),
-                                  child: Center(
-                                    child: k == 'back'
-                                        ? Semantics(
-                                            label: 'Apagar dígito',
-                                            child: Icon(Icons.backspace_outlined, size: 22, color: tk.accentInk),
-                                          )
-                                        : Text(k, style: AppType.headline.copyWith(color: tk.accentInk)),
-                                  ),
-                                ),
+                  child: Builder(
+                    builder: (context) {
+                      const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', ''];
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: keys.length,
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisExtent: AppGeometry.minTarget + 4,
+                          mainAxisSpacing: AppSpace.s12,
+                          crossAxisSpacing: AppSpace.s12,
+                        ),
+                        itemBuilder: (context, index) {
+                          final k = keys[index];
+                          if (k.isEmpty) return const SizedBox.shrink();
+                          return Material(
+                            color: tk.card,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(AppGeometry.buttonRadius),
+                              side: BorderSide(color: tk.border),
+                            ),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(AppGeometry.buttonRadius),
+                              onTap: () => k == 'back' ? _back() : _press(k),
+                              child: Center(
+                                child: k == 'back'
+                                    ? Semantics(
+                                        label: 'Apagar dígito',
+                                        child: Icon(Icons.backspace_outlined, size: 22, color: tk.accentInk),
+                                      )
+                                    : Text(k, style: AppType.headline.copyWith(color: tk.accentInk)),
                               ),
-                    ],
+                            ),
+                          );
+                        },
+                      );
+                    },
                   ),
                 ),
               ),

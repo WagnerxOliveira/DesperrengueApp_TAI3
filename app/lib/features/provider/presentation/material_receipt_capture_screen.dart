@@ -178,6 +178,7 @@ class _MaterialReceiptCaptureScreenState extends State<MaterialReceiptCaptureScr
             onChanged: (_) => setState(() => _outcome = null),
             decoration: InputDecoration(
               labelText: 'Chave de acesso',
+              floatingLabelStyle: AppType.caption.copyWith(color: tk.textMuted).apply(fontSizeFactor: 1 / 0.75),
               helperText: 'Os 44 números abaixo do código de barras ou do QR Code.',
               helperMaxLines: 2,
               errorText: (check != null && !check.valid) ? check.message : null,
@@ -222,7 +223,12 @@ class _MaterialReceiptCaptureScreenState extends State<MaterialReceiptCaptureScr
             enabled: !_busy && !registered,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             onChanged: (_) => setState(() => _outcome = null),
-            decoration: const InputDecoration(labelText: 'Valor total dos materiais', prefixText: 'R\$ ', hintText: '1.250,50'),
+            decoration: InputDecoration(
+              labelText: 'Valor total dos materiais',
+              floatingLabelStyle: AppType.caption.copyWith(color: tk.textMuted).apply(fontSizeFactor: 1 / 0.75),
+              prefixText: 'R\$ ',
+              hintText: '1.250,50',
+            ),
           ),
           const SizedBox(height: AppSpace.s16),
           _PhotoTile(

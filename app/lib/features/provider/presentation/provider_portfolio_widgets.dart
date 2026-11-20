@@ -493,17 +493,11 @@ class CompletedServicePortfolioCard extends StatelessWidget {
         ),
     };
 
-    return AppCard(
-      variant: AppCardVariant.outlined,
-      onTap: onTap,
-      color: tk.surface,
-      borderColor: isAutomaticTopThree
-          ? tk.accentInk.withValues(alpha: 0.35)
-          : tk.border,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
             spacing: AppSpace.s8,
             runSpacing: AppSpace.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -815,7 +809,23 @@ class CompletedServicePortfolioCard extends StatelessWidget {
               ),
             ),
           ],
-        ],
+      ],
+    );
+
+    return AppCard(
+      variant: AppCardVariant.outlined,
+      onTap: onTap,
+      color: tk.surface,
+      borderColor: isAutomaticTopThree
+          ? tk.accentInk.withValues(alpha: 0.35)
+          : tk.border,
+      child: LayoutBuilder(
+        builder: (context, constraints) => constraints.maxHeight.isFinite
+            ? SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                child: content,
+              )
+            : content,
       ),
     );
   }
