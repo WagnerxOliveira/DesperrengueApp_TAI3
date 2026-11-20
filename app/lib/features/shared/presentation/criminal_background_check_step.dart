@@ -10,6 +10,7 @@ import '../../../core/services/criminal_certificate_picker_and_extractor.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
+import '../../client/presentation/widgets/kyc_onboarding_chrome.dart';
 
 /// Assinatura injetável para seleção de arquivo/foto da certidão em testes de widget.
 typedef CriminalCertificateFilePicker =
@@ -785,7 +786,18 @@ class _CriminalBackgroundCheckStepState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Cabeçalho de Confiança
+        // Cabeçalho Editorial de Confiança
+        KycStepHeroHeader(
+          icon: Icons.gpp_good_rounded,
+          title: widget.isSixMonthRenewal
+              ? 'Renovação Semestral de Antecedentes Criminais'
+              : 'Certidão de Antecedentes Criminais (Polícia Federal)',
+          subtitle:
+              'Para proteger quem abre a porta de casa e quem entra para trabalhar, '
+              'o Desperrengue valida a Certidão Negativa da Polícia Federal a cada 6 meses. '
+              'Sua validação fica salva para os dois perfis (Cliente e Profissional) sem precisar enviar novamente.',
+        ),
+        const SizedBox(height: AppSpace.s12),
         const Wrap(
           spacing: AppSpace.s8,
           runSpacing: AppSpace.s8,
@@ -803,68 +815,36 @@ class _CriminalBackgroundCheckStepState
             ),
           ],
         ),
-        const SizedBox(height: AppSpace.s12),
-        Text(
-          widget.isSixMonthRenewal
-              ? 'Renovação Semestral de Antecedentes Criminais'
-              : 'Certidão de Antecedentes Criminais (Polícia Federal)',
-          style: AppType.headline.copyWith(color: tk.text),
-        ),
-        const SizedBox(height: AppSpace.s8),
-        Text(
-          'Para proteger quem abre a porta de casa e quem entra para trabalhar, '
-          'o Desperrengue valida a Certidão Negativa da Polícia Federal a cada 6 meses. '
-          'Sua validação fica salva para os dois perfis (Cliente e Profissional) sem precisar enviar novamente.',
-          style: AppType.bodySm.copyWith(color: tk.textMuted),
-        ),
-        const SizedBox(height: AppSpace.s16),
+        const SizedBox(height: AppSpace.s20),
 
         // PASSO 1 GUIADO — EMISSÃO OFICIAL GRATUITA EM 1 MINUTO
-        AppCard(
-          variant: AppCardVariant.tonal,
-          borderColor: tk.info.withValues(alpha: 0.35),
+        KycPorcelainSectionCard(
+          title: '1. Emissão Oficial Gratuita em 1 Minuto',
+          subtitle: 'Emitida na hora pelo portal oficial gov.br.',
+          icon: Icons.account_balance_rounded,
+          statusChipLabel: 'Grátis',
+          statusTone: AppTone.info,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(AppSpace.s8),
-                    decoration: BoxDecoration(
-                      color: tk.infoSoft,
-                      borderRadius: BorderRadius.circular(
-                        AppGeometry.iconTileRadius,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.account_balance_rounded,
-                      color: tk.isDark ? tk.info : tk.accentInk,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.s12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '1. Emissão Oficial Gratuita em 1 Minuto',
-                          style: AppType.titleSm.copyWith(color: tk.text),
-                        ),
-                        const SizedBox(height: AppSpace.s4),
-                        Text(
-                          '• Toque no botão abaixo para abrir o portal oficial da Polícia Federal (gov.br).\n'
-                          '• Informe seu nome civil e CPF para emitir gratuitamente a certidão "Nada Consta".\n'
-                          '• Baixe o PDF oficial na pasta Downloads ou tire uma foto nítida para enviar no Passo 2.',
-                          style: AppType.bodySm.copyWith(color: tk.textMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              const _CriminalGuideStepRow(
+                stepNumber: '1',
+                text:
+                    'Toque no botão abaixo para abrir o portal oficial da Polícia Federal (gov.br).',
               ),
-              const SizedBox(height: AppSpace.s12),
+              const SizedBox(height: AppSpace.s8),
+              const _CriminalGuideStepRow(
+                stepNumber: '2',
+                text:
+                    'Informe seu nome civil e CPF para emitir gratuitamente a certidão "Nada Consta".',
+              ),
+              const SizedBox(height: AppSpace.s8),
+              const _CriminalGuideStepRow(
+                stepNumber: '3',
+                text:
+                    'Baixe o PDF oficial na pasta Downloads ou tire uma foto nítida para enviar no Passo 2.',
+              ),
+              const SizedBox(height: AppSpace.s16),
               AppButton(
                 key: const ValueKey('btn-open-pf-portal'),
                 label: 'Emitir Certidão Grátis na Polícia Federal (gov.br)',
@@ -879,21 +859,20 @@ class _CriminalBackgroundCheckStepState
         const SizedBox(height: AppSpace.s16),
 
         // PASSO 2 — ENVIO UNIFICADO DO ARQUIVO E AUTOPREENCHIMENTO
-        AppCard(
-          borderColor: approved ? tk.success : tk.border,
+        KycPorcelainSectionCard(
+          title: '2. Envio da Certidão e Conferência de Autenticidade',
+          subtitle:
+              'Envie o PDF oficial ou uma foto nítida da certidão emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
+          icon: Icons.upload_file_rounded,
+          statusChipLabel: approved
+              ? 'Validada'
+              : (hasFile ? 'Anexada' : 'Aguardando envio'),
+          statusTone: approved
+              ? AppTone.success
+              : (hasFile ? AppTone.info : AppTone.neutral),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '2. Envio da Certidão e Conferência de Autenticidade',
-                style: AppType.titleSm.copyWith(color: tk.text),
-              ),
-              const SizedBox(height: AppSpace.s4),
-              Text(
-                'Envie o PDF oficial ou uma foto nítida da certidão emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
-                style: AppType.bodySm.copyWith(color: tk.textMuted),
-              ),
-              const SizedBox(height: AppSpace.s16),
               if (hasFile)
                 _buildAttachedFileCard(context, approved: approved)
               else
@@ -1060,6 +1039,55 @@ class _CriminalBackgroundCheckStepState
             holderName: widget.expectedFullName,
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _CriminalGuideStepRow extends StatelessWidget {
+  const _CriminalGuideStepRow({
+    required this.stepNumber,
+    required this.text,
+  });
+
+  final String stepNumber;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExcludeSemantics(
+          child: Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: tk.accentSoft,
+              border: Border.all(
+                color: tk.accentInk.withValues(alpha: tk.isDark ? 0.28 : 0.16),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                stepNumber,
+                style: AppType.tabular(AppType.caption).copyWith(
+                  color: tk.accentInk,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppSpace.s12),
+        Expanded(
+          child: Text(
+            text,
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
+          ),
+        ),
       ],
     );
   }

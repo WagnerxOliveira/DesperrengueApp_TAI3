@@ -6,6 +6,7 @@ import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
+import 'widgets/kyc_onboarding_chrome.dart';
 
 /// Etapa dedicada de conferência dos dados transcritos automaticamente do documento (OCR),
 /// exibida como a próxima tela logo após capturar e validar Frente e Verso.
@@ -74,7 +75,16 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Cabeçalho limpo + chip verde "Leitura Confirmada"
+            // 1. Cabeçalho editorial + micro-selo e chips de confirmação
+            const KycStepHeroHeader(
+              icon: Icons.fact_check_rounded,
+              title: 'Confira os dados do seu documento',
+              subtitle:
+                  'Lemos automaticamente a frente e o verso do seu documento. Verifique se está tudo certo antes de continuar.',
+              trustBadgeText: 'Leitura confirmada com sucesso',
+              trustBadgeIcon: Icons.verified_rounded,
+            ),
+            const SizedBox(height: AppSpace.s12),
             Wrap(
               spacing: AppSpace.s8,
               runSpacing: AppSpace.s8,
@@ -93,19 +103,9 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpace.s12),
-            Text(
-              'Confira os dados do seu documento',
-              style: AppType.headline.copyWith(color: tk.text),
-            ),
-            const SizedBox(height: AppSpace.s4),
-            Text(
-              'Lemos automaticamente a frente e o verso do seu documento. Verifique se está tudo certo antes de continuar.',
-              style: AppType.bodySm.copyWith(color: tk.textMuted),
-            ),
-            const SizedBox(height: AppSpace.s16),
+            const SizedBox(height: AppSpace.s20),
 
-            // 2. Strip de miniaturas da Frente e Verso + botão "Refazer fotos"
+            // 2. Strip elegante de miniaturas da Frente e Verso + botão "Refazer fotos"
             _CapturedDocumentsStrip(
               frontImageBytes: widget.frontImageBytes,
               backImageBytes: widget.backImageBytes,
@@ -113,157 +113,124 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
             ),
             const SizedBox(height: AppSpace.s16),
 
-            // 3. Cartão principal com dados transcritos (OCR)
-            AppCard(
+            // 3. Cartão Porcelain principal com dados transcritos (OCR)
+            KeyedSubtree(
               key: const ValueKey('ocr-transcribed-card'),
-              variant: AppCardVariant.elevated,
-              borderColor: tk.success,
-              padding: const EdgeInsets.all(AppSpace.cardLarge),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: AppGeometry.iconTileSize,
-                        height: AppGeometry.iconTileSize,
-                        decoration: BoxDecoration(
-                          color: tk.successSoft,
-                          borderRadius: BorderRadius.circular(
-                            AppGeometry.iconTileRadius,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.fact_check_rounded,
-                          size: 22,
-                          color: tk.successInk,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpace.s12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Dados Transcritos Automaticamente do Documento (OCR)',
-                              style: AppType.titleSm.copyWith(color: tk.text),
-                            ),
-                            const SizedBox(height: AppSpace.s4),
-                            Text(
-                              'Autenticidade física e facial confirmada. Pronto para seguir.',
-                              style: AppType.bodySm.copyWith(
-                                color: tk.successInk,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Divider(height: AppSpace.s24),
-                  AppInfoRow(
-                    label: 'Nome Civil Confirmado',
-                    value: ocr.extractedFullName,
-                    strong: true,
-                  ),
-                  if (widget.typedName.trim().isNotEmpty)
+              child: KycPorcelainSectionCard(
+                title: 'Dados Transcritos Automaticamente do Documento (OCR)',
+                subtitle:
+                    'Autenticidade física e facial confirmada. Pronto para seguir.',
+                icon: Icons.fact_check_rounded,
+                statusChipLabel: 'Conferido',
+                statusTone: AppTone.success,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     AppInfoRow(
-                      label: 'Nome no cadastro',
+                      label: 'Nome Civil Confirmado',
+                      value: ocr.extractedFullName,
+                      strong: true,
+                    ),
+                    if (widget.typedName.trim().isNotEmpty)
+                      AppInfoRow(
+                        label: 'Nome no cadastro',
+                        valueWidget: Text(
+                          '${widget.typedName.trim()} (${namePct.toStringAsFixed(0)}% compatível)',
+                          textAlign:
+                              isLargeText ? TextAlign.start : TextAlign.end,
+                          style: AppType.tabular(AppType.bodyStrong)
+                              .copyWith(color: tk.text),
+                        ),
+                      ),
+                    AppInfoRow(
+                      label: 'CPF do Titular',
+                      valueWidget: Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        alignment: isLargeText
+                            ? WrapAlignment.start
+                            : WrapAlignment.end,
+                        spacing: AppSpace.s4,
+                        children: [
+                          Text(
+                            '$displayedCpf (Confirmado)',
+                            style: AppType.tabular(AppType.bodyStrong)
+                                .copyWith(color: tk.text),
+                          ),
+                          AppIconButton(
+                            key: const ValueKey('toggle-cpf-reveal'),
+                            tooltip:
+                                _revealCpf ? 'Ocultar CPF' : 'Mostrar CPF',
+                            icon: _revealCpf
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 20,
+                            color: tk.accentInk,
+                            onPressed: () =>
+                                setState(() => _revealCpf = !_revealCpf),
+                          ),
+                        ],
+                      ),
+                    ),
+                    AppInfoRow(
+                      label: 'Tipo e Nº do Documento',
                       valueWidget: Text(
-                        '${widget.typedName.trim()} (${namePct.toStringAsFixed(0)}% compatível)',
+                        '${ocr.documentType.code} · Nº ${ocr.extractedDocumentNumber}',
                         textAlign:
                             isLargeText ? TextAlign.start : TextAlign.end,
                         style: AppType.tabular(AppType.bodyStrong)
                             .copyWith(color: tk.text),
                       ),
                     ),
-                  AppInfoRow(
-                    label: 'CPF do Titular',
-                    valueWidget: Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      alignment: isLargeText
-                          ? WrapAlignment.start
-                          : WrapAlignment.end,
-                      spacing: AppSpace.s4,
+                    AppInfoRow(
+                      label: 'Data de Nascimento',
+                      valueWidget: Text(
+                        ocr.extractedBirthDateFormatted,
+                        textAlign:
+                            isLargeText ? TextAlign.start : TextAlign.end,
+                        style: AppType.tabular(AppType.bodyStrong)
+                            .copyWith(color: tk.text),
+                      ),
+                    ),
+                    AppInfoRow(
+                      label: 'Órgão Emissor',
+                      value: safeIssuer,
+                      strong: true,
+                    ),
+                    const Divider(height: AppSpace.s24),
+                    Wrap(
+                      spacing: AppSpace.s8,
+                      runSpacing: AppSpace.s8,
                       children: [
-                        Text(
-                          '$displayedCpf (Confirmado)',
-                          style: AppType.tabular(AppType.bodyStrong)
-                              .copyWith(color: tk.text),
+                        AppStatusChip(
+                          'Identidade Protegida (${facePct.toStringAsFixed(0)}%)',
+                          tone: AppTone.success,
+                          icon: Icons.verified_user_outlined,
                         ),
-                        AppIconButton(
-                          key: const ValueKey('toggle-cpf-reveal'),
-                          tooltip: _revealCpf ? 'Ocultar CPF' : 'Mostrar CPF',
-                          icon: _revealCpf
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          size: 20,
-                          color: tk.accentInk,
-                          onPressed: () =>
-                              setState(() => _revealCpf = !_revealCpf),
+                        const AppStatusChip(
+                          'Foto Nítida',
+                          tone: AppTone.success,
+                          icon: Icons.high_quality_outlined,
+                        ),
+                        const AppStatusChip(
+                          'Frente e Verso',
+                          tone: AppTone.success,
+                          icon: Icons.credit_card_outlined,
+                        ),
+                        AppStatusChip(
+                          'Titularidade Conferida (${namePct.toStringAsFixed(0)}%)',
+                          tone: AppTone.success,
+                          icon: Icons.shield_outlined,
                         ),
                       ],
                     ),
-                  ),
-                  AppInfoRow(
-                    label: 'Tipo e Nº do Documento',
-                    valueWidget: Text(
-                      '${ocr.documentType.code} · Nº ${ocr.extractedDocumentNumber}',
-                      textAlign: isLargeText ? TextAlign.start : TextAlign.end,
-                      style: AppType.tabular(AppType.bodyStrong)
-                          .copyWith(color: tk.text),
+                    const SizedBox(height: AppSpace.s12),
+                    Text(
+                      'Protocolo de segurança: $safeSeal',
+                      style: AppType.tabular(AppType.bodySm)
+                          .copyWith(color: tk.textMuted),
                     ),
-                  ),
-                  AppInfoRow(
-                    label: 'Data de Nascimento',
-                    valueWidget: Text(
-                      ocr.extractedBirthDateFormatted,
-                      textAlign: isLargeText ? TextAlign.start : TextAlign.end,
-                      style: AppType.tabular(AppType.bodyStrong)
-                          .copyWith(color: tk.text),
-                    ),
-                  ),
-                  AppInfoRow(
-                    label: 'Órgão Emissor',
-                    value: safeIssuer,
-                    strong: true,
-                  ),
-                  const Divider(height: AppSpace.s24),
-                  Wrap(
-                    spacing: AppSpace.s8,
-                    runSpacing: AppSpace.s8,
-                    children: [
-                      AppStatusChip(
-                        'Identidade Protegida (${facePct.toStringAsFixed(0)}%)',
-                        tone: AppTone.success,
-                        icon: Icons.verified_user_outlined,
-                      ),
-                      const AppStatusChip(
-                        'Foto Nítida',
-                        tone: AppTone.success,
-                        icon: Icons.high_quality_outlined,
-                      ),
-                      const AppStatusChip(
-                        'Frente e Verso',
-                        tone: AppTone.success,
-                        icon: Icons.credit_card_outlined,
-                      ),
-                      AppStatusChip(
-                        'Titularidade Conferida (${namePct.toStringAsFixed(0)}%)',
-                        tone: AppTone.success,
-                        icon: Icons.shield_outlined,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpace.s12),
-                  Text(
-                    'Protocolo de segurança: $safeSeal',
-                    style: AppType.tabular(AppType.bodySm)
-                        .copyWith(color: tk.textMuted),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 

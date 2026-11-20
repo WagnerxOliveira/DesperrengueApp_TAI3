@@ -608,6 +608,18 @@ List<GalleryScreen> clientScreens() => <GalleryScreen>[
     builder: (_, _) => ClientSetupScreen(profile: SampleData.firstAccessProfile()),
   ),
   GalleryScreen(
+    id: 'client/setup_provider_step0',
+    title: 'Cadastro do profissional — passo 1',
+    source: '$_dir/client_setup_screen.dart',
+    wave: 3,
+    owner: _core,
+    modes: const <UserMode?>{UserMode.provider},
+    builder: (_, _) => ClientSetupScreen(
+      profile: SampleData.firstAccessProfile(),
+      targetMode: UserMode.provider,
+    ),
+  ),
+  GalleryScreen(
     id: 'client/setup_1',
     title: 'Cadastro do cliente — passo 2',
     source: '$_dir/client_setup_screen.dart',

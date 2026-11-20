@@ -113,7 +113,7 @@ class KycJourneyProgressHeader extends StatelessWidget {
 
     final counterText = Text(
       stepCounterLabel,
-      style: AppType.tabular(AppType.caption).copyWith(
+      style: AppType.tabular(AppType.bodySm).copyWith(
         color: tk.textMuted,
         fontWeight: FontWeight.w600,
       ),
@@ -151,7 +151,7 @@ class KycJourneyProgressHeader extends StatelessWidget {
                   child: Text(
                     stepCounterLabel,
                     textAlign: TextAlign.end,
-                    style: AppType.tabular(AppType.caption).copyWith(
+                    style: AppType.tabular(AppType.bodySm).copyWith(
                       color: tk.textMuted,
                       fontWeight: FontWeight.w600,
                     ),
@@ -377,7 +377,7 @@ class KycTrustMicroBadge extends StatelessWidget {
             Flexible(
               child: Text(
                 text,
-                style: AppType.caption.copyWith(
+                style: AppType.bodySm.copyWith(
                   color: fg,
                   fontWeight: FontWeight.w600,
                 ),
