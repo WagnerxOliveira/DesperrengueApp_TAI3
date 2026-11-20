@@ -1,12 +1,1 @@
-{
-  "scale_monotonic|auth/role_selection_ambos_perfis": 1,
-  "scale_monotonic|auth/role_selection_primeiro_acesso": 1,
-  "scale_monotonic|auth/role_selection_profissional_em_analise": 1,
-  "scale_monotonic|client/carteira": 1,
-  "scale_monotonic|client/carteira_valor_alto": 2,
-  "scale_monotonic|client/category_grid": 1,
-  "scale_monotonic|client/category_grid_completa": 5,
-  "scale_monotonic|client/home_tab": 1,
-  "scale_monotonic|client/published_overlay": 3,
-  "scale_monotonic|client/published_overlay_direto": 3
-}
+{}
