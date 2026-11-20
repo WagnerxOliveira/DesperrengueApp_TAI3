@@ -139,6 +139,25 @@ abstract final class CinemaType {
     color: CinemaColors.inkMeta,
   );
 
+  /// Metadado com algarismos tabulares (datas, percentuais).
+  static const TextStyle rowMetaTabular = TextStyle(
+    fontFamily: CinemaFonts.inter,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w500,
+    fontFeatures: _tabular,
+    color: CinemaColors.inkMeta,
+  );
+
+  /// Metadado sobre bloco perola (#F1F5F9): tom mais escuro (contraste >= 7:1).
+  static const TextStyle rowMetaDense = TextStyle(
+    fontFamily: CinemaFonts.inter,
+    fontSize: 14,
+    height: 20 / 14,
+    fontWeight: FontWeight.w500,
+    color: Color(0xFF334155),
+  );
+
   /// Valores grandes (R$, %) — Jakarta 32/38, 800, tabular.
   static const TextStyle figure = TextStyle(
     fontFamily: CinemaFonts.jakarta,

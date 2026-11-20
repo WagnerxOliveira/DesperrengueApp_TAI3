@@ -82,12 +82,12 @@ class CinemaStory4Card extends StatelessWidget {
               const Positioned(
                 left: CinemaSpace.s4,
                 bottom: 0,
-                child: Text('0%', style: CinemaType.rowMeta),
+                child: Text('0%', style: CinemaType.rowMetaTabular),
               ),
               const Positioned(
                 right: CinemaSpace.s4,
                 bottom: 0,
-                child: Text('100%', style: CinemaType.rowMeta),
+                child: Text('100%', style: CinemaType.rowMetaTabular),
               ),
             ],
           ),
@@ -262,12 +262,12 @@ class CinemaStory5Card extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Text('Custo para orçar:', style: CinemaType.rowMeta),
+                      Text('Custo para orçar:', style: CinemaType.rowMetaDense),
                       Text('R\$ 0,00', style: CinemaType.figureXl),
                       SizedBox(height: CinemaSpace.s4),
                       Text(
                         'Valor do cliente já garantido antes de sair',
-                        style: CinemaType.rowMeta,
+                        style: CinemaType.rowMetaDense,
                       ),
                     ],
                   ),
