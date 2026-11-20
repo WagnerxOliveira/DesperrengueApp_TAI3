@@ -201,15 +201,15 @@ void main() {
   });
 
   group(
-    '1. WelcomeCinemaTracker (v5 / v2.26.0) — Governança Pós-Cadastro e Ponte Escura',
+    '1. WelcomeCinemaTracker (v6 / v2.27.0) — Governança Pós-Cadastro e Ponte Escura',
     () {
       test(
-        'chaves de persistência v5 configuradas para a apresentação fiel ao vídeo (v2.26.0)',
+        'chaves de persistência v6 configuradas para a nova vitrine tipográfica (v2.27.0)',
         () {
-          expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v5_seen_');
+          expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v6_seen_');
           expect(
             WelcomeCinemaTracker.keyPendingUid,
-            'welcome_cinema_v5_pending_uid',
+            'welcome_cinema_v6_pending_uid',
           );
         },
       );
@@ -222,7 +222,7 @@ void main() {
 
           final prefsAfterArm = await SharedPreferences.getInstance();
           expect(
-            prefsAfterArm.getString('welcome_cinema_v5_pending_uid'),
+            prefsAfterArm.getString('welcome_cinema_v6_pending_uid'),
             'uid-otp-1',
           );
 
@@ -248,7 +248,7 @@ void main() {
       );
 
       test(
-        'após markCompleted(uid), limpa pending_uid, grava welcome_cinema_v5_seen_<uid> e nunca repete nem vaza entre usuários distintos',
+        'após markCompleted(uid), limpa pending_uid, grava welcome_cinema_v6_seen_<uid> e nunca repete nem vaza entre usuários distintos',
         () async {
           final now = DateTime.utc(2026, 11, 19, 14, 0, 0);
           final user1 = _makeProfile(id: 'uid-1', fullName: 'Ana');
@@ -267,8 +267,8 @@ void main() {
           await WelcomeCinemaTracker.markCompleted('uid-1');
 
           final prefs = await SharedPreferences.getInstance();
-          expect(prefs.getString('welcome_cinema_v5_seen_uid-1'), '1');
-          expect(prefs.getString('welcome_cinema_v5_pending_uid'), isNull);
+          expect(prefs.getString('welcome_cinema_v6_seen_uid-1'), '1');
+          expect(prefs.getString('welcome_cinema_v6_pending_uid'), isNull);
 
           // Mesmo recarregando do disco (cold restart), nunca repete para uid-1
           WelcomeCinemaTracker.resetMemoryStateForTesting();
