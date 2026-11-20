@@ -717,6 +717,7 @@ List<GalleryScreen> sharedScreens() => <GalleryScreen>[
         wave: 3,
         owner: _owner,
         kind: GalleryKind.sheet,
+        rawSheet: true,
         animatesForever: true,
         modes: const <UserMode?>{UserMode.client, UserMode.provider},
         builder: (_, _) => FractionallySizedBox(
@@ -769,6 +770,7 @@ List<GalleryScreen> sharedScreens() => <GalleryScreen>[
         wave: 3,
         owner: _owner,
         kind: GalleryKind.sheet,
+        rawSheet: true,
         animatesForever: true,
         modes: const <UserMode?>{UserMode.client},
         builder: (_, _) => FractionallySizedBox(

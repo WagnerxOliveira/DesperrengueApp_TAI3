@@ -890,4 +890,45 @@ List<GalleryScreen> clientScreens() => <GalleryScreen>[
       category: 'Elétrica',
     ),
   ),
+  // ----------------------------------------- ganchos §5.1 (Onda 3)
+  GalleryScreen(
+    id: 'client/client_job_cancelado',
+    title: 'Pedido do cliente (roteador: cancelado)',
+    source: '$_dir/client_job_screen.dart',
+    wave: 3,
+    owner: _orders,
+    modes: _client,
+    builder: (_, _) => ClientJobScreen(
+      jobId: 'j1',
+      jobStreamOverride: Stream<Job?>.value(_job(JobStatus.canceled)),
+    ),
+  ),
+  GalleryScreen(
+    id: 'client/emergency_radar',
+    title: 'Radar de emergência (procurando profissional)',
+    source: '$_dir/client_job_screen.dart',
+    wave: 3,
+    owner: _orders,
+    modes: _client,
+    animatesForever: true,
+    builder: (_, _) => EmergencyRadarScreen(
+      job: SampleData.job(
+        status: JobStatus.open,
+        urgency: 'emergency',
+        title: 'Vazamento grave no registro geral do banheiro',
+        category: 'Hidráulica',
+        price: 380,
+      ),
+      invitesStreamOverride: Stream<List<JobInvite>>.value(<JobInvite>[
+        JobInvite(
+          jobId: 'j1',
+          providerId: SampleData.providerId,
+          status: 'pending',
+          expiresAt: DateTime.utc(2099, 1, 15, 12),
+          createdAt: DateTime.utc(2026, 10, 1),
+        ),
+      ]),
+      initialProvider: SampleData.providerCard(name: 'Carlos Eduardo Silva de Albuquerque', i: 1),
+    ),
+  ),
 ];

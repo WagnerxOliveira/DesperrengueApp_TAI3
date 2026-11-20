@@ -37,6 +37,7 @@ void main() {
         if (screen.kind == GalleryKind.sheet) {
           final before = find.byType(BottomSheet).evaluate().length;
           await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pump();
           await tester.pump(const Duration(milliseconds: 400));
           if (before > 0 && find.byType(BottomSheet).evaluate().isNotEmpty) {
             log.add(GalleryRules.keyboard, 'Esc não fecha o sheet', variant);
