@@ -124,32 +124,32 @@ class _VerificacaoStep7AprovadoScreenState
           Positioned(
             top: 10,
             left: 40,
-            child: _buildParticle(Icons.star_rounded, tk.star, 16),
+            child: _buildParticle(Icons.star_rounded, tk.warningInk, 16),
           ),
           Positioned(
             top: 30,
             right: 30,
-            child: _buildParticle(Icons.circle, tk.info, 8),
+            child: _buildParticle(Icons.circle, tk.accentInk, 8),
           ),
           Positioned(
             bottom: 50,
             left: 10,
-            child: _buildParticle(Icons.square_rounded, tk.info, 10),
+            child: _buildParticle(Icons.square_rounded, tk.accentInk, 10),
           ),
           Positioned(
             bottom: 20,
             right: 40,
-            child: _buildParticle(Icons.star_rounded, tk.star, 20),
+            child: _buildParticle(Icons.star_rounded, tk.warningInk, 20),
           ),
           Positioned(
             top: 80,
             left: 10,
-            child: _buildParticle(Icons.circle, tk.success, 6),
+            child: _buildParticle(Icons.circle, tk.successInk, 6),
           ),
           Positioned(
             bottom: 80,
             right: 10,
-            child: _buildParticle(Icons.square_rounded, tk.star, 8),
+            child: _buildParticle(Icons.square_rounded, tk.warningInk, 8),
           ),
           Container(
             width: 140,
@@ -171,7 +171,7 @@ class _VerificacaoStep7AprovadoScreenState
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: tk.success,
+                color: tk.successInk,
                 shape: BoxShape.circle,
                 border: Border.all(color: tk.background, width: 4),
                 boxShadow: tk.elevation(1),
@@ -179,7 +179,7 @@ class _VerificacaoStep7AprovadoScreenState
               child: Icon(
                 Icons.check_rounded,
                 size: 32,
-                color: AppTokens.onColor(tk.success),
+                color: AppTokens.onColor(tk.successInk),
                 weight: 800,
               ),
             ),
@@ -191,9 +191,11 @@ class _VerificacaoStep7AprovadoScreenState
 
   /// Gera pequenas formas geométricas decorativas
   Widget _buildParticle(IconData icon, Color color, double size) {
-    return Transform.rotate(
-      angle: 0.5,
-      child: Icon(icon, color: color.withValues(alpha: 0.65), size: size),
+    return ExcludeSemantics(
+      child: Transform.rotate(
+        angle: 0.5,
+        child: Icon(icon, color: color, size: size),
+      ),
     );
   }
 

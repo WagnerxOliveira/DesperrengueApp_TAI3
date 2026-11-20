@@ -148,14 +148,20 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                       ),
                     ),
                     const SizedBox(height: AppSpace.s16 + 2),
-                    Opacity(
-                      opacity: textT,
-                      child: Transform.scale(
-                        scale: .86 + .14 * textT,
-                        child: Text(
-                          'Desperrengue',
-                          style: AppType.displayL.copyWith(
-                            color: DesperrengueBrandLogoPainter.pureWhite,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpace.s16,
+                      ),
+                      child: Opacity(
+                        opacity: textT,
+                        child: Transform.scale(
+                          scale: .86 + .14 * textT,
+                          child: Text(
+                            'Desperrengue',
+                            textAlign: TextAlign.center,
+                            style: AppType.display.copyWith(
+                              color: DesperrengueBrandLogoPainter.pureWhite,
+                            ),
                           ),
                         ),
                       ),

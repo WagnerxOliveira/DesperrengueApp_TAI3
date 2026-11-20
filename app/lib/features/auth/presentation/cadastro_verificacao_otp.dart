@@ -271,7 +271,7 @@ class _CadastroVerificacaoOtpScreenState
                         hintText: '000000',
                         hintStyle: AppType.figure.copyWith(
                           letterSpacing: 12,
-                          color: tk.textMuted.withValues(alpha: 0.4),
+                          color: tk.textMuted,
                         ),
                         filled: true,
                         fillColor: tk.isDark ? tk.surface : tk.surfaceInset,

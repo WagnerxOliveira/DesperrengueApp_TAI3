@@ -473,9 +473,11 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
         key: const ValueKey<String>('public-ota-later-btn'),
         onPressed: onDismiss,
         style: TextButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          minimumSize: const Size(0, 36),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          minimumSize: const Size(
+            AppGeometry.minTarget,
+            AppGeometry.minTarget,
+          ),
+          tapTargetSize: MaterialTapTargetSize.padded,
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpace.s12,
             vertical: AppSpace.s8,
@@ -727,9 +729,11 @@ class _DiscreetCapsuleActionButton extends StatelessWidget {
           backgroundColor: bg,
           foregroundColor: fg,
           elevation: 0,
-          visualDensity: VisualDensity.compact,
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          minimumSize: const Size(0, 36),
+          tapTargetSize: MaterialTapTargetSize.padded,
+          minimumSize: const Size(
+            AppGeometry.minTarget,
+            AppGeometry.minTarget,
+          ),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpace.s16,
             vertical: AppSpace.s8,

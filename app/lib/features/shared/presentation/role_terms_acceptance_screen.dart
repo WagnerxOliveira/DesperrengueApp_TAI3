@@ -254,7 +254,6 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
                   Text(
                     sha256Hex,
                     style: AppType.tabular(AppType.caption).copyWith(
-                      fontFamily: 'monospace',
                       color: tk.textMuted,
                     ),
                   ),

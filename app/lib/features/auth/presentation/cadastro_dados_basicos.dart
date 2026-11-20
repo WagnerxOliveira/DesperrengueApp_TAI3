@@ -58,8 +58,20 @@ class _CadastroDadosBasicosScreenState
   bool _termosAceites = false;
   bool _isLoading = false;
 
+  String? _nomeError;
+  String? _emailError;
+  String? _senhaError;
+  String? _confirmarSenhaError;
+
   // Chave vem de --dart-define=ABSTRACT_API_KEY (nunca versionada). Vazia = desativado.
   final String _abstractApiKey = Env.abstractApiKey;
+
+  static final RegExp _emailRegex = RegExp(
+    r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
+  );
+  static final RegExp _strongPasswordRegex = RegExp(
+    r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{12,16}$',
+  );
 
   @override
   void dispose() {
@@ -71,6 +83,51 @@ class _CadastroDadosBasicosScreenState
     _confirmarSenhaController.clear();
     _confirmarSenhaController.dispose();
     super.dispose();
+  }
+
+  bool _validarCampos() {
+    final nome = _nomeController.text.trim();
+    final email = _emailController.text;
+    final senha = _senhaController.text;
+    final confirmar = _confirmarSenhaController.text;
+
+    String? nomeErr;
+    if (nome.length < 3) {
+      nomeErr = 'O nome deve ter pelo menos 3 caracteres.';
+    } else if (nome.length > 50) {
+      nomeErr = 'O nome não pode exceder 50 caracteres.';
+    }
+
+    String? emailErr;
+    if (email.isEmpty) {
+      emailErr = 'E-mail é obrigatório.';
+    } else if (!_emailRegex.hasMatch(email.trim())) {
+      emailErr = 'Introduza um e-mail válido (ex: nome@dominio.com).';
+    }
+
+    String? senhaErr;
+    if (senha.isEmpty) {
+      senhaErr = 'Senha é obrigatória.';
+    } else if (!_strongPasswordRegex.hasMatch(senha)) {
+      senhaErr =
+          'Deve ter entre 12 e 16 caracteres (letras, números e símbolos).';
+    }
+
+    String? confirmarErr;
+    if (confirmar != senha) {
+      confirmarErr = 'As senhas não coincidem.';
+    }
+
+    setState(() {
+      _nomeError = nomeErr;
+      _emailError = emailErr;
+      _senhaError = senhaErr;
+      _confirmarSenhaError = confirmarErr;
+    });
+    return nomeErr == null &&
+        emailErr == null &&
+        senhaErr == null &&
+        confirmarErr == null;
   }
 
   Future<bool> _validarEmailRealAPI(String email) async {
@@ -190,7 +247,7 @@ class _CadastroDadosBasicosScreenState
   }
 
   Future<void> _processarCadastro() async {
-    if (!_formKey.currentState!.validate()) {
+    if (!_validarCampos()) {
       return;
     }
 
@@ -314,10 +371,42 @@ class _CadastroDadosBasicosScreenState
     }
   }
 
+  Widget _buildFieldError(BuildContext context, String? error) {
+    if (error == null) return const SizedBox.shrink();
+    final tk = context.tk;
+    return Semantics(
+      liveRegion: true,
+      child: Padding(
+        padding: const EdgeInsets.only(top: AppSpace.s8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(
+                Icons.error_outline_rounded,
+                size: 18,
+                color: tk.dangerInk,
+              ),
+            ),
+            const SizedBox(width: AppSpace.s8),
+            Expanded(
+              child: Text(
+                error,
+                style: AppType.bodySm.copyWith(color: tk.dangerInk),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
     final layout = context.layout;
+    final reduced = AppMotion.reduced(context);
 
     return AppScaffold(
       backgroundColor: tk.background,
@@ -370,21 +459,17 @@ class _CadastroDadosBasicosScreenState
                     autofillHints: const [AutofillHints.name],
                     style: AppType.body.copyWith(color: tk.text),
                     cursorColor: tk.accentInk,
+                    onChanged: (_) {
+                      if (_nomeError != null) setState(() => _nomeError = null);
+                    },
                     decoration: _buildInputDecoration(
                       context,
                       'Digite seu nome completo',
                       Icons.person_outline_rounded,
+                      hasError: _nomeError != null,
                     ),
-                    validator: (value) {
-                      if (value == null || value.trim().length < 3) {
-                        return 'O nome deve ter pelo menos 3 caracteres.';
-                      }
-                      if (value.trim().length > 50) {
-                        return 'O nome não pode exceder 50 caracteres.';
-                      }
-                      return null;
-                    },
                   ),
+                  _buildFieldError(context, _nomeError),
                   const SizedBox(height: AppSpace.s16),
                   Text(
                     'E-mail',
@@ -400,24 +485,19 @@ class _CadastroDadosBasicosScreenState
                     autofillHints: const [AutofillHints.email],
                     style: AppType.body.copyWith(color: tk.text),
                     cursorColor: tk.accentInk,
+                    onChanged: (_) {
+                      if (_emailError != null) {
+                        setState(() => _emailError = null);
+                      }
+                    },
                     decoration: _buildInputDecoration(
                       context,
                       'Digite seu e-mail',
                       Icons.mail_outline_rounded,
+                      hasError: _emailError != null,
                     ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'E-mail é obrigatório.';
-                      }
-                      final regex = RegExp(
-                        r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+",
-                      );
-                      if (!regex.hasMatch(value.trim())) {
-                        return 'Introduza um e-mail válido (ex: nome@dominio.com).';
-                      }
-                      return null;
-                    },
                   ),
+                  _buildFieldError(context, _emailError),
                   const SizedBox(height: AppSpace.s16),
                   Text(
                     'Senha',
@@ -433,11 +513,17 @@ class _CadastroDadosBasicosScreenState
                     autofillHints: const [AutofillHints.newPassword],
                     style: AppType.body.copyWith(color: tk.text),
                     cursorColor: tk.accentInk,
+                    onChanged: (_) {
+                      if (_senhaError != null) {
+                        setState(() => _senhaError = null);
+                      }
+                    },
                     decoration:
                         _buildInputDecoration(
                           context,
                           'Crie sua senha',
                           Icons.lock_outline_rounded,
+                          hasError: _senhaError != null,
                         ).copyWith(
                           counterText: '',
                           suffixIcon: AppIconButton(
@@ -455,19 +541,8 @@ class _CadastroDadosBasicosScreenState
                             },
                           ),
                         ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Senha é obrigatória.';
-                      }
-                      final regex = RegExp(
-                        r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{12,16}$',
-                      );
-                      if (!regex.hasMatch(value)) {
-                        return 'Deve ter entre 12 e 16 caracteres (letras, números e símbolos).';
-                      }
-                      return null;
-                    },
                   ),
+                  _buildFieldError(context, _senhaError),
                   Padding(
                     padding: const EdgeInsets.only(
                       top: AppSpace.s8,
@@ -491,11 +566,17 @@ class _CadastroDadosBasicosScreenState
                     textInputAction: TextInputAction.done,
                     style: AppType.body.copyWith(color: tk.text),
                     cursorColor: tk.accentInk,
+                    onChanged: (_) {
+                      if (_confirmarSenhaError != null) {
+                        setState(() => _confirmarSenhaError = null);
+                      }
+                    },
                     decoration:
                         _buildInputDecoration(
                           context,
                           'Repita sua senha',
                           Icons.lock_outline_rounded,
+                          hasError: _confirmarSenhaError != null,
                         ).copyWith(
                           counterText: '',
                           suffixIcon: AppIconButton(
@@ -514,19 +595,14 @@ class _CadastroDadosBasicosScreenState
                             },
                           ),
                         ),
-                    validator: (value) {
-                      if (value != _senhaController.text) {
-                        return 'As senhas não coincidem.';
-                      }
-                      return null;
-                    },
                   ),
+                  _buildFieldError(context, _confirmarSenhaError),
                   const SizedBox(height: AppSpace.s24),
                   AppCard(
                     variant: AppCardVariant.tonal,
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppSpace.s12,
-                      vertical: AppSpace.s12,
+                      vertical: AppSpace.s8,
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
@@ -556,37 +632,47 @@ class _CadastroDadosBasicosScreenState
                                 ),
                               );
                             },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: AppSpace.s4,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minHeight: AppGeometry.minTarget,
                               ),
-                              child: Text.rich(
-                                TextSpan(
-                                  style: AppType.bodySm.copyWith(
-                                    color: tk.text,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppSpace.s8,
                                   ),
-                                  children: [
-                                    const TextSpan(
-                                      text: 'Li e concordo com os ',
-                                    ),
+                                  child: Text.rich(
                                     TextSpan(
-                                      text: 'Termos de Uso e Mandato Legal',
                                       style: AppType.bodySm.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color: tk.accentInk,
-                                        decoration: TextDecoration.underline,
+                                        color: tk.text,
                                       ),
+                                      children: [
+                                        const TextSpan(
+                                          text: 'Li e concordo com os ',
+                                        ),
+                                        TextSpan(
+                                          text: 'Termos de Uso e Mandato Legal',
+                                          style: AppType.bodySm.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            color: tk.accentInk,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
+                                        const TextSpan(text: ' e '),
+                                        TextSpan(
+                                          text: 'Política de Privacidade',
+                                          style: AppType.bodySm.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                            color: tk.accentInk,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const TextSpan(text: ' e '),
-                                    TextSpan(
-                                      text: 'Política de Privacidade',
-                                      style: AppType.bodySm.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                        color: tk.accentInk,
-                                        decoration: TextDecoration.underline,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -609,6 +695,8 @@ class _CadastroDadosBasicosScreenState
                         disabledForegroundColor: _isLoading
                             ? tk.onAccent
                             : tk.textMuted,
+                        splashFactory:
+                            reduced ? NoSplash.splashFactory : null,
                         minimumSize: const Size(
                           double.infinity,
                           AppGeometry.buttonHeight,
@@ -694,41 +782,38 @@ class _CadastroDadosBasicosScreenState
   InputDecoration _buildInputDecoration(
     BuildContext context,
     String hint,
-    IconData icon,
-  ) {
+    IconData icon, {
+    bool hasError = false,
+  }) {
     final tk = context.tk;
     final radius = BorderRadius.circular(AppGeometry.fieldRadius);
+    final borderColor = hasError ? tk.dangerInk : tk.border;
+    final focusColor = hasError ? tk.dangerInk : tk.accentInk;
     return InputDecoration(
       hintText: hint,
       hintStyle: AppType.body.copyWith(color: tk.textMuted),
-      prefixIcon: Icon(icon, color: tk.textMuted, size: 22),
+      prefixIcon: Icon(
+        icon,
+        color: hasError ? tk.dangerInk : tk.textMuted,
+        size: 22,
+      ),
       filled: true,
       fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
-      errorMaxLines: 3,
-      errorStyle: AppType.bodySm.copyWith(color: tk.dangerInk),
       contentPadding: const EdgeInsets.symmetric(
         horizontal: AppSpace.s16,
         vertical: AppSpace.s16,
       ),
       border: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: BorderSide(color: tk.border),
+        borderSide: BorderSide(color: borderColor, width: hasError ? 2 : 1),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: BorderSide(color: tk.border),
+        borderSide: BorderSide(color: borderColor, width: hasError ? 2 : 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: radius,
-        borderSide: BorderSide(color: tk.accentInk, width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(color: tk.dangerInk, width: 1.5),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(color: tk.dangerInk, width: 2),
+        borderSide: BorderSide(color: focusColor, width: 2),
       ),
     );
   }
