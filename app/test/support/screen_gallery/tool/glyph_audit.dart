@@ -13,9 +13,7 @@ const _fonts = <String, List<String>>{
 void main(List<String> args) {
   final cover = <String, Set<int>>{
     for (final e in _fonts.entries)
-      e.key: {
-        for (final f in e.value) ...readCmapCodepoints(File('assets/fonts/$f').readAsBytesSync()),
-      },
+      e.key: {for (final f in e.value) ...readCmapCodepoints(File('assets/fonts/$f').readAsBytesSync())},
   };
   final all = <int>{for (final s in cover.values) ...s};
   stdout.writeln('cmap Inter: ${cover['Inter']!.length} codepoints | Jakarta: ${cover['PlusJakartaSans']!.length}');
@@ -41,7 +39,9 @@ void main(List<String> args) {
     }
   }
   stdout.writeln('literais de string analisados: $literals');
-  stdout.writeln('pesos usados: ${(weights.entries.toList()..sort((a, b) => a.key.compareTo(b.key))).map((e) => '${e.key}=${e.value}').join(' ')}');
+  stdout.writeln(
+    'pesos usados: ${(weights.entries.toList()..sort((a, b) => a.key.compareTo(b.key))).map((e) => '${e.key}=${e.value}').join(' ')}',
+  );
   final sorted = missing.entries.toList()..sort((a, b) => b.value.length.compareTo(a.value.length));
   stdout.writeln('codepoints FORA das fontes embarcadas: ${sorted.length}');
   for (final e in sorted) {

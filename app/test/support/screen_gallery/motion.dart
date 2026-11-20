@@ -96,16 +96,15 @@ Future<PressScaleResult> measurePressScale(WidgetTester tester, Finder target) a
 /// [navigatorFinder] deve achar algo sob o `Navigator` (ex.: `find.byType(Scaffold)`).
 /// A rota é uma `MaterialPageRoute` (como as 83 do app): o tema global decide a
 /// transição via `pageTransitionsTheme`.
-Future<({Duration push, Duration pop})> measurePageTransition(
-  WidgetTester tester,
-  Finder anchor,
-) async {
+Future<({Duration push, Duration pop})> measurePageTransition(WidgetTester tester, Finder anchor) async {
   final context = tester.element(anchor.first);
   final navigator = Navigator.of(context);
   final push = await measureSettle(tester, () async {
-    navigator.push<void>(MaterialPageRoute<void>(
-      builder: (_) => const Scaffold(body: Center(child: Text('destino'))),
-    ));
+    navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Center(child: Text('destino'))),
+      ),
+    );
   });
   final pop = await measureSettle(tester, () async {
     navigator.pop();

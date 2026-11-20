@@ -66,8 +66,10 @@ class Ratchet {
       if (strict) failures.add('baseline obsoleto (GALLERY_STRICT_RATCHET=1): ${improved.join(', ')}');
     }
     if (failures.isNotEmpty) {
-      fail('$suite · $screenId\n${failures.join('\n')}\n'
-          'Se a violação é intencional/aceita, rode GALLERY_UPDATE_BASELINE=1 (e justifique no PR).');
+      fail(
+        '$suite · $screenId\n${failures.join('\n')}\n'
+        'Se a violação é intencional/aceita, rode GALLERY_UPDATE_BASELINE=1 (e justifique no PR).',
+      );
     }
   }
 
@@ -80,7 +82,9 @@ class Ratchet {
       byRule[rule] = (byRule[rule] ?? 0) + v;
     });
     // ignore: avoid_print
-    print('GALERIA[$suite] violações medidas: $total ${byRule.isEmpty ? '' : byRule.entries.map((e) => '${e.key}=${e.value}').join(' ')}');
+    print(
+      'GALERIA[$suite] violações medidas: $total ${byRule.isEmpty ? '' : byRule.entries.map((e) => '${e.key}=${e.value}').join(' ')}',
+    );
     if (!updateMode) return;
     final merged = <String, int>{...baseline, ...measured}..removeWhere((_, v) => v == 0);
     final sorted = Map.fromEntries(merged.entries.toList()..sort((a, b) => a.key.compareTo(b.key)));
