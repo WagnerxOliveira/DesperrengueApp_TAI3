@@ -54,50 +54,50 @@ abstract final class SampleData {
   static const String providerId = '00000000-0000-4000-8000-000000000002';
 
   static UserProfile clientProfile({bool provider = false}) => UserProfile(
-        id: clientId,
-        fullName: 'Ana Paula Souza',
-        isClient: true,
-        isProvider: provider,
-        clientSetupDone: true,
-        providerSetupDone: provider,
-        lastMode: UserMode.client,
-        verificationStatus: VerificationStatus.active,
-        phone: '(11) 98765-4321',
-        addressLine: 'Rua das Acácias, 123 - Apto 45, Jardim América',
-        addressCity: 'São Paulo - SP',
-        cpfMasked: '***.456.789-**',
-      );
+    id: clientId,
+    fullName: 'Ana Paula Souza',
+    isClient: true,
+    isProvider: provider,
+    clientSetupDone: true,
+    providerSetupDone: provider,
+    lastMode: UserMode.client,
+    verificationStatus: VerificationStatus.active,
+    phone: '(11) 98765-4321',
+    addressLine: 'Rua das Acácias, 123 - Apto 45, Jardim América',
+    addressCity: 'São Paulo - SP',
+    cpfMasked: '***.456.789-**',
+  );
 
   static UserProfile providerProfile() => UserProfile(
-        id: providerId,
-        fullName: 'João Carlos Ferreira',
-        isClient: true,
-        isProvider: true,
-        clientSetupDone: true,
-        providerSetupDone: true,
-        lastMode: UserMode.provider,
-        verificationStatus: VerificationStatus.active,
-        phone: '(11) 91234-5678',
-        addressCity: 'São Paulo - SP',
-        completedJobsCount: 48,
-      );
+    id: providerId,
+    fullName: 'João Carlos Ferreira',
+    isClient: true,
+    isProvider: true,
+    clientSetupDone: true,
+    providerSetupDone: true,
+    lastMode: UserMode.provider,
+    verificationStatus: VerificationStatus.active,
+    phone: '(11) 91234-5678',
+    addressCity: 'São Paulo - SP',
+    completedJobsCount: 48,
+  );
 
   static UserProfile firstAccessProfile() => const UserProfile(id: clientId, fullName: 'Ana Paula Souza');
 
   static ProviderCard providerCard({String name = 'João Carlos Ferreira', int i = 0}) => ProviderCard(
-        id: 'prov-$i',
-        fullName: name,
-        city: 'São Paulo - SP',
-        headline: 'Eletricista residencial · NR-10',
-        specialties: const ['Elétrica', 'Iluminação', 'Ar-condicionado'],
-        hourlyRate: 90,
-        visitFee: 30,
-        ratingAvg: 4.8,
-        ratingCount: 127,
-        jobsDone: 342,
-        distanceKm: 3.4,
-        badges: const <String>[],
-      );
+    id: 'prov-$i',
+    fullName: name,
+    city: 'São Paulo - SP',
+    headline: 'Eletricista residencial · NR-10',
+    specialties: const ['Elétrica', 'Iluminação', 'Ar-condicionado'],
+    hourlyRate: 90,
+    visitFee: 30,
+    ratingAvg: 4.8,
+    ratingCount: 127,
+    jobsDone: 342,
+    distanceKm: 3.4,
+    badges: const <String>[],
+  );
 
   static Job job({
     String id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
@@ -108,55 +108,55 @@ abstract final class SampleData {
     String urgency = 'scheduled',
     String? providerId,
     String paymentStatus = 'pending',
-  }) =>
-      Job(
-        id: id,
-        clientId: clientId,
-        title: title,
-        description: 'O disjuntor desarma toda vez que ligo o chuveiro e o forno ao mesmo tempo. '
-            'Preciso de alguém para revisar o quadro de luz com segurança.',
-        category: category,
-        status: status,
-        paymentStatus: paymentStatus,
-        urgency: urgency,
-        visibility: 'open',
-        createdAt: DateTime(2026, 10, 1, 14, 30),
-        providerId: providerId,
-        agreedPrice: price,
-        budgetEstimate: price,
-        addressSummary: 'Jardim América, São Paulo - SP',
-        quoteCount: 3,
-      );
+  }) => Job(
+    id: id,
+    clientId: clientId,
+    title: title,
+    description:
+        'O disjuntor desarma toda vez que ligo o chuveiro e o forno ao mesmo tempo. '
+        'Preciso de alguém para revisar o quadro de luz com segurança.',
+    category: category,
+    status: status,
+    paymentStatus: paymentStatus,
+    urgency: urgency,
+    visibility: 'open',
+    createdAt: DateTime(2026, 10, 1, 14, 30),
+    providerId: providerId,
+    agreedPrice: price,
+    budgetEstimate: price,
+    addressSummary: 'Jardim América, São Paulo - SP',
+    quoteCount: 3,
+  );
 
   static ClientWallet wallet({int available = 123456, int escrow = 45000}) =>
       ClientWallet(availableCents: available, escrowCents: escrow);
 
   static List<WalletEntry> statement() => <WalletEntry>[
-        WalletEntry(
-          id: 'e1',
-          kind: WalletEntryKind.topup,
-          title: 'Recarga via Pix',
-          deltaAvailableCents: 50000,
-          deltaEscrowCents: 0,
-          createdAt: DateTime(2026, 10, 2, 9, 5),
-        ),
-        WalletEntry(
-          id: 'e2',
-          kind: WalletEntryKind.hold,
-          title: 'Reserva: Trocar disjuntor e revisar quadro de luz',
-          deltaAvailableCents: -45000,
-          deltaEscrowCents: 45000,
-          createdAt: DateTime(2026, 10, 3, 10, 0),
-        ),
-        WalletEntry(
-          id: 'e3',
-          kind: WalletEntryKind.release,
-          title: 'Pagamento liberado ao profissional',
-          deltaAvailableCents: 0,
-          deltaEscrowCents: -45000,
-          createdAt: DateTime(2026, 10, 5, 18, 40),
-        ),
-      ];
+    WalletEntry(
+      id: 'e1',
+      kind: WalletEntryKind.topup,
+      title: 'Recarga via Pix',
+      deltaAvailableCents: 50000,
+      deltaEscrowCents: 0,
+      createdAt: DateTime(2026, 10, 2, 9, 5),
+    ),
+    WalletEntry(
+      id: 'e2',
+      kind: WalletEntryKind.hold,
+      title: 'Reserva: Trocar disjuntor e revisar quadro de luz',
+      deltaAvailableCents: -45000,
+      deltaEscrowCents: 45000,
+      createdAt: DateTime(2026, 10, 3, 10, 0),
+    ),
+    WalletEntry(
+      id: 'e3',
+      kind: WalletEntryKind.release,
+      title: 'Pagamento liberado ao profissional',
+      deltaAvailableCents: 0,
+      deltaEscrowCents: -45000,
+      createdAt: DateTime(2026, 10, 5, 18, 40),
+    ),
+  ];
 }
 
 // ------------------------------------------------------------------ fakes
@@ -199,8 +199,8 @@ class FakeProfileService extends Fake implements ProfileService {
 /// `WalletService` de mentira (saldo/extrato fixos, Pix controlável).
 class FakeWalletService extends Fake implements WalletService {
   FakeWalletService({ClientWallet? wallet, List<WalletEntry>? statement, this.walletError})
-      : _wallet = wallet ?? SampleData.wallet(),
-        _statement = statement ?? SampleData.statement();
+    : _wallet = wallet ?? SampleData.wallet(),
+      _statement = statement ?? SampleData.statement();
 
   final ClientWallet _wallet;
   final List<WalletEntry> _statement;
@@ -219,13 +219,13 @@ class FakeWalletService extends Fake implements WalletService {
 
   @override
   Future<PixTopup> createTopup(int amountCents, String idempotencyKey) async => PixTopup(
-        id: 'tp1',
-        amountCents: amountCents,
-        txid: 'DSP0000000000000000000001',
-        brcode: '00020101021226...6304ABCD',
-        status: TopupStatus.pending,
-        expiresAt: DateTime(2026, 10, 1, 15, 0),
-      );
+    id: 'tp1',
+    amountCents: amountCents,
+    txid: 'DSP0000000000000000000001',
+    brcode: '00020101021226...6304ABCD',
+    status: TopupStatus.pending,
+    expiresAt: DateTime(2026, 10, 1, 15, 0),
+  );
 
   @override
   Stream<PixTopup> topupStream(String id) => topupCtl.stream;
@@ -236,5 +236,5 @@ class FakeWalletService extends Fake implements WalletService {
 
 /// Overrides Riverpod padrão da carteira (cliente).
 List<Override> walletOverrides({FakeWalletService? service}) => <Override>[
-      walletServiceProvider.overrideWithValue(service ?? FakeWalletService()),
-    ];
+  walletServiceProvider.overrideWithValue(service ?? FakeWalletService()),
+];

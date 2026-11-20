@@ -1,0 +1,13 @@
+{
+  "motion|auth/cadastro_dados_basicos_validacao": 1,
+  "motion|auth/role_selection_ambos_perfis": 1,
+  "motion|auth/role_selection_primeiro_acesso": 1,
+  "motion|auth/role_selection_profissional_em_analise": 1,
+  "motion|auth/verificacao_step4_registro_validacao": 1,
+  "motion|core/widgets_showcase": 1,
+  "motion|provider/setup_flow": 1,
+  "motion|provider/weekly_goal_dialog": 1,
+  "motion|shared/property_passport_screen": 1,
+  "motion|shared/smart_triage_trigger_bar": 1,
+  "motion|static/repeat": 8
+}

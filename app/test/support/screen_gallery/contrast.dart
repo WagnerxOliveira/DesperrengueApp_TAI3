@@ -46,7 +46,8 @@ List<Color> effectiveBackgrounds(Element e) {
     } else if (w is Material) {
       if (w.type != MaterialType.transparency) {
         final theme = Theme.of(a);
-        final c = w.color ??
+        final c =
+            w.color ??
             switch (w.type) {
               MaterialType.canvas => theme.canvasColor,
               MaterialType.card => theme.cardColor,

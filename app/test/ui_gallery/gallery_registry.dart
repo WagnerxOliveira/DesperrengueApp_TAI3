@@ -1,5 +1,9 @@
 import '../support/screen_gallery/screen_gallery.dart';
+import 'registry/auth_screens.dart';
+import 'registry/client_screens.dart';
+import 'registry/provider_screens.dart';
 import 'registry/seed_screens.dart';
+import 'registry/shared_screens.dart';
 
 /// REGISTRO DA GALERIA DE TELAS (v2.28.0).
 ///
@@ -15,6 +19,11 @@ import 'registry/seed_screens.dart';
 ///  * Use `SampleData`/`FakeWalletService`/`FakeProfileService` (`fakes.dart`).
 List<GalleryScreen> galleryScreens() => <GalleryScreen>[
       ...seedScreens(),
+      ...authScreens(),
+      ...clientScreens(),
+      ...providerScreens(),
+      ...coreUiScreens(),
+      ...sharedScreens(),
     ];
 
 /// Telas do grupo/onda informados (ex.: `wave: 1`).

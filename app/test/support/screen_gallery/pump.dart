@@ -84,16 +84,12 @@ class GalleryScreen {
 class CapturedErrors {
   final List<FlutterErrorDetails> all = <FlutterErrorDetails>[];
 
-  Iterable<FlutterErrorDetails> get overflows =>
-      all.where((d) => d.exceptionAsString().contains('overflowed'));
+  Iterable<FlutterErrorDetails> get overflows => all.where((d) => d.exceptionAsString().contains('overflowed'));
 
-  Iterable<FlutterErrorDetails> get others =>
-      all.where((d) => !d.exceptionAsString().contains('overflowed'));
+  Iterable<FlutterErrorDetails> get others => all.where((d) => !d.exceptionAsString().contains('overflowed'));
 
   /// Mensagem curta de cada overflow (`A RenderFlex overflowed by 12 pixels on the right.`).
-  List<String> overflowSummaries() => <String>{
-        for (final d in overflows) _summarize(d),
-      }.toList();
+  List<String> overflowSummaries() => <String>{for (final d in overflows) _summarize(d)}.toList();
 
   static String _summarize(FlutterErrorDetails d) {
     final s = d.exceptionAsString();
@@ -140,6 +136,7 @@ Future<T> withGalleryRun<T>(
   GalleryVariant variant,
   Future<T> Function(GalleryRun run) body, {
   Duration settleFor = const Duration(milliseconds: 900),
+  bool settle = true,
 }) async {
   await loadGalleryFonts();
   tester.view.physicalSize = Size(
@@ -165,7 +162,7 @@ Future<T> withGalleryRun<T>(
     if (screen.interact != null) {
       await screen.interact!(tester, variant);
     }
-    await _settle(tester, screen, settleFor);
+    if (settle) await _settle(tester, screen, settleFor);
     final run = GalleryRun._(tester, screen, variant, errors, find.byKey(_galleryContentKey));
     final result = await body(run);
     return result;

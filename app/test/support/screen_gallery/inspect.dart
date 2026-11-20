@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ class TextProbe {
     required this.isIcon,
     required this.truncated,
     required this.maxLines,
+    this.transformScale = 1.0,
   });
 
   final String text;
@@ -36,9 +38,15 @@ class TextProbe {
   final bool truncated;
   final int? maxLines;
 
+  /// Escala acumulada por `Transform`/`FittedBox` ancestrais (1.0 = nenhuma).
+  final double transformScale;
+
   /// `fontSize` declarado (antes do `TextScaler`); padrão do Flutter = 14.
   double get fontSize => style.fontSize ?? 14.0;
   double get renderedFontSize => scaler.scale(fontSize);
+
+  /// Tamanho EFETIVO na tela: escala do sistema × encolhimento por `FittedBox`/`Transform`.
+  double get effectiveSize => renderedFontSize * transformScale;
   String? get family => style.fontFamily;
   int get weight => style.fontWeight?.value ?? 400;
 
@@ -62,9 +70,7 @@ class TextProbe {
 /// [within] restringe a uma subárvore; por padrão varre o app inteiro.
 List<TextProbe> collectProbes(WidgetTester tester, {Finder? within}) {
   final out = <TextProbe>[];
-  final finder = within == null
-      ? find.byType(RichText)
-      : find.descendant(of: within, matching: find.byType(RichText));
+  final finder = within == null ? find.byType(RichText) : find.descendant(of: within, matching: find.byType(RichText));
   for (final e in finder.evaluate()) {
     final ro = e.renderObject;
     if (ro is! RenderParagraph || !ro.attached || !ro.hasSize) continue;
@@ -73,21 +79,26 @@ List<TextProbe> collectProbes(WidgetTester tester, {Finder? within}) {
     final rect = topLeft & ro.size;
     final scaler = widget.textScaler;
     final truncated = ro.didExceedMaxLines;
+    final tscale = _xyScale(ro.getTransformTo(null));
     _walkSpan(widget.text, const TextStyle(), (text, style) {
       if (text.trim().isEmpty) return;
       final family = style.fontFamily;
-      final isIcon = (family != null && kIconFontFamilies.contains(family)) ||
+      final isIcon =
+          (family != null && kIconFontFamilies.contains(family)) ||
           (text.runes.length == 1 && _isPrivateUse(text.runes.first));
-      out.add(TextProbe(
-        text: text,
-        style: style,
-        rect: rect,
-        element: e,
-        scaler: scaler,
-        isIcon: isIcon,
-        truncated: truncated,
-        maxLines: widget.maxLines,
-      ));
+      out.add(
+        TextProbe(
+          text: text,
+          style: style,
+          rect: rect,
+          element: e,
+          scaler: scaler,
+          isIcon: isIcon,
+          truncated: truncated,
+          maxLines: widget.maxLines,
+          transformScale: tscale,
+        ),
+      );
     });
   }
   return out;
@@ -159,7 +170,9 @@ List<TapTarget> collectTapTargets(WidgetTester tester) {
     if (!hidden && data.hasAction(SemanticsAction.tap) && !node.isMergedIntoParent) {
       final rect = MatrixUtils.transformRect(transform, node.rect);
       final label = data.label.isNotEmpty ? data.label : (data.tooltip.isNotEmpty ? data.tooltip : data.value);
-      out.add(TapTarget(label, rect, data.flagsCollection.isEnabled != ui.Tristate.isFalse, data.flagsCollection.isTextField));
+      out.add(
+        TapTarget(label, rect, data.flagsCollection.isEnabled != ui.Tristate.isFalse, data.flagsCollection.isTextField),
+      );
     }
     node.visitChildren((c) {
       visit(c, transform);
@@ -171,12 +184,20 @@ List<TapTarget> collectTapTargets(WidgetTester tester) {
   return out;
 }
 
-/// Escala global (acumulada) aplicada ao elemento por `Transform`s ancestrais.
+double _xyScale(Matrix4 m) {
+  final s = m.storage;
+  final sx = math.sqrt(s[0] * s[0] + s[1] * s[1]);
+  final sy = math.sqrt(s[4] * s[4] + s[5] * s[5]);
+  return math.min(sx, sy);
+}
+
+/// Escala 2D (plano XY) acumulada por `Transform`/`ScaleTransition` ancestrais.
+/// (Não usar `Matrix4.getMaxScaleOnAxis()`: o eixo Z fica em `1.0`, então
+/// reduções como `0.97` sumiriam em `max(0.97, 0.97, 1.0) == 1.0`.)
 double globalScaleOf(Element e) {
   final ro = e.renderObject;
   if (ro is! RenderBox) return 1.0;
-  final m = ro.getTransformTo(null);
-  return m.getMaxScaleOnAxis();
+  return _xyScale(ro.getTransformTo(null));
 }
 
 /// Localização (arquivo:linha) do widget que CRIOU [e]: sobe os ancestrais até
@@ -205,7 +226,9 @@ String? creatorLocation(Element e) {
 String? _location(Widget w) {
   try {
     final node = w.toDiagnosticsNode();
-    final json = node.toJsonMap(InspectorSerializationDelegate(service: WidgetInspectorService.instance, subtreeDepth: 0));
+    final json = node.toJsonMap(
+      InspectorSerializationDelegate(service: WidgetInspectorService.instance, subtreeDepth: 0),
+    );
     final loc = json['creationLocation'];
     if (loc is Map && loc['file'] != null) {
       final file = (loc['file'] as String).replaceAll(r'\', '/');
@@ -213,6 +236,8 @@ String? _location(Widget w) {
       final shown = i >= 0 ? file.substring(i + 1) : file;
       return '$shown:${loc['line']}';
     }
-  } catch (_) {/* sem localização */}
+  } catch (_) {
+    /* sem localização */
+  }
   return null;
 }

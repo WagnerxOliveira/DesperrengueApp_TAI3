@@ -28,10 +28,10 @@ class GalleryViewport {
   GalleryBreakpoint get breakpoint => width < 360
       ? GalleryBreakpoint.compact
       : width < 600
-          ? GalleryBreakpoint.regular
-          : width < 900
-              ? GalleryBreakpoint.medium
-              : GalleryBreakpoint.expanded;
+      ? GalleryBreakpoint.regular
+      : width < 900
+      ? GalleryBreakpoint.medium
+      : GalleryBreakpoint.expanded;
 
   bool get isWeb => width >= 900;
 
@@ -48,15 +48,7 @@ const GalleryViewport vp1280 = GalleryViewport('web1280x800', Size(1280, 800));
 const GalleryViewport vp1920 = GalleryViewport('web1920x1080', Size(1920, 1080));
 
 /// Os 7 viewports do contrato (§6.1).
-const List<GalleryViewport> kGalleryViewports = <GalleryViewport>[
-  vp320,
-  vp360,
-  vp390,
-  vp412,
-  vp600,
-  vp1280,
-  vp1920,
-];
+const List<GalleryViewport> kGalleryViewports = <GalleryViewport>[vp320, vp360, vp390, vp412, vp600, vp1280, vp1920];
 
 /// Escalas de fonte do sistema do contrato (o app limita em 1.5 no `builder`).
 const List<double> kGalleryScales = <double>[1.0, 1.35, 1.5];
@@ -82,10 +74,10 @@ class GalleryVariant {
   bool get isDark => brightness == Brightness.dark;
 
   String get modeLabel => switch (mode) {
-        UserMode.client => 'cliente',
-        UserMode.provider => 'profissional',
-        null => 'marca',
-      };
+    UserMode.client => 'cliente',
+    UserMode.provider => 'profissional',
+    null => 'marca',
+  };
 
   GalleryVariant copyWith({
     GalleryViewport? viewport,
@@ -93,18 +85,16 @@ class GalleryVariant {
     Brightness? brightness,
     Object? mode = _keep,
     bool? disableAnimations,
-  }) =>
-      GalleryVariant(
-        viewport: viewport ?? this.viewport,
-        scale: scale ?? this.scale,
-        brightness: brightness ?? this.brightness,
-        mode: identical(mode, _keep) ? this.mode : mode as UserMode?,
-        disableAnimations: disableAnimations ?? this.disableAnimations,
-      );
+  }) => GalleryVariant(
+    viewport: viewport ?? this.viewport,
+    scale: scale ?? this.scale,
+    brightness: brightness ?? this.brightness,
+    mode: identical(mode, _keep) ? this.mode : mode as UserMode?,
+    disableAnimations: disableAnimations ?? this.disableAnimations,
+  );
 
   /// Rótulo curto e estável (entra nas mensagens e no relatório).
-  String get label =>
-      '${viewport.name} @${scale.toStringAsFixed(2)} ${isDark ? 'escuro' : 'claro'} $modeLabel';
+  String get label => '${viewport.name} @${scale.toStringAsFixed(2)} ${isDark ? 'escuro' : 'claro'} $modeLabel';
 
   @override
   String toString() => label;
@@ -129,61 +119,73 @@ abstract final class GalleryMatrix {
   /// Matriz completa do contrato: 7 viewports × 3 escalas × 2 temas × 2 modos
   /// (= 84 combinações/tela). Só para execuções pontuais (`GALLERY_FULL=1`).
   static List<GalleryVariant> full() => <GalleryVariant>[
-        for (final vp in kGalleryViewports)
-          for (final s in kGalleryScales)
-            for (final b in Brightness.values)
-              for (final m in const <UserMode>[UserMode.client, UserMode.provider])
-                GalleryVariant(viewport: vp, scale: s, brightness: b, mode: m),
-      ];
+    for (final vp in kGalleryViewports)
+      for (final s in kGalleryScales)
+        for (final b in Brightness.values)
+          for (final m in const <UserMode>[UserMode.client, UserMode.provider])
+            GalleryVariant(viewport: vp, scale: s, brightness: b, mode: m),
+  ];
 
   /// Matriz AMPLIADA de layout (11 combinações) — GALLERY_FULL=1.
   static List<GalleryVariant> layoutFull(UserMode? mode) => <GalleryVariant>[
-        GalleryVariant(viewport: vp320, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp320, scale: 1.35, mode: mode),
-        GalleryVariant(viewport: vp320, scale: 1.5, mode: mode),
-        GalleryVariant(viewport: vp360, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp390, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp412, scale: 1.35, mode: mode),
-        GalleryVariant(viewport: vp600, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp1280, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp1920, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp320, scale: 1.5, brightness: Brightness.dark, mode: mode),
-        GalleryVariant(viewport: vp390, scale: 1.0, brightness: Brightness.dark, mode: mode),
-      ];
+    GalleryVariant(viewport: vp320, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp320, scale: 1.35, mode: mode),
+    GalleryVariant(viewport: vp320, scale: 1.5, mode: mode),
+    GalleryVariant(viewport: vp360, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp390, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp412, scale: 1.35, mode: mode),
+    GalleryVariant(viewport: vp600, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp1280, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp1920, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp320, scale: 1.5, brightness: Brightness.dark, mode: mode),
+    GalleryVariant(viewport: vp390, scale: 1.0, brightness: Brightness.dark, mode: mode),
+  ];
 
   /// Matriz PADRÃO de layout (6 combinações): extremos de largura/escala, claro e escuro.
   static List<GalleryVariant> layout(UserMode? mode) => <GalleryVariant>[
-        GalleryVariant(viewport: vp320, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp320, scale: 1.5, mode: mode),
-        GalleryVariant(viewport: vp360, scale: 1.0, brightness: Brightness.dark, mode: mode),
-        GalleryVariant(viewport: vp412, scale: 1.35, mode: mode),
-        GalleryVariant(viewport: vp600, scale: 1.0, mode: mode),
-        GalleryVariant(viewport: vp1280, scale: 1.0, mode: mode),
-      ];
+    GalleryVariant(viewport: vp320, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp320, scale: 1.5, mode: mode),
+    GalleryVariant(viewport: vp360, scale: 1.0, brightness: Brightness.dark, mode: mode),
+    GalleryVariant(viewport: vp412, scale: 1.35, mode: mode),
+    GalleryVariant(viewport: vp600, scale: 1.0, mode: mode),
+    GalleryVariant(viewport: vp1280, scale: 1.0, mode: mode),
+  ];
 
   /// Tipografia/alvos/contraste: 2 viewports × claro/escuro (escala 1.0).
   static List<GalleryVariant> style(UserMode? mode) => <GalleryVariant>[
-        GalleryVariant(viewport: vp360, mode: mode),
-        GalleryVariant(viewport: vp360, brightness: Brightness.dark, mode: mode),
-        GalleryVariant(viewport: vp1280, mode: mode),
-        GalleryVariant(viewport: vp1280, brightness: Brightness.dark, mode: mode),
-      ];
+    GalleryVariant(viewport: vp360, mode: mode),
+    GalleryVariant(viewport: vp360, brightness: Brightness.dark, mode: mode),
+    GalleryVariant(viewport: vp1280, mode: mode),
+    GalleryVariant(viewport: vp1280, brightness: Brightness.dark, mode: mode),
+  ];
+
+  /// Tipografia/alvos: 360 (celular) e 1280 (Web), claro, escala 1.0.
+  static List<GalleryVariant> typography(UserMode? mode) => <GalleryVariant>[
+    GalleryVariant(viewport: vp360, mode: mode),
+    GalleryVariant(viewport: vp1280, mode: mode),
+  ];
+
+  /// Contraste: claro e escuro no celular.
+  static List<GalleryVariant> contrast(UserMode? mode) => <GalleryVariant>[
+    GalleryVariant(viewport: vp360, mode: mode),
+    GalleryVariant(viewport: vp360, brightness: Brightness.dark, mode: mode),
+  ];
 
   /// Escala de fonte monotônica (mesma tela, 3 escalas, viewport médio).
   static List<GalleryVariant> scales(UserMode? mode) => <GalleryVariant>[
-        for (final s in kGalleryScales) GalleryVariant(viewport: vp390, scale: s, mode: mode),
-      ];
+    for (final s in kGalleryScales) GalleryVariant(viewport: vp390, scale: s, mode: mode),
+  ];
 
   /// Os dois acentos (cliente laranja / profissional azul) × claro/escuro.
   static List<GalleryVariant> accents() => <GalleryVariant>[
-        for (final m in const <UserMode>[UserMode.client, UserMode.provider])
-          for (final b in Brightness.values) GalleryVariant(viewport: vp390, brightness: b, mode: m),
-      ];
+    for (final m in const <UserMode>[UserMode.client, UserMode.provider])
+      for (final b in Brightness.values) GalleryVariant(viewport: vp390, brightness: b, mode: m),
+  ];
 
   /// Movimento: `disableAnimations` ligado, 1 viewport.
   static List<GalleryVariant> reducedMotion(UserMode? mode) => <GalleryVariant>[
-        GalleryVariant(viewport: vp390, mode: mode, disableAnimations: true),
-      ];
+    GalleryVariant(viewport: vp390, mode: mode, disableAnimations: true),
+  ];
 }
 
 /// 	rue com GALLERY_FULL=1 (matriz ampliada).

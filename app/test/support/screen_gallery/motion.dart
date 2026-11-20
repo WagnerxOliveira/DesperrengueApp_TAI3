@@ -66,22 +66,34 @@ class PressScaleResult {
       'solta400=${afterRelease400.toStringAsFixed(3)}';
 }
 
-/// Pressiona [target] e mede a escala global do widget ao longo do tempo.
+/// Menor escala global encontrada em [target] ou em seus filhos (o
+/// `RenderTransform` de `ScaleTransition`/`AnimatedScale` aplica a matriz aos
+/// filhos, não a si mesmo — por isso inspecionamos folhas como `RichText`).
+double _effectiveScaleOf(WidgetTester tester, Finder target) {
+  var minScale = globalScaleOf(tester.element(target.first));
+  for (final e in find.descendant(of: target.first, matching: find.byType(RichText)).evaluate()) {
+    final s = globalScaleOf(e);
+    if (s > 0 && s < minScale) minScale = s;
+  }
+  return minScale;
+}
+
+/// Pressiona [target] e mede a escala global do widget (ou de seu `Transform`
+/// interno, como `AppPressScale`) ao longo do tempo.
 Future<PressScaleResult> measurePressScale(WidgetTester tester, Finder target) async {
-  final element = tester.element(target.first);
-  final rest = globalScaleOf(element);
+  final rest = _effectiveScaleOf(tester, target);
   final gesture = await tester.startGesture(tester.getCenter(target.first));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 120));
-  final at120 = globalScaleOf(tester.element(target.first));
+  final at120 = _effectiveScaleOf(tester, target);
   await tester.pump(const Duration(milliseconds: 280));
-  final pressed = globalScaleOf(tester.element(target.first));
+  final pressed = _effectiveScaleOf(tester, target);
   await gesture.up();
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 120));
-  final rel120 = globalScaleOf(tester.element(target.first));
+  final rel120 = _effectiveScaleOf(tester, target);
   await tester.pump(const Duration(milliseconds: 280));
-  final rel400 = globalScaleOf(tester.element(target.first));
+  final rel400 = _effectiveScaleOf(tester, target);
   return PressScaleResult(
     rest: rest,
     at120: at120,
@@ -96,16 +108,15 @@ Future<PressScaleResult> measurePressScale(WidgetTester tester, Finder target) a
 /// [navigatorFinder] deve achar algo sob o `Navigator` (ex.: `find.byType(Scaffold)`).
 /// A rota é uma `MaterialPageRoute` (como as 83 do app): o tema global decide a
 /// transição via `pageTransitionsTheme`.
-Future<({Duration push, Duration pop})> measurePageTransition(
-  WidgetTester tester,
-  Finder anchor,
-) async {
+Future<({Duration push, Duration pop})> measurePageTransition(WidgetTester tester, Finder anchor) async {
   final context = tester.element(anchor.first);
   final navigator = Navigator.of(context);
   final push = await measureSettle(tester, () async {
-    navigator.push<void>(MaterialPageRoute<void>(
-      builder: (_) => const Scaffold(body: Center(child: Text('destino'))),
-    ));
+    navigator.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Center(child: Text('destino'))),
+      ),
+    );
   });
   final pop = await measureSettle(tester, () async {
     navigator.pop();

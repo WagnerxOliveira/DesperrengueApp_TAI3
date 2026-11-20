@@ -1,3 +1,4 @@
+import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'checks.dart';
@@ -5,7 +6,6 @@ import 'fakes.dart';
 import 'pump.dart';
 import 'ratchet.dart';
 import 'viewports.dart';
-import 'package:desperrengue_app/core/models/user_profile.dart';
 
 /// Define uma suíte da galeria: UM `testWidgets` por tela registrada; cada um
 /// monta a tela em todas as variantes de [variants], roda [check] e confere o

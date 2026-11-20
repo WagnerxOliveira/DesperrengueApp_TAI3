@@ -33,17 +33,7 @@ abstract final class GalleryRules {
   static const layoutRules = <String>[overflow, renderError, clipped];
 
   /// Regras de estilo (rodam na matriz `style`).
-  static const styleRules = <String>[
-    minFont,
-    bodyFont,
-    family,
-    weight,
-    tabular,
-    symbols,
-    glyphs,
-    tapTarget,
-    contrast,
-  ];
+  static const styleRules = <String>[minFont, bodyFont, family, weight, tabular, symbols, glyphs, tapTarget, contrast];
 
   static const all = <String>[
     overflow,
@@ -83,10 +73,14 @@ class Violation {
 
 /// Acumulador de violações de UMA tela (deduplica por regra+assinatura).
 class ViolationLog {
+  /// Normaliza relógios/contadores (`00:44`, `12:34`, `45s`) na chave de
+  /// deduplicação para evitar flutuação entre variantes por virada de segundo.
+  static final RegExp _clockTick = RegExp(r'\b\d{1,2}:\d{2}(?::\d{2})?\b|\b\d+s\b');
+
   final Map<String, Violation> _byKey = <String, Violation>{};
 
   void add(String rule, String signature, GalleryVariant v, {String? where}) {
-    final k = '$rule|$signature';
+    final k = '$rule|${signature.replaceAll(_clockTick, '<T>')}';
     final viol = _byKey.putIfAbsent(k, () => Violation(rule, signature, where: where));
     viol.variants.add(v.label);
   }
@@ -145,15 +139,14 @@ final RegExp _symbolRegex = RegExp(
   unicode: true,
 );
 
-bool _isBodyText(TextProbe p) =>
-    p.text.trim().split(RegExp(r'\s+')).length >= 4 || p.text.trim().length > 32;
+bool _isBodyText(TextProbe p) => p.text.trim().split(RegExp(r'\s+')).length >= 4 || p.text.trim().length > 32;
 
 Set<int>? _embeddedCoverage;
 
 Set<int> embeddedCodepoints() => _embeddedCoverage ??= <int>{
-      for (final fam in kEmbeddedFontFiles.values)
-        for (final file in fam.values) ...readCmapCodepoints(readFontFileSync(file)),
-    };
+  for (final fam in embeddedFontFiles().values)
+    for (final file in fam.values) ...readCmapCodepoints(readFontFileSync(file)),
+};
 
 /// Tipografia: mínimo, corpo, família, pesos, tabular, símbolos e glifos.
 void checkTypography(GalleryRun run, ViolationLog log) {
@@ -161,7 +154,7 @@ void checkTypography(GalleryRun run, ViolationLog log) {
   final cover = embeddedCodepoints();
   for (final p in textOnly(collectProbes(run.tester))) {
     final where = creatorLocation(p.element);
-    final size = p.fontSize;
+    final size = p.fontSize * p.transformScale; // FittedBox que encolhe conta como fonte menor
     if (size < kMinFontSize - 0.001) {
       log.add(GalleryRules.minFont, '${p.shortText} com ${size.toStringAsFixed(1)}sp < 12.5', v, where: where);
     } else if (_isBodyText(p) && size < kBodyFontSize - 0.001 && !p.isNumeric) {
@@ -169,15 +162,23 @@ void checkTypography(GalleryRun run, ViolationLog log) {
     }
     final fam = p.family;
     if (fam == null || !kAllowedFontFamilies.contains(fam)) {
-      log.add(GalleryRules.family, 'família ${fam ?? '(padrão do sistema)'} ≠ PlusJakartaSans/Inter: ${p.shortText}', v,
-          where: where);
+      log.add(
+        GalleryRules.family,
+        'família ${fam ?? '(padrão do sistema)'} ≠ PlusJakartaSans/Inter: ${p.shortText}',
+        v,
+        where: where,
+      );
     }
     // Pesos: família efetiva (padrão do tema passa a ser Inter).
-    final eff = (fam != null && kEmbeddedFontFiles.containsKey(fam)) ? fam : 'Inter';
-    final weights = kEmbeddedFontFiles[eff]!.keys;
+    final eff = (fam != null && embeddedFontFiles().containsKey(fam)) ? fam : 'Inter';
+    final weights = (embeddedFontFiles()[eff] ?? const <int, String>{}).keys;
     if (!weights.contains(p.weight)) {
-      log.add(GalleryRules.weight, 'peso w${p.weight} inexistente em $eff (síntese de negrito): ${p.shortText}', v,
-          where: where);
+      log.add(
+        GalleryRules.weight,
+        'peso w${p.weight} inexistente em $eff (síntese de negrito): ${p.shortText}',
+        v,
+        where: where,
+      );
     }
     if (p.isNumeric && !p.isTabular) {
       log.add(GalleryRules.tabular, 'número sem tabularFigures: ${p.shortText}', v, where: where);
@@ -190,9 +191,12 @@ void checkTypography(GalleryRun run, ViolationLog log) {
         if (cp > 0x7E && cp != 0xA0 && !cover.contains(cp) && !_symbolRegex.hasMatch(String.fromCharCode(cp))) cp,
     };
     if (missing.isNotEmpty) {
-      log.add(GalleryRules.glyphs,
-          'glifo(s) fora das fontes embarcadas: ${missing.map(describeCodepoint).join(' ')} em ${p.shortText}', v,
-          where: where);
+      log.add(
+        GalleryRules.glyphs,
+        'glifo(s) fora das fontes embarcadas: ${missing.map(describeCodepoint).join(' ')} em ${p.shortText}',
+        v,
+        where: where,
+      );
     }
   }
 }
@@ -209,6 +213,13 @@ void checkTapTargets(GalleryRun run, ViolationLog log) {
     // fora da tela (rolagem) ou invisível
     if (t.rect.right < 0 || t.rect.bottom < 0 || t.rect.left > size.width || t.rect.top > size.height * 4) continue;
     if (t.rect.isEmpty) continue;
+    // Recorte parcial nas bordas de rolagem (ex.: botão de 56px aparecendo só
+    // os 2px superiores no fim da tela não é um botão de 2px).
+    final clippedVert = t.rect.height < kMinTapTarget - 0.5 &&
+        (t.rect.bottom >= size.height - 1.0 || t.rect.top <= 1.0);
+    final clippedHoriz = t.rect.width < kMinTapTarget - 0.5 &&
+        (t.rect.right >= size.width - 1.0 || t.rect.left <= 1.0);
+    if (clippedVert || clippedHoriz) continue;
     if (t.minSide < kMinTapTarget - 0.5) {
       log.add(GalleryRules.tapTarget, 'alvo de toque ${t.toString()} < 48x48', v);
     }
@@ -250,7 +261,7 @@ Map<String, double> renderedSizes(GalleryRun run) {
   final out = <String, double>{};
   for (final p in textOnly(collectProbes(run.tester))) {
     final n = counts[p.text] = (counts[p.text] ?? 0) + 1;
-    out['${p.text}#$n'] = p.renderedFontSize;
+    out['${p.text}#$n'] = p.effectiveSize;
   }
   return out;
 }
