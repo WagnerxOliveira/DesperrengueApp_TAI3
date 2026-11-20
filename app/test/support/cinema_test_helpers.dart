@@ -1,5 +1,3 @@
-import 'dart:ui' show FontFeature;
-
 import 'package:desperrengue_app/features/auth/presentation/desperrengue_welcome_cinema_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -171,8 +169,12 @@ Future<void> settleStory(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 1000));
 }
 
-/// `true` se [v] pertence à escala de 4 pt (0, 4, 8, 12, 16, 20, 24, 32...).
+/// `true` se [v] pertence à escala de 4 pt (4, 8, 12, 16, 20, 24, 32...).
+///
+/// Valores < 4 dp são insets ópticos de hairline (bordas de 1/1.5/2 px, cursor
+/// do switch, anéis de foco) e não contam como "padding de layout".
 bool onFourPointScale(double v) {
+  if (v < 4.0) return true;
   final r = v % 4.0;
   return r.abs() < 0.001 || (4.0 - r).abs() < 0.001;
 }

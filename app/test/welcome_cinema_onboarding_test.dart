@@ -5,6 +5,7 @@ import 'package:desperrengue_app/core/ui/app_tokens.dart';
 import 'package:desperrengue_app/core/ui/category_brand_emblem.dart';
 import 'package:desperrengue_app/core/ui/desperrengue_brand_logo.dart';
 import 'package:desperrengue_app/core/ui/serene_route_transitions.dart';
+import 'package:desperrengue_app/core/ui/typography/cinema_type_scale.dart';
 import 'package:desperrengue_app/features/auth/presentation/cadastro_sucesso_routing.dart';
 import 'package:desperrengue_app/features/auth/presentation/desperrengue_welcome_cinema_screen.dart';
 import 'package:desperrengue_app/features/auth/presentation/role_selection_screen.dart';
@@ -1758,7 +1759,7 @@ void main() {
             (Color(0xFF0F172A), Color(0xFFDFE7F0), 'Opção inativa sobre sombra interna do trilho #DFE7F0'),
             (Color(0xFF0F172A), Color(0xFFE8EEF5), 'Opção inativa sobre trilho acetinado #E8EEF5'),
             (Color(0xFF0F172A), Color(0xFFEDF2F8), 'Opção inativa sobre base do trilho acetinado #EDF2F8'),
-            (Color(0xFF0F172A), Color(0xFFF8FAFC), 'Botão Próximo (#0F172A sobre #F8FAFC)'),
+            (Color(0xFFF8FAFC), Color(0xFF211926), 'Chevron `<` `>` (#F8FAFC) sobre aurora escura'),
             (Color(0xFF0B1320), Color(0xFF6EE7B7), 'CTA Começar agora sobre aurora menta #6EE7B7'),
             (Color(0xFF0B1320), Color(0xFFA7F3D0), 'CTA Começar agora sobre aurora menta clara #A7F3D0'),
             (Color(0xFF0B1320), Color(0xFFFDE68A), 'CTA Começar agora sobre aurora champanhe #FDE68A'),
@@ -1781,6 +1782,51 @@ void main() {
   group(
     '6. Matriz Extrema Zero-Overflow nas 6 Etapas (Ato 1, Ato 2 e Ato 3) + RoleSelectionScreen',
     () {
+      test(
+        'v2.27.0: texto sobre porcelana atinge >= 7:1 (tokens ink/inkMeta/emeraldInk) e CTA/ícones do botão circular >= 4.5:1',
+        () {
+          const porcelainWhite = Color(0xFFFFFFFF);
+          const porcelainBase = Color(0xFFF8FAFC);
+          const pearl = Color(0xFFF1F5F9);
+          const pairs = <(Color, Color, String, double)>[
+            (CinemaColors.ink, porcelainWhite, 'ink sobre #FFFFFF', 7.0),
+            (CinemaColors.ink, porcelainBase, 'ink sobre #F8FAFC', 7.0),
+            (CinemaColors.ink, pearl, 'ink sobre pérola #F1F5F9', 7.0),
+            (CinemaColors.inkMeta, porcelainWhite, 'rowMeta sobre #FFFFFF', 7.0),
+            (CinemaColors.inkMeta, porcelainBase, 'rowMeta sobre #F8FAFC', 7.0),
+            (Color(0xFF334155), pearl, 'texto secundário sobre pérola', 7.0),
+            (
+              CinemaColors.emeraldInk,
+              CinemaColors.emeraldMist,
+              'selo esmeralda sobre menta',
+              7.0,
+            ),
+            (CinemaColors.ctaInk, Color(0xFF6EE7B7), 'CTA sobre #6EE7B7', 7.0),
+            (CinemaColors.ctaInk, Color(0xFFFDBA74), 'CTA sobre #FDBA74', 7.0),
+            (
+              CinemaColors.onAurora,
+              Color(0xFF0D1B20),
+              'título sobre aurora mais escura',
+              7.0,
+            ),
+            (
+              CinemaColors.onAuroraSoft,
+              Color(0xFF523020),
+              'subtítulo sobre aurora mais clara (Etapa 6)',
+              7.0,
+            ),
+          ];
+          for (final p in pairs) {
+            expect(
+              AppTokens.contrast(p.$1, p.$2),
+              greaterThanOrEqualTo(p.$4),
+              reason:
+                  '${p.$3}: ${AppTokens.contrast(p.$1, p.$2).toStringAsFixed(2)}:1 (< ${p.$4})',
+            );
+          }
+        },
+      );
+
       const extremeViewports =
           <({Size physicalSize, double dpr, double scale, String label})>[
         (
