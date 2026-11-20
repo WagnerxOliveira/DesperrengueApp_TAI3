@@ -44,6 +44,17 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.clientSoft,
     required this.star,
     required this.shadow,
+    required this.accent,
+    required this.accentInk,
+    required this.onAccent,
+    required this.accentSoft,
+    required this.clientAccentInk,
+    required this.providerAccentInk,
+    required this.dangerInk,
+    required this.surfaceInset,
+    required this.scrim,
+    required this.skeletonBase,
+    required this.skeletonHighlight,
   });
 
   final Brightness brightness;
@@ -86,6 +97,38 @@ class AppTokens extends ThemeExtension<AppTokens> {
 
   /// Cor de sombra. No escuro é transparente: sombra some sobre o fundo escuro.
   final Color shadow;
+  /// Acento do MODO ativo (cliente = laranja, profissional = azul, sem modo =
+  /// marca). Use para PREENCHIMENTO (botões, barras, indicadores).
+  final Color accent;
+
+  /// Acento para TEXTO/ÍCONE/LINK (>= 4,5:1 sobre ackground, card,
+  /// surface e ccentSoft, claro e escuro). Nunca use ccent como texto.
+  final Color accentInk;
+
+  /// Cor legível SOBRE ccent (rótulo de botão primário).
+  final Color onAccent;
+
+  /// Tinta suave do acento (fundos de chip/ícone/seleção).
+  final Color accentSoft;
+
+  /// Tinta de texto do acento cliente (laranja escurecido no claro).
+  final Color clientAccentInk;
+
+  /// Tinta de texto do acento profissional.
+  final Color providerAccentInk;
+
+  /// Texto de erro/risco real (>= 4,5:1 sobre ackground, card e dangerSoft).
+  final Color dangerInk;
+
+  /// Superfície rebaixada (campos, trilhos, áreas "afundadas").
+  final Color surfaceInset;
+
+  /// Película sob sheets/diálogos (opacidade já embutida).
+  final Color scrim;
+
+  /// Esqueleto de carregamento: base e brilho do shimmer.
+  final Color skeletonBase;
+  final Color skeletonHighlight;
 
   bool get isDark => brightness == Brightness.dark;
 
@@ -93,6 +136,74 @@ class AppTokens extends ThemeExtension<AppTokens> {
   List<BoxShadow> cardShadow({double blur = 12, double dy = 4}) => isDark
       ? const []
       : [BoxShadow(color: shadow, blurRadius: blur, offset: Offset(0, dy))];
+  /// Sombras de 2 camadas (mbient difusa + key direcional) — só no claro;
+  /// nunca preto puro (tinta slate). No escuro a elevação é TONAL: use
+  /// [surfaceAt]; aqui devolve lista vazia. [level]: 1 (cartão) · 2 (hero/
+  /// flutuante) · 3 (sheet/menu).
+  List<BoxShadow> elevation(int level) {
+    if (isDark || level <= 0) return const [];
+    return switch (level) {
+      1 => const [
+          BoxShadow(color: Color(0x0A0F172A), blurRadius: 2, offset: Offset(0, 1)),
+          BoxShadow(color: Color(0x0F0F172A), blurRadius: 12, offset: Offset(0, 4)),
+        ],
+      2 => const [
+          BoxShadow(color: Color(0x0F0F172A), blurRadius: 4, offset: Offset(0, 2)),
+          BoxShadow(color: Color(0x1A0F172A), blurRadius: 24, offset: Offset(0, 10)),
+        ],
+      _ => const [
+          BoxShadow(color: Color(0x140F172A), blurRadius: 6, offset: Offset(0, 4)),
+          BoxShadow(color: Color(0x290F172A), blurRadius: 40, offset: Offset(0, 16)),
+        ],
+    };
+  }
+
+  /// Superfície na elevação [dp]: clara = [card]; escura = [card] + camada tonal.
+  Color surfaceAt(int dp) => isDark ? tonal(card, dp) : card;
+
+  /// Variante dos tokens para um acento específico (cliente/profissional).
+  /// [onAccent] é recalculado (contraste máximo).
+  AppTokens forAccent({required Color accent, required Color accentInk, required Color accentSoft}) =>
+      AppTokens(
+        brightness: brightness,
+        background: background,
+        surface: surface,
+        card: card,
+        raised: raised,
+        text: text,
+        textMuted: textMuted,
+        border: border,
+        brand: brand,
+        providerAccent: providerAccent,
+        clientAccent: clientAccent,
+        success: success,
+        successSoft: successSoft,
+        successInk: successInk,
+        warning: warning,
+        warningSoft: warningSoft,
+        warningInk: warningInk,
+        danger: danger,
+        dangerSoft: dangerSoft,
+        info: info,
+        infoSoft: infoSoft,
+        security: security,
+        securitySoft: securitySoft,
+        providerSoft: providerSoft,
+        clientSoft: clientSoft,
+        star: star,
+        shadow: shadow,
+        accent: accent,
+        accentInk: accentInk,
+        onAccent: onColor(accent),
+        accentSoft: accentSoft,
+        clientAccentInk: clientAccentInk,
+        providerAccentInk: providerAccentInk,
+        dangerInk: dangerInk,
+        surfaceInset: surfaceInset,
+        scrim: scrim,
+        skeletonBase: skeletonBase,
+        skeletonHighlight: skeletonHighlight,
+      );
 
   // ---------------------------------------------------------------- valores
   static const AppTokens light = AppTokens(
@@ -123,6 +234,17 @@ class AppTokens extends ThemeExtension<AppTokens> {
     clientSoft: Color(0xFFFDE8D8),
     star: Color(0xFFF5B400),
     shadow: Color(0x0D000000),
+    accent: Color(0xFF003366),
+    accentInk: Color(0xFF003366),
+    onAccent: Color(0xFFFFFFFF),
+    accentSoft: Color(0xFFDCEBFA),
+    clientAccentInk: Color(0xFFB34700),
+    providerAccentInk: Color(0xFF1B3A78),
+    dangerInk: Color(0xFFA11D23),
+    surfaceInset: Color(0xFFEEF1F6),
+    scrim: Color(0x8A0F172A),
+    skeletonBase: Color(0xFFE8ECF2),
+    skeletonHighlight: Color(0xFFF6F8FB),
   );
 
   /// Escuro: superfícies por elevação tonal; acentos dessaturados.
@@ -161,6 +283,17 @@ class AppTokens extends ThemeExtension<AppTokens> {
       clientSoft: const Color(0xFF2F2018),
       star: const Color(0xFFF4C650),
       shadow: const Color(0x00000000),
+      accent: const Color(0xFF6FA8F0),
+      accentInk: const Color(0xFF6FA8F0),
+      onAccent: const Color(0xFF111827),
+      accentSoft: const Color(0xFF15263C),
+      clientAccentInk: const Color(0xFFFF8F52),
+      providerAccentInk: const Color(0xFF74A7FF),
+      dangerInk: const Color(0xFFFFA3A7),
+      surfaceInset: const Color(0xFF0A0E13),
+      scrim: const Color(0xB3000000),
+      skeletonBase: const Color(0xFF1F2733),
+      skeletonHighlight: const Color(0xFF2B3646),
     );
   }
   /// Elevação tonal (Material 3): sobrepõe branco à superfície com opacidade
@@ -234,6 +367,17 @@ class AppTokens extends ThemeExtension<AppTokens> {
       clientSoft: l(clientSoft, other.clientSoft),
       star: l(star, other.star),
       shadow: l(shadow, other.shadow),
+      accent: l(accent, other.accent),
+      accentInk: l(accentInk, other.accentInk),
+      onAccent: l(onAccent, other.onAccent),
+      accentSoft: l(accentSoft, other.accentSoft),
+      clientAccentInk: l(clientAccentInk, other.clientAccentInk),
+      providerAccentInk: l(providerAccentInk, other.providerAccentInk),
+      dangerInk: l(dangerInk, other.dangerInk),
+      surfaceInset: l(surfaceInset, other.surfaceInset),
+      scrim: l(scrim, other.scrim),
+      skeletonBase: l(skeletonBase, other.skeletonBase),
+      skeletonHighlight: l(skeletonHighlight, other.skeletonHighlight),
     );
   }
 }
