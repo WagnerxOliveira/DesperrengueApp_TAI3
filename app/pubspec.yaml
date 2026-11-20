@@ -1,7 +1,7 @@
 name: desperrengue_app
 description: "Desperrengue: marketplace de serviços residenciais."
 publish_to: "none"
-version: 2.26.0+239920100
+version: 2.27.0+239920200
 
 environment:
   sdk: ^3.13.4
@@ -12,6 +12,7 @@ dependencies:
   crypto: ^3.0.6
   flutter:
     sdk: flutter
+  flutter_animate: ^4.5.2
   flutter_localizations:
     sdk: flutter
   flutter_map: ^8.3.2
@@ -68,6 +69,26 @@ flutter:
 
   assets:
     - assets/splash/logo.png
+    - assets/lottie/
+    - assets/licenses/
+
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
 
 # Splash NATIVA (renderizada pelo Android/iOS antes do Flutter subir; sem tela branca).
 # Mesmo azul-noite Quiet Luxury (#0F172A) da animacao nos temas claro e escuro. Gerar com:

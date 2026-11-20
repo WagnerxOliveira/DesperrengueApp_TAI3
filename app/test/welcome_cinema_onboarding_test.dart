@@ -5,12 +5,15 @@ import 'package:desperrengue_app/core/ui/app_tokens.dart';
 import 'package:desperrengue_app/core/ui/category_brand_emblem.dart';
 import 'package:desperrengue_app/core/ui/desperrengue_brand_logo.dart';
 import 'package:desperrengue_app/core/ui/serene_route_transitions.dart';
+import 'package:desperrengue_app/core/ui/typography/cinema_type_scale.dart';
 import 'package:desperrengue_app/features/auth/presentation/cadastro_sucesso_routing.dart';
 import 'package:desperrengue_app/features/auth/presentation/desperrengue_welcome_cinema_screen.dart';
 import 'package:desperrengue_app/features/auth/presentation/role_selection_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/cinema_test_helpers.dart';
 
 const List<Key> _kCanonicalStoryKeys = <Key>[
   Key('cinema-story-1'),
@@ -195,21 +198,27 @@ UserProfile _makeProfile({
 }
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    // Mede o texto com as fontes embarcadas reais (e não com a fonte Ahem).
+    await loadCinemaFonts();
+  });
+
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     WelcomeCinemaTracker.resetMemoryStateForTesting();
   });
 
   group(
-    '1. WelcomeCinemaTracker (v5 / v2.26.0) — Governança Pós-Cadastro e Ponte Escura',
+    '1. WelcomeCinemaTracker (v6 / v2.27.0) — Governança Pós-Cadastro e Ponte Escura',
     () {
       test(
-        'chaves de persistência v5 configuradas para a apresentação fiel ao vídeo (v2.26.0)',
+        'chaves de persistência v6 configuradas para a nova vitrine tipográfica (v2.27.0)',
         () {
-          expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v5_seen_');
+          expect(WelcomeCinemaTracker.keyPrefixSeen, 'welcome_cinema_v6_seen_');
           expect(
             WelcomeCinemaTracker.keyPendingUid,
-            'welcome_cinema_v5_pending_uid',
+            'welcome_cinema_v6_pending_uid',
           );
         },
       );
@@ -222,7 +231,7 @@ void main() {
 
           final prefsAfterArm = await SharedPreferences.getInstance();
           expect(
-            prefsAfterArm.getString('welcome_cinema_v5_pending_uid'),
+            prefsAfterArm.getString('welcome_cinema_v6_pending_uid'),
             'uid-otp-1',
           );
 
@@ -248,7 +257,7 @@ void main() {
       );
 
       test(
-        'após markCompleted(uid), limpa pending_uid, grava welcome_cinema_v5_seen_<uid> e nunca repete nem vaza entre usuários distintos',
+        'após markCompleted(uid), limpa pending_uid, grava welcome_cinema_v6_seen_<uid> e nunca repete nem vaza entre usuários distintos',
         () async {
           final now = DateTime.utc(2026, 11, 19, 14, 0, 0);
           final user1 = _makeProfile(id: 'uid-1', fullName: 'Ana');
@@ -267,8 +276,8 @@ void main() {
           await WelcomeCinemaTracker.markCompleted('uid-1');
 
           final prefs = await SharedPreferences.getInstance();
-          expect(prefs.getString('welcome_cinema_v5_seen_uid-1'), '1');
-          expect(prefs.getString('welcome_cinema_v5_pending_uid'), isNull);
+          expect(prefs.getString('welcome_cinema_v6_seen_uid-1'), '1');
+          expect(prefs.getString('welcome_cinema_v6_pending_uid'), isNull);
 
           // Mesmo recarregando do disco (cold restart), nunca repete para uid-1
           WelcomeCinemaTracker.resetMemoryStateForTesting();
@@ -517,7 +526,7 @@ void main() {
           );
           await tester.pump();
 
-          // Verifica paginação de 6 pontos centralizados (ativo 18x6dp, demais 6x6dp)
+          // Verifica paginação de 6 pontos centralizados (ativo 24x8dp, demais 8x8dp)
           final dotsFinder = find.byKey(const Key('story-pagination-dots'));
           expect(dotsFinder, findsOneWidget);
           final dotElements = find
@@ -528,9 +537,9 @@ void main() {
               .evaluate()
               .toList();
           expect(dotElements, hasLength(6));
-          expect(tester.getSize(find.byWidget(dotElements[0].widget)), const Size(18.0, 6.0));
+          expect(tester.getSize(find.byWidget(dotElements[0].widget)), const Size(24.0, 8.0));
           for (var d = 1; d < 6; d++) {
-            expect(tester.getSize(find.byWidget(dotElements[d].widget)), const Size(6.0, 6.0));
+            expect(tester.getSize(find.byWidget(dotElements[d].widget)), const Size(8.0, 8.0));
           }
 
           // Verifica card herói em acabamento Porcelana Luminosa (#FFFFFF -> #F8FAFC)
@@ -552,7 +561,7 @@ void main() {
             ]),
           );
 
-          // Verifica pílula branca (#F8FAFC) do botão Próximo nas Etapas 1–5
+          // v2.27.0: Próximo é o círculo de vidro `>` (idêntico ao `<`), sem rótulo de texto
           final nextBtnDecoratedStage1 = tester.widget<DecoratedBox>(
             find
                 .descendant(
@@ -561,10 +570,11 @@ void main() {
                 )
                 .first,
           );
-          expect(
-            (nextBtnDecoratedStage1.decoration as BoxDecoration).color,
-            const Color(0xFFF8FAFC),
-          );
+          final nextGlass = nextBtnDecoratedStage1.decoration as BoxDecoration;
+          expect(nextGlass.shape, BoxShape.circle);
+          expect(nextGlass.color, const Color(0x24FFFFFF));
+          expect(find.text('Próximo'), findsNothing);
+          expect(find.text('Voltar'), findsNothing);
 
           // Etapa 1 (0ms..2000ms): Casa Resolvida Sem Dor de Cabeça
           // Verifica digitação inicial com cursor vertical esmeralda (sem reticências) antes de concluir
@@ -596,16 +606,17 @@ void main() {
             find.byKey(const Key('search-completed-check')),
             findsOneWidget,
           );
-          expect(find.byType(CategoryBrandEmblem), findsNWidgets(4));
-          expect(find.text('Eletricista Verificado'), findsOneWidget);
+          expect(find.byType(CategoryBrandEmblem), findsNWidgets(3));
+          expect(find.text('Eletricista'), findsOneWidget);
           expect(find.text('Encanador'), findsOneWidget);
           expect(find.text('Climatização'), findsOneWidget);
-          expect(find.text('Reparos Gerais'), findsOneWidget);
+          expect(find.text('Verificado · Atende hoje'), findsNWidgets(3));
+          expect(find.text('Reparos Gerais'), findsNothing);
           expect(
             find.text('Atendimento rápido na sua região'),
             findsOneWidget,
           );
-          expect(find.text('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
           // Etapa 2 (2000ms..4000ms): Privacidade Total ao Pedir
@@ -617,7 +628,10 @@ void main() {
           expect(find.text(_kExpectedStoryTitles[1]), findsOneWidget);
           expect(find.text(_kExpectedStorySubtitles[1]), findsOneWidget);
           expect(find.text('Pedido Protegido'), findsOneWidget);
-          expect(find.text('🔒 Rua e número protegidos'), findsOneWidget);
+          expect(find.text('Rua e número protegidos'), findsOneWidget);
+          expect(find.text('Chega em 40 min'), findsOneWidget);
+          expect(find.text('Chega em 1 h'), findsOneWidget);
+          expect(find.text('Chega hoje'), findsOneWidget);
           expect(find.text('Proposta 1'), findsOneWidget);
           expect(find.text('Proposta 2'), findsOneWidget);
           expect(find.text('Proposta 3'), findsOneWidget);
@@ -627,7 +641,7 @@ void main() {
           expect(find.text('4,9'), findsOneWidget);
           expect(find.text('4,8'), findsOneWidget);
           expect(find.text('4,7'), findsOneWidget);
-          expect(find.text('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
           // Etapa 3 (4000ms..6000ms): Seu Dinheiro 100% Protegido
@@ -642,14 +656,12 @@ void main() {
             find.text('Serviço aprovado · 90 dias de garantia'),
             findsOneWidget,
           );
-          expect(
-            find.text('R\$ 180,00 · Guardado com segurança'),
-            findsOneWidget,
-          );
+          expect(find.text('R\$ 180,00'), findsOneWidget);
+          expect(find.text('Guardado com segurança'), findsOneWidget);
           for (final digit in const ['4', '8', '2', '9']) {
             expect(find.text(digit), findsWidgets);
           }
-          expect(find.text('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
           // Etapa 4 (6000ms..8000ms): Sua Casa Mais Valorizada
@@ -665,10 +677,12 @@ void main() {
           expect(find.text('Em dia'), findsOneWidget);
           expect(find.text('0%'), findsOneWidget);
           expect(find.text('100%'), findsOneWidget);
-          expect(find.text('Revisão Elétrica · 12/10/2026'), findsOneWidget);
-          expect(find.text('Climatização · 05/11/2026'), findsOneWidget);
+          expect(find.text('Revisão Elétrica'), findsOneWidget);
+          expect(find.text('Realizado em 12/10/2026'), findsOneWidget);
+          expect(find.text('Climatização'), findsOneWidget);
+          expect(find.text('Realizado em 05/11/2026'), findsOneWidget);
           expect(find.text('PDF'), findsNWidgets(2));
-          expect(find.text('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
           // Etapa 5 (8000ms..10000ms): Justo para Quem Trabalha
@@ -688,7 +702,7 @@ void main() {
           );
           expect(find.text('Reputação Verificada'), findsOneWidget);
           expect(find.text('5,0 · Profissional Destaque'), findsOneWidget);
-          expect(find.text('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Próximo'), findsOneWidget);
           expect(find.byType(WelcomeStoryHeroCard), findsOneWidget);
 
           // Etapa 6 (10000ms..12000ms): Uma Conta, Dois Caminhos + Chave Seletora de Luxo
@@ -716,7 +730,7 @@ void main() {
               .widget<DecoratedBox>(
                 find
                     .descendant(
-                      of: find.byKey(const Key('btn-story-next')),
+                      of: find.byKey(const Key('btn-story-start')),
                       matching: find.byType(DecoratedBox),
                     )
                     .first,
@@ -1297,19 +1311,26 @@ void main() {
 
           final nextBtn = find.byKey(const Key('btn-story-next'));
           final prevBtn = find.byKey(const Key('btn-story-prev'));
-          expect(find.text('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Próximo'), findsOneWidget);
+          expect(find.byTooltip('Voltar'), findsOneWidget);
           _expectMinTouchTarget(
             tester,
             nextBtn,
-            minWidth: 200.0,
+            minWidth: 48.0,
             minHeight: 48.0,
-            label: 'btn-story-next (Próximo largura total na Etapa 1)',
+            label: 'btn-story-next (> circular 56x56 na Etapa 1)',
           );
 
-          // Na Etapa 1, o botão Voltar não é exibido (pílula Próximo ocupa largura total fiel a 00:01 do vídeo)
-          expect(prevBtn, findsNothing);
+          // v2.27.0: na Etapa 1 o `<` existe, DESABILITADO, ocupando o mesmo espaço (zero pulo de layout)
+          _expectMinTouchTarget(
+            tester,
+            prevBtn,
+            minWidth: 48.0,
+            minHeight: 48.0,
+            label: 'btn-story-prev (< desabilitado na Etapa 1)',
+          );
 
-          // Verifica Voltar >= 44x44dp e Próximo/Começar agora >= 48dp em TODAS as Etapas 2 a 6
+          // Verifica < e > >= 48x48dp em TODAS as Etapas 2 a 5 (na 6 o `>` fica desabilitado)
           for (var step = 1; step < 6; step++) {
             await tester.tap(find.byKey(Key('cinema-chapter-tap-$step')));
             await tester.pump();
@@ -1317,19 +1338,27 @@ void main() {
             _expectMinTouchTarget(
               tester,
               prevBtn,
-              minWidth: 44.0,
-              minHeight: 44.0,
+              minWidth: 48.0,
+              minHeight: 48.0,
               label: 'btn-story-prev (Voltar na Etapa ${step + 1})',
             );
             expect(find.byTooltip('Voltar'), findsOneWidget);
             _expectMinTouchTarget(
               tester,
               nextBtn,
-              minWidth: 160.0,
+              minWidth: 48.0,
               minHeight: 48.0,
               label: 'btn-story-next na Etapa ${step + 1}',
             );
           }
+          // Etapa 6: CTA "Começar agora" aurora (largura total, 56dp) acima da linha de navegação
+          _expectMinTouchTarget(
+            tester,
+            find.byKey(const Key('btn-story-start')),
+            minWidth: 200.0,
+            minHeight: 56.0,
+            label: 'btn-story-start (Começar agora na Etapa 6)',
+          );
 
           // Volta da Etapa 6 -> Etapa 5 via btn-story-prev e depois salta para Etapa 2 -> volta para Etapa 1
           await tester.tap(prevBtn);
@@ -1342,7 +1371,13 @@ void main() {
           await tester.tap(prevBtn);
           await tester.pump();
           _expectActiveStory(0);
-          expect(prevBtn, findsNothing);
+          expect(prevBtn, findsOneWidget);
+
+          // `<` desabilitado na Etapa 1: tocar não faz nada nem fecha a apresentação
+          await tester.tap(prevBtn);
+          await tester.pump();
+          _expectActiveStory(0);
+          expect(skippedOrCompleted, 0);
 
           // Toca em Pular -> conclui imediatamente
           await tester.tap(skipBtn);
@@ -1367,12 +1402,12 @@ void main() {
           expect(find.text('Começar agora'), findsOneWidget);
           _expectMinTouchTarget(
             tester,
-            find.byKey(const Key('btn-story-next')),
+            find.byKey(const Key('btn-story-start')),
             minWidth: 160.0,
             minHeight: 48.0,
-            label: 'btn-story-next (Começar agora aurora)',
+            label: 'btn-story-start (Começar agora aurora)',
           );
-          await tester.tap(find.byKey(const Key('btn-story-next')));
+          await tester.tap(find.byKey(const Key('btn-story-start')));
           await tester.pump();
           expect(finishedViaPrimaryCta, 1);
 
@@ -1535,7 +1570,7 @@ void main() {
 
           final expectedRestingSnippets = <String>[
             'Trocar resistência do chuveiro',
-            '🔒 Rua e número protegidos',
+            'Rua e número protegidos',
             'Serviço aprovado · 90 dias de garantia',
             '96%',
             '5,0 · Profissional Destaque',
@@ -1551,7 +1586,11 @@ void main() {
           }
 
           expect(completed, isFalse);
+          // Etapa 6: `>` fica desabilitado; a conclusão é pelo CTA `btn-story-start`
           await tester.tap(find.byKey(const Key('btn-story-next')));
+          await tester.pump();
+          expect(completed, isFalse);
+          await tester.tap(find.byKey(const Key('btn-story-start')));
           await tester.pump();
           expect(completed, isTrue);
 
@@ -1643,12 +1682,15 @@ void main() {
             );
 
             // Espaço de respiro >= 38%
+            // v2.27.0: a página é uma coluna com rolagem interna (a fonte nunca encolhe);
+            // o respiro vem da medição de área livre abaixo.
             expect(
               find.descendant(
                 of: find.byKey(_kCanonicalStoryKeys[storyIndex]),
-                matching: find.byType(Spacer),
+                matching: find.byType(SingleChildScrollView),
               ),
-              findsAtLeastNWidgets(2),
+              findsWidgets,
+              reason: 'Etapa ${storyIndex + 1} deve permitir rolagem interna',
             );
             final screenArea = 390.0 * 844.0;
             final titleRect = tester.getRect(find.text(title));
@@ -1717,7 +1759,7 @@ void main() {
             (Color(0xFF0F172A), Color(0xFFDFE7F0), 'Opção inativa sobre sombra interna do trilho #DFE7F0'),
             (Color(0xFF0F172A), Color(0xFFE8EEF5), 'Opção inativa sobre trilho acetinado #E8EEF5'),
             (Color(0xFF0F172A), Color(0xFFEDF2F8), 'Opção inativa sobre base do trilho acetinado #EDF2F8'),
-            (Color(0xFF0F172A), Color(0xFFF8FAFC), 'Botão Próximo (#0F172A sobre #F8FAFC)'),
+            (Color(0xFFF8FAFC), Color(0xFF211926), 'Chevron `<` `>` (#F8FAFC) sobre aurora escura'),
             (Color(0xFF0B1320), Color(0xFF6EE7B7), 'CTA Começar agora sobre aurora menta #6EE7B7'),
             (Color(0xFF0B1320), Color(0xFFA7F3D0), 'CTA Começar agora sobre aurora menta clara #A7F3D0'),
             (Color(0xFF0B1320), Color(0xFFFDE68A), 'CTA Começar agora sobre aurora champanhe #FDE68A'),
@@ -1740,6 +1782,51 @@ void main() {
   group(
     '6. Matriz Extrema Zero-Overflow nas 6 Etapas (Ato 1, Ato 2 e Ato 3) + RoleSelectionScreen',
     () {
+      test(
+        'v2.27.0: texto sobre porcelana atinge >= 7:1 (tokens ink/inkMeta/emeraldInk) e CTA/ícones do botão circular >= 4.5:1',
+        () {
+          const porcelainWhite = Color(0xFFFFFFFF);
+          const porcelainBase = Color(0xFFF8FAFC);
+          const pearl = Color(0xFFF1F5F9);
+          const pairs = <(Color, Color, String, double)>[
+            (CinemaColors.ink, porcelainWhite, 'ink sobre #FFFFFF', 7.0),
+            (CinemaColors.ink, porcelainBase, 'ink sobre #F8FAFC', 7.0),
+            (CinemaColors.ink, pearl, 'ink sobre pérola #F1F5F9', 7.0),
+            (CinemaColors.inkMeta, porcelainWhite, 'rowMeta sobre #FFFFFF', 7.0),
+            (CinemaColors.inkMeta, porcelainBase, 'rowMeta sobre #F8FAFC', 7.0),
+            (Color(0xFF334155), pearl, 'texto secundário sobre pérola', 7.0),
+            (
+              CinemaColors.emeraldInk,
+              CinemaColors.emeraldMist,
+              'selo esmeralda sobre menta',
+              7.0,
+            ),
+            (CinemaColors.ctaInk, Color(0xFF6EE7B7), 'CTA sobre #6EE7B7', 7.0),
+            (CinemaColors.ctaInk, Color(0xFFFDBA74), 'CTA sobre #FDBA74', 7.0),
+            (
+              CinemaColors.onAurora,
+              Color(0xFF0D1B20),
+              'título sobre aurora mais escura',
+              7.0,
+            ),
+            (
+              CinemaColors.onAuroraSoft,
+              Color(0xFF523020),
+              'subtítulo sobre aurora mais clara (Etapa 6)',
+              7.0,
+            ),
+          ];
+          for (final p in pairs) {
+            expect(
+              AppTokens.contrast(p.$1, p.$2),
+              greaterThanOrEqualTo(p.$4),
+              reason:
+                  '${p.$3}: ${AppTokens.contrast(p.$1, p.$2).toStringAsFixed(2)}:1 (< ${p.$4})',
+            );
+          }
+        },
+      );
+
       const extremeViewports =
           <({Size physicalSize, double dpr, double scale, String label})>[
         (
@@ -1856,6 +1943,12 @@ void main() {
             }
 
             // Verifica alvos táteis >= 44dp / >= 48dp e toque interativo na chave seletora da Etapa 6 na resolução extrema
+            // Em telas pequenas + fonte ampliada o card rola por dentro (a fonte nunca encolhe):
+            // traz a chave seletora para a área visível antes de interagir.
+            await tester.ensureVisible(
+              find.byKey(const Key('dual-mode-luxury-switch')),
+            );
+            await tester.pump();
             _expectMinTouchTarget(
               tester,
               find.byKey(const Key('btn-skip-welcome-cinema')),
