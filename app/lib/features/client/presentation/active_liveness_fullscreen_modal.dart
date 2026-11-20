@@ -34,10 +34,11 @@ class ActiveLivenessModalOutput {
 /// Modal imersivo em tela cheia para Prova de Vida Biométrica Real
 /// (ML Kit no Mobile + MediaPipe FaceLandmarker na Web).
 ///
-/// Projetado com HUD minimalista (topo: fechar, etapa X de 3, trocar câmera;
-/// rodapé: um único card translúcido com instrução curta e ícone direcional),
-/// moldura oval generosa em `RepaintBoundary` (120 FPS), contorno discreto
-/// vermelho -> verde e arco fino de progresso.
+/// Projetado com HUD minimalista (topo: fechar à esquerda, etapa X de 3
+/// centralizada e espaçador simétrico à direita; rodapé: um único card
+/// translúcido com instrução curta e ícone direcional), moldura oval generosa
+/// em `RepaintBoundary` (120 FPS), contorno discreto vermelho -> verde e arco
+/// fino de progresso. Trava estritamente na câmera frontal.
 class ActiveLivenessFullscreenModal extends StatefulWidget {
   const ActiveLivenessFullscreenModal({
     super.key,
@@ -51,11 +52,46 @@ class ActiveLivenessFullscreenModal extends StatefulWidget {
   });
 
   static const Key closeButtonKey = ValueKey<String>('liveness_close_button');
-  static const Key switchCameraButtonKey = ValueKey<String>('liveness_switch_camera_button');
   static const Key stepPillKey = ValueKey<String>('liveness_step_pill');
   static const Key instructionCardKey = ValueKey<String>('liveness_instruction_card');
   static const Key ovalOverlayKey = ValueKey<String>('liveness_oval_overlay');
   static const Key viewportFrameKey = ValueKey<String>('liveness_viewport_frame');
+
+  /// Indica se o preview da câmera frontal precisa de espelhamento horizontal
+  /// manual (`Transform.flip(flipX: true)`).
+  ///
+  /// No Android (`camera_android_camerax` / `SurfaceTexture`) e no iOS
+  /// (`AVFoundation`), `CameraPreview(controller)` já espelha a câmera frontal
+  /// nativamente como um espelho real — aplicar `Transform.flip` lá causaria
+  /// espelhamento duplo (double-flip). Apenas na Web (`kIsWeb`) o `<video>`
+  /// WebRTC não vem espelhado.
+  @visibleForTesting
+  static bool shouldMirrorFrontPreview({required bool isWeb}) => isWeb;
+
+  /// Seleciona estritamente a câmera frontal para Prova de Vida.
+  ///
+  /// Prioriza `CameraLensDirection.front` e aceita fallback apenas se o nome da
+  /// lente identificar explicitamente frontal (`front`, `user` ou `selfie`).
+  /// Jamais faz fallback para câmera traseira.
+  @visibleForTesting
+  static CameraDescription? selectStrictFrontCamera(
+    List<CameraDescription> cameras,
+  ) {
+    for (final camera in cameras) {
+      if (camera.lensDirection == CameraLensDirection.front) {
+        return camera;
+      }
+    }
+    for (final camera in cameras) {
+      final String lowerName = camera.name.toLowerCase();
+      if (lowerName.contains('front') ||
+          lowerName.contains('user') ||
+          lowerName.contains('selfie')) {
+        return camera;
+      }
+    }
+    return null;
+  }
 
   final String cpfDigits;
   final bool enforceHumanFaceTextureCheck;
@@ -118,8 +154,7 @@ class _ActiveLivenessFullscreenModalState
 
   FaceDetectionAdapter? _adapter;
   CameraController? _cameraController;
-  List<CameraDescription> _availableCameras = const <CameraDescription>[];
-  int _selectedCameraIndex = 0;
+  CameraDescription? _frontCamera;
 
   StreamSubscription<LiveFaceObservation>? _testSubscription;
   Timer? _webPollTimer;
@@ -130,12 +165,6 @@ class _ActiveLivenessFullscreenModalState
   bool _streaming = false;
   bool _closed = false;
   String? _blockingError;
-
-  bool get _isFrontCamera {
-    if (_availableCameras.isEmpty) return true;
-    return _availableCameras[_selectedCameraIndex].lensDirection ==
-        CameraLensDirection.front;
-  }
 
   bool get _isTestMode =>
       widget.testObservationStream != null || widget.testInitialSnapshot != null;
@@ -200,7 +229,7 @@ class _ActiveLivenessFullscreenModalState
     }
   }
 
-  Future<void> _initializeHardwareFlow({int? cameraIndexOverride}) async {
+  Future<void> _initializeHardwareFlow() async {
     if (_initializing || _closed) return;
     setState(() {
       _initializing = true;
@@ -219,24 +248,23 @@ class _ActiveLivenessFullscreenModalState
         setState(() {
           _initializing = false;
           _blockingError =
-              'Nenhuma câmera foi encontrada neste aparelho. Verifique as permissões e tente novamente.';
+              'Nenhuma câmera frontal foi encontrada neste aparelho. Use um dispositivo com câmera frontal e verifique as permissões.';
         });
         return;
       }
 
-      _availableCameras = cameras;
-      if (cameraIndexOverride != null &&
-          cameraIndexOverride >= 0 &&
-          cameraIndexOverride < cameras.length) {
-        _selectedCameraIndex = cameraIndexOverride;
-      } else {
-        final frontIdx = cameras.indexWhere(
-          (c) => c.lensDirection == CameraLensDirection.front,
-        );
-        _selectedCameraIndex = frontIdx >= 0 ? frontIdx : 0;
+      final CameraDescription? selected =
+          ActiveLivenessFullscreenModal.selectStrictFrontCamera(cameras);
+      if (selected == null) {
+        setState(() {
+          _initializing = false;
+          _blockingError =
+              'A prova de vida exige um aparelho com câmera frontal. Use um dispositivo com câmera frontal para continuar.';
+        });
+        return;
       }
 
-      final CameraDescription selected = _availableCameras[_selectedCameraIndex];
+      _frontCamera = selected;
       final ImageFormatGroup? formatGroup = kIsWeb
           ? null
           : (defaultTargetPlatform == TargetPlatform.android
@@ -256,7 +284,7 @@ class _ActiveLivenessFullscreenModalState
       }
 
       if (kIsWeb) {
-        await ensureWebVideoFacingMode(frontCamera: _isFrontCamera);
+        await ensureWebVideoFacingMode(frontCamera: true);
       }
 
       final adapter = widget.adapterOverride ?? createFaceDetectionAdapter();
@@ -326,9 +354,7 @@ class _ActiveLivenessFullscreenModalState
 
     if (_streaming) return;
     _streaming = true;
-    final int sensorOrientation =
-        _availableCameras[_selectedCameraIndex].sensorOrientation;
-    final bool isFront = _isFrontCamera;
+    final int sensorOrientation = _frontCamera?.sensorOrientation ?? 0;
 
     await controller.startImageStream((CameraImage image) {
       if (_capturing || _closed || !mounted) return;
@@ -344,7 +370,7 @@ class _ActiveLivenessFullscreenModalState
             .analyzeCameraImage(
               image,
               sensorOrientation: sensorOrientation,
-              isFrontCamera: isFront,
+              isFrontCamera: true,
               deviceOrientation: deviceOrientation,
             )
             .then((obs) {
@@ -360,7 +386,7 @@ class _ActiveLivenessFullscreenModalState
     final adapter = _adapter;
     if (adapter == null || _capturing || _closed) return;
     final obs = await adapter.analyzeWebVideoFrame(
-      mirrorHorizontal: _isFrontCamera,
+      mirrorHorizontal: true,
     );
     if (obs != null && mounted && !_closed) {
       _onObservation(obs);
@@ -477,7 +503,7 @@ class _ActiveLivenessFullscreenModalState
       final Uint8List? webBytes = await grabWebVideoFramePngBytes(
         width: 640,
         height: 480,
-        mirrorHorizontal: _isFrontCamera,
+        mirrorHorizontal: true,
       );
       if (webBytes != null && webBytes.isNotEmpty) {
         return webBytes;
@@ -501,12 +527,6 @@ class _ActiveLivenessFullscreenModalState
     if (_closed) return;
     _closed = true;
     Navigator.of(context).maybePop();
-  }
-
-  void _handleSwitchCamera() {
-    if (_availableCameras.length <= 1 || _initializing || _capturing) return;
-    final int nextIdx = (_selectedCameraIndex + 1) % _availableCameras.length;
-    unawaited(_initializeHardwareFlow(cameraIndexOverride: nextIdx));
   }
 
   @override
@@ -664,37 +684,58 @@ class _ActiveLivenessFullscreenModalState
     return LayoutBuilder(
       builder: (context, constraints) {
         final Size? preview = controller.value.previewSize;
-        final double camAspect = (preview != null && preview.height > 0)
-            ? (kIsWeb
-                ? preview.width / preview.height
-                : preview.height / preview.width)
-            : (3.0 / 4.0);
-        final double boxAspect =
-            constraints.maxWidth / math.max(1.0, constraints.maxHeight);
-        final double coverScale = camAspect > boxAspect
-            ? (camAspect / boxAspect)
-            : (boxAspect / camAspect);
+        final double boxWidth = math.max(1.0, constraints.maxWidth);
+        final double boxHeight = math.max(1.0, constraints.maxHeight);
+        final bool isPortraitBox = boxHeight >= boxWidth;
+        final double camAspect;
+        if (preview != null && preview.width > 0 && preview.height > 0) {
+          final double rawAspect = preview.width / preview.height;
+          if (kIsWeb) {
+            camAspect = rawAspect;
+          } else {
+            camAspect = isPortraitBox
+                ? (rawAspect > 1.0 ? 1.0 / rawAspect : rawAspect)
+                : (rawAspect < 1.0 ? 1.0 / rawAspect : rawAspect);
+          }
+        } else {
+          camAspect = 3.0 / 4.0;
+        }
+        final double boxAspect = boxWidth / boxHeight;
+        final double coverScale = math.max(
+          1.0,
+          camAspect > boxAspect
+              ? (camAspect / boxAspect)
+              : (boxAspect / camAspect),
+        );
 
-        return ClipRect(
-          child: Transform.flip(
-            flipX: _isFrontCamera,
-            child: Transform.scale(
-              scale: coverScale,
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: camAspect,
-                  child: CameraPreview(controller),
-                ),
-              ),
+        final Widget scaledPreview = Transform.scale(
+          scale: coverScale,
+          child: Center(
+            child: AspectRatio(
+              aspectRatio: camAspect,
+              child: CameraPreview(controller),
             ),
           ),
+        );
+
+        final bool shouldMirror =
+            ActiveLivenessFullscreenModal.shouldMirrorFrontPreview(
+          isWeb: kIsWeb,
+        );
+
+        return ClipRect(
+          child: shouldMirror
+              ? Transform.flip(
+                  flipX: true,
+                  child: scaledPreview,
+                )
+              : scaledPreview,
         );
       },
     );
   }
 
   Widget _buildTopBar(AppTokens darkTk) {
-    final bool canSwitchCamera = _availableCameras.length > 1;
     final String stepLabel =
         'Etapa ${_snapshot.uiStepNumber} de ${_snapshot.uiTotalSteps}';
 
@@ -736,19 +777,10 @@ class _ActiveLivenessFullscreenModalState
           ),
         ),
         const SizedBox(width: AppSpace.s8),
-        if (canSwitchCamera)
-          _buildTopIconButton(
-            key: ActiveLivenessFullscreenModal.switchCameraButtonKey,
-            icon: Icons.cameraswitch_rounded,
-            semanticLabel: 'Trocar câmera',
-            darkTk: darkTk,
-            onPressed: _handleSwitchCamera,
-          )
-        else
-          const SizedBox(
-            width: AppGeometry.minTarget,
-            height: AppGeometry.minTarget,
-          ),
+        const SizedBox(
+          width: AppGeometry.minTarget,
+          height: AppGeometry.minTarget,
+        ),
       ],
     );
   }
@@ -879,11 +911,7 @@ class _ActiveLivenessFullscreenModalState
                           _snapshot = _engine.reset();
                         });
                       }
-                    : () => unawaited(
-                          _initializeHardwareFlow(
-                            cameraIndexOverride: _selectedCameraIndex,
-                          ),
-                        ),
+                    : () => unawaited(_initializeHardwareFlow()),
               ),
             ],
           ],

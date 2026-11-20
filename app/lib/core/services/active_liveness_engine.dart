@@ -61,9 +61,9 @@ enum LivenessCueKind {
 class ActiveLivenessConfig {
   const ActiveLivenessConfig({
     this.ovalWidthFraction = 0.66,
-    this.maxCenterOffset = 0.12,
-    this.minFaceWidthToOvalRatio = 0.42,
-    this.maxFaceWidthToOvalRatio = 0.82,
+    this.maxCenterOffset = 0.14,
+    this.minFaceWidthToOvalRatio = 0.38,
+    this.maxFaceWidthToOvalRatio = 0.84,
     this.minLuminance = 45.0,
     this.maxLuminance = 228.0,
     this.minSharpness = 8.0,
@@ -433,13 +433,29 @@ class ActiveLivenessStateMachine {
       return _currentSnapshot;
     }
 
-    final double dx = (obs.normalizedBox.center.dx - 0.50).abs();
-    final double dy = (obs.normalizedBox.center.dy - 0.50).abs();
-    if (dx > config.maxCenterOffset || dy > config.maxCenterOffset) {
+    final double dx = obs.normalizedBox.center.dx - 0.50;
+    final double dy = obs.normalizedBox.center.dy - 0.50;
+    if (dx.abs() > config.maxCenterOffset ||
+        dy.abs() > config.maxCenterOffset) {
       _decayStageStreak();
+      // Coordenadas já estão no espaço espelhado natural da câmera frontal:
+      // dx < -tol -> rosto à esquerda na tela -> mover para a direita;
+      // dx > +tol -> rosto à direita na tela  -> mover para a esquerda;
+      // dy < -tol -> rosto acima na moldura   -> abaixar o rosto;
+      // dy > +tol -> rosto abaixo na moldura  -> levantar o rosto.
+      final String directionalInstruction;
+      if (dx.abs() >= dy.abs()) {
+        directionalInstruction = dx < -config.maxCenterOffset
+            ? 'Centralize movendo o rosto um pouco para a direita'
+            : 'Centralize movendo o rosto um pouco para a esquerda';
+      } else {
+        directionalInstruction = dy < -config.maxCenterOffset
+            ? 'Abaixe um pouco o rosto na moldura'
+            : 'Levante um pouco o rosto na moldura';
+      }
       _currentSnapshot = _buildSnapshot(
         contourState: LivenessContourState.invalidRed,
-        instruction: 'Centralize seu rosto na moldura',
+        instruction: directionalInstruction,
         cueKind: LivenessCueKind.alignCenter,
         sessionWasReset: sessionWasReset,
       );
