@@ -655,10 +655,10 @@ void main() {
           expect48(_btn('btn-story-next'), '>');
           for (var i = 0; i < 6; i++) {
             final bar = find.byKey(Key('cinema-chapter-tap-$i'));
-            // Segmentos de capítulo são controle secundário (atalho de scrub): >= 44dp
+            // Segmentos de capítulo (atalho de scrub): alvo >= 48dp de altura
             expect(
               tester.getSize(bar).height,
-              greaterThanOrEqualTo(44),
+              greaterThanOrEqualTo(48),
               reason: 'segmento $i em ${vp.label}',
             );
           }
