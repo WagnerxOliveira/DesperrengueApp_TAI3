@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'app_tokens.dart';
+import 'design_system/design_system.dart';
 import 'media_widgets.dart';
-import 'widgets.dart';
 
 /// Categorias semânticas de ícones executivos no padrão *Quiet Luxury Dark Glass Squircle Duotone*.
 enum ServiceMetaIconKind {
@@ -223,7 +222,7 @@ class DarkGlassDuotoneBadge extends StatelessWidget {
                     width: microSize,
                     height: microSize,
                     decoration: BoxDecoration(
-                      color: tk.isDark ? const Color(0xFF141B26) : tk.card,
+                      color: tk.isDark ? tk.surface : tk.card,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: primary.withValues(alpha: 0.42),
@@ -294,13 +293,18 @@ class ExecutiveMetaTile extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: value));
     await HapticFeedback.lightImpact();
     if (context.mounted) {
-      showSnack(context, copyMessage ?? 'Código $value copiado!');
+      AppSnackbar.show(
+        context,
+        copyMessage ?? 'Código $value copiado!',
+        kind: AppSnackKind.success,
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final stackText = context.layout.isLargeText;
     final cleanLabel = label.trim().endsWith(':')
         ? label.trim().substring(0, label.trim().length - 1)
         : label.trim();
@@ -308,16 +312,23 @@ class ExecutiveMetaTile extends StatelessWidget {
     final effectiveTrailing = trailingAction ??
         trailing ??
         (copyable
-            ? IconButton(
+            ? AppIconButton(
                 key: ValueKey('copy-meta-$cleanLabel'),
                 tooltip: 'Copiar $cleanLabel',
-                visualDensity: VisualDensity.compact,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                padding: const EdgeInsets.all(4),
-                icon: Icon(Icons.copy_rounded, size: 16, color: accentColor ?? tk.clientAccent),
+                icon: Icons.copy_rounded,
+                size: 18,
+                color: accentColor ?? tk.accentInk,
                 onPressed: () => _copyValue(context),
               )
             : null);
+
+    final labelStyle = AppType.bodySm.copyWith(
+      color: tk.textMuted,
+      fontWeight: FontWeight.w600,
+    );
+    final valueStyle = (strong ? AppType.titleSm : AppType.bodyStrong).copyWith(
+      color: valueColor ?? tk.text,
+    );
 
     final row = Padding(
       padding: padding,
@@ -331,42 +342,38 @@ class ExecutiveMetaTile extends StatelessWidget {
             accentColor: accentColor,
             size: badgeSize,
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Flexible(
-                  flex: 5,
-                  child: Text(
-                    formattedLabel,
-                    style: TextStyle(
-                      color: tk.textMuted,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      height: 1.25,
-                    ),
+            child: stackText
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(formattedLabel, style: labelStyle),
+                      const SizedBox(height: AppSpace.s2),
+                      Text(value, style: valueStyle),
+                    ],
+                  )
+                : Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        flex: 5,
+                        child: Text(formattedLabel, style: labelStyle),
+                      ),
+                      const SizedBox(width: AppSpace.s8),
+                      Expanded(
+                        flex: 6,
+                        child: Text(
+                          value,
+                          textAlign: TextAlign.end,
+                          style: valueStyle,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 6,
-                  child: Text(
-                    value,
-                    textAlign: TextAlign.end,
-                    style: TextStyle(
-                      color: valueColor ?? tk.text,
-                      fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
-                      fontSize: strong ? 16 : 14,
-                      height: 1.28,
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
           if (effectiveTrailing != null) ...[
-            const SizedBox(width: 6),
+            const SizedBox(width: AppSpace.s4),
             effectiveTrailing,
           ],
         ],
@@ -374,8 +381,8 @@ class ExecutiveMetaTile extends StatelessWidget {
     );
 
     if (onTap == null) return row;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
+    return AppPressable(
+      borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
       onTap: onTap,
       child: row,
     );
@@ -443,9 +450,11 @@ class SmartOrderHeadlineFormatter {
     return _truncateCleanly(capitalized, maxChars);
   }
 
+  static final String _legacyPhotoNotesSeparator = '\n\n${String.fromCharCode(0x1F4F7)}';
+
   static String _stripGreetingsAndNormalize(String input) {
-    // Remove blocos de anotação de fotos ("📷 Foto 1: ...") do headline se presentes
-    final withoutPhotoNotes = input.split('\n\n📷').first;
+    // Remove blocos de anotação de fotos legados do headline se presentes
+    final withoutPhotoNotes = input.split(_legacyPhotoNotesSeparator).first;
     var text = withoutPhotoNotes.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.isEmpty) return '';
 
@@ -563,8 +572,9 @@ class _FullscreenSwipePhotoGalleryState extends State<FullscreenSwipePhotoGaller
     final total = widget.items.length;
     final current = widget.items[_currentIndex];
 
+    final darkTk = AppTokens.dark;
     return Dialog.fullscreen(
-      backgroundColor: const Color(0xFF070B12),
+      backgroundColor: darkTk.surfaceInset,
       child: Stack(
         children: [
           Positioned.fill(
@@ -587,50 +597,45 @@ class _FullscreenSwipePhotoGalleryState extends State<FullscreenSwipePhotoGaller
           ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+              padding: const EdgeInsets.fromLTRB(AppSpace.s12, AppSpace.s8, AppSpace.s16, AppSpace.s8),
               child: Row(
                 children: [
-                  Container(
+                  DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                      color: darkTk.text.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+                      border: Border.all(color: darkTk.text.withValues(alpha: 0.18)),
                     ),
-                    child: IconButton(
+                    child: AppIconButton(
                       key: const ValueKey('fullscreen-gallery-close'),
                       tooltip: 'Fechar',
-                      icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      icon: Icons.close_rounded,
+                      color: darkTk.text,
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpace.s12),
                   Expanded(
                     child: Text(
                       current.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                      ),
+                      maxLines: 2,
+                      style: AppType.titleSm.copyWith(color: darkTk.text),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: AppSpace.s8),
                   Container(
                     key: const ValueKey('fullscreen-gallery-counter'),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4 + 2),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+                      color: darkTk.text.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                      border: Border.all(color: darkTk.text.withValues(alpha: 0.22)),
                     ),
                     child: Text(
                       '${_currentIndex + 1} / $total',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 13,
+                      style: AppType.tabular(AppType.caption).copyWith(
+                        color: darkTk.text,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -642,27 +647,27 @@ class _FullscreenSwipePhotoGalleryState extends State<FullscreenSwipePhotoGaller
             Positioned(
               left: 0,
               right: 0,
-              bottom: 24 + MediaQuery.viewPaddingOf(context).bottom,
+              bottom: AppSpace.s24 + MediaQuery.viewPaddingOf(context).bottom,
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12 + 2, vertical: AppSpace.s8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.55),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                    color: darkTk.surfaceInset.withValues(alpha: 0.72),
+                    borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                    border: Border.all(color: darkTk.text.withValues(alpha: 0.16)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       for (var i = 0; i < total; i++)
                         AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
+                          duration: AppMotion.d(context, AppMotion.fade),
                           margin: const EdgeInsets.symmetric(horizontal: 3),
                           width: i == _currentIndex ? 18 : 7,
                           height: 7,
                           decoration: BoxDecoration(
-                            color: i == _currentIndex ? Colors.white : Colors.white.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(999),
+                            color: i == _currentIndex ? darkTk.text : darkTk.text.withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                           ),
                         ),
                     ],

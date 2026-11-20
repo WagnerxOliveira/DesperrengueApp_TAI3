@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import 'design_system/design_system.dart';
+
 /// Variantes oficiais de identidade visual do **Desperrengue**:
 /// - [quietLuxuryNavy]: Fundo Azul-Noite (`#0F172A`) + Monograma Casa-Escudo "D"
 ///   em Branco Puro (`#FFFFFF`) + Check de Resolução em Laranja Vibrante (`#FF6D00`).
@@ -36,13 +38,14 @@ class DesperrengueBrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final radius = borderRadius ?? (size * 0.26);
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: showShadow
+        boxShadow: (showShadow && !tk.isDark)
             ? [
                 BoxShadow(
                   color: const Color(0xFF0F172A).withValues(alpha: 0.24),
