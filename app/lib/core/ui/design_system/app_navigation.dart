@@ -77,19 +77,27 @@ class AppFadeThroughTransition extends StatelessWidget {
   final double offset;
 
   static const Animatable<double> _curve = _AppPageCurve();
+  static final Animatable<double> _secondaryFade = Tween<double>(
+    begin: 1.0,
+    end: 0.92,
+  ).chain(_curve);
 
   @override
   Widget build(BuildContext context) {
     if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) return child;
     final curved = animation.drive(_curve);
+    final secondaryOpacity = secondaryAnimation.drive(_secondaryFade);
     return FadeTransition(
-      opacity: curved,
-      child: AnimatedBuilder(
-        animation: curved,
-        child: child,
-        builder: (context, settled) => Transform.translate(
-          offset: Offset(0, offset * (1 - curved.value)),
-          child: settled,
+      opacity: secondaryOpacity,
+      child: FadeTransition(
+        opacity: curved,
+        child: AnimatedBuilder(
+          animation: curved,
+          child: child,
+          builder: (context, settled) => Transform.translate(
+            offset: Offset(0, offset * (1 - curved.value)),
+            child: settled,
+          ),
         ),
       ),
     );
@@ -172,26 +180,77 @@ class AppRoute<T> extends PageRouteBuilder<T> {
     required this.builder,
     super.settings,
     bool fullscreenModal = false,
+    bool? fullscreenDialog,
     super.maintainState = true,
     super.opaque = true,
     super.barrierDismissible = false,
     super.barrierColor,
     super.barrierLabel,
+    double? verticalOffsetPx,
     super.transitionDuration = AppMotion.page,
     super.reverseTransitionDuration = AppMotion.pageReverse,
-  }) : super(
-          fullscreenDialog: fullscreenModal,
+  })  : verticalOffsetPx = verticalOffsetPx ??
+            ((fullscreenDialog ?? fullscreenModal)
+                ? AppMotion.fullscreenModalOffset
+                : AppMotion.pageOffset),
+        super(
+          fullscreenDialog: fullscreenDialog ?? fullscreenModal,
           pageBuilder: (routeContext, animation, secondaryAnimation) => builder(routeContext),
           transitionsBuilder: (context, animation, secondaryAnimation, child) =>
               AppFadeThroughTransition(
                 animation: animation,
                 secondaryAnimation: secondaryAnimation,
-                offset: fullscreenModal ? AppMotion.fullscreenModalOffset : AppMotion.pageOffset,
+                offset: verticalOffsetPx ??
+                    ((fullscreenDialog ?? fullscreenModal)
+                        ? AppMotion.fullscreenModalOffset
+                        : AppMotion.pageOffset),
                 child: child,
               ),
         );
 
   final WidgetBuilder builder;
+  final double verticalOffsetPx;
+
+  @override
+  AnimationController createAnimationController() {
+    final navContext = navigator?.context;
+    final disable = navContext != null && (MediaQuery.maybeDisableAnimationsOf(navContext) ?? false);
+    return AnimationController(
+      duration: disable ? Duration.zero : transitionDuration,
+      reverseDuration: disable ? Duration.zero : reverseTransitionDuration,
+      debugLabel: debugLabel,
+      vsync: navigator!,
+    );
+  }
+
+  /// Transição equivalente para `AnimatedSwitcher` (fade + deslocamento curto).
+  static Widget buildSwitcherTransition({
+    required BuildContext context,
+    required Animation<double> animation,
+    required Widget child,
+    double verticalOffsetPx = AppMotion.pageOffset,
+  }) {
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      return child;
+    }
+    return FadeTransition(
+      opacity: animation,
+      child: AnimatedBuilder(
+        animation: animation,
+        child: child,
+        builder: (context, settledChild) {
+          final isOutgoing = animation.status == AnimationStatus.reverse ||
+              animation.status == AnimationStatus.dismissed;
+          final curved = animation.value.clamp(0.0, 1.0);
+          final dy = isOutgoing ? 0.0 : verticalOffsetPx * (1.0 - curved);
+          return Transform.translate(
+            offset: Offset(0, dy),
+            child: settledChild,
+          );
+        },
+      ),
+    );
+  }
 }
 
 /// Atalho de shared-element (§3.2): avatar→foto, cartão→detalhe, categoria→

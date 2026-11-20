@@ -5,9 +5,17 @@ import 'package:flutter/material.dart';
 import '../utils/app_failure.dart';
 import '../utils/format.dart';
 import './app_tokens.dart';
+import 'design_system/design_system.dart';
 import 'media_widgets.dart';
 
+// FACHADA sobre o design system (v2.28.0): as assinaturas públicas abaixo são
+// as MESMAS de antes (as telas existentes seguem compilando); por baixo, cada
+// widget delega aos componentes `App*` de `design_system/`. Telas novas/migradas
+// devem usar `App*` diretamente.
+export 'design_system/design_system.dart' show AppCard, AppCardVariant;
+
 /// Botão principal (pílula, largura total, com estado de carregamento).
+/// Fachada de [AppButton] (primary).
 class PrimaryButton extends StatelessWidget {
   const PrimaryButton({
     super.key,
@@ -26,27 +34,17 @@ class PrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton(
-      onPressed: loading ? null : onPressed,
-      child: loading
-          ? SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2.4, color: Theme.of(context).colorScheme.onPrimary),
-            )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 8)],
-                Flexible(child: Text(label, textAlign: TextAlign.center)),
-                if (trailingArrow) ...[const SizedBox(width: 8), const Icon(Icons.arrow_forward_rounded, size: 20)],
-              ],
-            ),
+    return AppButton(
+      label: label,
+      onPressed: onPressed,
+      icon: icon,
+      loading: loading,
+      trailingArrow: trailingArrow,
     );
   }
 }
 
+/// Fachada de [AppButton] (secondary).
 class SecondaryButton extends StatelessWidget {
   const SecondaryButton({super.key, required this.label, required this.onPressed, this.icon});
 
@@ -56,21 +54,16 @@ class SecondaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton(
+    return AppButton(
+      label: label,
       onPressed: onPressed,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 8)],
-          Flexible(child: Text(label, textAlign: TextAlign.center)),
-        ],
-      ),
+      icon: icon,
+      variant: AppButtonVariant.secondary,
     );
   }
 }
 
-/// Link de texto (ex.: "Cancelar Pedido").
+/// Link de texto (ex.: "Cancelar Pedido"). Alvo de toque >= 48.
 class LinkButton extends StatelessWidget {
   const LinkButton({super.key, required this.label, required this.onPressed, this.color});
 
@@ -80,22 +73,21 @@ class LinkButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      style: TextButton.styleFrom(foregroundColor: color),
-      child: Text(
-        label,
-        style: TextStyle(
-          decoration: TextDecoration.underline,
-          fontWeight: FontWeight.w600,
-          color: color,
+    return AppPressScale(
+      enabled: onPressed != null,
+      child: TextButton(
+        onPressed: onPressed,
+        style: TextButton.styleFrom(foregroundColor: color),
+        child: Text(
+          label,
+          style: AppType.bodyStrong.copyWith(decoration: TextDecoration.underline, color: color),
         ),
       ),
     );
   }
 }
 
-/// Rodapé fixo para o CTA da tela.
+/// Rodapé fixo para o CTA da tela. Fachada de [AppBottomBar].
 class BottomBar extends StatelessWidget {
   const BottomBar({super.key, required this.child, this.footnote});
 
@@ -103,93 +95,10 @@ class BottomBar extends StatelessWidget {
   final String? footnote;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.tk.card,
-        border: Border(top: BorderSide(color: context.tk.border)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              child,
-              if (footnote != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  footnote!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: context.tk.textMuted),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppBottomBar(footnote: footnote, child: child);
 }
 
-class AppCard extends StatelessWidget {
-  const AppCard({
-    super.key,
-    required this.child,
-    this.color,
-    this.borderColor,
-    this.padding = const EdgeInsets.all(16),
-    this.radius = 16,
-    this.onTap,
-    this.margin,
-  });
-
-  final Widget child;
-
-  /// Fundo do cartão (padrão: token `card`, que clareia no tema escuro).
-  final Color? color;
-  final Color? borderColor;
-  final EdgeInsetsGeometry padding;
-  final double radius;
-  final VoidCallback? onTap;
-  final EdgeInsetsGeometry? margin;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = this.color ?? context.tk.card;
-    final borderColor = this.borderColor ?? context.tk.border;
-    final box = Container(
-      margin: margin,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: borderColor),
-      ),
-      child: Padding(padding: padding, child: child),
-    );
-    if (onTap == null) return box;
-    return Padding(
-      padding: margin ?? EdgeInsets.zero,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(radius),
-          onTap: onTap,
-          child: Container(
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: borderColor),
-            ),
-            child: Padding(padding: padding, child: child),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
+/// Selo de status. Fachada de [AppStatusChip].
 class StatusChip extends StatelessWidget {
   const StatusChip(this.label, {super.key, this.color, this.background, this.icon});
 
@@ -199,28 +108,8 @@ class StatusChip extends StatelessWidget {
   final IconData? icon;
 
   @override
-  Widget build(BuildContext context) {
-    final color = this.color ?? context.tk.info;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: background ?? color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[Icon(icon, size: 14, color: color), const SizedBox(width: 4)],
-          Flexible(
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      AppStatusChip(label, color: color, background: background, icon: icon);
 }
 
 enum BannerTone { info, success, warning, danger, security, promo }
@@ -233,36 +122,39 @@ class InfoBanner extends StatelessWidget {
   final BannerTone tone;
   final IconData? icon;
 
-  (Color, Color, Color, IconData) _style(BuildContext context) => switch (tone) {
-    BannerTone.info => (context.tk.infoSoft, context.tk.info, context.tk.info, Icons.info_outline),
-    BannerTone.success => (context.tk.successSoft, context.tk.successInk, context.tk.success, Icons.check_circle_outline),
-    BannerTone.warning => (context.tk.warningSoft, context.tk.warningInk, context.tk.warning, Icons.warning_amber_rounded),
-    BannerTone.danger => (context.tk.dangerSoft, context.tk.danger, context.tk.danger, Icons.error_outline),
-    BannerTone.security => (context.tk.securitySoft, context.tk.security, context.tk.security, Icons.lock_outline),
-    BannerTone.promo => (context.tk.clientSoft, context.tk.warningInk, context.tk.clientAccent, Icons.local_offer_outlined),
-  };
+  (Color, Color, Color, IconData) _style(BuildContext context) {
+    final tk = context.tk;
+    return switch (tone) {
+      BannerTone.info => (tk.infoSoft, tk.isDark ? tk.info : const Color(0xFF14509E), tk.info, Icons.info_outline),
+      BannerTone.success => (tk.successSoft, tk.successInk, tk.success, Icons.check_circle_outline),
+      BannerTone.warning => (tk.warningSoft, tk.warningInk, tk.warning, Icons.warning_amber_rounded),
+      BannerTone.danger => (tk.dangerSoft, tk.dangerInk, tk.danger, Icons.error_outline),
+      BannerTone.security => (tk.securitySoft, tk.isDark ? tk.security : const Color(0xFF1C5A60), tk.security, Icons.lock_outline),
+      BannerTone.promo => (tk.clientSoft, tk.warningInk, tk.clientAccent, Icons.local_offer_outlined),
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
     final (bg, fg, accent, defaultIcon) = _style(context);
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
+      padding: const EdgeInsets.all(AppSpace.s16),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(AppGeometry.itemRadius)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon ?? defaultIcon, color: accent, size: 22),
-          const SizedBox(width: 10),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (title != null)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(title!, style: TextStyle(color: fg, fontWeight: FontWeight.w800)),
+                    padding: const EdgeInsets.only(bottom: AppSpace.s2),
+                    child: Text(title!, style: AppType.bodyStrong.copyWith(color: fg)),
                   ),
-                Text(text, style: TextStyle(color: fg, height: 1.35, fontSize: 13.5)),
+                Text(text, style: AppType.bodySm.copyWith(color: fg)),
               ],
             ),
           ),
@@ -281,11 +173,14 @@ class SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 10),
+      padding: const EdgeInsets.only(top: AppSpace.s8, bottom: AppSpace.s12),
       child: Row(
         children: [
           Expanded(
-            child: Text(text, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: context.tk.text)),
+            child: Semantics(
+              header: true,
+              child: Text(text, style: AppType.title.copyWith(color: context.tk.text)),
+            ),
           ),
           ?trailing,
         ],
@@ -294,7 +189,7 @@ class SectionTitle extends StatelessWidget {
   }
 }
 
-/// Barra de progresso do wizard ("1 de 3").
+/// Barra de progresso do wizard ("1 de 3"). Fachada de [AppStepper].
 class StepperBar extends StatelessWidget {
   const StepperBar({super.key, required this.total, required this.current});
 
@@ -302,27 +197,10 @@ class StepperBar extends StatelessWidget {
   final int current; // 1-based
 
   @override
-  Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
-    return Row(
-      children: [
-        for (var i = 1; i <= total; i++) ...[
-          Expanded(
-            child: Container(
-              height: 5,
-              decoration: BoxDecoration(
-                color: i <= current ? color : context.tk.border,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ),
-          if (i < total) const SizedBox(width: 6),
-        ],
-      ],
-    );
-  }
+  Widget build(BuildContext context) => AppStepper(total: total, current: current);
 }
 
+/// Estrelas. Fachada de [AppRating].
 class RatingStars extends StatelessWidget {
   const RatingStars({super.key, required this.value, this.size = 18, this.onChanged});
 
@@ -331,25 +209,7 @@ class RatingStars extends StatelessWidget {
   final ValueChanged<int>? onChanged;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 1; i <= 5; i++)
-          GestureDetector(
-            onTap: onChanged == null ? null : () => onChanged!(i),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: onChanged == null ? 0 : 3),
-              child: Icon(
-                value >= i ? Icons.star_rounded : (value >= i - 0.5 ? Icons.star_half_rounded : Icons.star_outline_rounded),
-                size: size,
-                color: value >= i - 0.5 ? context.tk.star : context.tk.border,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => AppRating(value: value, size: size, onChanged: onChanged);
 }
 
 /// Anel de contagem regressiva (convites de 2h / 5 min).
@@ -371,7 +231,8 @@ class CountdownRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
+    final accent = tk.accent;
     final frac = total.inSeconds == 0
         ? 0.0
         : (remaining.inSeconds / total.inSeconds).clamp(0.0, 1.0);
@@ -388,18 +249,13 @@ class CountdownRing extends StatelessWidget {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (icon != null) Icon(icon, color: accent, size: 26),
+              if (icon != null) Icon(icon, color: tk.accentInk, size: 26),
               Text(
                 clock(remaining),
-                style: TextStyle(
-                  fontSize: size * 0.2,
-                  fontWeight: FontWeight.w800,
-                  color: context.tk.text,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
+                style: AppType.figure.copyWith(fontSize: size * 0.2, color: tk.text),
               ),
               if (caption != null)
-                Text(caption!, style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
+                Text(caption!, textAlign: TextAlign.center, style: AppType.caption.copyWith(color: tk.textMuted)),
             ],
           ),
         ],
@@ -511,6 +367,7 @@ class _RadarPainter extends CustomPainter {
   bool shouldRepaint(_RadarPainter old) => old.t != t;
 }
 
+/// Avatar. Fachada de [InstantUserAvatar] (via [AppAvatar]).
 class UserAvatar extends StatelessWidget {
   const UserAvatar({super.key, this.url, required this.name, this.radius = 24, this.verified = false});
 
@@ -520,38 +377,21 @@ class UserAvatar extends StatelessWidget {
   final bool verified;
 
   @override
-  Widget build(BuildContext context) {
-    return InstantUserAvatar(
-      url: url,
-      name: name,
-      radius: radius,
-      verified: verified,
-    );
-  }
+  Widget build(BuildContext context) =>
+      AppAvatar(url: url, name: name, radius: radius, verified: verified);
 }
 
+/// Carregamento sem forma previsível. Para listas/cartões use `AppSkeleton*`.
 class LoadingView extends StatelessWidget {
   const LoadingView({super.key, this.message});
 
   final String? message;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(message!, style: TextStyle(color: context.tk.textMuted)),
-          ],
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppLoading(message: message);
 }
 
+/// Erro com "Tentar novamente". Fachada de [AppErrorState].
 class ErrorView extends StatelessWidget {
   const ErrorView({super.key, required this.message, this.onRetry});
 
@@ -559,31 +399,11 @@ class ErrorView extends StatelessWidget {
   final VoidCallback? onRetry;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_rounded, size: 56, color: context.tk.textMuted),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted)),
-            if (onRetry != null) ...[
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: onRetry,
-                style: OutlinedButton.styleFrom(minimumSize: const Size(160, 46)),
-                child: const Text('Tentar novamente'),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      AppErrorState(message: message, onRetry: onRetry, retryLabel: 'Tentar novamente');
 }
 
+/// Estado vazio. Fachada de [AppEmptyState].
 class EmptyView extends StatelessWidget {
   const EmptyView({super.key, required this.icon, required this.title, this.subtitle, this.action});
 
@@ -593,30 +413,8 @@ class EmptyView extends StatelessWidget {
   final Widget? action;
 
   @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 38,
-              backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-              child: Icon(icon, size: 36, color: Theme.of(context).colorScheme.primary),
-            ),
-            const SizedBox(height: 16),
-            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            if (subtitle != null) ...[
-              const SizedBox(height: 6),
-              Text(subtitle!, textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-            ],
-            if (action != null) ...[const SizedBox(height: 18), action!],
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      AppEmptyState(icon: icon, title: title, message: subtitle, action: action);
 }
 
 /// Logo textual usado nos app bars dos protótipos.
@@ -627,25 +425,24 @@ class BrandLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.handyman_rounded, color: accent, size: size + 2),
-          const SizedBox(width: 6),
-          Text(
+    final ink = context.tk.accentInk;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.handyman_rounded, color: ink, size: size + 2),
+        const SizedBox(width: AppSpace.s8),
+        Flexible(
+          child: Text(
             'Desperrengue',
-            style: TextStyle(color: accent, fontWeight: FontWeight.w900, fontSize: size, letterSpacing: -0.3),
+            style: AppType.title.copyWith(color: ink, fontSize: size, letterSpacing: -0.3),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// Sino com contador de notificações.
+/// Sino com contador de notificações (alvo 48×48; selo com *pop*).
 class BellButton extends StatelessWidget {
   const BellButton({super.key, required this.count, required this.onPressed});
 
@@ -654,9 +451,8 @@ class BellButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = count > 0
-        ? 'Notificações ($count não lidas)'
-        : 'Notificações';
+    final tk = context.tk;
+    final label = count > 0 ? 'Notificações ($count não lidas)' : 'Notificações';
     return Semantics(
       button: true,
       label: label,
@@ -669,14 +465,28 @@ class BellButton extends StatelessWidget {
             const Icon(Icons.notifications_none_rounded, size: 28),
             if (count > 0)
               Positioned(
-                right: -2,
-                top: -2,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  child: Text(
-                    count > 9 ? '9+' : '$count',
-                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800),
+                right: -4,
+                top: -4,
+                child: AnimatedSwitcher(
+                  duration: AppMotion.d(context, AppMotion.fadeShort),
+                  transitionBuilder: (child, anim) => ScaleTransition(
+                    scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
+                    child: child,
+                  ),
+                  child: Container(
+                    key: ValueKey(count),
+                    constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.s4),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: tk.danger, shape: BoxShape.rectangle, borderRadius: BorderRadius.circular(10)),
+                    child: Text(
+                      count > 9 ? '9+' : '$count',
+                      style: AppType.tabular(AppType.caption).copyWith(
+                        color: AppTokens.onColor(tk.danger),
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -687,6 +497,7 @@ class BellButton extends StatelessWidget {
   }
 }
 
+/// Confirmação padrão. Fachada de [AppDialog.confirm].
 Future<bool> confirmDialog(
   BuildContext context, {
   required String title,
@@ -694,38 +505,20 @@ Future<bool> confirmDialog(
   String confirmLabel = 'Confirmar',
   String cancelLabel = 'Voltar',
   bool destructive = false,
-}) async {
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-      content: Text(message),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(cancelLabel)),
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          style: FilledButton.styleFrom(
-            minimumSize: const Size(110, 44),
-            backgroundColor: destructive ? context.tk.danger : null,
-          ),
-          child: Text(confirmLabel),
-        ),
-      ],
-    ),
+}) {
+  return AppDialog.confirm(
+    context,
+    title: title,
+    message: message,
+    confirmLabel: confirmLabel,
+    cancelLabel: cancelLabel,
+    destructive: destructive,
   );
-  return result ?? false;
 }
 
+/// Aviso rápido. Fachada de [AppSnackbar.show].
 void showSnack(BuildContext context, String message, {bool error = false}) {
-  final messenger = ScaffoldMessenger.of(context);
-  messenger.hideCurrentSnackBar();
-  messenger.showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: error ? context.tk.danger : context.tk.text,
-    ),
-  );
+  AppSnackbar.show(context, message, kind: error ? AppSnackKind.error : AppSnackKind.info);
 }
 
 /// Traduz erros do Supabase/Postgres em mensagens humanas e sanitizadas para o usuário.
