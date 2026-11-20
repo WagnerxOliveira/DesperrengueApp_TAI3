@@ -173,8 +173,9 @@ void main() {
       final impermTextFinder = find.text('Impermeabilização').last;
       expect(impermTextFinder, findsOneWidget);
       final impermTextWidget = tester.widget<Text>(impermTextFinder);
-      expect(impermTextWidget.maxLines, 1);
-      expect(impermTextWidget.softWrap, isFalse);
+      expect(impermTextWidget.maxLines, 2);
+      expect(impermTextWidget.softWrap, isTrue);
+      expect(find.byType(FittedBox), findsNothing);
 
       // Clear search via accessible tooltip button
       final clearBtn = find.byTooltip('Limpar busca');

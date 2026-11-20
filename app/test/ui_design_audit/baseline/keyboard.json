@@ -1,16 +1,4 @@
 {
-  "keyboard|auth/existing_account_detected_sheet": 1,
-  "keyboard|auth/existing_cpf_account_sheet": 1,
-  "keyboard|auth/pending_verification_detected_sheet": 1,
-  "keyboard|client/insufficient_funds_sheet": 1,
   "keyboard|client/voice_dictation_panel": 1,
-  "keyboard|core/media_picker_row": 1,
-  "keyboard|core/media_picker_row_vazio": 1,
-  "keyboard|core/photo_context_studio_sheet": 1,
-  "keyboard|provider/earnings_simulator_sheet": 1,
-  "keyboard|provider/portfolio_detalhe_sheet": 1,
-  "keyboard|provider/portfolio_detalhe_sheet_cliente": 1,
-  "keyboard|shared/editable_avatar": 1,
-  "keyboard|shared/protected_area_map_sheet": 1,
-  "keyboard|shared/warranty_three_layer_sheet": 1
+  "keyboard|shared/editable_avatar": 1
 }
