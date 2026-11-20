@@ -23,6 +23,7 @@ import 'package:desperrengue_app/core/models/smart_triage_models.dart';
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/security/geo_privacy_policy_engine.dart';
 import 'package:desperrengue_app/core/security/zero_trust_bilateral_security_engine.dart';
+import 'package:desperrengue_app/core/services/criminal_background_service.dart';
 import 'package:desperrengue_app/core/services/scheduling_service.dart';
 import 'package:desperrengue_app/core/services/smart_triage_service.dart';
 import 'package:desperrengue_app/core/state/anti_bypass_fintech_controller.dart';
@@ -447,6 +448,37 @@ List<GalleryScreen> sharedScreens() => <GalleryScreen>[
           referenceNow: DateTime(2026, 10, 1),
           customUrlLauncher: (_) async {},
           customCertificatePicker: () async => null,
+          onValidated: (_) {},
+        )),
+      ),
+      GalleryScreen(
+        id: 'shared/criminal_check_anexado',
+        title: 'Antecedentes criminais (arquivo anexado e validado)',
+        source: 'features/shared/presentation/criminal_background_check_step.dart',
+        wave: 1,
+        owner: 'auth_ui',
+        kind: GalleryKind.widget,
+        modes: const <UserMode?>{null},
+        builder: (_, _) => _scroll(CriminalBackgroundCheckStep(
+          expectedFullName: 'Maria Fernanda de Albuquerque e Souza',
+          expectedCpfRaw: '119.787.236-10',
+          referenceNow: DateTime.utc(2026, 11, 18, 12),
+          initialResult: AuditedCriminalRecordResult(
+            passed: true,
+            protocolNumber: '2026.0849201735',
+            protocolMasked: 'PF-***1735',
+            issuedDate: DateTime.utc(2026, 11, 15),
+            validationCode: '9482.7163.5041.8829',
+            fileSha256Hex:
+                'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2',
+            holderNameMatched: true,
+            cpfMatched: true,
+            humanFeedbackMessage:
+                'Certidão Negativa de Antecedentes Criminais da Polícia Federal validada com sucesso.',
+            fileBytes: Uint8List.fromList(List<int>.filled(48 * 1024, 37)),
+            fileExtension: 'pdf',
+          ),
+          customUrlLauncher: (_) async {},
           onValidated: (_) {},
         )),
       ),

@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/user_profile.dart';
 import '../../../core/services/criminal_background_service.dart';
+import '../../../core/services/criminal_certificate_picker_and_extractor.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
@@ -14,6 +14,15 @@ import '../../../core/ui/kyc_human_feedback_translator.dart';
 /// Assinatura injetável para seleção de arquivo/foto da certidão em testes de widget.
 typedef CriminalCertificateFilePicker =
     Future<({Uint8List bytes, String fileName})?> Function();
+
+/// Assinatura injetável para extração de texto/QR/campos da certidão em testes de widget.
+typedef CriminalCertificateExtractorOverride =
+    Future<CriminalCertificateExtractionResult> Function({
+      required Uint8List bytes,
+      required String fileName,
+    });
+
+enum _CertificateUploadSource { downloads, gallery, camera }
 
 /// Etapa unificada e ultra-responsiva de validação da Certidão Negativa de
 /// Antecedentes Criminais da Polícia Federal (ePol / SINIC — gov.br).
@@ -30,6 +39,10 @@ class CriminalBackgroundCheckStep extends StatefulWidget {
     this.initialResult,
     this.isSixMonthRenewal = false,
     @visibleForTesting this.customCertificatePicker,
+    @visibleForTesting this.customDownloadsPicker,
+    @visibleForTesting this.customGalleryPicker,
+    @visibleForTesting this.customCameraPicker,
+    @visibleForTesting this.customCertificateExtractor,
     @visibleForTesting this.customUrlLauncher,
     @visibleForTesting this.rawExtractedTextOverride,
     @visibleForTesting this.referenceNow,
@@ -41,6 +54,10 @@ class CriminalBackgroundCheckStep extends StatefulWidget {
   final AuditedCriminalRecordResult? initialResult;
   final bool isSixMonthRenewal;
   final CriminalCertificateFilePicker? customCertificatePicker;
+  final CriminalCertificateFilePicker? customDownloadsPicker;
+  final CriminalCertificateFilePicker? customGalleryPicker;
+  final CriminalCertificateFilePicker? customCameraPicker;
+  final CriminalCertificateExtractorOverride? customCertificateExtractor;
   final Future<void> Function(String url)? customUrlLauncher;
   final String? rawExtractedTextOverride;
   final DateTime? referenceNow;
@@ -62,9 +79,16 @@ class _CriminalBackgroundCheckStepState
   late DateTime _issuedDate =
       widget.initialResult?.issuedDate ??
       (widget.referenceNow ?? DateTime.now());
+  late bool _hasExplicitDate = widget.initialResult != null;
+
   Uint8List? _fileBytes;
   String? _fileName;
+  String? _lastExtractedText;
+  String? _lastQrPayload;
   bool _analyzing = false;
+  bool _autoFilledProtocol = false;
+  bool _autoFilledDate = false;
+  bool _autoFilledValidationCode = false;
   AuditedCriminalRecordResult? _result;
   String? _errorMessage;
 
@@ -91,6 +115,7 @@ class _CriminalBackgroundCheckStepState
         _validationCodeCtrl.text = widget.initialResult!.validationCode;
       }
       _issuedDate = widget.initialResult!.issuedDate;
+      _hasExplicitDate = true;
     }
   }
 
@@ -106,6 +131,16 @@ class _CriminalBackgroundCheckStepState
     final m = date.month.toString().padLeft(2, '0');
     final y = date.year.toString().padLeft(4, '0');
     return '$d/$m/$y';
+  }
+
+  static String _formatFileSize(int byteLength) {
+    if (byteLength < 1024) return '$byteLength B';
+    if (byteLength < 1024 * 1024) {
+      final kb = (byteLength / 1024).round();
+      return '$kb KB';
+    }
+    final mb = (byteLength / (1024 * 1024)).toStringAsFixed(1).replaceAll('.', ',');
+    return '$mb MB';
   }
 
   Future<void> _openPoliciaFederalPortal() async {
@@ -140,48 +175,281 @@ class _CriminalBackgroundCheckStepState
     if (picked != null && mounted) {
       setState(() {
         _issuedDate = picked;
+        _hasExplicitDate = true;
+        _autoFilledDate = false;
         _errorMessage = null;
       });
     }
   }
 
-  Future<void> _pickCertificateFile({bool fromCamera = false}) async {
+  Future<void> _handleSelectCertificateTap() async {
+    if (_analyzing) return;
     setState(() => _errorMessage = null);
+
     try {
+      // Compatibilidade total com testes legados que injetam picker direto
       if (widget.customCertificatePicker != null) {
         final picked = await widget.customCertificatePicker!();
         if (!mounted || picked == null) return;
-        setState(() {
-          _fileBytes = picked.bytes;
-          _fileName = picked.fileName;
-        });
-        await _runValidation();
+        await _processPickedCertificate(
+          bytes: picked.bytes,
+          fileName: picked.fileName,
+        );
         return;
       }
 
-      final picker = ImagePicker();
-      final xfile = await picker.pickImage(
-        source: fromCamera ? ImageSource.camera : ImageSource.gallery,
-        imageQuality: 92,
-      );
-      if (!mounted || xfile == null) return;
-      final bytes = await xfile.readAsBytes();
-      if (!mounted || bytes.isEmpty) return;
+      final source = await _showCertificateSourceSheet();
+      if (!mounted || source == null) return;
 
-      setState(() {
-        _fileBytes = bytes;
-        _fileName = xfile.name.isNotEmpty ? xfile.name : 'certidao_pf.jpg';
-      });
-      await _runValidation();
+      final ({Uint8List bytes, String fileName})? picked = switch (source) {
+        _CertificateUploadSource.downloads =>
+          widget.customDownloadsPicker != null
+              ? await widget.customDownloadsPicker!()
+              : await CriminalCertificatePickerAndExtractor
+                  .pickFromDownloadsOrFiles(),
+        _CertificateUploadSource.gallery =>
+          widget.customGalleryPicker != null
+              ? await widget.customGalleryPicker!()
+              : await CriminalCertificatePickerAndExtractor.pickFromGallery(),
+        _CertificateUploadSource.camera =>
+          widget.customCameraPicker != null
+              ? await widget.customCameraPicker!()
+              : await CriminalCertificatePickerAndExtractor.captureWithCamera(),
+      };
+
+      if (!mounted || picked == null || picked.bytes.isEmpty) return;
+      await _processPickedCertificate(
+        bytes: picked.bytes,
+        fileName: picked.fileName,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _analyzing = false;
         _errorMessage = KycHumanFeedbackTranslator.translateError(e);
       });
     }
   }
 
-  Future<void> _runValidation() async {
+  Future<_CertificateUploadSource?> _showCertificateSourceSheet() {
+    return AppSheet.show<_CertificateUploadSource>(
+      context,
+      title: 'Como deseja enviar a Certidão PF?',
+      subtitle: 'PDF baixado do gov.br ou foto nítida.',
+      builder: (sheetCtx) {
+        final tk = sheetCtx.tk;
+        final isCompactSheet =
+            MediaQuery.sizeOf(sheetCtx).width < 380 ||
+            sheetCtx.layout.isLargeText;
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppCard(
+              variant: AppCardVariant.tonal,
+              color: tk.infoSoft.withValues(alpha: tk.isDark ? 0.45 : 0.65),
+              borderColor: tk.info.withValues(alpha: 0.35),
+              padding: EdgeInsets.zero,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (isCompactSheet)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        AppSpace.s12,
+                        AppSpace.s12,
+                        AppSpace.s12,
+                        0,
+                      ),
+                      child: AppStatusChip(
+                        'Recomendado',
+                        tone: AppTone.success,
+                        icon: Icons.verified_rounded,
+                      ),
+                    ),
+                  AppListTile(
+                    key: const ValueKey('sheet-pick-criminal-downloads'),
+                    leadingIcon: Icons.folder_open_rounded,
+                    title: 'Selecionar PDF ou Arquivo (Pasta Downloads)',
+                    subtitle: 'Acessa a pasta Downloads para o PDF baixado da PF.',
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpace.s12,
+                      vertical: AppSpace.s8,
+                    ),
+                    trailing: isCompactSheet
+                        ? null
+                        : const AppStatusChip(
+                            'Recomendado',
+                            tone: AppTone.success,
+                          ),
+                    showChevron: isCompactSheet,
+                    onTap: () => Navigator.of(
+                      sheetCtx,
+                    ).pop(_CertificateUploadSource.downloads),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpace.s8),
+            AppListTile(
+              key: const ValueKey('sheet-pick-criminal-gallery'),
+              leadingIcon: Icons.photo_library_outlined,
+              title: 'Escolher Foto da Galeria',
+              subtitle: 'Imagem salva no seu aparelho.',
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s12,
+                vertical: AppSpace.s8,
+              ),
+              showChevron: true,
+              onTap: () => Navigator.of(
+                sheetCtx,
+              ).pop(_CertificateUploadSource.gallery),
+            ),
+            const SizedBox(height: AppSpace.s4),
+            AppListTile(
+              key: const ValueKey('sheet-pick-criminal-camera'),
+              leadingIcon: Icons.photo_camera_outlined,
+              title: 'Fotografar Certidão com a Câmera',
+              subtitle: 'Foto de página inteira bem iluminada.',
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s12,
+                vertical: AppSpace.s8,
+              ),
+              showChevron: true,
+              onTap: () => Navigator.of(
+                sheetCtx,
+              ).pop(_CertificateUploadSource.camera),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _processPickedCertificate({
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    setState(() {
+      _fileBytes = bytes;
+      _fileName = fileName;
+      _analyzing = true;
+      _errorMessage = null;
+      _result = null;
+    });
+
+    try {
+      final CriminalCertificateExtractionResult extraction;
+      if (widget.customCertificateExtractor != null) {
+        extraction = await widget.customCertificateExtractor!(
+          bytes: bytes,
+          fileName: fileName,
+        );
+      } else if (widget.rawExtractedTextOverride != null &&
+          widget.rawExtractedTextOverride!.trim().isNotEmpty) {
+        final rawText = widget.rawExtractedTextOverride!.trim();
+        extraction = CriminalCertificateExtractionResult(
+          extractedText: rawText,
+          fields: CriminalBackgroundService.extractCertificateFieldsFromText(
+            rawText,
+          ),
+          source: 'override',
+        );
+      } else {
+        extraction = await CriminalCertificatePickerAndExtractor
+            .extractTextAndQrFromCertificateBytes(
+          bytes: bytes,
+          fileName: fileName,
+          expectedFullName: widget.expectedFullName,
+          expectedCpfRaw: widget.expectedCpfRaw,
+        );
+      }
+
+      if (!mounted) return;
+      final fields = extraction.fields;
+      final fallbackNow = widget.referenceNow ?? DateTime.now();
+
+      setState(() {
+        _lastExtractedText = extraction.extractedText;
+        _lastQrPayload = extraction.qrPayload;
+
+        // Autopreenchimento imediato: SEMPRE atualiza com os dados do novo arquivo
+        // (sobrescrevendo qualquer valor de um arquivo anterior).
+        if (fields.protocolNumber != null &&
+            fields.protocolNumber!.trim().isNotEmpty) {
+          _protocolCtrl.text = fields.protocolNumber!.trim();
+          _autoFilledProtocol = true;
+        } else if (_autoFilledProtocol) {
+          _protocolCtrl.clear();
+          _autoFilledProtocol = false;
+        }
+
+        if (fields.validationCode != null &&
+            fields.validationCode!.trim().isNotEmpty) {
+          _validationCodeCtrl.text = fields.validationCode!.trim();
+          _autoFilledValidationCode = true;
+        } else if (_autoFilledValidationCode) {
+          _validationCodeCtrl.clear();
+          _autoFilledValidationCode = false;
+        }
+
+        if (fields.issuedDate != null) {
+          _issuedDate = fields.issuedDate!;
+          _hasExplicitDate = true;
+          _autoFilledDate = true;
+        } else if (_autoFilledDate) {
+          _issuedDate = fallbackNow;
+          _hasExplicitDate = false;
+          _autoFilledDate = false;
+        }
+      });
+
+      await _runValidation(
+        extractedTextOverride: extraction.extractedText.trim().isNotEmpty
+            ? extraction.extractedText
+            : null,
+        qrPayloadOverride: extraction.qrPayload,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _analyzing = false;
+        _result = null;
+        _errorMessage = KycHumanFeedbackTranslator.translateError(e);
+      });
+      widget.onValidated(null);
+    }
+  }
+
+  void _removeAttachedCertificate() {
+    if (_analyzing) return;
+    setState(() {
+      _fileBytes = null;
+      _fileName = null;
+      _result = null;
+      _errorMessage = null;
+      _lastExtractedText = null;
+      _lastQrPayload = null;
+      _protocolCtrl.clear();
+      _validationCodeCtrl.clear();
+      _issuedDate = widget.referenceNow ?? DateTime.now();
+      _hasExplicitDate = false;
+      _autoFilledProtocol = false;
+      _autoFilledDate = false;
+      _autoFilledValidationCode = false;
+    });
+    widget.onValidated(null);
+    AppSnackbar.show(
+      context,
+      'Certidão removida. Você pode enviar outro arquivo quando desejar.',
+      kind: AppSnackKind.info,
+    );
+  }
+
+  Future<void> _runValidation({
+    String? extractedTextOverride,
+    String? qrPayloadOverride,
+  }) async {
     setState(() {
       _analyzing = true;
       _errorMessage = null;
@@ -223,6 +491,14 @@ class _CriminalBackgroundCheckStepState
         return;
       }
 
+      final effectiveTextOverride =
+          extractedTextOverride ??
+          widget.rawExtractedTextOverride ??
+          ((_lastExtractedText != null && _lastExtractedText!.trim().isNotEmpty)
+              ? _lastExtractedText
+              : null);
+      final effectiveQr = qrPayloadOverride ?? _lastQrPayload;
+
       final result =
           await CriminalBackgroundService.analyzeAndValidateCertificate(
             fileBytes: effectiveBytes,
@@ -230,9 +506,12 @@ class _CriminalBackgroundCheckStepState
             expectedFullName: widget.expectedFullName,
             expectedCpfRaw: widget.expectedCpfRaw,
             manualProtocol: manualProtocol.isEmpty ? null : manualProtocol,
-            manualIssuedDate: _issuedDate,
+            manualIssuedDate: _hasExplicitDate || _fileBytes == null
+                ? _issuedDate
+                : null,
             manualValidationCode: manualCode.isEmpty ? null : manualCode,
-            rawExtractedTextOverride: widget.rawExtractedTextOverride,
+            rawExtractedTextOverride: effectiveTextOverride,
+            qrPayload: effectiveQr,
             referenceNow: widget.referenceNow,
           );
 
@@ -243,10 +522,12 @@ class _CriminalBackgroundCheckStepState
         if (result.protocolNumber.isNotEmpty &&
             _protocolCtrl.text.trim().isEmpty) {
           _protocolCtrl.text = result.protocolNumber;
+          _autoFilledProtocol = true;
         }
         if (result.validationCode.isNotEmpty &&
             _validationCodeCtrl.text.trim().isEmpty) {
           _validationCodeCtrl.text = result.validationCode;
+          _autoFilledValidationCode = true;
         }
         _issuedDate = result.issuedDate;
         if (!result.passed) {
@@ -271,6 +552,227 @@ class _CriminalBackgroundCheckStepState
     }
   }
 
+  Widget _buildEmptyUploadSurface(BuildContext context) {
+    final tk = context.tk;
+    return AppCard(
+      key: const ValueKey('btn-upload-criminal-certificate'),
+      variant: AppCardVariant.tonal,
+      color: tk.surface,
+      borderColor: tk.accentInk.withValues(alpha: 0.45),
+      onTap: _analyzing ? null : _handleSelectCertificateTap,
+      semanticLabel: 'Enviar PDF ou Foto da Certidão da Polícia Federal',
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: tk.accentSoft,
+              borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+            ),
+            child: Icon(
+              Icons.upload_file_rounded,
+              color: tk.accentInk,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: AppSpace.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Enviar PDF ou Foto da Certidão',
+                  style: AppType.titleSm.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s4),
+                Text(
+                  'Selecione o PDF na pasta Downloads, escolha uma foto da galeria ou fotografe com a câmera.',
+                  style: AppType.bodySm.copyWith(color: tk.textMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpace.s8),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: tk.accentInk,
+            size: 22,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAttachedFileCard(BuildContext context, {required bool approved}) {
+    final tk = context.tk;
+    final bytes = _fileBytes!;
+    final fileName = (_fileName ?? 'certidao_pf.pdf').trim();
+    final ext = CriminalBackgroundService.detectCanonicalExtension(
+      bytes,
+      fileName,
+    );
+    final isPdf = ext == 'pdf';
+    final metaLabel = '${ext.toUpperCase()} · ${_formatFileSize(bytes.length)}';
+
+    final String statusLabel;
+    final AppTone statusTone;
+    final IconData statusIcon;
+    if (_analyzing) {
+      statusLabel = 'Lendo certidão...';
+      statusTone = AppTone.info;
+      statusIcon = Icons.hourglass_top_rounded;
+    } else if (approved) {
+      statusLabel = 'Validada';
+      statusTone = AppTone.success;
+      statusIcon = Icons.verified_rounded;
+    } else if (_errorMessage != null) {
+      statusLabel = 'Revisão necessária';
+      statusTone = AppTone.warning;
+      statusIcon = Icons.info_outline_rounded;
+    } else {
+      statusLabel = 'Arquivo anexado';
+      statusTone = AppTone.info;
+      statusIcon = Icons.attach_file_rounded;
+    }
+
+    final Widget preview = isPdf
+        ? Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: tk.dangerSoft,
+              borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+              border: Border.all(color: tk.danger.withValues(alpha: 0.3)),
+            ),
+            child: Icon(
+              Icons.picture_as_pdf_rounded,
+              color: tk.dangerInk,
+              size: 28,
+            ),
+          )
+        : ClipRRect(
+            borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+            child: Container(
+              width: 56,
+              height: 56,
+              color: tk.surfaceInset,
+              child: Image.memory(
+                bytes,
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  Icons.image_outlined,
+                  color: tk.accentInk,
+                  size: 26,
+                ),
+              ),
+            ),
+          );
+
+    return AppCard(
+      key: const ValueKey('criminal-attached-file-card'),
+      variant: AppCardVariant.tonal,
+      color: approved ? tk.successSoft.withValues(alpha: 0.5) : tk.surface,
+      borderColor: approved
+          ? tk.success.withValues(alpha: 0.6)
+          : tk.border,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              preview,
+              const SizedBox(width: AppSpace.s12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      fileName,
+                      style: AppType.bodyStrong.copyWith(color: tk.text),
+                    ),
+                    const SizedBox(height: AppSpace.s4),
+                    Text(
+                      metaLabel,
+                      style: AppType.tabular(AppType.bodySm)
+                          .copyWith(color: tk.textMuted),
+                    ),
+                    const SizedBox(height: AppSpace.s8),
+                    AppStatusChip(
+                      statusLabel,
+                      tone: statusTone,
+                      icon: statusIcon,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpace.s12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stackButtons =
+                  constraints.maxWidth < 300 || context.layout.isLargeText;
+              final replaceBtn = KeyedSubtree(
+                key: const ValueKey('btn-upload-criminal-certificate'),
+                child: AppButton(
+                  key: const ValueKey('btn-replace-criminal-certificate'),
+                  label: 'Trocar arquivo',
+                  icon: Icons.swap_horiz_rounded,
+                  variant: AppButtonVariant.secondary,
+                  compact: true,
+                  onPressed: _analyzing ? null : _handleSelectCertificateTap,
+                ),
+              );
+              final removeBtn = AppButton(
+                key: const ValueKey('btn-remove-criminal-certificate'),
+                label: 'Remover',
+                icon: Icons.delete_outline_rounded,
+                variant: AppButtonVariant.tertiary,
+                compact: true,
+                onPressed: _analyzing ? null : _removeAttachedCertificate,
+              );
+
+              if (stackButtons) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    replaceBtn,
+                    const SizedBox(height: AppSpace.s8),
+                    removeBtn,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: replaceBtn),
+                  const SizedBox(width: AppSpace.s8),
+                  Expanded(child: removeBtn),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAutoFilledBadge(Key key) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpace.s8),
+      child: AppStatusChip(
+        'Preenchido automaticamente',
+        key: key,
+        tone: AppTone.info,
+        icon: Icons.auto_awesome_rounded,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
@@ -278,6 +780,7 @@ class _CriminalBackgroundCheckStepState
     final ageDays = now.difference(_issuedDate).inDays;
     final isDateRecent = ageDays >= -1 && ageDays <= 90;
     final approved = _result != null && _result!.passed;
+    final hasFile = _fileBytes != null && _fileBytes!.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -289,12 +792,12 @@ class _CriminalBackgroundCheckStepState
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             AppStatusChip(
-              'Segurança Mútua · Validade de 6 Meses',
+              'Validade 6 meses',
               tone: AppTone.info,
               icon: Icons.verified_user_rounded,
             ),
             AppStatusChip(
-              'Vale p/ Cliente e Profissional',
+              'Cliente e Profissional',
               tone: AppTone.success,
               icon: Icons.sync_alt_rounded,
             ),
@@ -353,7 +856,7 @@ class _CriminalBackgroundCheckStepState
                         Text(
                           '• Toque no botão abaixo para abrir o portal oficial da Polícia Federal (gov.br).\n'
                           '• Informe seu nome civil e CPF para emitir gratuitamente a certidão "Nada Consta".\n'
-                          '• Baixe o PDF oficial ou tire uma foto nítida da certidão para enviar no Passo 2.',
+                          '• Baixe o PDF oficial na pasta Downloads ou tire uma foto nítida para enviar no Passo 2.',
                           style: AppType.bodySm.copyWith(color: tk.textMuted),
                         ),
                       ],
@@ -375,7 +878,7 @@ class _CriminalBackgroundCheckStepState
         ),
         const SizedBox(height: AppSpace.s16),
 
-        // PASSO 2 — ENVIO DO ARQUIVO OFICIAL E DADOS DE AUTENTICIDADE
+        // PASSO 2 — ENVIO UNIFICADO DO ARQUIVO E AUTOPREENCHIMENTO
         AppCard(
           borderColor: approved ? tk.success : tk.border,
           child: Column(
@@ -391,77 +894,42 @@ class _CriminalBackgroundCheckStepState
                 style: AppType.bodySm.copyWith(color: tk.textMuted),
               ),
               const SizedBox(height: AppSpace.s16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final compact =
-                      constraints.maxWidth < 360 || context.layout.isLargeText;
-                  final uploadBtn = AppButton(
-                    key: const ValueKey('btn-upload-criminal-certificate'),
-                    label: _fileBytes != null
-                        ? 'Arquivo anexado (${_fileName ?? "certidão"})'
-                        : 'Enviar PDF ou Foto da Certidão',
-                    icon: _fileBytes != null
-                        ? Icons.check_circle_rounded
-                        : Icons.upload_file_rounded,
-                    variant: AppButtonVariant.secondary,
-                    compact: true,
-                    onPressed: _analyzing
-                        ? null
-                        : () => _pickCertificateFile(fromCamera: false),
-                  );
-                  final cameraBtn = AppButton(
-                    key: const ValueKey('btn-camera-criminal-certificate'),
-                    label: 'Fotografar Certidão',
-                    icon: Icons.photo_camera_outlined,
-                    variant: AppButtonVariant.secondary,
-                    compact: true,
-                    onPressed: _analyzing
-                        ? null
-                        : () => _pickCertificateFile(fromCamera: true),
-                  );
-
-                  if (compact) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        uploadBtn,
-                        const SizedBox(height: AppSpace.s12),
-                        cameraBtn,
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: uploadBtn),
-                      const SizedBox(width: AppSpace.s12),
-                      Expanded(child: cameraBtn),
-                    ],
-                  );
-                },
-              ),
+              if (hasFile)
+                _buildAttachedFileCard(context, approved: approved)
+              else
+                _buildEmptyUploadSurface(context),
               const SizedBox(height: AppSpace.s16),
+              if (_autoFilledProtocol)
+                _buildAutoFilledBadge(const ValueKey('badge-autofill-protocol')),
               AppTextField(
                 key: const ValueKey('input-criminal-protocol'),
                 controller: _protocolCtrl,
-                label: 'Nº da Certidão / Protocolo PF',
+                label: 'Protocolo PF',
                 hint: 'Ex.: 2026.0192837465',
                 helper:
                     'Preenchido automaticamente ao ler a certidão ou digitado manualmente.',
                 prefixIcon: Icons.numbers_rounded,
-                keyboardType: TextInputType.number,
+                keyboardType: TextInputType.text,
                 textInputAction: TextInputAction.next,
                 enabled: !_analyzing,
+                onChanged: (_) {
+                  if (_autoFilledProtocol) {
+                    setState(() => _autoFilledProtocol = false);
+                  }
+                },
               ),
               const SizedBox(height: AppSpace.s16),
+              if (_autoFilledDate)
+                _buildAutoFilledBadge(const ValueKey('badge-autofill-date')),
               Material(
                 color: Colors.transparent,
                 child: InkWell(
                   key: const ValueKey('btn-pick-criminal-issue-date'),
                   borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
-                  onTap: _pickIssueDate,
+                  onTap: _analyzing ? null : _pickIssueDate,
                   child: InputDecorator(
                     decoration: InputDecoration(
-                      labelText: 'Data de Emissão da Certidão',
+                      labelText: 'Data de emissão',
                       labelStyle: AppType.body.copyWith(color: tk.textMuted),
                       floatingLabelStyle: AppType.caption
                           .copyWith(color: tk.textMuted)
@@ -473,7 +941,7 @@ class _CriminalBackgroundCheckStepState
                       helperText: isDateRecent
                           ? 'Emissão dentro do prazo de 90 dias exigido.'
                           : 'A certidão deve ter sido emitida nos últimos 90 dias.',
-                      helperStyle: AppType.caption.copyWith(
+                      helperStyle: AppType.bodySm.copyWith(
                         color: tk.textMuted,
                       ),
                       errorText: isDateRecent
@@ -515,14 +983,23 @@ class _CriminalBackgroundCheckStepState
                 ),
               ),
               const SizedBox(height: AppSpace.s16),
+              if (_autoFilledValidationCode)
+                _buildAutoFilledBadge(
+                  const ValueKey('badge-autofill-validation-code'),
+                ),
               AppTextField(
                 key: const ValueKey('input-criminal-validation-code'),
                 controller: _validationCodeCtrl,
-                label: 'Código de Validação Eletrônica PF',
+                label: 'Código PF',
                 hint: 'Código alfanumérico de autenticidade no rodapé',
                 prefixIcon: Icons.verified_outlined,
                 textInputAction: TextInputAction.done,
                 enabled: !_analyzing,
+                onChanged: (_) {
+                  if (_autoFilledValidationCode) {
+                    setState(() => _autoFilledValidationCode = false);
+                  }
+                },
                 onSubmitted: (_) {
                   if (!_analyzing) _runValidation();
                 },

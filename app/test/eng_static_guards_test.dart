@@ -38,12 +38,47 @@ void main() {
   final libFiles = _dartFiles('lib');
 
   test('zero dart:io em lib/ (Web-safe) — exceto com conditional import', () {
-    final offenders = <String>[];
+    final condPattern = RegExp(r"if\s*\(\s*dart\.library\.io\s*\)\s*'([^']+)'");
+    final uncondImportPattern = RegExp(
+      r"^import\s+'([^']+)'\s*(?:as\s+\w+\s*)?(?:(?:show|hide)[^;]*)?;",
+      multiLine: true,
+    );
+    final conditionalIoTargets = <String>{};
+    final allTexts = <String, String>{};
     for (final f in libFiles) {
+      final rel = _rel(f);
       final text = f.readAsStringSync();
+      allTexts[rel] = text;
+      final dir = rel.contains('/') ? rel.substring(0, rel.lastIndexOf('/') + 1) : '';
+      for (final m in condPattern.allMatches(text)) {
+        final target = m.group(1)!;
+        conditionalIoTargets.add(target.startsWith('package:') ? target : '$dir$target');
+      }
+    }
+
+    final offenders = <String>[];
+    for (final entry in allTexts.entries) {
+      final rel = entry.key;
+      final text = entry.value;
       final importsIo = RegExp(r"^import\s+'dart:io'", multiLine: true).hasMatch(text);
-      final conditional = text.contains('dart.library.io') || text.contains('dart.library.html');
-      if (importsIo && !conditional) offenders.add(_rel(f));
+      if (!importsIo) continue;
+      final selfConditional = text.contains('dart.library.io') || text.contains('dart.library.html');
+      final isConditionalTarget = conditionalIoTargets.contains(rel);
+      if (!selfConditional && !isConditionalTarget) {
+        offenders.add(rel);
+        continue;
+      }
+      if (isConditionalTarget) {
+        final base = rel.split('/').last;
+        for (final other in allTexts.entries) {
+          for (final m in uncondImportPattern.allMatches(other.value)) {
+            final uri = m.group(1)!;
+            if (uri == base || uri.endsWith('/$base')) {
+              offenders.add('${other.key} importa $rel sem conditional import (dart.library.io)');
+            }
+          }
+        }
+      }
     }
     expect(offenders, isEmpty, reason: 'dart:io quebra a build Web: $offenders');
   });
