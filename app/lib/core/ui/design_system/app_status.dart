@@ -277,20 +277,18 @@ class _StarState extends State<_Star> {
       ),
     );
     if (!widget.interactive) return icon;
-    return Semantics(
-      button: true,
-      label: widget.semanticLabel,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          _pop();
-          widget.onTap?.call();
-        },
-        child: SizedBox(
-          width: AppGeometry.minTarget,
-          height: AppGeometry.minTarget,
-          child: Center(child: icon),
-        ),
+    return AppPressable(
+      semanticLabel: widget.semanticLabel,
+      excludeSemantics: true,
+      borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+      onTap: () {
+        _pop();
+        widget.onTap?.call();
+      },
+      child: SizedBox(
+        width: AppGeometry.minTarget,
+        height: AppGeometry.minTarget,
+        child: Center(child: icon),
       ),
     );
   }

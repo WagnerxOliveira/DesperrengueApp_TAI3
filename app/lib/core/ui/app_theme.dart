@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/user_profile.dart';
 import 'app_tokens.dart';
 import 'design_system/app_navigation.dart';
+import 'design_system/tokens/app_motion.dart';
 import 'design_system/tokens/app_space.dart';
 import 'design_system/tokens/app_type.dart';
 
@@ -136,6 +137,17 @@ class AppTheme {
     final texts = textTheme(tk);
     final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.buttonRadius));
     final fieldBorderColor = tk.isDark ? tk.border : const Color(0xFFD0D5DD);
+    final clickCursor = WidgetStateProperty.resolveWith<MouseCursor>(
+      (s) => s.contains(WidgetState.disabled) ? SystemMouseCursors.basic : SystemMouseCursors.click,
+    );
+    WidgetStateProperty<Color?> interactiveOverlay(Color tint) => WidgetStateProperty.resolveWith<Color?>((s) {
+          if (s.contains(WidgetState.disabled)) return null;
+          if (s.contains(WidgetState.pressed)) return tint.withValues(alpha: 0.10);
+          if (s.contains(WidgetState.focused)) return tint.withValues(alpha: 0.12);
+          if (s.contains(WidgetState.hovered)) return tint.withValues(alpha: 0.04);
+          return null;
+        });
+    final filledFocusRingColor = tk.isDark ? tk.text : tk.accentInk;
     OutlineInputBorder fieldBorder(Color c, [double w = 1]) => OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
           borderSide: BorderSide(color: c, width: w),
@@ -232,15 +244,30 @@ class AppTheme {
           minimumSize: const Size.fromHeight(AppGeometry.buttonHeight),
           shape: buttonShape,
           textStyle: AppType.button,
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(Colors.white),
+          side: WidgetStateProperty.resolveWith<BorderSide?>(
+            (s) => s.contains(WidgetState.focused) ? BorderSide(color: filledFocusRingColor, width: 2) : BorderSide.none,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: tk.accentInk,
           minimumSize: const Size.fromHeight(AppGeometry.buttonHeightCompact + 2),
-          side: BorderSide(color: tk.accentInk, width: 1.5),
           shape: buttonShape,
           textStyle: AppType.button,
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(tk.accentInk),
+          side: WidgetStateProperty.resolveWith<BorderSide?>((s) {
+            if (s.contains(WidgetState.disabled)) return BorderSide(color: tk.border, width: 1.5);
+            if (s.contains(WidgetState.focused)) return BorderSide(color: tk.accentInk, width: 2);
+            return BorderSide(color: tk.accentInk, width: 1.5);
+          }),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -248,10 +275,37 @@ class AppTheme {
           foregroundColor: tk.accentInk,
           minimumSize: const Size(AppGeometry.minTarget, AppGeometry.minTarget),
           textStyle: AppType.bodyStrong,
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(tk.accentInk),
+          side: WidgetStateProperty.resolveWith<BorderSide?>(
+            (s) => s.contains(WidgetState.focused) ? BorderSide(color: tk.accentInk, width: 2) : BorderSide.none,
+          ),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(minimumSize: const Size.square(AppGeometry.minTarget)),
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(AppGeometry.minTarget),
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(tk.accentInk),
+          side: WidgetStateProperty.resolveWith<BorderSide?>(
+            (s) => s.contains(WidgetState.focused) ? BorderSide(color: tk.accentInk, width: 2) : BorderSide.none,
+          ),
+        ),
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        radius: const Radius.circular(AppGeometry.pillRadius),
+        interactive: true,
+        thickness: WidgetStateProperty.resolveWith<double>(
+          (s) => s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? 8.0 : 6.0,
+        ),
+        thumbColor: WidgetStateProperty.resolveWith<Color>(
+          (s) => (s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? tk.accentInk : tk.textMuted)
+              .withValues(alpha: s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? 0.72 : 0.38),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

@@ -44,6 +44,7 @@ class DesperrengueApp extends ConsumerWidget {
         theme: AppTheme.resolve(mode, Brightness.light),
         darkTheme: AppTheme.resolve(mode, Brightness.dark),
         themeMode: themeMode.material,
+        scrollBehavior: const AppScrollBehavior(),
         // Política global de fonte: escala do sistema respeitada entre 1,0 e 1,5
         // (acima disso o conteúdo reflui, nunca encolhe). UpdateGate segue ativo e
         // o ResponsiveShell compõe a coluna do app em telas largas (sem o hack

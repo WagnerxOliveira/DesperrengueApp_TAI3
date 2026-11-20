@@ -1,5 +1,6 @@
 import 'package:desperrengue_app/core/models/user_profile.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
+import 'package:desperrengue_app/core/ui/app_tokens.dart';
 import 'package:desperrengue_app/core/ui/design_system/app_button.dart';
 import 'package:desperrengue_app/core/ui/design_system/app_card.dart';
 import 'package:desperrengue_app/core/ui/design_system/app_chrome.dart';
@@ -321,7 +322,7 @@ void main() {
       expect(ResponsiveShell.columnWidthFor(1920), 520);
     });
 
-    testWidgets('ResponsiveShell: em 1280×800 o app enxerga largura de 520', (t) async {
+    testWidgets('ResponsiveShell: em 1280×800 o app enxerga largura de 520 e exibe painel lateral', (t) async {
       late double w;
       t.view.physicalSize = const Size(1280, 800);
       t.view.devicePixelRatio = 1;
@@ -335,6 +336,82 @@ void main() {
       ));
       expect(w, 520);
       expect(t.getSize(find.byType(Scaffold)).width, 520);
+      expect(find.byKey(const ValueKey('responsive_shell_side_panel')), findsOneWidget);
+      expect(find.text('Pagamento protegido'), findsOneWidget);
+      expect(find.text('Profissionais verificados'), findsOneWidget);
+      expect(find.text('Endereço preservado'), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('ResponsiveShell: sem overflow em 1040×600 @ 1,5× e sem painel em 920×800', (t) async {
+      t.view.physicalSize = const Size(1040, 600);
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.resolve(UserMode.client, Brightness.dark),
+        home: const MediaQuery(
+          data: MediaQueryData(size: Size(1040, 600), textScaler: TextScaler.linear(1.5)),
+          child: ResponsiveShell(child: Scaffold(body: Text('conteúdo'))),
+        ),
+      ));
+      expect(find.byKey(const ValueKey('responsive_shell_side_panel')), findsOneWidget);
+      expect(t.takeException(), isNull);
+
+      t.view.physicalSize = const Size(920, 800);
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.resolve(UserMode.client, Brightness.light),
+        home: const ResponsiveShell(child: Scaffold(body: Text('conteúdo'))),
+      ));
+      expect(find.byKey(const ValueKey('responsive_shell_side_panel')), findsNothing);
+      expect(t.getSize(find.byType(Scaffold)).width, 520);
+      expect(t.takeException(), isNull);
+    });
+
+    test('AppShellColors: contraste WCAG AA ≥ 4,5:1 no painel lateral desktop', () {
+      for (final bg in [AppShellColors.brandBackdrop, AppShellColors.brandSurface]) {
+        expect(AppTokens.contrast(AppShellColors.onBrand, bg), greaterThanOrEqualTo(4.5));
+        expect(AppTokens.contrast(AppShellColors.onBrandMuted, bg), greaterThanOrEqualTo(4.5));
+      }
+      expect(ResponsiveShell.showsSidePanelFor(1039), isFalse);
+      expect(ResponsiveShell.showsSidePanelFor(1040), isTrue);
+    });
+
+    testWidgets('Web/desktop: AppScrollBehavior exibe Scrollbar em desktop e tema aplica cursor/foco 2 px', (t) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await t.pumpWidget(MaterialApp(
+        theme: AppTheme.resolve(UserMode.client, Brightness.light).copyWith(platform: TargetPlatform.windows),
+        scrollBehavior: const AppScrollBehavior(),
+        home: Scaffold(
+          body: ListView.builder(
+            controller: controller,
+            itemCount: 40,
+            itemBuilder: (_, i) => SizedBox(height: 48, child: Text('Item $i')),
+          ),
+        ),
+      ));
+      expect(find.byType(Scrollbar), findsOneWidget);
+
+      final theme = AppTheme.resolve(UserMode.client, Brightness.light);
+      for (final style in [
+        theme.filledButtonTheme.style!,
+        theme.outlinedButtonTheme.style!,
+        theme.textButtonTheme.style!,
+        theme.iconButtonTheme.style!,
+      ]) {
+        expect(style.mouseCursor?.resolve(<WidgetState>{}), SystemMouseCursors.click);
+        expect(style.side?.resolve(<WidgetState>{WidgetState.focused})?.width, 2);
+      }
+    });
+
+    testWidgets('AppRating interativo: navegável por Tab e ativável por Enter', (t) async {
+      int? picked;
+      await t.pumpWidget(_app(AppRating(value: 0, size: 24, onChanged: (v) => picked = v)));
+      await t.sendKeyEvent(LogicalKeyboardKey.tab);
+      await t.pump();
+      await t.sendKeyEvent(LogicalKeyboardKey.enter);
+      await t.pumpAndSettle();
+      expect(picked, 1);
     });
   });
 }

@@ -112,8 +112,14 @@ class AppButton extends StatelessWidget {
             minimumSize: size,
             shape: shape,
             foregroundColor: tk.accentInk,
-            side: BorderSide(color: press == null ? tk.border : tk.accentInk, width: 1.5),
             disabledForegroundColor: loading ? tk.accentInk : null,
+          ).copyWith(
+            side: WidgetStateProperty.resolveWith<BorderSide?>((s) {
+              if (loading) return BorderSide(color: tk.accentInk, width: 1.5);
+              if (s.contains(WidgetState.disabled)) return BorderSide(color: tk.border, width: 1.5);
+              if (s.contains(WidgetState.focused)) return BorderSide(color: tk.accentInk, width: 2);
+              return BorderSide(color: tk.accentInk, width: 1.5);
+            }),
           ),
           child: child,
         ),
