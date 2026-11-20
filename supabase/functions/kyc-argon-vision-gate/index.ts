@@ -631,6 +631,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
             outcome: "NOTHING_ON_RECORD",
             is_authentic_pf_certificate: true,
             adversarial_prompt_injection_detected: false,
+            certificate_protocol: null,
+            validation_code: null,
+            holder_full_name: profLock.verified_full_name ?? null,
             certificate_protocol_masked: profLock.criminal_certificate_number_masked ?? "PF-VALID",
             issued_within_90_days: true,
             cpf_masked: profLock.cpf_masked ?? "***.***.***-**",
@@ -661,6 +664,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
           cpf_mod11_valid: true,
           cpf_matches_typed: true,
           mrz_checksums_valid: true,
+          extracted_full_name: profLock.verified_full_name ?? null,
+          extracted_cpf_11_digits: null,
+          extracted_birth_date_iso: null,
+          extracted_document_number: null,
+          extracted_issuing_authority: null,
           kyc_billing_lock_until: profLock.kyc_billing_lock_until,
           kyc_expires_at: profLock.kyc_expires_at,
           kyc_validation_cycle: profLock.kyc_validation_cycle ?? 1,
@@ -933,6 +941,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
         ? "Os dados da certidão não conferem com o nome ou CPF do titular da conta. Emita a certidão usando seus próprios dados."
         : "Não foi possível validar a certidão enviada. Envie o PDF original ou uma foto bem iluminada da Certidão Negativa da Polícia Federal.";
 
+      const rawProtocol = typeof rawCert.certificate_protocol === "string" && rawCert.certificate_protocol.trim()
+        ? rawCert.certificate_protocol.trim()
+        : (manualProtocol || null);
+      const rawValidationCode = typeof rawCert.validation_code === "string" && rawCert.validation_code.trim()
+        ? rawCert.validation_code.trim()
+        : (typeof body.validationCode === "string" && body.validationCode.trim() ? body.validationCode.trim() : null);
+
       return jsonResponse({
         mode: "criminal_record",
         reused_valid_kyc: false,
@@ -941,6 +956,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         outcome,
         is_authentic_pf_certificate: Boolean(rawCert.is_authentic_pf_certificate) && !promptInjection,
         adversarial_prompt_injection_detected: promptInjection,
+        certificate_protocol: rawProtocol,
+        validation_code: rawValidationCode,
+        holder_full_name: extractedHolderName.trim() || null,
         certificate_protocol_masked: protocolMasked,
         certificate_issued_date_iso: issuedIso,
         issued_within_90_days: issuedWithin90Days,
@@ -1120,6 +1138,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
     }
 
+    const extractedBirthDateIso = parseCertificateDateIso(String(rawDossier.birth_date_iso ?? "")) ??
+      (typeof rawDossier.birth_date_iso === "string" && rawDossier.birth_date_iso.trim()
+        ? rawDossier.birth_date_iso.trim()
+        : null);
+    const extractedDocumentNumber =
+      (typeof rawDossier.cnh_register_number === "string" && rawDossier.cnh_register_number.trim()
+        ? rawDossier.cnh_register_number.trim()
+        : null) ??
+      (typeof rawDossier.rg_or_cin_number === "string" && rawDossier.rg_or_cin_number.trim()
+        ? rawDossier.rg_or_cin_number.trim()
+        : null);
+    const extractedIssuingAuthority =
+      typeof rawDossier.issuing_authority_uf === "string" && rawDossier.issuing_authority_uf.trim()
+        ? rawDossier.issuing_authority_uf.trim()
+        : null;
+
     return jsonResponse({
       mode: "kyc_document",
       reused_valid_kyc: false,
@@ -1130,6 +1164,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       cpf_mod11_valid: cpfMod11Valid,
       cpf_matches_typed: cpfMatchesTyped,
       mrz_checksums_valid: mrzChecksumsValid,
+      extracted_full_name: extractedName.trim() || null,
+      extracted_cpf_11_digits: extractedCpfDigits.length === 11 ? extractedCpfDigits : null,
+      extracted_birth_date_iso: extractedBirthDateIso,
+      extracted_document_number: extractedDocumentNumber,
+      extracted_issuing_authority: extractedIssuingAuthority,
       quality_gate: {
         ...qg,
         is_readable: effectiveReadable,
