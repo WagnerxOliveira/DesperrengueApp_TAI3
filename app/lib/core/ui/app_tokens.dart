@@ -97,6 +97,38 @@ class AppTokens extends ThemeExtension<AppTokens> {
 
   /// Cor de sombra. No escuro é transparente: sombra some sobre o fundo escuro.
   final Color shadow;
+  /// Acento do MODO ativo (cliente = laranja, profissional = azul, sem modo =
+  /// marca). Use para PREENCHIMENTO (botões, barras, indicadores).
+  final Color accent;
+
+  /// Acento para TEXTO/ÍCONE/LINK (>= 4,5:1 sobre ackground, card,
+  /// surface e ccentSoft, claro e escuro). Nunca use ccent como texto.
+  final Color accentInk;
+
+  /// Cor legível SOBRE ccent (rótulo de botão primário).
+  final Color onAccent;
+
+  /// Tinta suave do acento (fundos de chip/ícone/seleção).
+  final Color accentSoft;
+
+  /// Tinta de texto do acento cliente (laranja escurecido no claro).
+  final Color clientAccentInk;
+
+  /// Tinta de texto do acento profissional.
+  final Color providerAccentInk;
+
+  /// Texto de erro/risco real (>= 4,5:1 sobre ackground, card e dangerSoft).
+  final Color dangerInk;
+
+  /// Superfície rebaixada (campos, trilhos, áreas "afundadas").
+  final Color surfaceInset;
+
+  /// Película sob sheets/diálogos (opacidade já embutida).
+  final Color scrim;
+
+  /// Esqueleto de carregamento: base e brilho do shimmer.
+  final Color skeletonBase;
+  final Color skeletonHighlight;
 
   bool get isDark => brightness == Brightness.dark;
 
@@ -104,10 +136,10 @@ class AppTokens extends ThemeExtension<AppTokens> {
   List<BoxShadow> cardShadow({double blur = 12, double dy = 4}) => isDark
       ? const []
       : [BoxShadow(color: shadow, blurRadius: blur, offset: Offset(0, dy))];
-  /// Sombras de 2 camadas (mbient difusa + key direcional) � s� no claro;
-  /// nunca preto puro (tinta slate). No escuro a eleva��o � TONAL: use
-  /// [surfaceAt] e devolve lista vazia aqui. [level]: 1 (cart�o) � 2 (hero/
-  /// flutuante) � 3 (sheet/menu).
+  /// Sombras de 2 camadas (mbient difusa + key direcional) — só no claro;
+  /// nunca preto puro (tinta slate). No escuro a elevação é TONAL: use
+  /// [surfaceAt]; aqui devolve lista vazia. [level]: 1 (cartão) · 2 (hero/
+  /// flutuante) · 3 (sheet/menu).
   List<BoxShadow> elevation(int level) {
     if (isDark || level <= 0) return const [];
     return switch (level) {
@@ -126,11 +158,11 @@ class AppTokens extends ThemeExtension<AppTokens> {
     };
   }
 
-  /// Superf�cie na eleva��o [dp]: clara = [card]; escura = [card] + camada tonal.
+  /// Superfície na elevação [dp]: clara = [card]; escura = [card] + camada tonal.
   Color surfaceAt(int dp) => isDark ? tonal(card, dp) : card;
 
-  /// Variante dos tokens para um acento espec�fico (cliente/profissional).
-  /// [onAccent] � recalculado (contraste m�ximo) e ccentInk garante >= 4,5:1.
+  /// Variante dos tokens para um acento específico (cliente/profissional).
+  /// [onAccent] é recalculado (contraste máximo).
   AppTokens forAccent({required Color accent, required Color accentInk, required Color accentSoft}) =>
       AppTokens(
         brightness: brightness,
