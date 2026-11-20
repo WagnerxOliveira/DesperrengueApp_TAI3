@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../services/media_service.dart';
-import './app_tokens.dart';
-import 'widgets.dart';
+import 'design_system/design_system.dart';
 
 /// Evidência fotográfica selecionada pelo cliente, enriquecida com:
 /// - [caption]: descrição breve do que a foto mostra;
@@ -92,31 +91,28 @@ Future<PickedImage?> pickImage(
   int photoIndex = 0,
 }) async {
   var src = source;
-  src ??= await showModalBottomSheet<ImageSource>(
-    context: context,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (ctx) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 12),
-          ListTile(
-            leading: const Icon(Icons.photo_camera_rounded),
-            title: const Text('Tirar foto'),
-            subtitle: const Text('Fotografe o local e adicione uma breve explicação'),
-            onTap: () => Navigator.pop(ctx, ImageSource.camera),
-          ),
-          ListTile(
-            leading: const Icon(Icons.photo_library_rounded),
-            title: const Text('Escolher da galeria'),
-            subtitle: const Text('Selecione uma imagem existente e descreva o ponto'),
-            onTap: () => Navigator.pop(ctx, ImageSource.gallery),
-          ),
-          const SizedBox(height: 8),
-        ],
-      ),
+  src ??= await AppSheet.show<ImageSource>(
+    context,
+    title: 'Adicionar foto',
+    builder: (ctx) => Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AppListTile(
+          leadingIcon: Icons.photo_camera_rounded,
+          title: 'Tirar foto',
+          subtitle: 'Fotografe o local e adicione uma breve explicação',
+          showChevron: true,
+          onTap: () => Navigator.pop(ctx, ImageSource.camera),
+        ),
+        const SizedBox(height: AppSpace.s8),
+        AppListTile(
+          leadingIcon: Icons.photo_library_rounded,
+          title: 'Escolher da galeria',
+          subtitle: 'Selecione uma imagem existente e descreva o ponto',
+          showChevron: true,
+          onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+        ),
+      ],
     ),
   );
   if (src == null) return null;
@@ -141,10 +137,10 @@ Future<PickedImage?> pickImage(
     return annotated ?? rawPicked;
   } catch (e) {
     if (context.mounted) {
-      showSnack(
+      AppSnackbar.show(
         context,
         'Não foi possível acessar a câmera/galeria. Verifique as permissões.',
-        error: true,
+        kind: AppSnackKind.error,
       );
     }
     return null;
@@ -231,11 +227,8 @@ Future<PickedImage?> showPhotoContextStudioSheet(
   required int photoIndex,
   String? categoryName,
 }) {
-  return showModalBottomSheet<PickedImage>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: Colors.transparent,
+  return AppSheet.show<PickedImage>(
+    context,
     builder: (ctx) => PhotoContextStudioSheet(
       image: image,
       photoIndex: photoIndex,
@@ -305,289 +298,292 @@ class _PhotoContextStudioSheetState extends State<PhotoContextStudioSheet> {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final presets = photoQuickPresetsForCategory(widget.categoryName);
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final compact = context.layout.isCompact || context.layout.isLargeText;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: Container(
+    return SingleChildScrollView(
+      child: Column(
         key: const ValueKey('photo-context-studio-sheet'),
-        decoration: BoxDecoration(
-          color: tk.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-          border: Border.all(color: tk.border),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: tk.border,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: AppGeometry.iconTileSize,
+              height: AppGeometry.iconTileSize,
+              decoration: BoxDecoration(
+                color: tk.accentSoft,
+                borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
               ),
-              const SizedBox(height: 12),
-              Row(
+              child: Icon(
+                Icons.add_photo_alternate_rounded,
+                color: tk.accentInk,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: AppSpace.s12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: tk.clientSoft,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.add_photo_alternate_rounded,
-                      color: tk.clientAccent,
-                      size: 22,
-                    ),
+                  Text(
+                    'Foto ${widget.photoIndex + 1} Confirmada • Detalhar Evidência',
+                    style: AppType.titleSm.copyWith(color: tk.text),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Foto ${widget.photoIndex + 1} Confirmada • Detalhar Evidência',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          'Explique brevemente o que a foto mostra ou sugira o que deve ser feito.',
-                          style: TextStyle(fontSize: 12, color: tk.textMuted),
-                        ),
-                      ],
-                    ),
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    'Explique brevemente o que a foto mostra ou sugira o que deve ser feito.',
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              // Preview interativo com toque para marcar o Pino Focal (x, y)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final previewW = constraints.maxWidth;
-                  const previewH = 176.0;
-                  return GestureDetector(
-                    key: const ValueKey('photo-studio-preview'),
-                    onTapDown: (details) {
-                      final dx = (details.localPosition.dx / previewW).clamp(0.05, 0.95);
-                      final dy = (details.localPosition.dy / previewH).clamp(0.08, 0.92);
-                      setState(() => _focalPoint = Offset(dx, dy));
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: SizedBox(
-                        width: previewW,
-                        height: previewH,
-                        child: Stack(
-                          fit: StackFit.expand,
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpace.s16),
+        // Preview interativo com toque para marcar o Pino Focal (x, y)
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final previewW = constraints.maxWidth;
+            const previewH = 180.0;
+            return GestureDetector(
+              key: const ValueKey('photo-studio-preview'),
+              onTapDown: (details) {
+                final dx = (details.localPosition.dx / previewW).clamp(0.05, 0.95);
+                final dy = (details.localPosition.dy / previewH).clamp(0.08, 0.92);
+                setState(() => _focalPoint = Offset(dx, dy));
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                child: SizedBox(
+                  width: previewW,
+                  height: previewH,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.memory(widget.image.bytes, fit: BoxFit.cover),
+                      Positioned(
+                        left: AppSpace.s8,
+                        top: AppSpace.s8,
+                        right: AppSpace.s8,
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Image.memory(widget.image.bytes, fit: BoxFit.cover),
-                            Positioned(
-                              left: 10,
-                              top: 10,
-                              right: 10,
-                              child: Row(
-                                children: [
-                                  Flexible(
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.black.withValues(alpha: 0.68),
-                                        borderRadius: BorderRadius.circular(99),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.touch_app_rounded,
-                                            size: 14,
-                                            color: tk.clientAccent,
-                                          ),
-                                          const SizedBox(width: 5),
-                                          Flexible(
-                                            child: Text(
-                                              _focalPoint == null
-                                                  ? 'Toque no ponto da foto para destacar o defeito (opcional)'
-                                                  : 'Ponto de atenção marcado na foto ✓',
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                            Flexible(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpace.s12,
+                                  vertical: AppSpace.s4 + 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppShellColors.brandBackdrop.withValues(alpha: 0.84),
+                                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.touch_app_rounded,
+                                      size: 16,
+                                      color: AppShellColors.benefitAccent,
                                     ),
-                                  ),
-                                  if (_focalPoint != null) ...[
-                                    const SizedBox(width: 6),
-                                    InkWell(
-                                      onTap: () => setState(() => _focalPoint = null),
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 5,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.black87,
-                                          borderRadius: BorderRadius.circular(99),
-                                        ),
-                                        child: const Text(
-                                          'Limpar pino',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 10.5,
-                                            fontWeight: FontWeight.w700,
-                                          ),
+                                    const SizedBox(width: AppSpace.s8),
+                                    Flexible(
+                                      child: Text(
+                                        _focalPoint == null
+                                            ? 'Toque no ponto da foto para destacar o defeito (opcional)'
+                                            : 'Ponto de atenção marcado na foto ✓',
+                                        maxLines: 2,
+                                        style: AppType.bodySm.copyWith(
+                                          color: AppShellColors.onBrand,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
                                   ],
-                                ],
+                                ),
                               ),
                             ),
-                            if (_focalPoint != null)
-                              Positioned(
-                                left: (_focalPoint!.dx * previewW) - 18,
-                                top: (_focalPoint!.dy * previewH) - 18,
-                                child: IgnorePointer(
-                                  child: Container(
-                                    width: 36,
-                                    height: 36,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: tk.clientAccent.withValues(alpha: 0.28),
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2.2,
+                            if (_focalPoint != null) ...[
+                              const SizedBox(width: AppSpace.s8),
+                              AppPressable(
+                                semanticLabel: 'Limpar pino',
+                                borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                                onTap: () => setState(() => _focalPoint = null),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    minWidth: AppGeometry.minTarget,
+                                    minHeight: AppGeometry.minTarget,
+                                  ),
+                                  child: Center(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: AppSpace.s12,
+                                        vertical: AppSpace.s8,
                                       ),
-                                    ),
-                                    child: Center(
-                                      child: Container(
-                                        width: 12,
-                                        height: 12,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: tk.clientAccent,
+                                      decoration: BoxDecoration(
+                                        color: AppShellColors.brandBackdrop.withValues(alpha: 0.90),
+                                        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                                      ),
+                                      child: Text(
+                                        'Limpar pino',
+                                        style: AppType.caption.copyWith(
+                                          color: AppShellColors.onBrand,
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
+                            ],
                           ],
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Sugestões rápidas (toque para preencher em 1 segundo):',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: tk.textMuted,
-                ),
-              ),
-              const SizedBox(height: 6),
-              SingleChildScrollView(
-                key: const ValueKey('photo-studio-quick-chips'),
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < presets.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ActionChip(
-                          key: ValueKey('photo-preset-chip-$i'),
-                          avatar: Icon(
-                            Icons.auto_awesome_rounded,
-                            size: 15,
-                            color: tk.clientAccent,
-                          ),
-                          label: Text(
-                            presets[i].caption,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                      if (_focalPoint != null)
+                        Positioned(
+                          left: (_focalPoint!.dx * previewW) - 18,
+                          top: (_focalPoint!.dy * previewH) - 18,
+                          child: IgnorePointer(
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: tk.accent.withValues(alpha: 0.28),
+                                border: Border.all(
+                                  color: AppShellColors.onBrand,
+                                  width: 2.2,
+                                ),
+                              ),
+                              child: Center(
+                                child: Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: tk.accent,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                          onPressed: () {
-                            setState(() {
-                              _captionCtrl.text = presets[i].caption;
-                              if (_suggestionCtrl.text.trim().isEmpty) {
-                                _suggestionCtrl.text = presets[i].suggestion;
-                              }
-                            });
-                          },
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                key: const ValueKey('photo-studio-caption-field'),
-                controller: _captionCtrl,
-                maxLength: 120,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'O que esta foto mostra? (Descrição breve)',
-                  hintText: 'Ex.: Registro pingando atrás da pia / Disjuntor queimado',
-                  prefixIcon: Icon(Icons.chat_bubble_outline_rounded),
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                key: const ValueKey('photo-studio-suggestion-field'),
-                controller: _suggestionCtrl,
-                maxLength: 140,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Sugestão do que pode ser feito (Opcional)',
-                  hintText: 'Ex.: Acho que precisa trocar a vedação ou substituir a peça',
-                  prefixIcon: Icon(Icons.lightbulb_outline_rounded),
-                  counterText: '',
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  TextButton(
-                    key: const ValueKey('photo-studio-skip-btn'),
-                    onPressed: _skipAnnotations,
-                    child: const Text('Pular descrição'),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      key: const ValueKey('photo-studio-save-btn'),
-                      onPressed: _saveWithAnnotations,
-                      icon: const Icon(Icons.check_circle_rounded, size: 18),
-                      label: const Text('Salvar Foto e Descrição'),
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: AppSpace.s16),
+        Text(
+          'Sugestões rápidas (toque para preencher em 1 segundo):',
+          style: AppType.bodySm.copyWith(
+            fontWeight: FontWeight.w600,
+            color: tk.textMuted,
+          ),
+        ),
+        const SizedBox(height: AppSpace.s8),
+        SingleChildScrollView(
+          key: const ValueKey('photo-studio-quick-chips'),
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < presets.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(right: AppSpace.s8),
+                  child: ActionChip(
+                    key: ValueKey('photo-preset-chip-$i'),
+                    materialTapTargetSize: MaterialTapTargetSize.padded,
+                    avatar: Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 16,
+                      color: tk.accentInk,
                     ),
+                    label: Text(
+                      presets[i].caption,
+                      style: AppType.bodySm.copyWith(
+                        color: tk.text,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _captionCtrl.text = presets[i].caption;
+                        if (_suggestionCtrl.text.trim().isEmpty) {
+                          _suggestionCtrl.text = presets[i].suggestion;
+                        }
+                      });
+                    },
                   ),
-                ],
-              ),
+                ),
             ],
           ),
         ),
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
+          key: const ValueKey('photo-studio-caption-field'),
+          controller: _captionCtrl,
+          maxLength: 120,
+          textCapitalization: TextCapitalization.sentences,
+          label: 'O que esta foto mostra? (Descrição breve)',
+          hint: 'Ex.: Registro pingando atrás da pia / Disjuntor queimado',
+          prefixIcon: Icons.chat_bubble_outline_rounded,
+        ),
+        const SizedBox(height: AppSpace.s12),
+        AppTextField(
+          key: const ValueKey('photo-studio-suggestion-field'),
+          controller: _suggestionCtrl,
+          maxLength: 140,
+          textCapitalization: TextCapitalization.sentences,
+          label: 'Sugestão do que pode ser feito (Opcional)',
+          hint: 'Ex.: Acho que precisa trocar a vedação ou substituir a peça',
+          prefixIcon: Icons.lightbulb_outline_rounded,
+        ),
+        const SizedBox(height: AppSpace.s20),
+        if (compact)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AppButton(
+                key: const ValueKey('photo-studio-save-btn'),
+                label: 'Salvar Foto e Descrição',
+                icon: Icons.check_circle_rounded,
+                onPressed: _saveWithAnnotations,
+              ),
+              const SizedBox(height: AppSpace.s8),
+              AppButton(
+                key: const ValueKey('photo-studio-skip-btn'),
+                label: 'Pular descrição',
+                variant: AppButtonVariant.tertiary,
+                onPressed: _skipAnnotations,
+              ),
+            ],
+          )
+        else
+          Row(
+            children: [
+              AppButton(
+                key: const ValueKey('photo-studio-skip-btn'),
+                label: 'Pular descrição',
+                variant: AppButtonVariant.tertiary,
+                expand: false,
+                onPressed: _skipAnnotations,
+              ),
+              const SizedBox(width: AppSpace.s12),
+              Expanded(
+                child: AppButton(
+                  key: const ValueKey('photo-studio-save-btn'),
+                  label: 'Salvar Foto e Descrição',
+                  icon: Icons.check_circle_rounded,
+                  onPressed: _saveWithAnnotations,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -613,41 +609,50 @@ class MediaPickerRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final tileHeight = context.layout.isLargeText ? 136.0 : 120.0;
+    final tileWidth = context.layout.isLargeText ? 132.0 : 120.0;
+
     return SizedBox(
-      height: 108,
+      height: tileHeight,
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
           if (images.length < max)
-            GestureDetector(
-              key: const ValueKey('media-picker-add-tile'),
-              onTap: onAdd,
-              child: Container(
-                width: 104,
-                margin: const EdgeInsets.only(right: 10),
-                decoration: BoxDecoration(
-                  color: tk.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: tk.border),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.add_a_photo_outlined, color: tk.clientAccent),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Adicionar',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: tk.text,
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpace.s12),
+              child: AppPressable(
+                key: const ValueKey('media-picker-add-tile'),
+                semanticLabel: 'Adicionar foto e nota',
+                borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                onTap: onAdd,
+                child: Container(
+                  width: tileWidth,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
+                  decoration: BoxDecoration(
+                    color: tk.surface,
+                    borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                    border: Border.all(color: tk.border),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.add_a_photo_outlined, color: tk.accentInk, size: 24),
+                      const SizedBox(height: AppSpace.s4),
+                      Text(
+                        'Adicionar',
+                        textAlign: TextAlign.center,
+                        style: AppType.caption.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: tk.text,
+                        ),
                       ),
-                    ),
-                    Text(
-                      'Foto + nota',
-                      style: TextStyle(fontSize: 10.5, color: tk.textMuted),
-                    ),
-                  ],
+                      Text(
+                        'Foto + nota',
+                        textAlign: TextAlign.center,
+                        style: AppType.caption.copyWith(color: tk.textMuted),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -659,84 +664,115 @@ class MediaPickerRow extends StatelessWidget {
                 final badgeText = item.combinedSummary.isNotEmpty
                     ? item.combinedSummary
                     : (item.focalPoint != null ? 'Ponto marcado' : 'Toque p/ descrever');
-                return Stack(
-                  children: [
-                    GestureDetector(
-                      key: ValueKey('media-picker-thumb-$i'),
-                      onTap: onEdit != null ? () => onEdit!(i) : null,
-                      child: Container(
-                        width: 112,
-                        height: 108,
-                        margin: const EdgeInsets.only(right: 10),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: hasNote
-                                ? tk.clientAccent.withValues(alpha: 0.75)
-                                : tk.border,
-                            width: hasNote ? 1.6 : 1.0,
-                          ),
-                          image: DecorationImage(
-                            image: MemoryImage(item.bytes),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        child: Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.72),
-                              borderRadius: const BorderRadius.vertical(
-                                bottom: Radius.circular(12),
+                return Padding(
+                  padding: const EdgeInsets.only(right: AppSpace.s12),
+                  child: SizedBox(
+                    width: tileWidth,
+                    height: tileHeight,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: AppPressable(
+                            key: ValueKey('media-picker-thumb-$i'),
+                            semanticLabel: 'Foto ${i + 1}: $badgeText',
+                            borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                            onTap: onEdit != null ? () => onEdit!(i) : null,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                                border: Border.all(
+                                  color: hasNote
+                                      ? tk.accent.withValues(alpha: 0.75)
+                                      : tk.border,
+                                  width: hasNote ? 1.6 : 1.0,
+                                ),
+                                image: DecorationImage(
+                                  image: MemoryImage(item.bytes),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpace.s8,
+                                    vertical: AppSpace.s4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppShellColors.brandBackdrop.withValues(alpha: 0.84),
+                                    borderRadius: const BorderRadius.vertical(
+                                      bottom: Radius.circular(AppGeometry.fieldRadius - 2),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        hasNote
+                                            ? Icons.check_circle_rounded
+                                            : Icons.edit_note_rounded,
+                                        size: 14,
+                                        color: hasNote
+                                            ? AppShellColors.benefitTrust
+                                            : AppShellColors.onBrand,
+                                      ),
+                                      const SizedBox(width: AppSpace.s4),
+                                      Expanded(
+                                        child: Text(
+                                          badgeText,
+                                          maxLines: 1,
+                                          softWrap: false,
+                                          overflow: TextOverflow.fade,
+                                          style: AppType.bodySm.copyWith(
+                                            color: AppShellColors.onBrand,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  hasNote
-                                      ? Icons.check_circle_rounded
-                                      : Icons.edit_note_rounded,
-                                  size: 12,
-                                  color: hasNote ? Colors.greenAccent : Colors.white70,
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    badgeText,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: AppPressable(
+                            key: ValueKey('media-picker-remove-$i'),
+                            semanticLabel: 'Remover foto ${i + 1}',
+                            excludeSemantics: true,
+                            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                            onTap: () => onRemove(i),
+                            child: SizedBox(
+                              width: AppGeometry.minTarget,
+                              height: AppGeometry.minTarget,
+                              child: Align(
+                                alignment: Alignment.topRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(AppSpace.s4),
+                                  child: Container(
+                                    width: 26,
+                                    height: 26,
+                                    decoration: BoxDecoration(
+                                      color: AppShellColors.brandBackdrop.withValues(alpha: 0.88),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      size: 16,
+                                      color: AppShellColors.onBrand,
                                     ),
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                    Positioned(
-                      right: 14,
-                      top: 4,
-                      child: GestureDetector(
-                        key: ValueKey('media-picker-remove-$i'),
-                        onTap: () => onRemove(i),
-                        child: const CircleAvatar(
-                          radius: 11,
-                          backgroundColor: Colors.black87,
-                          child: Icon(Icons.close, size: 14, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 );
               },
             ),

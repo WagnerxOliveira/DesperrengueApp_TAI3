@@ -123,13 +123,15 @@ class InfoBanner extends StatelessWidget {
 
   (Color, Color, Color, IconData) _style(BuildContext context) {
     final tk = context.tk;
+    final infoInk = tk.isDark ? tk.info : const Color(0xFF14509E);
+    final secInk = tk.isDark ? tk.security : const Color(0xFF1C5A60);
     return switch (tone) {
-      BannerTone.info => (tk.infoSoft, tk.isDark ? tk.info : const Color(0xFF14509E), tk.info, Icons.info_outline),
-      BannerTone.success => (tk.successSoft, tk.successInk, tk.success, Icons.check_circle_outline),
-      BannerTone.warning => (tk.warningSoft, tk.warningInk, tk.warning, Icons.warning_amber_rounded),
-      BannerTone.danger => (tk.dangerSoft, tk.dangerInk, tk.danger, Icons.error_outline),
-      BannerTone.security => (tk.securitySoft, tk.isDark ? tk.security : const Color(0xFF1C5A60), tk.security, Icons.lock_outline),
-      BannerTone.promo => (tk.clientSoft, tk.warningInk, tk.clientAccent, Icons.local_offer_outlined),
+      BannerTone.info => (tk.infoSoft, infoInk, infoInk, Icons.info_outline),
+      BannerTone.success => (tk.successSoft, tk.successInk, tk.successInk, Icons.check_circle_outline),
+      BannerTone.warning => (tk.warningSoft, tk.warningInk, tk.warningInk, Icons.warning_amber_rounded),
+      BannerTone.danger => (tk.dangerSoft, tk.dangerInk, tk.dangerInk, Icons.error_outline),
+      BannerTone.security => (tk.securitySoft, secInk, secInk, Icons.lock_outline),
+      BannerTone.promo => (tk.clientSoft, tk.warningInk, tk.clientAccentInk, Icons.local_offer_outlined),
     };
   }
 
@@ -303,17 +305,21 @@ class PulseRadar extends StatefulWidget {
 }
 
 class _PulseRadarState extends State<PulseRadar> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 3));
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  bool _pulsed = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    if (disableAnimations) {
+    if (AppMotion.reduced(context)) {
       if (_c.isAnimating) _c.stop();
       _c.value = 0.35;
-    } else if (!_c.isAnimating) {
-      _c.repeat();
+    } else if (!_pulsed) {
+      _pulsed = true;
+      _c.forward(from: 0.0);
     }
   }
 
