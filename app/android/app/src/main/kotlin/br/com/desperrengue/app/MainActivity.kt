@@ -8,18 +8,23 @@ import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.database.Cursor
 import android.database.MatrixCursor
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
@@ -35,15 +40,21 @@ private const val OTA_CACHE_SUBDIR = "ota"
 private const val PUBLIC_APK_FILE_NAME = "desperrengue.apk"
 private const val FOUNDER_APK_FILE_NAME = "desperrengue-founder-ceo.apk"
 private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+private const val DOCUMENT_PICKER_CHANNEL = "br.com.desperrengue.app/document_picker"
+private const val REQUEST_CODE_PICK_DOCUMENT_DOWNLOADS = 29031
+private const val MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
 
 class MainActivity : FlutterActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val otaExecutor = Executors.newSingleThreadExecutor()
+    private val documentExecutor = Executors.newSingleThreadExecutor()
     private val otaDownloadActive = AtomicBoolean(false)
 
     private var flagSecureActive: Boolean = false
     private var bypassExpiresAtEpochMs: Long = 0L
     private var otaChannel: MethodChannel? = null
+    private var documentPickerChannel: MethodChannel? = null
+    private var pendingDocumentPickerResult: MethodChannel.Result? = null
 
     @Volatile
     private var pendingPermissionApkFile: File? = null
@@ -292,13 +303,265 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        val docChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DOCUMENT_PICKER_CHANNEL
+        )
+        documentPickerChannel = docChannel
+        docChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickDocumentInDownloads" -> launchDownloadsDocumentPicker(result)
+                "renderPdfFirstPagePng" -> {
+                    val pdfBytes = (call.arguments as? ByteArray)
+                        ?: call.argument<ByteArray>("bytes")
+                    val targetWidth = call.argument<Int>("targetWidth") ?: 1600
+                    if (pdfBytes == null || pdfBytes.isEmpty()) {
+                        result.error(
+                            "ERR_INVALID_PDF_BYTES",
+                            "Conteúdo PDF vazio ou inválido.",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
+                    if (pdfBytes.size > MAX_DOCUMENT_BYTES) {
+                        result.error(
+                            "ERR_FILE_TOO_LARGE",
+                            "O arquivo PDF excede o limite de 15 MB.",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
+                    documentExecutor.execute {
+                        try {
+                            val pngBytes = renderPdfFirstPageToPng(pdfBytes, targetWidth)
+                            mainHandler.post { result.success(pngBytes) }
+                        } catch (e: Exception) {
+                            mainHandler.post {
+                                result.error(
+                                    "ERR_PDF_RENDER_FAILED",
+                                    e.message ?: "Não foi possível renderizar a página do PDF.",
+                                    null
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun launchDownloadsDocumentPicker(result: MethodChannel.Result) {
+        if (pendingDocumentPickerResult != null) {
+            result.error(
+                "ERR_PICKER_ALREADY_ACTIVE",
+                "Já existe uma seleção de arquivo em andamento.",
+                null
+            )
+            return
+        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf("application/pdf", "image/jpeg", "image/png", "image/webp")
+            )
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val downloadsUri = Uri.parse(
+                    "content://com.android.externalstorage.documents/document/primary%3ADownload%2F"
+                )
+                putExtra(DocumentsContract.EXTRA_INITIAL_URI, downloadsUri)
+            }
+        }
+        pendingDocumentPickerResult = result
+        try {
+            startActivityForResult(intent, REQUEST_CODE_PICK_DOCUMENT_DOWNLOADS)
+        } catch (e: Exception) {
+            pendingDocumentPickerResult = null
+            result.error(
+                "ERR_PICKER_UNAVAILABLE",
+                e.message ?: "Seletor nativo de arquivos indisponível neste aparelho.",
+                null
+            )
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == REQUEST_CODE_PICK_DOCUMENT_DOWNLOADS) {
+            val pending = pendingDocumentPickerResult
+            pendingDocumentPickerResult = null
+            if (pending == null) return
+            val uri = if (resultCode == RESULT_OK) data?.data else null
+            if (uri == null) {
+                pending.success(null)
+                return
+            }
+            documentExecutor.execute {
+                try {
+                    val payload = readPickedDocumentUri(uri)
+                    mainHandler.post { pending.success(payload) }
+                } catch (e: IllegalStateException) {
+                    mainHandler.post {
+                        pending.error(
+                            "ERR_FILE_TOO_LARGE",
+                            e.message ?: "O arquivo selecionado excede o limite de 15 MB.",
+                            null
+                        )
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post {
+                        pending.error(
+                            "ERR_DOCUMENT_READ_FAILED",
+                            e.message ?: "Não foi possível ler o arquivo selecionado.",
+                            null
+                        )
+                    }
+                }
+            }
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    private fun readPickedDocumentUri(uri: Uri): Map<String, Any> {
+        var displayName = ""
+        var reportedSize = -1L
+        contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIdx >= 0) {
+                    displayName = cursor.getString(nameIdx)?.trim().orEmpty()
+                }
+                val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIdx >= 0 && !cursor.isNull(sizeIdx)) {
+                    reportedSize = cursor.getLong(sizeIdx)
+                }
+            }
+        }
+        if (reportedSize > MAX_DOCUMENT_BYTES.toLong()) {
+            throw IllegalStateException("O arquivo selecionado ultrapassa o limite máximo de 15 MB.")
+        }
+
+        val mimeType = contentResolver.getType(uri)?.trim().orEmpty().ifEmpty {
+            inferDocumentMimeType(displayName)
+        }
+        if (displayName.isEmpty()) {
+            displayName = when {
+                mimeType.contains("pdf", ignoreCase = true) -> "certidao_pf.pdf"
+                mimeType.contains("png", ignoreCase = true) -> "certidao_pf.png"
+                mimeType.contains("webp", ignoreCase = true) -> "certidao_pf.webp"
+                else -> "certidao_pf.jpg"
+            }
+        }
+
+        val baos = ByteArrayOutputStream()
+        contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(32 * 1024)
+            var totalRead = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                totalRead += read
+                if (totalRead > MAX_DOCUMENT_BYTES) {
+                    throw IllegalStateException("O arquivo selecionado ultrapassa o limite máximo de 15 MB.")
+                }
+                baos.write(buffer, 0, read)
+            }
+        } ?: throw FileNotFoundException("Não foi possível abrir o arquivo selecionado.")
+
+        return mapOf(
+            "bytes" to baos.toByteArray(),
+            "fileName" to displayName,
+            "mimeType" to mimeType
+        )
+    }
+
+    private fun inferDocumentMimeType(fileName: String): String {
+        val lower = fileName.lowercase(Locale.ROOT)
+        return when {
+            lower.endsWith(".pdf") -> "application/pdf"
+            lower.endsWith(".png") -> "image/png"
+            lower.endsWith(".webp") -> "image/webp"
+            lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+            else -> "application/octet-stream"
+        }
+    }
+
+    private fun renderPdfFirstPageToPng(pdfBytes: ByteArray, targetWidth: Int): ByteArray? {
+        val tempPdf = File.createTempFile("pf_cert_", ".pdf", applicationContext.cacheDir)
+        try {
+            FileOutputStream(tempPdf).use { fos ->
+                fos.write(pdfBytes)
+                fos.flush()
+            }
+            ParcelFileDescriptor.open(tempPdf, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd ->
+                PdfRenderer(pfd).use { renderer ->
+                    if (renderer.pageCount <= 0) return null
+                    renderer.openPage(0).use { page ->
+                        val pageW = page.width.coerceAtLeast(1)
+                        val pageH = page.height.coerceAtLeast(1)
+                        val clampedWidth = targetWidth.coerceIn(600, 2200)
+                        val scale = clampedWidth.toFloat() / pageW.toFloat()
+                        val rawHeight = (pageH * scale).toInt().coerceAtLeast(1)
+                        val maxHeight = 3200
+                        val finalHeight: Int
+                        val finalWidth: Int
+                        if (rawHeight > maxHeight) {
+                            finalHeight = maxHeight
+                            finalWidth = (pageW.toFloat() * maxHeight.toFloat() / pageH.toFloat())
+                                .toInt()
+                                .coerceAtLeast(1)
+                        } else {
+                            finalWidth = clampedWidth
+                            finalHeight = rawHeight
+                        }
+                        val bitmap = Bitmap.createBitmap(
+                            finalWidth,
+                            finalHeight,
+                            Bitmap.Config.ARGB_8888
+                        )
+                        try {
+                            bitmap.eraseColor(Color.WHITE)
+                            page.render(
+                                bitmap,
+                                null,
+                                null,
+                                PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
+                            )
+                            val out = ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                            return out.toByteArray()
+                        } finally {
+                            bitmap.recycle()
+                        }
+                    }
+                }
+            }
+        } finally {
+            runCatching { tempPdf.delete() }
+        }
     }
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(relockRunnable)
         otaChannel?.setMethodCallHandler(null)
         otaChannel = null
+        documentPickerChannel?.setMethodCallHandler(null)
+        documentPickerChannel = null
+        pendingDocumentPickerResult = null
         otaExecutor.shutdownNow()
+        documentExecutor.shutdownNow()
         super.onDestroy()
     }
 

@@ -57,6 +57,52 @@ class AuditedCriminalRecordResult {
   }
 }
 
+/// Campos estruturados extraídos automaticamente de uma Certidão de Antecedentes
+/// Criminais da Polícia Federal (PDF textual, OCR de imagem ou QR Code oficial).
+class ExtractedCriminalCertificateFields {
+  const ExtractedCriminalCertificateFields({
+    this.protocolNumber,
+    this.issuedDate,
+    this.validationCode,
+    this.holderName,
+    this.holderCpfDigits,
+    this.qrUrl,
+  });
+
+  final String? protocolNumber;
+  final DateTime? issuedDate;
+  final String? validationCode;
+  final String? holderName;
+  final String? holderCpfDigits;
+  final String? qrUrl;
+
+  bool get hasAnyField =>
+      (protocolNumber != null && protocolNumber!.isNotEmpty) ||
+      issuedDate != null ||
+      (validationCode != null && validationCode!.isNotEmpty);
+
+  ExtractedCriminalCertificateFields mergeWith(
+    ExtractedCriminalCertificateFields fallback,
+  ) {
+    return ExtractedCriminalCertificateFields(
+      protocolNumber: (protocolNumber != null && protocolNumber!.isNotEmpty)
+          ? protocolNumber
+          : fallback.protocolNumber,
+      issuedDate: issuedDate ?? fallback.issuedDate,
+      validationCode: (validationCode != null && validationCode!.isNotEmpty)
+          ? validationCode
+          : fallback.validationCode,
+      holderName: (holderName != null && holderName!.isNotEmpty)
+          ? holderName
+          : fallback.holderName,
+      holderCpfDigits: (holderCpfDigits != null && holderCpfDigits!.isNotEmpty)
+          ? holderCpfDigits
+          : fallback.holderCpfDigits,
+      qrUrl: (qrUrl != null && qrUrl!.isNotEmpty) ? qrUrl : fallback.qrUrl,
+    );
+  }
+}
+
 /// Motor forense Web-safe (zero `dart:io`) para leitura, descompactação `FlateDecode`
 /// e validação de Certidões de Antecedentes Criminais da Polícia Federal (`ePol/SINIC`).
 class CriminalBackgroundService {
@@ -167,19 +213,27 @@ class CriminalBackgroundService {
     return false;
   }
 
-  /// Extrai texto legível de arquivos PDF (incluindo streams compactados `FlateDecode` / Zlib
-  /// e literais PDF `(...)` / `<...>`) ou texto UTF-8/Latin-1 contido nos bytes.
+  /// Extrai texto legível de arquivos PDF (incluindo streams compactados `FlateDecode` / Zlib,
+  /// PNG Predictors `/Predictor 10..15`, Object Streams `/Type /ObjStm`, `ToUnicode CMap`
+  /// `beginbfchar`/`beginbfrange` para fontes `Identity-H`/`CIDFontType2` da PF e literais PDF
+  /// `(...)` / `<...>`) ou texto UTF-8/Latin-1 contido nos bytes.
   static String extractReadableTextFromPdfOrBytes(Uint8List bytes) {
     if (bytes.isEmpty) return '';
     final chunks = <String>[];
 
     if (_startsWithPdfHeader(bytes)) {
       final rawLatin1 = latin1.decode(bytes, allowInvalid: true);
-      final streamRe = RegExp(r'stream(?:\r\n|\n|\r)');
+      final parsedStreams = <_PdfParsedStream>[];
+      final cmapByObjNum = <int, _PdfToUnicodeCMap>{};
+      final mergedCMap = _PdfToUnicodeCMap();
+      final objStmBodies = <String>[];
+
+      final streamRe = RegExp(r'(?<![A-Za-z])stream(?:\r\n|\n|\r)');
       int searchFrom = 0;
       while (searchFrom < rawLatin1.length) {
         final match = streamRe.firstMatch(rawLatin1.substring(searchFrom));
         if (match == null) break;
+        final streamKwStart = searchFrom + match.start;
         final dataStart = searchFrom + match.end;
         final endIdx = rawLatin1.indexOf('endstream', dataStart);
         if (endIdx < 0) break;
@@ -194,22 +248,99 @@ class CriminalBackgroundService {
           dataEnd--;
         }
 
-        if (dataEnd > dataStart && dataEnd <= bytes.length) {
+        final headerInfo = _parseStreamHeaderBefore(rawLatin1, streamKwStart);
+        if (!headerInfo.isImage && dataEnd > dataStart && dataEnd <= bytes.length) {
           final streamSlice = Uint8List.sublistView(bytes, dataStart, dataEnd);
-          final inflated = _tryInflateZlibOrDeflate(streamSlice);
-          final decodedStream = _decodeBytesUtf8OrLatin1(inflated ?? streamSlice);
-          final pdfText = _extractPdfContentStreamStrings(decodedStream);
-          if (pdfText.isNotEmpty) {
-            chunks.add(pdfText);
-          } else if (inflated != null) {
-            chunks.add(decodedStream);
+          Uint8List? inflated = _tryInflateZlibOrDeflate(streamSlice);
+          if (inflated != null && headerInfo.predictor >= 10 && headerInfo.predictor <= 15) {
+            inflated = _undoPngPredictor(
+              inflated,
+              columns: headerInfo.columns,
+              colors: headerInfo.colors,
+              bitsPerComponent: headerInfo.bitsPerComponent,
+            );
+          } else if (inflated != null && headerInfo.predictor == 2) {
+            inflated = _undoTiffPredictor(
+              inflated,
+              columns: headerInfo.columns,
+              colors: headerInfo.colors,
+              bitsPerComponent: headerInfo.bitsPerComponent,
+            );
+          }
+
+          final effectiveBytes = inflated ?? streamSlice;
+          final decodedStream = _decodeBytesUtf8OrLatin1(effectiveBytes);
+
+          if (headerInfo.isObjStm) {
+            final first = headerInfo.firstOffset;
+            final objBody = (first > 0 && first < effectiveBytes.length)
+                ? _decodeBytesUtf8OrLatin1(
+                    Uint8List.sublistView(effectiveBytes, first),
+                  )
+                : decodedStream;
+            objStmBodies.add(objBody);
+          } else if (_looksLikeToUnicodeCMap(decodedStream)) {
+            final cmap = _PdfToUnicodeCMap.parse(decodedStream);
+            if (cmap.isNotEmpty) {
+              if (headerInfo.objNum != null) {
+                cmapByObjNum[headerInfo.objNum!] = cmap;
+              }
+              mergedCMap.mergeFrom(cmap);
+            }
+          } else {
+            parsedStreams.add(
+              _PdfParsedStream(
+                decodedStream: decodedStream,
+                wasInflated: inflated != null,
+                objNum: headerInfo.objNum,
+              ),
+            );
           }
         }
         searchFrom = endIdx + 9;
       }
 
-      // Captura também strings PDF diretas fora de streams compactados
-      final directPdfStrings = _extractPdfContentStreamStrings(rawLatin1);
+      // Mapeia nomes de fonte (/F1, /TT0, /C2_0...) para seus ToUnicode CMaps específicos
+      final fullCatalogSource = objStmBodies.isEmpty
+          ? rawLatin1
+          : '$rawLatin1\n${objStmBodies.join('\n')}';
+      final cmapByFontName = _resolveFontNameCMaps(fullCatalogSource, cmapByObjNum);
+
+      // Passada 2: decodifica todos os content streams com suporte a ToUnicode CMap e kerning TJ
+      for (final st in parsedStreams) {
+        final pdfText = _extractPdfContentStreamStrings(
+          st.decodedStream,
+          cmapByFontName: cmapByFontName,
+          fallbackCMap: mergedCMap.isNotEmpty ? mergedCMap : null,
+        );
+        if (pdfText.isNotEmpty) {
+          chunks.add(pdfText);
+        } else if (st.wasInflated) {
+          final printable = _extractPrintableRuns(st.decodedStream);
+          if (printable.isNotEmpty) {
+            chunks.add(printable);
+          }
+        }
+      }
+
+      // Extrai literais e URIs de Object Streams (/Type /ObjStm)
+      for (final body in objStmBodies) {
+        final objText = _extractPdfContentStreamStrings(
+          body,
+          cmapByFontName: cmapByFontName,
+          fallbackCMap: mergedCMap.isNotEmpty ? mergedCMap : null,
+        );
+        if (objText.isNotEmpty) {
+          chunks.add(objText);
+        }
+      }
+
+      // Captura também strings PDF diretas fora de streams compactados (ex.: anotações /URI)
+      final directPdfStrings = _extractPdfContentStreamStrings(
+        rawLatin1,
+        cmapByFontName: cmapByFontName,
+        fallbackCMap: mergedCMap.isNotEmpty ? mergedCMap : null,
+      );
       if (directPdfStrings.isNotEmpty) {
         chunks.add(directPdfStrings);
       }
@@ -217,15 +348,212 @@ class CriminalBackgroundService {
 
     // Fallback para PDFs com texto plano ou strings legíveis diretas
     final plain = _decodeBytesUtf8OrLatin1(bytes);
-    final printableRuns = RegExp(r'[A-Za-zÀ-ÿ0-9.,:/\-ºª()\s]{8,}')
-        .allMatches(plain)
-        .map((m) => m.group(0)!)
-        .join(' ');
+    final printableRuns = _extractPrintableRuns(plain);
     if (printableRuns.isNotEmpty) {
       chunks.add(printableRuns);
     }
 
     return chunks.join('\n').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  static String _extractPrintableRuns(String raw) {
+    return RegExp(r'[A-Za-zÀ-ÿ0-9.,:/\-ºª°()\s?=&_]{8,}')
+        .allMatches(raw)
+        .map((m) => m.group(0)!)
+        .join(' ')
+        .trim();
+  }
+
+  static bool _looksLikeToUnicodeCMap(String s) {
+    return s.contains('beginbfchar') ||
+        s.contains('beginbfrange') ||
+        (s.contains('begincmap') && s.contains('endcmap'));
+  }
+
+  static _PdfStreamHeaderInfo _parseStreamHeaderBefore(
+    String rawLatin1,
+    int streamKwStart,
+  ) {
+    final lookbackStart = math.max(0, streamKwStart - 4096);
+    var headerSlice = rawLatin1.substring(lookbackStart, streamKwStart);
+    final prevEndObj = headerSlice.lastIndexOf('endobj');
+    if (prevEndObj >= 0) {
+      headerSlice = headerSlice.substring(prevEndObj + 6);
+    }
+    final prevEndStream = headerSlice.lastIndexOf('endstream');
+    if (prevEndStream >= 0) {
+      headerSlice = headerSlice.substring(prevEndStream + 9);
+    }
+
+    // Localiza o dicionário `<< ... >>` imediatamente anterior à palavra-chave `stream`
+    final lastClose = headerSlice.lastIndexOf('>>');
+    String dict = '';
+    int dictStartInSlice = headerSlice.length;
+    if (lastClose >= 0) {
+      int depth = 0;
+      for (int i = lastClose + 1; i >= 1; i--) {
+        if (headerSlice.codeUnitAt(i) == 0x3E &&
+            headerSlice.codeUnitAt(i - 1) == 0x3E) {
+          depth++;
+          i--;
+        } else if (headerSlice.codeUnitAt(i) == 0x3C &&
+            headerSlice.codeUnitAt(i - 1) == 0x3C) {
+          depth--;
+          if (depth == 0) {
+            dictStartInSlice = i - 1;
+            dict = headerSlice.substring(dictStartInSlice, lastClose + 2);
+            break;
+          }
+          i--;
+        }
+      }
+    }
+
+    int? objNum;
+    final prefixBeforeDict = headerSlice.substring(0, dictStartInSlice);
+    final objMatches = RegExp(r'(\d+)\s+\d+\s+obj\b').allMatches(prefixBeforeDict).toList();
+    if (objMatches.isNotEmpty) {
+      objNum = int.tryParse(objMatches.last.group(1)!);
+    }
+
+    final isImage = RegExp(r'/Subtype\s*/Image\b').hasMatch(dict);
+    final isObjStm = RegExp(r'/Type\s*/ObjStm\b').hasMatch(dict);
+    final firstMatch = RegExp(r'/First\s+(\d+)').firstMatch(dict);
+    final predMatch = RegExp(r'/Predictor\s+(\d+)').firstMatch(dict);
+    final colMatch = RegExp(r'/Columns\s+(\d+)').firstMatch(dict);
+    final colorMatch = RegExp(r'/Colors\s+(\d+)').firstMatch(dict);
+    final bpcMatch = RegExp(r'/BitsPerComponent\s+(\d+)').firstMatch(dict);
+
+    return _PdfStreamHeaderInfo(
+      objNum: objNum,
+      isImage: isImage,
+      isObjStm: isObjStm,
+      firstOffset: int.tryParse(firstMatch?.group(1) ?? '') ?? 0,
+      predictor: int.tryParse(predMatch?.group(1) ?? '') ?? 1,
+      columns: math.max(1, int.tryParse(colMatch?.group(1) ?? '') ?? 1),
+      colors: math.max(1, int.tryParse(colorMatch?.group(1) ?? '') ?? 1),
+      bitsPerComponent: math.max(1, int.tryParse(bpcMatch?.group(1) ?? '') ?? 8),
+    );
+  }
+
+  static Map<String, _PdfToUnicodeCMap> _resolveFontNameCMaps(
+    String pdfText,
+    Map<int, _PdfToUnicodeCMap> cmapByObjNum,
+  ) {
+    final result = <String, _PdfToUnicodeCMap>{};
+    if (cmapByObjNum.isEmpty) return result;
+
+    // 1. Mapeia objeto de fonte N -> objeto ToUnicode M
+    final fontObjToCMap = <int, _PdfToUnicodeCMap>{};
+    final objRe = RegExp(r'(\d+)\s+\d+\s+obj\b([\s\S]*?)endobj');
+    for (final m in objRe.allMatches(pdfText)) {
+      final body = m.group(2)!;
+      if (!body.contains('/ToUnicode')) continue;
+      final tuMatch = RegExp(r'/ToUnicode\s+(\d+)\s+\d+\s+R').firstMatch(body);
+      if (tuMatch != null) {
+        final cmapId = int.tryParse(tuMatch.group(1)!);
+        final cmap = cmapId == null ? null : cmapByObjNum[cmapId];
+        final fontId = int.tryParse(m.group(1)!);
+        if (cmap != null && fontId != null) {
+          fontObjToCMap[fontId] = cmap;
+        }
+      }
+    }
+
+    // 2. Associa nomes de recursos (/F1 12 0 R, /TT0 15 0 R) ao CMap correspondente
+    if (fontObjToCMap.isNotEmpty) {
+      final fontRefRe = RegExp(r'/([A-Za-z0-9_+\-]+)\s+(\d+)\s+\d+\s+R');
+      for (final m in fontRefRe.allMatches(pdfText)) {
+        final name = m.group(1)!;
+        final refId = int.tryParse(m.group(2)!);
+        final cmap = refId == null ? null : fontObjToCMap[refId];
+        if (cmap != null) {
+          result[name] = cmap;
+        }
+      }
+    }
+    return result;
+  }
+
+  static Uint8List _undoPngPredictor(
+    Uint8List data, {
+    required int columns,
+    required int colors,
+    required int bitsPerComponent,
+  }) {
+    final bpp = math.max(1, (colors * bitsPerComponent + 7) ~/ 8);
+    final rowBytes = math.max(1, (columns * colors * bitsPerComponent + 7) ~/ 8);
+    final stride = rowBytes + 1;
+    if (data.length < stride) return data;
+
+    final rowCount = data.length ~/ stride;
+    final out = Uint8List(rowCount * rowBytes);
+    var prevRow = Uint8List(rowBytes);
+
+    int paeth(int a, int b, int c) {
+      final p = a + b - c;
+      final pa = (p - a).abs();
+      final pb = (p - b).abs();
+      final pc = (p - c).abs();
+      if (pa <= pb && pa <= pc) return a;
+      if (pb <= pc) return b;
+      return c;
+    }
+
+    for (int r = 0; r < rowCount; r++) {
+      final srcOff = r * stride;
+      final filter = data[srcOff];
+      final dstOff = r * rowBytes;
+      final curRow = Uint8List(rowBytes);
+
+      for (int i = 0; i < rowBytes; i++) {
+        final raw = data[srcOff + 1 + i];
+        final left = i >= bpp ? curRow[i - bpp] : 0;
+        final up = prevRow[i];
+        final upLeft = i >= bpp ? prevRow[i - bpp] : 0;
+        final int val;
+        switch (filter) {
+          case 0:
+            val = raw;
+            break;
+          case 1:
+            val = (raw + left) & 0xFF;
+            break;
+          case 2:
+            val = (raw + up) & 0xFF;
+            break;
+          case 3:
+            val = (raw + ((left + up) >> 1)) & 0xFF;
+            break;
+          case 4:
+            val = (raw + paeth(left, up, upLeft)) & 0xFF;
+            break;
+          default:
+            val = raw;
+        }
+        curRow[i] = val;
+        out[dstOff + i] = val;
+      }
+      prevRow = curRow;
+    }
+    return out;
+  }
+
+  static Uint8List _undoTiffPredictor(
+    Uint8List data, {
+    required int columns,
+    required int colors,
+    required int bitsPerComponent,
+  }) {
+    if (bitsPerComponent != 8) return data;
+    final rowBytes = math.max(1, columns * colors);
+    final out = Uint8List.fromList(data);
+    for (int r = 0; r + rowBytes <= out.length; r += rowBytes) {
+      for (int i = colors; i < rowBytes; i++) {
+        out[r + i] = (out[r + i] + out[r + i - colors]) & 0xFF;
+      }
+    }
+    return out;
   }
 
   static String _decodeBytesUtf8OrLatin1(Uint8List bytes) {
@@ -236,13 +564,85 @@ class CriminalBackgroundService {
     }
   }
 
-  static String _extractPdfContentStreamStrings(String content) {
+  static String _extractPdfContentStreamStrings(
+    String content, {
+    Map<String, _PdfToUnicodeCMap> cmapByFontName = const <String, _PdfToUnicodeCMap>{},
+    _PdfToUnicodeCMap? fallbackCMap,
+  }) {
     final out = StringBuffer();
     int i = 0;
     final n = content.length;
+    _PdfToUnicodeCMap? activeCMap = fallbackCMap;
+    bool inTjArray = false;
+
+    String decodeHexToken(String hexRaw) {
+      if (activeCMap != null && activeCMap.isNotEmpty) {
+        final mapped = activeCMap.decodeHex(hexRaw);
+        if (mapped != null && mapped.isNotEmpty) {
+          return mapped;
+        }
+      }
+      if (fallbackCMap != null &&
+          !identical(fallbackCMap, activeCMap) &&
+          fallbackCMap.isNotEmpty) {
+        final mapped = fallbackCMap.decodeHex(hexRaw);
+        if (mapped != null && mapped.isNotEmpty) {
+          return mapped;
+        }
+      }
+      final padded = hexRaw.length.isOdd ? '${hexRaw}0' : hexRaw;
+      final bytes = <int>[];
+      for (int k = 0; k < padded.length; k += 2) {
+        bytes.add(int.parse(padded.substring(k, k + 2), radix: 16));
+      }
+      return _decodePdfStringBytes(bytes);
+    }
 
     while (i < n) {
       final ch = content.codeUnitAt(i);
+
+      // Rastreamento de fonte ativa: `/F1 11 Tf`
+      if (ch == 0x2F && !inTjArray) {
+        final tfMatch = RegExp(r'^/([A-Za-z0-9_+\-]+)\s+[+\-]?\d+(?:\.\d+)?\s+Tf\b')
+            .firstMatch(content.substring(i, math.min(n, i + 64)));
+        if (tfMatch != null) {
+          final fontName = tfMatch.group(1)!;
+          activeCMap = cmapByFontName[fontName] ?? fallbackCMap;
+          i += tfMatch.end;
+          continue;
+        }
+      }
+
+      // Início de array TJ `[...]`
+      if (ch == 0x5B) {
+        inTjArray = true;
+        i++;
+        continue;
+      }
+
+      // Fim de array TJ `]`
+      if (ch == 0x5D && inTjArray) {
+        inTjArray = false;
+        out.write(' ');
+        i++;
+        continue;
+      }
+
+      // Ajuste de kerning numérico dentro de array TJ: deslocamento <= -120 equivale a espaço
+      if (inTjArray &&
+          (ch == 0x2D || ch == 0x2B || (ch >= 0x30 && ch <= 0x39))) {
+        final numMatch = RegExp(r'^[+\-]?\d+(?:\.\d+)?')
+            .firstMatch(content.substring(i, math.min(n, i + 24)));
+        if (numMatch != null) {
+          final numVal = double.tryParse(numMatch.group(0)!);
+          if (numVal != null && numVal <= -120.0) {
+            out.write(' ');
+          }
+          i += numMatch.end;
+          continue;
+        }
+      }
+
       // PDF literal string `(...)`
       if (ch == 0x28) {
         i++;
@@ -289,27 +689,37 @@ class CriminalBackgroundService {
           i++;
         }
         if (bytes.isNotEmpty) {
-          out
-            ..write(_decodePdfStringBytes(bytes))
-            ..write(' ');
+          final cmapDecoded = (activeCMap != null && activeCMap.hasSingleByteEntries)
+              ? activeCMap.decodeBytes(bytes)
+              : null;
+          out.write(cmapDecoded ?? _decodePdfStringBytes(bytes));
+          if (!inTjArray) {
+            out.write(' ');
+          }
         }
         continue;
       }
 
-      // PDF hex string `<...>` (ignora dicionários `<< ... >>`)
-      if (ch == 0x3C && (i + 1 >= n || content.codeUnitAt(i + 1) != 0x3C)) {
+      // Ignora delimitadores de dicionário `<<` e `>>`
+      if (ch == 0x3C && i + 1 < n && content.codeUnitAt(i + 1) == 0x3C) {
+        i += 2;
+        continue;
+      }
+      if (ch == 0x3E && i + 1 < n && content.codeUnitAt(i + 1) == 0x3E) {
+        i += 2;
+        continue;
+      }
+
+      // PDF hex string `<...>`
+      if (ch == 0x3C) {
         final close = content.indexOf('>', i + 1);
-        if (close > i + 1 && close - i <= 4096) {
+        if (close > i + 1 && close - i <= 8192) {
           final hexRaw = content.substring(i + 1, close).replaceAll(RegExp(r'\s+'), '');
           if (hexRaw.isNotEmpty && RegExp(r'^[0-9A-Fa-f]+$').hasMatch(hexRaw)) {
-            final padded = hexRaw.length.isOdd ? '${hexRaw}0' : hexRaw;
-            final bytes = <int>[];
-            for (int k = 0; k < padded.length; k += 2) {
-              bytes.add(int.parse(padded.substring(k, k + 2), radix: 16));
+            out.write(decodeHexToken(hexRaw));
+            if (!inTjArray) {
+              out.write(' ');
             }
-            out
-              ..write(_decodePdfStringBytes(bytes))
-              ..write(' ');
           }
           i = close + 1;
           continue;
@@ -341,6 +751,7 @@ class CriminalBackgroundService {
     DateTime? manualIssuedDate,
     String? manualValidationCode,
     String? rawExtractedTextOverride,
+    String? qrPayload,
     DateTime? referenceNow,
   }) async {
     final nowUtc = (referenceNow ?? DateTime.now()).toUtc();
@@ -406,12 +817,17 @@ class CriminalBackgroundService {
       );
     }
 
-    final autoProtocol = _extractProtocolFromText(extractedText);
-    final effectiveProtocol = rawProtoInput.isNotEmpty ? rawProtoInput : (autoProtocol ?? '');
-    final autoDate = _extractDateFromText(extractedText);
-    final effectiveDate = manualIssuedDate ?? autoDate;
-    final autoValCode = _extractValidationCodeFromText(extractedText);
-    final effectiveValCode = rawValInput.isNotEmpty ? rawValInput : (autoValCode ?? '');
+    final extractedFields = extractCertificateFieldsFromText(
+      extractedText,
+      qrPayload: qrPayload,
+    );
+    final effectiveProtocol = rawProtoInput.isNotEmpty
+        ? rawProtoInput
+        : (extractedFields.protocolNumber ?? '');
+    final effectiveDate = manualIssuedDate ?? extractedFields.issuedDate;
+    final effectiveValCode = rawValInput.isNotEmpty
+        ? rawValInput
+        : (extractedFields.validationCode ?? '');
 
     // Caminho A: Texto estrutural disponível (PDF da Polícia Federal ou transcrição de texto)
     final normText = _normalizeAscii(extractedText);
@@ -734,56 +1150,510 @@ class CriminalBackgroundService {
     return foundValidCpfs.contains(expectedCpfDigits);
   }
 
+  static const Set<String> _validationCodeStopWords = <String>{
+    'desta',
+    'deste',
+    'certidao',
+    'devera',
+    'pode',
+    'poder',
+    'sera',
+    'pela',
+    'pelo',
+    'pagina',
+    'portal',
+    'policia',
+    'federal',
+    'confirmada',
+    'verificada',
+    'eletronica',
+    'digital',
+    'online',
+    'site',
+    'endereco',
+    'atraves',
+    'para',
+    'com',
+  };
+
+  /// Extrai campos oficiais (protocolo/nº da certidão, data de emissão, código de
+  /// validação eletrônica, titular e CPF) a partir do texto da certidão e/ou da
+  /// URL/payload do QR Code oficial da Polícia Federal (layouts 2023–2026).
+  static ExtractedCriminalCertificateFields extractCertificateFieldsFromText(
+    String text, {
+    String? qrPayload,
+  }) {
+    final trimmedText = text.trim();
+    final embeddedQrUrl = _extractPfValidationUrlFromText(trimmedText);
+    final effectiveQr = (qrPayload != null && qrPayload.trim().isNotEmpty)
+        ? qrPayload.trim()
+        : embeddedQrUrl;
+
+    final qrFields = effectiveQr != null && effectiveQr.isNotEmpty
+        ? _extractFieldsFromQrPayload(effectiveQr)
+        : const ExtractedCriminalCertificateFields();
+
+    final textProtocol = _extractProtocolFromText(trimmedText);
+    final textDate = _extractDateFromText(trimmedText);
+    final textValCode = _extractValidationCodeFromText(trimmedText);
+    final textName = _extractHolderNameFromText(trimmedText);
+    final textCpf = _extractFirstValidCpfFromText(trimmedText);
+
+    final protocol = (textProtocol != null && textProtocol.isNotEmpty)
+        ? textProtocol
+        : qrFields.protocolNumber;
+    final issuedDate = textDate ?? qrFields.issuedDate;
+
+    var validationCode = (textValCode != null && textValCode.isNotEmpty)
+        ? textValCode
+        : qrFields.validationCode;
+
+    // Layout novo ePol-SINIC (2024–2026): a chave de autenticação em `validar-cac`
+    // pode ser o próprio número/código da certidão acompanhado do QR oficial da PF.
+    final isPfSinicContext = _isOfficialPfSinicContext(trimmedText, effectiveQr);
+    if ((validationCode == null || validationCode.isEmpty) &&
+        isPfSinicContext &&
+        protocol != null &&
+        protocol.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').length >= 6) {
+      validationCode = protocol;
+    }
+
+    return ExtractedCriminalCertificateFields(
+      protocolNumber: protocol,
+      issuedDate: issuedDate,
+      validationCode: validationCode,
+      holderName: textName ?? qrFields.holderName,
+      holderCpfDigits: textCpf ?? qrFields.holderCpfDigits,
+      qrUrl: qrFields.qrUrl ?? embeddedQrUrl,
+    );
+  }
+
+  static bool _isOfficialPfSinicContext(String text, String? qrPayload) {
+    final normText = _normalizeAscii(text);
+    final qrLower = (qrPayload ?? '').toLowerCase();
+    return qrLower.contains('servicos.pf.gov.br') ||
+        qrLower.contains('epol-sinic') ||
+        qrLower.contains('validar-cac') ||
+        normText.contains('validar-cac') ||
+        normText.contains('epol-sinic') ||
+        normText.contains('servicos.pf.gov.br') ||
+        (normText.contains('policia federal') &&
+            (normText.contains('sinic') ||
+                normText.contains('antecedentes criminais')));
+  }
+
+  static String? _extractPfValidationUrlFromText(String text) {
+    if (text.isEmpty) return null;
+    final m = RegExp(
+      r'https?://[^\s"<>)\]]*(?:pf\.gov\.br|epol-sinic|validar-cac)[^\s"<>)\]]*',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (m == null) return null;
+    return m.group(0)!.replaceAll(RegExp(r'[.,;]+$'), '').trim();
+  }
+
+  static ExtractedCriminalCertificateFields _extractFieldsFromQrPayload(
+    String rawQr,
+  ) {
+    final trimmed = rawQr.trim();
+    if (trimmed.isEmpty) return const ExtractedCriminalCertificateFields();
+
+    final uri = Uri.tryParse(trimmed);
+    String? protocol;
+    String? validationCode;
+    DateTime? issuedDate;
+    String? cpfDigits;
+    String? qrUrl;
+
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      qrUrl = trimmed;
+      final qpLower = <String, String>{};
+      uri.queryParameters.forEach((k, v) {
+        final cleanVal = v.trim();
+        if (cleanVal.isNotEmpty) {
+          qpLower[k.toLowerCase()] = cleanVal;
+        }
+      });
+
+      const protoKeys = <String>[
+        'numerocertidao',
+        'numero_certidao',
+        'numcertidao',
+        'certidao',
+        'numero',
+        'protocolo',
+        'cac',
+        'id',
+      ];
+      for (final k in protoKeys) {
+        final v = qpLower[k];
+        if (v != null && _looksLikeProtocolToken(v)) {
+          protocol = v;
+          break;
+        }
+      }
+
+      const codeKeys = <String>[
+        'codigovalidacao',
+        'codigo_validacao',
+        'codigoautenticacao',
+        'codigo_autenticacao',
+        'codigocontrole',
+        'codigo_controle',
+        'codigo',
+        'autenticacao',
+        'autenticidade',
+        'chave',
+        'token',
+        'hash',
+        'verificador',
+        'validador',
+      ];
+      for (final k in codeKeys) {
+        final v = qpLower[k];
+        if (v != null && _looksLikeValidationCodeToken(v)) {
+          validationCode = v;
+          break;
+        }
+      }
+
+      const dateKeys = <String>[
+        'dataemissao',
+        'data_emissao',
+        'dtemissao',
+        'emissao',
+        'data',
+        'issueddate',
+      ];
+      for (final k in dateKeys) {
+        final v = qpLower[k];
+        if (v != null) {
+          final parsed = _parseFlexibleDate(v);
+          if (parsed != null) {
+            issuedDate = parsed;
+            break;
+          }
+        }
+      }
+
+      final rawCpf = qpLower['cpf'];
+      if (rawCpf != null) {
+        final digits = DocumentOcrAndLivenessService.digitsOnly(rawCpf);
+        if (digits.length == 11 &&
+            DocumentOcrAndLivenessService.isValidCpfMod11(digits)) {
+          cpfDigits = digits;
+        }
+      }
+
+      // Caminho REST: .../validar-cac/<numeroCertidao>[/<codigo>]
+      final segs = uri.pathSegments
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(growable: false);
+      final idxValidar = segs.indexWhere(
+        (s) => s.toLowerCase().contains('validar'),
+      );
+      if (idxValidar >= 0) {
+        for (int i = idxValidar + 1; i < segs.length; i++) {
+          final seg = segs[i];
+          if (protocol == null && _looksLikeProtocolToken(seg)) {
+            protocol = seg;
+          } else if (validationCode == null &&
+              _looksLikeValidationCodeToken(seg)) {
+            validationCode = seg;
+          }
+        }
+      }
+    }
+
+    // Caso o QR contenha texto estruturado (não apenas URL)
+    protocol ??= _extractProtocolFromText(trimmed);
+    issuedDate ??= _extractDateFromText(trimmed);
+    validationCode ??= _extractValidationCodeFromText(trimmed);
+    cpfDigits ??= _extractFirstValidCpfFromText(trimmed);
+
+    final isPfUrl = (qrUrl ?? '').toLowerCase().contains('validar-cac') ||
+        (qrUrl ?? '').toLowerCase().contains('epol-sinic') ||
+        (qrUrl ?? '').toLowerCase().contains('servicos.pf.gov.br');
+    if (validationCode == null && isPfUrl && protocol != null) {
+      validationCode = protocol;
+    }
+
+    return ExtractedCriminalCertificateFields(
+      protocolNumber: protocol,
+      issuedDate: issuedDate,
+      validationCode: validationCode,
+      holderCpfDigits: cpfDigits,
+      qrUrl: qrUrl,
+    );
+  }
+
+  static bool _looksLikeProtocolToken(String raw) {
+    final cleaned = raw.trim().replaceAll(RegExp(r'[^A-Za-z0-9./\-]'), '');
+    if (cleaned.length < 6 || cleaned.length > 32) return false;
+    final digits = cleaned.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.length >= 4;
+  }
+
+  static bool _looksLikeValidationCodeToken(String raw) {
+    final cleaned = raw.trim().replaceAll(RegExp(r'[^A-Za-z0-9.\-/]'), '');
+    if (cleaned.length < 4 || cleaned.length > 40) return false;
+    final lower = cleaned.toLowerCase();
+    if (_validationCodeStopWords.contains(lower)) return false;
+    // Evita palavras comuns do português sem dígitos ou separadores de código
+    final hasDigit = RegExp(r'\d').hasMatch(cleaned);
+    final hasCodeSeparator = cleaned.contains('.') || cleaned.contains('-');
+    return hasDigit || (hasCodeSeparator && cleaned.length >= 8);
+  }
+
   static String? _extractProtocolFromText(String text) {
     if (text.isEmpty) return null;
     final norm = _normalizeAscii(text);
-    final labeled = RegExp(
-      r'(?:certidao\s*(?:n[oº°.]*|numero)|protocolo(?:\s*n[oº°.]*)?)\s*[:\-]?\s*([0-9][0-9./\-]{5,26})',
-    ).firstMatch(norm);
-    if (labeled != null) return labeled.group(1)!.trim();
 
-    final standalone = RegExp(r'\b(20\d{2}[./\-]?\d{6,16})\b').firstMatch(norm);
-    return standalone?.group(1)?.trim();
+    // 1. Formatos rotulados oficiais PF 2023–2026:
+    //    "Certidão nº 195290532026", "Certidão de Antecedentes Criminais nº 2026.0192837465",
+    //    "Número da Certidão: ...", "Protocolo: ..."
+    final labeledPatterns = <RegExp>[
+      RegExp(
+        r'certidao\s+(?:de\s+antecedentes\s+criminais\s+)?(?:n[\s.º°o]*|numero(?:\s+da\s+certidao)?)\s*[:\-]?\s*([a-z0-9][a-z0-9./\-]{5,28})',
+      ),
+      RegExp(
+        r'numero\s+da\s+certidao\s*[:\-]?\s*([a-z0-9][a-z0-9./\-]{5,28})',
+      ),
+      RegExp(
+        r'protocolo(?:\s*(?:pf|sinic|epol))?(?:\s*n[\s.º°o]*)?\s*[:\-]?\s*([a-z0-9][a-z0-9./\-]{5,28})',
+      ),
+    ];
+    for (final re in labeledPatterns) {
+      for (final m in re.allMatches(norm)) {
+        final rawTok = m.group(1)!.replaceAll(RegExp(r'[.,;:\-]+$'), '').trim();
+        if (_looksLikeProtocolToken(rawTok) && !_isFormattedCpf(rawTok)) {
+          return rawTok.toUpperCase();
+        }
+      }
+    }
+
+    // 2. Formato PF com ano no prefixo (ex.: 2026.0192837465 ou 20260192837465)
+    for (final m in RegExp(r'\b(20\d{2}[./\-]?\d{6,16})\b').allMatches(norm)) {
+      final candidate = m.group(1)!.trim();
+      if (!_isPrecededByCpf(norm, m.start) && !_isFormattedCpf(candidate)) {
+        return candidate;
+      }
+    }
+
+    // 3. Formato PF ePol-SINIC com ano no sufixo (ex.: 195290532026 = 8 dígitos + 2026)
+    for (final m in RegExp(r'\b(\d{6,12}20\d{2})\b').allMatches(norm)) {
+      final candidate = m.group(1)!.trim();
+      if (!_isPrecededByCpf(norm, m.start) && !_isValidCpfString(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  static bool _isFormattedCpf(String token) {
+    return RegExp(r'^\d{3}\.\d{3}\.\d{3}-\d{2}$').hasMatch(token);
+  }
+
+  static bool _isValidCpfString(String token) {
+    final digits = DocumentOcrAndLivenessService.digitsOnly(token);
+    return digits.length == 11 &&
+        DocumentOcrAndLivenessService.isValidCpfMod11(digits);
+  }
+
+  static bool _isPrecededByCpf(String norm, int startIdx) {
+    final prefix = norm.substring(math.max(0, startIdx - 12), startIdx);
+    return prefix.contains('cpf');
   }
 
   static DateTime? _extractDateFromText(String text) {
     if (text.isEmpty) return null;
-    final br = RegExp(r'\b(0[1-9]|[12]\d|3[01])/(0[1-9]|1[0-2])/(20\d{2})\b').firstMatch(text);
-    if (br != null) {
-      final d = int.parse(br.group(1)!);
-      final m = int.parse(br.group(2)!);
-      final y = int.parse(br.group(3)!);
-      return DateTime.utc(y, m, d);
-    }
-
-    final iso = RegExp(r'\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b').firstMatch(text);
-    if (iso != null) {
-      final y = int.parse(iso.group(1)!);
-      final m = int.parse(iso.group(2)!);
-      final d = int.parse(iso.group(3)!);
-      return DateTime.utc(y, m, d);
-    }
-
     final norm = _normalizeAscii(text);
+
+    // 1. Prioriza datas em contexto explícito de emissão ("Emitida às HH:mm do dia dd/MM/yyyy",
+    //    "Data de emissão: ...", "Expedida em ...") para nunca confundir com data de nascimento.
+    final emissionContexts = <RegExp>[
+      RegExp(
+        r'(?:emitid[ao]|expedid[ao]|gerad[ao]|assinad[ao])\s+(?:as\s+\d{1,2}[:h]\d{2}(?::\d{2})?\s+)?(?:do\s+dia\s+|em\s+)?([^\n,;]{8,36})',
+      ),
+      RegExp(
+        r'(?:data\s+de\s+emiss[ao]{2}|emiss[ao]{2})\s*[:\-]?\s*([^\n,;]{8,36})',
+      ),
+      RegExp(
+        r'as\s+\d{1,2}[:h]\d{2}(?::\d{2})?\s+(?:horas?\s+)?do\s+dia\s+([^\n,;]{8,36})',
+      ),
+    ];
+    for (final re in emissionContexts) {
+      for (final m in re.allMatches(norm)) {
+        final parsed = _parseFlexibleDate(m.group(1)!);
+        if (parsed != null) return parsed;
+      }
+    }
+
+    // 2. Fallback geral: dd/MM/yyyy, yyyy-MM-dd ou "dd de <mês> de yyyy" (ignorando nascimento)
+    bool isBirthContext(String src, int idx) {
+      final before = src.substring(math.max(0, idx - 24), idx);
+      return before.contains('nascid') || before.contains('nascimento');
+    }
+
+    for (final m in RegExp(
+      r'\b(0?[1-9]|[12]\d|3[01])/(0?[1-9]|1[0-2])/(20\d{2})\b',
+    ).allMatches(norm)) {
+      if (isBirthContext(norm, m.start)) continue;
+      final dt = _tryBuildUtcDate(
+        int.parse(m.group(3)!),
+        int.parse(m.group(2)!),
+        int.parse(m.group(1)!),
+      );
+      if (dt != null) return dt;
+    }
+
+    for (final m in RegExp(
+      r'\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b',
+    ).allMatches(norm)) {
+      if (isBirthContext(norm, m.start)) continue;
+      final dt = _tryBuildUtcDate(
+        int.parse(m.group(1)!),
+        int.parse(m.group(2)!),
+        int.parse(m.group(3)!),
+      );
+      if (dt != null) return dt;
+    }
+
+    for (final m in RegExp(
+      r'\b([0-3]?\d)\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+(20\d{2})\b',
+    ).allMatches(norm)) {
+      if (isBirthContext(norm, m.start)) continue;
+      final d = int.parse(m.group(1)!);
+      final month = _ptMonths[m.group(2)!] ?? 0;
+      final y = int.parse(m.group(3)!);
+      final dt = _tryBuildUtcDate(y, month, d);
+      if (dt != null) return dt;
+    }
+
+    return null;
+  }
+
+  static DateTime? _parseFlexibleDate(String raw) {
+    final norm = _normalizeAscii(raw);
+    final br = RegExp(
+      r'\b(0?[1-9]|[12]\d|3[01])[/.\-](0?[1-9]|1[0-2])[/.\-](20\d{2})\b',
+    ).firstMatch(norm);
+    if (br != null) {
+      return _tryBuildUtcDate(
+        int.parse(br.group(3)!),
+        int.parse(br.group(2)!),
+        int.parse(br.group(1)!),
+      );
+    }
+
+    final iso = RegExp(
+      r'\b(20\d{2})[/.\-](0[1-9]|1[0-2])[/.\-](0[1-9]|[12]\d|3[01])\b',
+    ).firstMatch(norm);
+    if (iso != null) {
+      return _tryBuildUtcDate(
+        int.parse(iso.group(1)!),
+        int.parse(iso.group(2)!),
+        int.parse(iso.group(3)!),
+      );
+    }
+
     final written = RegExp(
       r'\b([0-3]?\d)\s+de\s+(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+(20\d{2})\b',
     ).firstMatch(norm);
     if (written != null) {
-      final d = int.parse(written.group(1)!);
-      final m = _ptMonths[written.group(2)!] ?? 1;
-      final y = int.parse(written.group(3)!);
-      if (d >= 1 && d <= 31) return DateTime.utc(y, m, d);
+      return _tryBuildUtcDate(
+        int.parse(written.group(3)!),
+        _ptMonths[written.group(2)!] ?? 0,
+        int.parse(written.group(1)!),
+      );
+    }
+
+    final compact = RegExp(r'^(0[1-9]|[12]\d|3[01])(0[1-9]|1[0-2])(20\d{2})$')
+        .firstMatch(norm);
+    if (compact != null) {
+      return _tryBuildUtcDate(
+        int.parse(compact.group(3)!),
+        int.parse(compact.group(2)!),
+        int.parse(compact.group(1)!),
+      );
     }
     return null;
   }
 
+  static DateTime? _tryBuildUtcDate(int year, int month, int day) {
+    if (year < 2000 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return null;
+    }
+    final dt = DateTime.utc(year, month, day);
+    if (dt.year != year || dt.month != month || dt.day != day) return null;
+    return dt;
+  }
+
   static String? _extractValidationCodeFromText(String text) {
     if (text.isEmpty) return null;
-    final m = RegExp(
-      r'(?:c[oó]digo\s+de\s+(?:valida[cç][aã]o|autentica[cç][aã]o)|autenticidade)\s*[:\-]?\s*([A-Za-z0-9.\-/]{4,32})',
+
+    // 1. Padrões rotulados oficiais PF (validação / autenticação / controle / autenticidade / chave)
+    final labeled = RegExp(
+      r'(?:c[oó]digo\s+(?:de\s+)?(?:valida[cç][aã]o|autentica[cç][aã]o|controle|autenticidade|verificador)|chave\s+de\s+(?:valida[cç][aã]o|autentica[cç][aã]o)|autenticidade(?:\s+eletr[oô]nica)?)(?:\s+(?:eletr[oô]nica|da\s+certid[aã]o))?\s*[:\-]\s*([A-Za-z0-9][A-Za-z0-9.\-/]{3,36})',
       caseSensitive: false,
-    ).firstMatch(text);
-    return m?.group(1)?.trim();
+    );
+    for (final m in labeled.allMatches(text)) {
+      final token = m.group(1)!.replaceAll(RegExp(r'[.,;:\-]+$'), '').trim();
+      if (_looksLikeValidationCodeToken(token)) {
+        return token;
+      }
+    }
+
+    // Também aceita rótulo sem `:` quando seguido imediatamente por token típico de código
+    final looseLabeled = RegExp(
+      r'(?:c[oó]digo\s+(?:de\s+)?(?:valida[cç][aã]o|autentica[cç][aã]o|controle|autenticidade))\s+([A-Za-z0-9]{4}(?:[.\-][A-Za-z0-9]{2,8}){1,4}|[A-Za-z0-9]{6,24})',
+      caseSensitive: false,
+    );
+    for (final m in looseLabeled.allMatches(text)) {
+      final token = m.group(1)!.replaceAll(RegExp(r'[.,;:\-]+$'), '').trim();
+      if (_looksLikeValidationCodeToken(token)) {
+        return token;
+      }
+    }
+
+    // 2. Códigos agrupados em blocos de 4 caracteres com pontos ou hífens (ex.: ABCD.1234.EF56.7890)
+    final grouped = RegExp(
+      r'\b([A-Za-z0-9]{4}(?:[.\-][A-Za-z0-9]{4}){2,4})\b',
+    );
+    for (final m in grouped.allMatches(text)) {
+      final token = m.group(1)!.trim();
+      if (_looksLikeValidationCodeToken(token) && !_isFormattedCpf(token)) {
+        return token.toUpperCase();
+      }
+    }
+
+    return null;
+  }
+
+  static String? _extractHolderNameFromText(String text) {
+    if (text.isEmpty) return null;
+    final norm = _normalizeAscii(text);
+    final m = RegExp(
+      r'(?:em\s+nome\s+de|nome(?:\s+completo)?\s*:)\s*([a-z\s]{5,90}?)(?:,|\bcpf\b|\bnascid|\bfilh|\brg\b|\bportador|\bcidadao|\bdad[oa]s|\bemiti|$)',
+    ).firstMatch(norm);
+    final candidate = m?.group(1)?.trim();
+    if (candidate != null && _normalizeCivilTokens(candidate).length >= 2) {
+      return candidate.toUpperCase();
+    }
+    return null;
+  }
+
+  static String? _extractFirstValidCpfFromText(String text) {
+    if (text.isEmpty) return null;
+    for (final m in RegExp(r'\b\d{3}\.?\d{3}\.?\d{3}[\-.]?\d{2}\b').allMatches(text)) {
+      final d = DocumentOcrAndLivenessService.digitsOnly(m.group(0)!);
+      if (d.length == 11 && DocumentOcrAndLivenessService.isValidCpfMod11(d)) {
+        return d;
+      }
+    }
+    return null;
   }
 
   // ===========================================================================
@@ -1023,5 +1893,219 @@ class _HuffmanTable {
       code <<= 1;
     }
     throw const FormatException('Código Huffman inválido.');
+  }
+}
+
+class _PdfParsedStream {
+  const _PdfParsedStream({
+    required this.decodedStream,
+    required this.wasInflated,
+    required this.objNum,
+  });
+
+  final String decodedStream;
+  final bool wasInflated;
+  final int? objNum;
+}
+
+class _PdfStreamHeaderInfo {
+  const _PdfStreamHeaderInfo({
+    required this.objNum,
+    required this.isImage,
+    required this.isObjStm,
+    required this.firstOffset,
+    required this.predictor,
+    required this.columns,
+    required this.colors,
+    required this.bitsPerComponent,
+  });
+
+  final int? objNum;
+  final bool isImage;
+  final bool isObjStm;
+  final int firstOffset;
+  final int predictor;
+  final int columns;
+  final int colors;
+  final int bitsPerComponent;
+}
+
+/// Decodificador Pure-Dart de tabelas `ToUnicode CMap` (`beginbfchar` / `beginbfrange`)
+/// usado em PDFs reais emitidos por `servicos.pf.gov.br/epol-sinic-publico/` com fontes
+/// `Identity-H` / `CIDFontType2`.
+class _PdfToUnicodeCMap {
+  final Map<int, Map<int, String>> _byHexLen = <int, Map<int, String>>{};
+
+  bool get isNotEmpty => _byHexLen.values.any((m) => m.isNotEmpty);
+
+  bool get hasSingleByteEntries =>
+      (_byHexLen[2]?.isNotEmpty ?? false);
+
+  void _put(int hexLen, int code, String unicode) {
+    final map = _byHexLen.putIfAbsent(hexLen, () => <int, String>{});
+    map[code] = unicode;
+  }
+
+  void mergeFrom(_PdfToUnicodeCMap other) {
+    other._byHexLen.forEach((hexLen, entries) {
+      final target = _byHexLen.putIfAbsent(hexLen, () => <int, String>{});
+      entries.forEach((code, unicode) {
+        target.putIfAbsent(code, () => unicode);
+      });
+    });
+  }
+
+  static _PdfToUnicodeCMap parse(String content) {
+    final cmap = _PdfToUnicodeCMap();
+
+    // 1. Seções `beginbfchar ... endbfchar`
+    final bfCharBlockRe = RegExp(r'beginbfchar\b([\s\S]*?)endbfchar');
+    final bfCharPairRe = RegExp(r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>');
+    for (final block in bfCharBlockRe.allMatches(content)) {
+      final body = block.group(1)!;
+      for (final m in bfCharPairRe.allMatches(body)) {
+        final srcHex = m.group(1)!.trim();
+        final dstHex = m.group(2)!.trim();
+        final srcCode = int.tryParse(srcHex, radix: 16);
+        final decoded = _decodeUtf16BeHex(dstHex);
+        if (srcCode != null && decoded.isNotEmpty) {
+          final normHexLen = srcHex.length.isOdd ? srcHex.length + 1 : srcHex.length;
+          cmap._put(normHexLen, srcCode, decoded);
+        }
+      }
+    }
+
+    // 2. Seções `beginbfrange ... endbfrange` (forma array e forma incremental)
+    final bfRangeBlockRe = RegExp(r'beginbfrange\b([\s\S]*?)endbfrange');
+    final bfRangeLineRe = RegExp(
+      r'<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(?:\[([\s\S]*?)\]|<([0-9A-Fa-f]+)>)',
+    );
+    final hexTokenRe = RegExp(r'<([0-9A-Fa-f]+)>');
+    for (final block in bfRangeBlockRe.allMatches(content)) {
+      final body = block.group(1)!;
+      for (final m in bfRangeLineRe.allMatches(body)) {
+        final startHex = m.group(1)!.trim();
+        final endHex = m.group(2)!.trim();
+        final startCode = int.tryParse(startHex, radix: 16);
+        final endCode = int.tryParse(endHex, radix: 16);
+        if (startCode == null || endCode == null || endCode < startCode) continue;
+        final count = math.min(endCode - startCode + 1, 2048);
+        final normHexLen = startHex.length.isOdd ? startHex.length + 1 : startHex.length;
+
+        final arrayPart = m.group(3);
+        if (arrayPart != null) {
+          final dstTokens = hexTokenRe
+              .allMatches(arrayPart)
+              .map((t) => t.group(1)!.trim())
+              .toList(growable: false);
+          for (int i = 0; i < count && i < dstTokens.length; i++) {
+            final decoded = _decodeUtf16BeHex(dstTokens[i]);
+            if (decoded.isNotEmpty) {
+              cmap._put(normHexLen, startCode + i, decoded);
+            }
+          }
+        } else {
+          final dstStartHex = m.group(4)?.trim() ?? '';
+          final baseUnits = _hexToUtf16CodeUnits(dstStartHex);
+          if (baseUnits.isEmpty) continue;
+          for (int i = 0; i < count; i++) {
+            final units = List<int>.from(baseUnits);
+            units[units.length - 1] = (units.last + i) & 0xFFFF;
+            cmap._put(normHexLen, startCode + i, String.fromCharCodes(units));
+          }
+        }
+      }
+    }
+
+    return cmap;
+  }
+
+  static List<int> _hexToUtf16CodeUnits(String rawHex) {
+    final cleaned = rawHex.replaceAll(RegExp(r'\s+'), '');
+    if (cleaned.isEmpty) return const <int>[];
+    if (cleaned.length <= 2) {
+      final v = int.tryParse(cleaned, radix: 16);
+      return v == null ? const <int>[] : <int>[v];
+    }
+    final padded = cleaned.length % 4 == 0
+        ? cleaned
+        : cleaned.padLeft(((cleaned.length + 3) ~/ 4) * 4, '0');
+    final units = <int>[];
+    for (int i = 0; i + 4 <= padded.length; i += 4) {
+      final u = int.tryParse(padded.substring(i, i + 4), radix: 16);
+      if (u != null) units.add(u);
+    }
+    return units;
+  }
+
+  static String _decodeUtf16BeHex(String rawHex) {
+    final units = _hexToUtf16CodeUnits(rawHex);
+    if (units.isEmpty) return '';
+    return String.fromCharCodes(units);
+  }
+
+  String? decodeHex(String hexRaw) {
+    if (!isNotEmpty || hexRaw.isEmpty) return null;
+    final padded = hexRaw.length.isOdd ? '${hexRaw}0' : hexRaw;
+    final lengths = _byHexLen.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final sb = StringBuffer();
+    int pos = 0;
+    int mappedTokens = 0;
+    int totalTokens = 0;
+
+    while (pos < padded.length) {
+      bool matched = false;
+      for (final hexLen in lengths) {
+        if (pos + hexLen > padded.length) continue;
+        final code = int.tryParse(padded.substring(pos, pos + hexLen), radix: 16);
+        final mapped = code == null ? null : _byHexLen[hexLen]?[code];
+        if (mapped != null) {
+          sb.write(mapped);
+          pos += hexLen;
+          mappedTokens++;
+          totalTokens++;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        // Avança pelo menor tamanho de código conhecido ou 2 chars hex
+        final step = lengths.isNotEmpty && pos + lengths.last <= padded.length
+            ? lengths.last
+            : 2;
+        final fallbackCode = int.tryParse(
+          padded.substring(pos, math.min(padded.length, pos + step)),
+          radix: 16,
+        );
+        if (fallbackCode != null && fallbackCode >= 0x20 && fallbackCode <= 0x7E) {
+          sb.writeCharCode(fallbackCode);
+        }
+        pos += step;
+        totalTokens++;
+      }
+    }
+
+    if (totalTokens == 0 || mappedTokens == 0) return null;
+    if (mappedTokens * 2 < totalTokens) return null;
+    return sb.toString();
+  }
+
+  String? decodeBytes(List<int> bytes) {
+    final singleMap = _byHexLen[2];
+    if (singleMap == null || singleMap.isEmpty || bytes.isEmpty) return null;
+    final sb = StringBuffer();
+    int hits = 0;
+    for (final b in bytes) {
+      final mapped = singleMap[b & 0xFF];
+      if (mapped != null) {
+        sb.write(mapped);
+        hits++;
+      } else {
+        sb.writeCharCode(b & 0xFF);
+      }
+    }
+    if (hits == 0) return null;
+    return sb.toString();
   }
 }
