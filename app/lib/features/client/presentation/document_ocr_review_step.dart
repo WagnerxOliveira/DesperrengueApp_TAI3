@@ -152,7 +152,7 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                             const SizedBox(height: AppSpace.s4),
                             Text(
                               'Autenticidade física e facial confirmada. Pronto para seguir.',
-                              style: AppType.caption.copyWith(
+                              style: AppType.bodySm.copyWith(
                                 color: tk.successInk,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -241,12 +241,12 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                         icon: Icons.verified_user_outlined,
                       ),
                       const AppStatusChip(
-                        'Foto Nítida e Sem Reflexos',
+                        'Foto Nítida',
                         tone: AppTone.success,
                         icon: Icons.high_quality_outlined,
                       ),
                       const AppStatusChip(
-                        'Frente e Verso Confirmados',
+                        'Frente e Verso',
                         tone: AppTone.success,
                         icon: Icons.credit_card_outlined,
                       ),
@@ -260,7 +260,7 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                   const SizedBox(height: AppSpace.s12),
                   Text(
                     'Protocolo de segurança: $safeSeal',
-                    style: AppType.tabular(AppType.caption)
+                    style: AppType.tabular(AppType.bodySm)
                         .copyWith(color: tk.textMuted),
                   ),
                 ],

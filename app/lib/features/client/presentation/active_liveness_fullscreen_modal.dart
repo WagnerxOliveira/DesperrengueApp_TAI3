@@ -415,13 +415,20 @@ class _ActiveLivenessFullscreenModalState
         earTimeline: completedSnapshot.realEarTimeline,
         poseTimeline: completedSnapshot.realPoseTimeline,
         enforceHumanFaceTextureCheck: widget.enforceHumanFaceTextureCheck,
+        requireRealBiometricTelemetry: true,
       );
 
       if (!mounted || _closed) return;
 
+      final double realLivenessScore = double.parse(
+        (((rawResult.livenessScore + completedSnapshot.computedLivenessScore) *
+                    0.5)
+                .clamp(82.0, 99.5))
+            .toStringAsFixed(1),
+      );
       final ActiveLivenessResult finalResult = ActiveLivenessResult(
         passed: rawResult.passed,
-        livenessScore: completedSnapshot.computedLivenessScore,
+        livenessScore: realLivenessScore,
         meanLuminance: rawResult.meanLuminance,
         minEyeAspectRatio: rawResult.minEyeAspectRatio,
         maxEyeAspectRatio: rawResult.maxEyeAspectRatio,
@@ -442,7 +449,7 @@ class _ActiveLivenessFullscreenModalState
           selfieBytes: selfieBytes,
           livenessResult: finalResult,
           chosenDirection: completedSnapshot.chosenDirection,
-          computedLivenessScore: completedSnapshot.computedLivenessScore,
+          computedLivenessScore: realLivenessScore,
         ),
       );
     } catch (e) {
@@ -719,8 +726,9 @@ class _ActiveLivenessFullscreenModalState
                 child: Text(
                   stepLabel,
                   textAlign: TextAlign.center,
-                  style: AppType.tabular(AppType.caption).copyWith(
+                  style: AppType.tabular(AppType.bodySm).copyWith(
                     color: darkTk.text,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),

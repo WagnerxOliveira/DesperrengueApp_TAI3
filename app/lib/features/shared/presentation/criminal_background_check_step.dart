@@ -792,12 +792,12 @@ class _CriminalBackgroundCheckStepState
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             AppStatusChip(
-              'Segurança Mútua · Validade de 6 Meses',
+              'Validade 6 meses',
               tone: AppTone.info,
               icon: Icons.verified_user_rounded,
             ),
             AppStatusChip(
-              'Vale p/ Cliente e Profissional',
+              'Cliente e Profissional',
               tone: AppTone.success,
               icon: Icons.sync_alt_rounded,
             ),
@@ -904,7 +904,7 @@ class _CriminalBackgroundCheckStepState
               AppTextField(
                 key: const ValueKey('input-criminal-protocol'),
                 controller: _protocolCtrl,
-                label: 'Nº da Certidão / Protocolo PF',
+                label: 'Protocolo PF',
                 hint: 'Ex.: 2026.0192837465',
                 helper:
                     'Preenchido automaticamente ao ler a certidão ou digitado manualmente.',
@@ -929,7 +929,7 @@ class _CriminalBackgroundCheckStepState
                   onTap: _analyzing ? null : _pickIssueDate,
                   child: InputDecorator(
                     decoration: InputDecoration(
-                      labelText: 'Data de Emissão da Certidão',
+                      labelText: 'Data de emissão',
                       labelStyle: AppType.body.copyWith(color: tk.textMuted),
                       floatingLabelStyle: AppType.caption
                           .copyWith(color: tk.textMuted)
@@ -941,7 +941,7 @@ class _CriminalBackgroundCheckStepState
                       helperText: isDateRecent
                           ? 'Emissão dentro do prazo de 90 dias exigido.'
                           : 'A certidão deve ter sido emitida nos últimos 90 dias.',
-                      helperStyle: AppType.caption.copyWith(
+                      helperStyle: AppType.bodySm.copyWith(
                         color: tk.textMuted,
                       ),
                       errorText: isDateRecent
@@ -990,7 +990,7 @@ class _CriminalBackgroundCheckStepState
               AppTextField(
                 key: const ValueKey('input-criminal-validation-code'),
                 controller: _validationCodeCtrl,
-                label: 'Código de Validação Eletrônica PF',
+                label: 'Código PF',
                 hint: 'Código alfanumérico de autenticidade no rodapé',
                 prefixIcon: Icons.verified_outlined,
                 textInputAction: TextInputAction.done,
