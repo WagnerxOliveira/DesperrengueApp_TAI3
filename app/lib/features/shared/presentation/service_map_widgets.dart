@@ -11,8 +11,8 @@ import '../../../core/models/scheduling_models.dart';
 import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/scheduling_service.dart';
-import '../../../core/ui/app_tokens.dart';
-import '../../../core/ui/widgets.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
+import '../../../core/ui/widgets.dart' show friendlyError;
 import '../../../core/utils/geo.dart';
 
 /// Camada de blocos 100% gratuita e sem chave de API: OpenStreetMap Standard (mostra ruas,
@@ -30,16 +30,52 @@ class MapAttribution extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return Align(
       alignment: Alignment.bottomRight,
       child: Container(
-        margin: const EdgeInsets.all(4),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(color: context.tk.card.withValues(alpha: 0.88), borderRadius: BorderRadius.circular(6)),
+        margin: const EdgeInsets.all(AppSpace.s4),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8 - 2, vertical: AppSpace.s2),
+        decoration: BoxDecoration(
+          color: tk.card.withValues(alpha: 0.90),
+          borderRadius: BorderRadius.circular(AppSpace.s8 - 2),
+        ),
         child: Text(
           '© OpenStreetMap contributors',
-          style: TextStyle(fontSize: 10, color: context.tk.textMuted),
+          style: AppType.caption.copyWith(color: tk.textMuted),
         ),
+      ),
+    );
+  }
+}
+
+class _MapFabButton extends StatelessWidget {
+  const _MapFabButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tk.surfaceAt(2),
+        shape: BoxShape.circle,
+        border: Border.all(color: tk.border),
+        boxShadow: tk.elevation(2),
+      ),
+      child: AppIconButton(
+        icon: icon,
+        tooltip: tooltip,
+        color: tk.text,
+        size: 22,
+        onPressed: onPressed,
       ),
     );
   }
@@ -48,9 +84,21 @@ class MapAttribution extends StatelessWidget {
 Future<void> _openExternal(BuildContext context, Uri uri) async {
   try {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!ok && context.mounted) showSnack(context, 'Não foi possível abrir o aplicativo de navegação.', error: true);
+    if (!ok && context.mounted) {
+      AppSnackbar.show(
+        context,
+        'Não foi possível abrir o aplicativo de navegação.',
+        kind: AppSnackKind.error,
+      );
+    }
   } catch (_) {
-    if (context.mounted) showSnack(context, 'Não foi possível abrir o aplicativo de navegação.', error: true);
+    if (context.mounted) {
+      AppSnackbar.show(
+        context,
+        'Não foi possível abrir o aplicativo de navegação.',
+        kind: AppSnackKind.error,
+      );
+    }
   }
 }
 
@@ -80,14 +128,17 @@ class MapaRotaServicoModal extends StatefulWidget {
     required String addressLabel,
     required ValueListenable<GeoFix?> position,
   }) =>
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (_) => FractionallySizedBox(
-          heightFactor: 0.92,
-          child: MapaRotaServicoModal(destination: destination, addressLabel: addressLabel, position: position),
+      AppSheet.show<void>(
+        context,
+        enableDrag: false,
+        maxHeightFactor: 0.92,
+        builder: (sheetCtx) => SizedBox(
+          height: (MediaQuery.sizeOf(sheetCtx).height * 0.82).clamp(360.0, 760.0),
+          child: MapaRotaServicoModal(
+            destination: destination,
+            addressLabel: addressLabel,
+            position: position,
+          ),
         ),
       );
 
@@ -161,32 +212,45 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s4, AppSpace.s8),
           child: Row(
             children: [
-              Icon(Icons.place_rounded, color: tk.providerAccent),
-              const SizedBox(width: 8),
-              Expanded(child: Text(widget.addressLabel, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800))),
-              IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close_rounded)),
+              Icon(Icons.place_rounded, color: tk.providerAccentInk),
+              const SizedBox(width: AppSpace.s8),
+              Expanded(
+                child: Text(
+                  widget.addressLabel,
+                  maxLines: 2,
+                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                ),
+              ),
+              AppIconButton(
+                icon: Icons.close_rounded,
+                tooltip: 'Fechar',
+                onPressed: () => Navigator.of(context).pop(),
+              ),
             ],
           ),
         ),
         if (!dest.usableForCheckIn || dest.needsClientPin)
           Container(
             width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: tk.warningSoft, borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s16, AppSpace.s8),
+            padding: const EdgeInsets.all(AppSpace.s12 - 2),
+            decoration: BoxDecoration(
+              color: tk.warningSoft,
+              borderRadius: BorderRadius.circular(AppSpace.s12),
+            ),
             child: Row(
               children: [
                 Icon(Icons.info_outline_rounded, size: 18, color: tk.warningInk),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpace.s8),
                 Expanded(
                   child: Text(
                     dest.usableForCheckIn
                         ? 'Localização aproximada: o pino pode estar a algumas dezenas de metros da casa.'
                         : 'Localização aproximada (só a região). Peça ao cliente para confirmar o local no mapa.',
-                    style: TextStyle(fontSize: 12.5, color: tk.warningInk),
+                    style: AppType.caption.copyWith(color: tk.warningInk),
                   ),
                 ),
               ],
@@ -194,65 +258,72 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
           ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
             child: ValueListenableBuilder<GeoFix?>(
               valueListenable: widget.position,
               builder: (context, pos, _) => Stack(
                 children: [
-                  FlutterMap(
-                    mapController: _map,
-                    options: MapOptions(initialCenter: _dest, initialZoom: 16, minZoom: 3, maxZoom: 19),
-                    children: [
-                      buildTileLayer(context),
-                      if (_route != null)
-                        PolylineLayer(polylines: [
-                          Polyline(
-                            points: [for (final e in _route!.points) LatLng(e.lat, e.lng)],
-                            strokeWidth: 5.5,
-                            color: const Color(0xFF2563EB),
-                            borderStrokeWidth: 2,
-                            borderColor: Colors.white,
-                          ),
+                  RepaintBoundary(
+                    child: FlutterMap(
+                      mapController: _map,
+                      options: MapOptions(initialCenter: _dest, initialZoom: 16, minZoom: 3, maxZoom: 19),
+                      children: [
+                        buildTileLayer(context),
+                        if (_route != null)
+                          PolylineLayer(polylines: [
+                            Polyline(
+                              points: [for (final e in _route!.points) LatLng(e.lat, e.lng)],
+                              strokeWidth: 5.5,
+                              color: tk.info,
+                              borderStrokeWidth: 2,
+                              borderColor: AppTokens.onColor(tk.info),
+                            ),
+                          ]),
+                        CircleLayer(circles: [
+                          if (dest.usableForCheckIn)
+                            CircleMarker(
+                              point: _dest,
+                              radius: dest.radiusM,
+                              useRadiusInMeter: true,
+                              color: tk.success.withValues(alpha: 0.15),
+                              borderColor: tk.success,
+                              borderStrokeWidth: 1.5,
+                            ),
                         ]),
-                      CircleLayer(circles: [
-                        if (dest.usableForCheckIn)
-                          CircleMarker(
-                            point: _dest,
-                            radius: dest.radiusM,
-                            useRadiusInMeter: true,
-                            color: tk.success.withValues(alpha: 0.15),
-                            borderColor: tk.success,
-                            borderStrokeWidth: 1.5,
-                          ),
-                      ]),
-                      MarkerLayer(markers: [
-                        Marker(point: _dest, width: 44, height: 44, alignment: Alignment.topCenter, child: Icon(Icons.home_rounded, size: 40, color: tk.danger)),
-                        if (pos != null)
+                        MarkerLayer(markers: [
                           Marker(
-                            point: LatLng(pos.lat, pos.lng),
-                            width: 28,
-                            height: 28,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: tk.providerAccent,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 3),
-                                boxShadow: [BoxShadow(color: tk.shadow, blurRadius: 6)],
+                            point: _dest,
+                            width: 44,
+                            height: 44,
+                            alignment: Alignment.topCenter,
+                            child: Icon(Icons.home_rounded, size: 40, color: tk.danger),
+                          ),
+                          if (pos != null)
+                            Marker(
+                              point: LatLng(pos.lat, pos.lng),
+                              width: 28,
+                              height: 28,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: tk.providerAccent,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppTokens.onColor(tk.providerAccent), width: 3),
+                                  boxShadow: [BoxShadow(color: tk.shadow, blurRadius: 6)],
+                                ),
                               ),
                             ),
-                          ),
-                      ]),
-                      const MapAttribution(),
-                    ],
+                        ]),
+                        const MapAttribution(),
+                      ],
+                    ),
                   ),
                   Positioned(
-                    right: 10,
-                    top: 10,
-                    child: FloatingActionButton.small(
-                      heroTag: 'fit_route',
-                      onPressed: _fit,
+                    right: AppSpace.s12 - 2,
+                    top: AppSpace.s12 - 2,
+                    child: _MapFabButton(
+                      icon: Icons.center_focus_strong_rounded,
                       tooltip: 'Enquadrar rota',
-                      child: const Icon(Icons.center_focus_strong_rounded),
+                      onPressed: _fit,
                     ),
                   ),
                 ],
@@ -261,14 +332,14 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.viewPaddingOf(context).bottom),
+          padding: EdgeInsets.fromLTRB(AppSpace.s16, AppSpace.s12, AppSpace.s16, AppSpace.s12 + MediaQuery.viewPaddingOf(context).bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
                 children: [
-                  Icon(Icons.route_rounded, color: tk.providerAccent),
-                  const SizedBox(width: 8),
+                  Icon(Icons.route_rounded, color: tk.providerAccentInk),
+                  const SizedBox(width: AppSpace.s8),
                   Expanded(
                     child: Text(
                       _route != null
@@ -276,16 +347,20 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
                           : straight != null
                               ? '${formatMeters(straight)} em linha reta'
                               : 'Aguardando o seu GPS…',
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                      style: AppType.tabular(AppType.titleSm).copyWith(color: tk.text),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.s12 - 2),
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: AppButton(
+                      label: 'Google Maps',
+                      icon: Icons.navigation_rounded,
+                      variant: AppButtonVariant.secondary,
+                      compact: true,
                       onPressed: () => _openExternal(
                         context,
                         Uri.parse(
@@ -298,22 +373,22 @@ class _MapaRotaServicoModalState extends State<MapaRotaServicoModal> {
                           ),
                         ),
                       ),
-                      icon: const Icon(Icons.navigation_rounded, size: 18),
-                      label: const Text('Google Maps'),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: AppSpace.s12 - 2),
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: AppButton(
+                      label: 'Waze',
+                      icon: Icons.alt_route_rounded,
+                      variant: AppButtonVariant.secondary,
+                      compact: true,
                       onPressed: () => _openExternal(context, Uri.parse('https://waze.com/ul?ll=${dest.lat},${dest.lng}&navigate=yes')),
-                      icon: const Icon(Icons.alt_route_rounded, size: 18),
-                      label: const Text('Waze'),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text('Abrir navegação externa', style: TextStyle(fontSize: 11.5, color: tk.textMuted)),
+              const SizedBox(height: AppSpace.s4),
+              Text('Abrir navegação externa', style: AppType.caption.copyWith(color: tk.textMuted)),
             ],
           ),
         ),
@@ -361,13 +436,12 @@ class LocationPickerSheet extends StatefulWidget {
     String? addressLine,
     Future<ReversedAddress?> Function(double lat, double lng, {String? fallbackLine})? reverseGeocoder,
   }) =>
-      showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (_) => FractionallySizedBox(
-          heightFactor: 0.92,
+      AppSheet.show<bool>(
+        context,
+        enableDrag: false,
+        maxHeightFactor: 0.92,
+        builder: (sheetCtx) => SizedBox(
+          height: (MediaQuery.sizeOf(sheetCtx).height * 0.82).clamp(360.0, 760.0),
           child: LocationPickerSheet(
             initial: initial,
             onConfirm: onConfirm,
@@ -474,7 +548,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        if (mounted) showSnack(context, 'Permissão de localização negada.', error: true);
+        if (mounted) AppSnackbar.show(context, 'Permissão de localização negada.', kind: AppSnackKind.error);
         return;
       }
       final p = await Geolocator.getCurrentPosition();
@@ -487,7 +561,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       _map.move(ll, 19);
       await _runReverseGeocode(ll);
     } catch (_) {
-      if (mounted) showSnack(context, 'Não foi possível obter a localização.', error: true);
+      if (mounted) AppSnackbar.show(context, 'Não foi possível obter a localização.', kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _locating = false);
     }
@@ -509,7 +583,7 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
-        showSnack(context, friendlyError(e), error: true);
+        AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
         setState(() => _busy = false);
       }
     }
@@ -521,72 +595,73 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s16, AppSpace.s8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Confirme o local do serviço', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
+              Text('Confirme o local do serviço', style: AppType.title.copyWith(color: tk.text)),
+              const SizedBox(height: AppSpace.s4),
               if (_currentAddressLine.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
+                  padding: const EdgeInsets.only(bottom: AppSpace.s4),
                   child: Row(
                     children: [
-                      Icon(Icons.place_rounded, size: 18, color: tk.clientAccent),
-                      const SizedBox(width: 6),
+                      Icon(Icons.place_rounded, size: 18, color: tk.clientAccentInk),
+                      const SizedBox(width: AppSpace.s8 - 2),
                       Expanded(
                         child: Text(
                           _currentAddressLine,
                           key: const ValueKey('picker-address-line'),
                           maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                          style: AppType.bodyStrong.copyWith(color: tk.text),
                         ),
                       ),
                       if (_reversing) ...[
-                        const SizedBox(width: 8),
-                        const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                        const SizedBox(width: AppSpace.s8),
+                        const AppSkeleton(width: 16, height: 16, circle: true),
                       ],
                     ],
                   ),
                 ),
               Text(
                 'Arraste o mapa até deixar o pino em cima da sua casa. O endereço é atualizado automaticamente e o profissional só consegue iniciar o serviço a menos de 100 m deste ponto.',
-                style: TextStyle(color: tk.textMuted, fontSize: 13, height: 1.3),
+                style: AppType.bodySm.copyWith(color: tk.textMuted),
               ),
             ],
           ),
         ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
             child: Stack(
               children: [
-                FlutterMap(
-                  key: const ValueKey('pin-map'),
-                  mapController: _map,
-                  options: MapOptions(
-                    initialCenter: _start,
-                    initialZoom: widget.initial == null ? 13 : (widget.initial!.precision == DestinationPrecision.locality ? 15 : 18),
-                    minZoom: 3,
-                    maxZoom: 19,
-                    // Arrastar/zoom → o pino acompanha o CENTRO do mapa e atualiza o endereço.
-                    onPositionChanged: (camera, hasGesture) {
-                      if (hasGesture) {
-                        setState(() => _pin = camera.center);
-                        _scheduleReverseGeocode(camera.center);
-                      }
-                    },
-                    onTap: (_, ll) {
-                      setState(() => _pin = ll);
-                      _map.move(ll, _map.camera.zoom);
-                      _scheduleReverseGeocode(ll);
-                    },
+                RepaintBoundary(
+                  child: FlutterMap(
+                    key: const ValueKey('pin-map'),
+                    mapController: _map,
+                    options: MapOptions(
+                      initialCenter: _start,
+                      initialZoom: widget.initial == null ? 13 : (widget.initial!.precision == DestinationPrecision.locality ? 15 : 18),
+                      minZoom: 3,
+                      maxZoom: 19,
+                      // Arrastar/zoom → o pino acompanha o CENTRO do mapa e atualiza o endereço.
+                      onPositionChanged: (camera, hasGesture) {
+                        if (hasGesture) {
+                          setState(() => _pin = camera.center);
+                          _scheduleReverseGeocode(camera.center);
+                        }
+                      },
+                      onTap: (_, ll) {
+                        setState(() => _pin = ll);
+                        _map.move(ll, _map.camera.zoom);
+                        _scheduleReverseGeocode(ll);
+                      },
+                    ),
+                    children: [
+                      widget.tileLayer ?? buildTileLayer(context),
+                      const MapAttribution(),
+                    ],
                   ),
-                  children: [
-                    widget.tileLayer ?? buildTileLayer(context),
-                    const MapAttribution(),
-                  ],
                 ),
                 // Pino fixo no centro (a ponta do pino = centro exato do mapa).
                 IgnorePointer(
@@ -598,15 +673,12 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
                   ),
                 ),
                 Positioned(
-                  right: 10,
-                  top: 10,
-                  child: FloatingActionButton.small(
-                    heroTag: 'my_location',
-                    onPressed: _locating ? null : _useMyLocation,
+                  right: AppSpace.s12 - 2,
+                  top: AppSpace.s12 - 2,
+                  child: _MapFabButton(
+                    icon: _locating ? Icons.gps_not_fixed_rounded : Icons.my_location_rounded,
                     tooltip: 'Usar minha localização',
-                    child: _locating
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.my_location_rounded),
+                    onPressed: _locating ? null : _useMyLocation,
                   ),
                 ),
               ],
@@ -614,8 +686,8 @@ class _LocationPickerSheetState extends State<LocationPickerSheet> {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.viewPaddingOf(context).bottom),
-          child: PrimaryButton(
+          padding: EdgeInsets.fromLTRB(AppSpace.s16, AppSpace.s12, AppSpace.s16, AppSpace.s12 + MediaQuery.viewPaddingOf(context).bottom),
+          child: AppButton(
             label: 'Confirmar este local',
             icon: Icons.check_rounded,
             loading: _busy,
