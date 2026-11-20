@@ -29,6 +29,7 @@ import 'active_liveness_fullscreen_modal.dart';
 import 'address_form.dart';
 import 'document_guided_scanner_modal.dart';
 import 'document_ocr_review_step.dart';
+import 'widgets/kyc_onboarding_chrome.dart';
 
 export 'active_liveness_fullscreen_modal.dart';
 export 'document_guided_scanner_modal.dart';
@@ -227,6 +228,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   AddressData _address = const AddressData();
   AddressData? _draftAddress;
   late int _step = widget.initialStep.clamp(0, _maxStepIndex);
+  int _stepDirection = 1;
   late bool _termsAccepted = widget.initialTermsAccepted;
   late AuditedCriminalRecordResult? _criminalResult =
       widget.customCriminalResultOverride;
@@ -339,15 +341,45 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         'termsAccepted': _termsAccepted,
       });
 
+  String _stepNameFor(int step) => switch (step) {
+        0 => 'Seus dados',
+        1 => 'Localização',
+        2 => 'Prova de vida',
+        3 => 'Documento',
+        4 => 'Conferência',
+        _ => 'Antecedentes',
+      };
+
+  String _estimatedRemainingFor(int step) => switch (step) {
+        0 => '~2 min',
+        1 => '~2 min',
+        2 => '~1 min',
+        3 => '~1 min',
+        4 => _isLegacyFourStepTestMode ? 'Último passo!' : 'Quase lá',
+        _ => 'Último passo!',
+      };
+
   void _setStep(int s) {
     final target = s.clamp(0, _maxStepIndex);
+    final dir = target >= _step ? 1 : -1;
     setState(() {
       _error = null;
+      _stepDirection = dir;
       _step = target;
     });
     _scheduleSave();
-    if (_scrollController.hasClients) {
-      _scrollController.jumpTo(0);
+    if (_scrollController.hasClients && _scrollController.offset > 0) {
+      if (mounted && !AppMotion.reduced(context)) {
+        unawaited(
+          _scrollController.animateTo(
+            0.0,
+            duration: AppMotion.d(context, AppMotion.page),
+            curve: AppMotion.pageCurve,
+          ),
+        );
+      } else {
+        _scrollController.jumpTo(0.0);
+      }
     }
   }
 
@@ -840,6 +872,8 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final margin = context.layout.margin;
+    final isProviderMode = widget.targetMode == UserMode.provider;
+    final reduced = AppMotion.reduced(context);
     final cpfDigits = DocumentOcrAndLivenessService.digitsOnly(_cpf.text);
     final cpfValid = DocumentOcrAndLivenessService.isValidCpfMod11(cpfDigits);
     final effectiveCriminal =
@@ -848,6 +882,18 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         _docFrontBytes != null && _docBackBytes != null;
     final bool hasValidOcr =
         _ocrResult != null && _ocrResult!.isAuthenticAndCrossChecked;
+
+    final Widget activeStepChild = KeyedSubtree(
+      key: ValueKey<int>(_step),
+      child: switch (_step) {
+        0 => _buildStep0Identity(tk, cpfDigits, cpfValid),
+        1 => _buildStep1Address(tk),
+        2 => _buildStep2ActiveLiveness(tk),
+        3 => _buildStep3DocumentCapture(tk),
+        4 => _buildStep4DocumentOcrReview(tk),
+        _ => _buildStep5CriminalBackground(),
+      },
+    );
 
     return PopScope(
       canPop: false,
@@ -876,45 +922,100 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           ),
           titleWidget: const BrandLogo(),
         ),
-        body: AppSkeletonSwitcher(
-          loading: _restoring,
-          skeleton: AppSkeletonList(
-            count: 3,
-            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
-          ),
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (widget.isSixMonthRenewal) ...[
-                  Padding(
-                    key: const ValueKey('banner-six-month-renewal'),
-                    padding: const EdgeInsets.only(bottom: AppSpace.s12),
-                    child: const InfoBanner(
-                      'Seus dados cadastrais, histórico e carteira estão preservados. '
-                      'Para manter a segurança de todos dentro das residências, basta revalidar '
-                      'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 6 meses.',
-                      title: 'Renovação Semestral de Segurança (a cada 6 meses)',
-                      tone: BannerTone.security,
-                      icon: Icons.event_repeat_rounded,
-                    ),
+        body: KycAmbientBackdrop(
+          isProviderMode: isProviderMode,
+          child: AppSkeletonSwitcher(
+            loading: _restoring,
+            skeleton: AppSkeletonList(
+              count: 3,
+              padding: EdgeInsets.fromLTRB(
+                margin,
+                AppSpace.s8,
+                margin,
+                AppSpace.s24,
+              ),
+            ),
+            child: SingleChildScrollView(
+              controller: _scrollController,
+              padding: EdgeInsets.fromLTRB(
+                margin,
+                AppSpace.s8,
+                margin,
+                AppSpace.s24,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: AppGeometry.maxColumnWidth,
                   ),
-                ],
-                AppStepper(total: _totalSteps, current: _step + 1),
-                const SizedBox(height: AppSpace.s16),
-                if (_step == 0) _buildStep0Identity(tk, cpfDigits, cpfValid),
-                if (_step == 1) _buildStep1Address(tk),
-                if (_step == 2) _buildStep2ActiveLiveness(tk),
-                if (_step == 3) _buildStep3DocumentCapture(tk),
-                if (_step == 4) _buildStep4DocumentOcrReview(tk),
-                if (_step == 5) _buildStep5CriminalBackground(),
-                if (_error != null) ...[
-                  const SizedBox(height: AppSpace.s12),
-                  InfoBanner(_error!, tone: BannerTone.danger),
-                ],
-              ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (widget.isSixMonthRenewal) ...[
+                        const Padding(
+                          key: ValueKey('banner-six-month-renewal'),
+                          padding: EdgeInsets.only(bottom: AppSpace.s16),
+                          child: InfoBanner(
+                            'Seus dados cadastrais, histórico e carteira estão preservados. '
+                            'Para manter a segurança de todos dentro das residências, basta revalidar '
+                            'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 6 meses.',
+                            title:
+                                'Renovação Semestral de Segurança (a cada 6 meses)',
+                            tone: BannerTone.security,
+                            icon: Icons.event_repeat_rounded,
+                          ),
+                        ),
+                      ],
+                      KycJourneyProgressHeader(
+                        currentStep: _step + 1,
+                        totalSteps: _totalSteps,
+                        stepName: _stepNameFor(_step),
+                        estimatedRemaining: _estimatedRemainingFor(_step),
+                        isProviderMode: isProviderMode,
+                      ),
+                      const SizedBox(height: AppSpace.s16),
+                      AnimatedSwitcher(
+                        duration: AppMotion.d(context, AppMotion.page),
+                        reverseDuration: AppMotion.d(
+                          context,
+                          AppMotion.pageReverse,
+                        ),
+                        switchInCurve: AppMotion.pageCurve,
+                        switchOutCurve: AppMotion.pageReverseCurve,
+                        layoutBuilder: (currentChild, previousChildren) =>
+                            Stack(
+                              alignment: Alignment.topCenter,
+                              children: [...previousChildren, ?currentChild],
+                            ),
+                        transitionBuilder: (child, animation) {
+                          if (reduced) return child;
+                          final isIncoming =
+                              child.key == ValueKey<int>(_step);
+                          final direction = isIncoming
+                              ? _stepDirection.toDouble()
+                              : -_stepDirection.toDouble();
+                          final slideOffset = Tween<Offset>(
+                            begin: Offset(0.036 * direction, 0),
+                            end: Offset.zero,
+                          ).animate(animation);
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: slideOffset,
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: activeStepChild,
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: AppSpace.s16),
+                        InfoBanner(_error!, tone: BannerTone.danger),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -987,7 +1088,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // ETAPA 1: "Como podemos te chamar?" + "Telefone com DDD" + "CPF do Titular" + Termos
+  // ETAPA 1: "Bem-vindo, [Usuário]!" + "Seus dados pessoais" + Confiança e Termos
   // ---------------------------------------------------------------------------
   Widget _buildStep0Identity(AppTokens tk, String cpfDigits, bool cpfValid) {
     final isProviderTarget = widget.targetMode == UserMode.provider;
@@ -995,72 +1096,186 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         ? 'Termos de Parceria e Cláusula-Mandato do Profissional'
         : 'Termos de Uso e Proteção do Cliente';
 
+    final nameValid = DocumentOcrAndLivenessService.isValidCivilFullName(
+      _name.text,
+    );
+    final phoneValid = DocumentOcrAndLivenessService.isValidPhoneBr(
+      _phone.text,
+    );
+    final cpfCompleteValid = cpfDigits.length == 11 && cpfValid;
+    final doneCount =
+        (nameValid ? 1 : 0) + (phoneValid ? 1 : 0) + (cpfCompleteValid ? 1 : 0);
+    final progressChipLabel = doneCount == 3
+        ? '3 de 3 · Tudo certo'
+        : '$doneCount de 3';
+    final progressTone = doneCount == 3
+        ? AppTone.success
+        : (doneCount > 0 ? AppTone.accent : AppTone.neutral);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Bem-vindo, ${widget.profile.firstName}!',
-          style: AppType.headline.copyWith(color: tk.text),
-        ),
-        const SizedBox(height: AppSpace.s8),
-        Text(
-          isProviderTarget
-              ? 'Vamos configurar sua conta de profissional com validação unificada de identidade, documento e antecedentes criminais (válida por 6 meses também para o modo Cliente).'
-              : 'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
-          style: AppType.bodySm.copyWith(color: tk.textMuted),
-        ),
-        const SizedBox(height: AppSpace.s24),
-        Text(
-          'Como podemos te chamar?',
-          style: AppType.bodyStrong.copyWith(color: tk.text),
-        ),
-        const SizedBox(height: AppSpace.s8),
-        AppTextField(
-          key: const ValueKey('client-setup-name'),
-          controller: _name,
-          textCapitalization: TextCapitalization.words,
-          hint: 'Nome e sobrenome completos',
-          semanticLabel: 'Como podemos te chamar?',
-          prefixIcon: Icons.person_outline,
-        ),
-        const SizedBox(height: AppSpace.s12),
-        AppTextField(
-          key: const ValueKey('client-setup-phone'),
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          inputFormatters: const [BrPhoneInputFormatter()],
-          label: 'Telefone com DDD',
-          hint: '(35) 99999-9999',
-          prefixIcon: Icons.phone_outlined,
-          helper: 'Obrigatório para avisos de chegada e segurança do pedido.',
-        ),
-        const SizedBox(height: AppSpace.s12),
-        AppTextField(
-          key: const ValueKey('client-setup-cpf'),
-          controller: _cpf,
-          keyboardType: TextInputType.number,
-          inputFormatters: const [CpfInputFormatter()],
-          label: 'CPF do Titular',
-          hint: '000.000.000-00',
-          prefixIcon: Icons.badge_outlined,
-          success: cpfDigits.length == 11 && cpfValid,
-          errorText: cpfDigits.length == 11 && !cpfValid
-              ? 'Dígito verificador do CPF inválido'
-              : null,
-          helper: cpfDigits.length == 11 && cpfValid
-              ? 'CPF válido e verificado com sucesso'
-              : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
-        ),
-        const SizedBox(height: AppSpace.s16),
+        // 1. Hero Personalizado de Boas-Vindas
         AppCard(
-          key: const ValueKey('card-initial-role-terms'),
+          key: const ValueKey('step0-welcome-hero-card'),
           variant: AppCardVariant.tonal,
-          padding: const EdgeInsets.all(AppSpace.s12),
-          borderColor:
-              _termsAccepted ? tk.success.withValues(alpha: 0.6) : tk.border,
+          radius: AppGeometry.heroRadius,
+          borderColor: tk.accentInk.withValues(alpha: tk.isDark ? 0.30 : 0.18),
+          padding: const EdgeInsets.all(AppSpace.card),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              KycStepHeroHeader(
+                isDisplayTitle: true,
+                leadingEmblem: AppAvatar(
+                  name: widget.profile.firstName,
+                  radius: 28,
+                ),
+                title: 'Bem-vindo, ${widget.profile.firstName}!',
+                subtitle: isProviderTarget
+                    ? 'Configure sua conta profissional com validação unificada (válida por 6 meses também no modo Cliente).'
+                    : 'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
+              ),
+              const SizedBox(height: AppSpace.s12),
+              const Wrap(
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s8,
+                children: [
+                  _WelcomeJourneyPill(
+                    icon: Icons.badge_outlined,
+                    label: '1. Dados e endereço',
+                  ),
+                  _WelcomeJourneyPill(
+                    icon: Icons.face_retouching_natural_rounded,
+                    label: '2. Rosto e documento',
+                  ),
+                  _WelcomeJourneyPill(
+                    icon: Icons.verified_user_outlined,
+                    label: '3. Selo de segurança',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpace.s16),
+
+        // 2. Cartão Porcelain "Seus dados pessoais" com contador vivo
+        KycPorcelainSectionCard(
+          key: const ValueKey('step0-personal-data-card'),
+          title: 'Seus dados pessoais',
+          subtitle: 'Preencha exatamente como consta no seu documento oficial.',
+          icon: Icons.person_outline_rounded,
+          statusChipLabel: progressChipLabel,
+          statusTone: progressTone,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Como podemos te chamar?',
+                style: AppType.bodyStrong.copyWith(color: tk.text),
+              ),
+              const SizedBox(height: AppSpace.s8),
+              AppTextField(
+                key: const ValueKey('client-setup-name'),
+                controller: _name,
+                textCapitalization: TextCapitalization.words,
+                hint: 'Nome e sobrenome completos',
+                semanticLabel: 'Como podemos te chamar?',
+                prefixIcon: Icons.person_outline,
+                success: nameValid,
+              ),
+              const SizedBox(height: AppSpace.s12),
+              AppTextField(
+                key: const ValueKey('client-setup-phone'),
+                controller: _phone,
+                keyboardType: TextInputType.phone,
+                inputFormatters: const [BrPhoneInputFormatter()],
+                label: 'Telefone com DDD',
+                hint: '(35) 99999-9999',
+                prefixIcon: Icons.phone_outlined,
+                helper:
+                    'Obrigatório para avisos de chegada e segurança do pedido.',
+                success: phoneValid,
+              ),
+              const SizedBox(height: AppSpace.s12),
+              AppTextField(
+                key: const ValueKey('client-setup-cpf'),
+                controller: _cpf,
+                keyboardType: TextInputType.number,
+                inputFormatters: const [CpfInputFormatter()],
+                label: 'CPF do Titular',
+                hint: 'Digite seu CPF',
+                prefixIcon: Icons.badge_outlined,
+                success: cpfCompleteValid,
+                errorText: cpfDigits.length == 11 && !cpfValid
+                    ? 'Dígito verificador do CPF inválido'
+                    : null,
+                helper: cpfCompleteValid
+                    ? 'CPF válido e verificado com sucesso'
+                    : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpace.s16),
+
+        // 3. Cartão Refinado de Confiança e Termos
+        AppCard(
+          key: const ValueKey('card-initial-role-terms'),
+          variant: AppCardVariant.outlined,
+          padding: const EdgeInsets.all(AppSpace.card),
+          borderColor:
+              _termsAccepted ? tk.success.withValues(alpha: 0.65) : tk.border,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ExcludeSemantics(
+                        child: Container(
+                          width: AppGeometry.iconTileSize,
+                          height: AppGeometry.iconTileSize,
+                          decoration: BoxDecoration(
+                            color: _termsAccepted
+                                ? tk.successSoft
+                                : tk.accentSoft,
+                            borderRadius: BorderRadius.circular(
+                              AppGeometry.iconTileRadius,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.verified_user_outlined,
+                            size: 20,
+                            color: _termsAccepted
+                                ? tk.successInk
+                                : tk.accentInk,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpace.s12),
+                      Flexible(
+                        child: Text(
+                          'Confiança e Termos',
+                          style: AppType.titleSm.copyWith(color: tk.text),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const AppStatusChip(
+                    'Validade 6 meses',
+                    tone: AppTone.info,
+                    icon: Icons.event_repeat_rounded,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpace.s12),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -1071,7 +1286,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     onChanged: (v) {
                       final next = v ?? false;
                       if (next) {
-                        ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+                        ScaffoldMessenger.maybeOf(
+                          context,
+                        )?.hideCurrentSnackBar();
                       }
                       setState(() {
                         _termsAccepted = next;
@@ -1085,7 +1302,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                       onTap: () {
                         final next = !_termsAccepted;
                         if (next) {
-                          ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
+                          ScaffoldMessenger.maybeOf(
+                            context,
+                          )?.hideCurrentSnackBar();
                         }
                         setState(() {
                           _termsAccepted = next;
@@ -1144,20 +1363,20 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          isProviderTarget
+        KycStepHeroHeader(
+          icon: Icons.location_on_rounded,
+          title: isProviderTarget
               ? 'Qual é sua localização base de atendimento?'
               : 'Onde você precisa do serviço?',
-          style: AppType.headline.copyWith(color: tk.text),
-        ),
-        const SizedBox(height: AppSpace.s8),
-        Text(
-          isProviderTarget
+          subtitle: isProviderTarget
               ? 'Usamos sua cidade e endereço base para conectar você aos chamados próximos na sua região com total segurança.'
               : 'O endereço completo só é compartilhado com o profissional contratado.',
-          style: AppType.bodySm.copyWith(color: tk.textMuted),
+          trustBadgeText: isProviderTarget
+              ? 'Sua localização exata nunca fica pública no mapa'
+              : 'Endereço oculto até você aprovar o orçamento',
+          trustBadgeIcon: Icons.lock_outline_rounded,
         ),
-        const SizedBox(height: AppSpace.s8),
+        const SizedBox(height: AppSpace.s40),
         AddressForm(
           initial: _address.isEmpty ? null : _address,
           onChanged: (a) {
@@ -1184,119 +1403,60 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Prova de Vida Facial',
-          style: AppType.headline.copyWith(color: tk.text),
+        const KycStepHeroHeader(
+          icon: Icons.face_retouching_natural_rounded,
+          title: 'Prova de Vida Facial',
+          subtitle:
+              'Antes de abrir a câmera, confira as orientações abaixo para confirmar sua identidade com tranquilidade em poucos segundos.',
+          trustBadgeText: 'Protegido pela LGPD · Válido por 6 meses',
+          trustBadgeIcon: Icons.verified_user_outlined,
         ),
-        const SizedBox(height: AppSpace.s8),
-        Text(
-          'Antes de abrir a câmera, confira as orientações abaixo para confirmar sua identidade com tranquilidade em poucos segundos.',
-          style: AppType.bodySm.copyWith(color: tk.textMuted),
-        ),
-        const SizedBox(height: AppSpace.s16),
-        AppCard(
+        const SizedBox(height: AppSpace.s20),
+        KeyedSubtree(
           key: const ValueKey('liveness-prep-card'),
-          variant: AppCardVariant.tonal,
-          radius: AppGeometry.heroRadius,
-          padding: const EdgeInsets.all(AppSpace.cardLarge),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: tk.accentSoft,
-                      borderRadius: BorderRadius.circular(
-                        AppGeometry.iconTileRadius,
-                      ),
-                    ),
-                    child: Icon(
-                      Icons.face_retouching_natural_rounded,
-                      size: 28,
-                      color: tk.accentInk,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpace.s12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Prepare-se para a câmera ao vivo',
-                          style: AppType.titleSm.copyWith(color: tk.text),
-                        ),
-                        const SizedBox(height: AppSpace.s2),
-                        Text(
-                          'A câmera só será aberta quando você tocar no botão abaixo.',
-                          style: AppType.bodySm.copyWith(color: tk.textMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppSpace.s16),
-              const _LivenessPrepTipRow(
-                icon: Icons.wb_sunny_outlined,
-                title: 'Iluminação de frente para o rosto',
-                description:
-                    'Escolha um local bem iluminado e evite ficar contra a luz de janelas ou lâmpadas.',
-              ),
-              const SizedBox(height: AppSpace.s12),
-              const _LivenessPrepTipRow(
-                icon: Icons.visibility_outlined,
-                title: 'Sem óculos escuros ou acessórios',
-                description:
-                    'Mantenha o rosto descoberto e certifique-se de que apenas você apareça na câmera.',
-              ),
-              const SizedBox(height: AppSpace.s12),
-              const _LivenessPrepTipRow(
-                icon: Icons.motion_photos_on_outlined,
-                title: '3 movimentos simples ao vivo',
-                description:
-                    'Enquadre o rosto na moldura, pisque os olhos e faça um leve movimento com a cabeça.',
-              ),
-              const SizedBox(height: AppSpace.s16),
-              Container(
-                padding: const EdgeInsets.all(AppSpace.s12),
-                decoration: BoxDecoration(
-                  color: tk.surface,
-                  borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
-                  border: Border.all(color: tk.border),
+          child: KycPorcelainSectionCard(
+            title: 'Prepare-se para a câmera ao vivo',
+            subtitle:
+                'A câmera só será aberta quando você tocar no botão abaixo.',
+            statusChipLabel: '3 passos simples',
+            statusTone: AppTone.accent,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Center(child: KycFaceIdIllustration(size: 108)),
+                const SizedBox(height: AppSpace.s20),
+                const _LivenessPrepTipRow(
+                  icon: Icons.wb_sunny_outlined,
+                  title: 'Iluminação de frente para o rosto',
+                  description:
+                      'Escolha um local bem iluminado e evite ficar contra a luz de janelas ou lâmpadas.',
                 ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      Icons.verified_user_outlined,
-                      size: 18,
-                      color: tk.successInk,
-                    ),
-                    const SizedBox(width: AppSpace.s8),
-                    Expanded(
-                      child: Text(
-                        'Protegido pela LGPD · Sua biometria é usada apenas para confirmar sua identidade e proteger sua conta.',
-                        style: AppType.bodySm.copyWith(color: tk.textMuted),
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: AppSpace.s12),
+                const _LivenessPrepTipRow(
+                  icon: Icons.visibility_outlined,
+                  title: 'Sem óculos escuros ou acessórios',
+                  description:
+                      'Mantenha o rosto descoberto e certifique-se de que apenas você apareça na câmera.',
                 ),
-              ),
-              const SizedBox(height: AppSpace.s20),
-              AppButton(
-                key: const ValueKey('btn-start-liveness'),
-                loading: _livenessRunning,
-                icon: Icons.videocam_rounded,
-                label: 'Iniciar Prova de Vida',
-                onPressed: _livenessRunning
-                    ? null
-                    : _startInteractiveLivenessChallenge,
-              ),
-            ],
+                const SizedBox(height: AppSpace.s12),
+                const _LivenessPrepTipRow(
+                  icon: Icons.motion_photos_on_outlined,
+                  title: '3 movimentos simples ao vivo',
+                  description:
+                      'Enquadre o rosto na moldura, pisque os olhos e faça um leve movimento com a cabeça.',
+                ),
+                const SizedBox(height: AppSpace.s20),
+                AppButton(
+                  key: const ValueKey('btn-start-liveness'),
+                  loading: _livenessRunning,
+                  icon: Icons.videocam_rounded,
+                  label: 'Iniciar Prova de Vida',
+                  onPressed: _livenessRunning
+                      ? null
+                      : _startInteractiveLivenessChallenge,
+                ),
+              ],
+            ),
           ),
         ),
       ],
@@ -1310,19 +1470,18 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Prova de Vida Facial',
-          style: AppType.headline.copyWith(color: tk.text),
+        const KycStepHeroHeader(
+          icon: Icons.verified_user_rounded,
+          title: 'Prova de Vida Facial',
+          subtitle:
+              'Sua verificação facial ao vivo foi concluída. Continue para fotografar seu documento oficial.',
+          trustBadgeText: 'Protegido pela LGPD · Válido por 6 meses',
+          trustBadgeIcon: Icons.verified_rounded,
         ),
-        const SizedBox(height: AppSpace.s8),
-        Text(
-          'Sua verificação facial ao vivo foi concluída. Continue para fotografar seu documento oficial.',
-          style: AppType.bodySm.copyWith(color: tk.textMuted),
-        ),
-        const SizedBox(height: AppSpace.s16),
+        const SizedBox(height: AppSpace.s20),
         AppCard(
           key: const ValueKey('liveness-approved-card'),
-          variant: AppCardVariant.outlined,
+          variant: AppCardVariant.elevated,
           radius: AppGeometry.heroRadius,
           borderColor: tk.success,
           padding: const EdgeInsets.all(AppSpace.cardLarge),
@@ -1406,27 +1565,31 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Validação Oficial do Documento',
-          style: AppType.headline.copyWith(color: tk.text),
+        const KycStepHeroHeader(
+          icon: Icons.badge_outlined,
+          title: 'Validação Oficial do Documento',
+          subtitle: 'Fotografe a frente e o verso com boa iluminação.',
+          trustBadgeText: 'Leitura automática segura',
+          trustBadgeIcon: Icons.shield_outlined,
         ),
-        const SizedBox(height: AppSpace.s8),
-        Text(
-          'Selecione seu documento e fotografe a frente e o verso com boa iluminação. Na próxima tela você confere os dados lidos automaticamente.',
-          style: AppType.bodySm.copyWith(color: tk.textMuted),
-        ),
-        const SizedBox(height: AppSpace.s16),
-        AppSection(
-          title: 'Tipo de documento oficial',
-          spacing: AppSpace.s8,
+        const SizedBox(height: AppSpace.s12),
+        KycPorcelainSectionCard(
+          key: const ValueKey('doc-type-selector-card'),
+          title: 'Qual documento você vai usar?',
           child: Wrap(
             spacing: AppSpace.s8,
-            runSpacing: AppSpace.s8,
+            runSpacing: AppSpace.s4,
             children: [
               for (final t in OfficialDocumentType.values)
                 ChoiceChip(
                   key: ValueKey('doc-type-${t.code}'),
-                  label: Text(t.label),
+                  tooltip: t.label,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
+                  labelPadding: const EdgeInsets.symmetric(
+                    horizontal: AppSpace.s4,
+                  ),
+                  label: Text(t.code),
                   selected: _docType == t,
                   onSelected: (_) {
                     setState(() {
@@ -1441,26 +1604,26 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
             ],
           ),
         ),
-        const SizedBox(height: AppSpace.s16),
+        const SizedBox(height: AppSpace.s12),
         LayoutBuilder(
           builder: (context, constraints) {
             final bool stackCards =
                 constraints.maxWidth < 360 || context.layout.isLargeText;
             final frontCard = _DocumentCaptureCard(
               key: const ValueKey('capture-doc-front'),
+              isFront: true,
               title: '1. Frente do documento',
-              subtitle: 'Lado com foto e nome completo (${_docType.code})',
+              subtitle: 'Foto e nome (${_docType.code})',
               validatedBadgeLabel: 'Frente validada',
-              emptyIcon: Icons.badge_outlined,
               imageBytes: _docFrontBytes,
               onTap: () => _captureDocumentSide(isFront: true),
             );
             final backCard = _DocumentCaptureCard(
               key: const ValueKey('capture-doc-back'),
+              isFront: false,
               title: '2. Verso do documento',
-              subtitle: 'Lado com CPF e código de segurança',
+              subtitle: 'CPF e código',
               validatedBadgeLabel: 'Verso validado',
-              emptyIcon: Icons.qr_code_2_rounded,
               imageBytes: _docBackBytes,
               onTap: () => _captureDocumentSide(isFront: false),
             );
@@ -1534,6 +1697,50 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           _error = null;
         });
       },
+    );
+  }
+}
+
+class _WelcomeJourneyPill extends StatelessWidget {
+  const _WelcomeJourneyPill({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tk.surfaceAt(1),
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+        border: Border.all(color: tk.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.s12,
+          vertical: AppSpace.s4 + 2,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: tk.accentInk),
+            const SizedBox(width: AppSpace.s4 + 2),
+            Flexible(
+              child: Text(
+                label,
+                style: AppType.bodySm.copyWith(
+                  color: tk.text,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1641,18 +1848,18 @@ class _LivenessApprovedBadge extends StatelessWidget {
 class _DocumentCaptureCard extends StatelessWidget {
   const _DocumentCaptureCard({
     super.key,
+    required this.isFront,
     required this.title,
     required this.subtitle,
     required this.validatedBadgeLabel,
-    required this.emptyIcon,
     required this.imageBytes,
     required this.onTap,
   });
 
+  final bool isFront;
   final String title;
   final String subtitle;
   final String validatedBadgeLabel;
-  final IconData emptyIcon;
   final Uint8List? imageBytes;
   final VoidCallback onTap;
 
@@ -1663,11 +1870,11 @@ class _DocumentCaptureCard extends StatelessWidget {
 
     return AppCard(
       onTap: onTap,
-      variant: hasPhoto ? AppCardVariant.tonal : AppCardVariant.outlined,
+      variant: hasPhoto ? AppCardVariant.tonal : AppCardVariant.elevated,
       color: hasPhoto ? tk.successSoft : null,
       borderColor: hasPhoto ? tk.success : tk.border,
       radius: AppGeometry.cardRadius,
-      padding: const EdgeInsets.all(AppSpace.card),
+      padding: const EdgeInsets.all(AppSpace.s12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1684,31 +1891,23 @@ class _DocumentCaptureCard extends StatelessWidget {
             )
           else
             Container(
-              height: 112,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s8,
+                vertical: AppSpace.s8,
+              ),
               decoration: BoxDecoration(
                 color: tk.surfaceInset,
                 borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
                 border: Border.all(color: tk.border),
               ),
               child: Center(
-                child: Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    color: tk.accentSoft,
-                    borderRadius: BorderRadius.circular(
-                      AppGeometry.iconTileRadius,
-                    ),
-                  ),
-                  child: Icon(
-                    emptyIcon,
-                    size: 28,
-                    color: tk.accentInk,
-                  ),
+                child: KycDocumentCardWireframe(
+                  isFront: isFront,
+                  height: 68,
                 ),
               ),
             ),
-          const SizedBox(height: AppSpace.s12),
+          const SizedBox(height: AppSpace.s8),
           Text(
             title,
             textAlign: TextAlign.center,
@@ -1739,9 +1938,9 @@ class _DocumentCaptureCard extends StatelessWidget {
               style: AppType.bodySm.copyWith(color: tk.textMuted),
             ),
             const SizedBox(height: AppSpace.s8),
-            Center(
+            const Center(
               child: AppStatusChip(
-                'Toque para fotografar',
+                'Abrir câmera',
                 tone: AppTone.accent,
                 icon: Icons.camera_alt_outlined,
               ),

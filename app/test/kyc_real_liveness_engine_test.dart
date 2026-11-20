@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:camera/camera.dart';
 import 'package:desperrengue_app/core/services/active_liveness_engine.dart';
 import 'package:desperrengue_app/core/services/document_ocr_and_liveness_service.dart';
 import 'package:desperrengue_app/core/services/face_detection_adapter.dart';
@@ -134,7 +135,7 @@ void main() {
         forcedDirection: LivenessTurnDirection.right,
       );
 
-      // Muito distante: largura 0.20 / 0.66 = 30.3% (< 42%)
+      // Muito distante: largura 0.20 / 0.66 = 30.3% (< 38%)
       final tooFar = engine.processObservation(
         _validFrame(
           tsMs: 1000,
@@ -144,7 +145,7 @@ void main() {
       expect(tooFar.contourState, LivenessContourState.invalidRed);
       expect(tooFar.instruction, 'Aproxime um pouco o rosto');
 
-      // Muito próximo: largura 0.62 / 0.66 = 93.9% (> 82%)
+      // Muito próximo: largura 0.62 / 0.66 = 93.9% (> 84%)
       final tooClose = engine.processObservation(
         _validFrame(
           tsMs: 1100,
@@ -154,7 +155,7 @@ void main() {
       expect(tooClose.contourState, LivenessContourState.invalidRed);
       expect(tooClose.instruction, 'Afaste um pouco o rosto');
 
-      // Fora do centro (±12%): center.dx = 0.70 (deslocamento 0.20 > 0.12)
+      // Fora do centro (±14%): center.dx = 0.70 (dx = +0.20 > 0.14) -> mover para esquerda
       final offCenter = engine.processObservation(
         _validFrame(
           tsMs: 1200,
@@ -162,7 +163,80 @@ void main() {
         ),
       );
       expect(offCenter.contourState, LivenessContourState.invalidRed);
-      expect(offCenter.instruction, 'Centralize seu rosto na moldura');
+      expect(
+        offCenter.instruction,
+        'Centralize movendo o rosto um pouco para a esquerda',
+      );
+    });
+
+    test('fornece instruções direcionais naturais alinhadas ao espelho (esquerda, direita, cima, baixo) e respeita calibração ergonômica', () {
+      final engine = ActiveLivenessStateMachine(
+        forcedDirection: LivenessTurnDirection.right,
+      );
+      expect(engine.config.maxCenterOffset, 0.14);
+      expect(engine.config.minFaceWidthToOvalRatio, 0.38);
+      expect(engine.config.maxFaceWidthToOvalRatio, 0.84);
+
+      // 1. Rosto à esquerda na tela (center.dx = 0.30 => dx = -0.20 < -0.14) -> mover para a direita
+      final shiftRight = engine.processObservation(
+        _validFrame(
+          tsMs: 1000,
+          box: const Rect.fromLTWH(0.10, 0.25, 0.40, 0.50),
+        ),
+      );
+      expect(shiftRight.contourState, LivenessContourState.invalidRed);
+      expect(
+        shiftRight.instruction,
+        'Centralize movendo o rosto um pouco para a direita',
+      );
+      expect(
+        KycHumanFeedbackTranslator.containsBannedTechnicalJargon(
+          shiftRight.instruction,
+        ),
+        isFalse,
+      );
+
+      // 2. Rosto à direita na tela (center.dx = 0.70 => dx = +0.20 > +0.14) -> mover para a esquerda
+      final shiftLeft = engine.processObservation(
+        _validFrame(
+          tsMs: 1100,
+          box: const Rect.fromLTWH(0.50, 0.25, 0.40, 0.50),
+        ),
+      );
+      expect(shiftLeft.contourState, LivenessContourState.invalidRed);
+      expect(
+        shiftLeft.instruction,
+        'Centralize movendo o rosto um pouco para a esquerda',
+      );
+
+      // 3. Rosto alto demais na moldura (center.dy = 0.30 => dy = -0.20 < -0.14) -> abaixar
+      final moveDown = engine.processObservation(
+        _validFrame(
+          tsMs: 1200,
+          box: const Rect.fromLTWH(0.30, 0.05, 0.40, 0.50),
+        ),
+      );
+      expect(moveDown.contourState, LivenessContourState.invalidRed);
+      expect(moveDown.instruction, 'Abaixe um pouco o rosto na moldura');
+
+      // 4. Rosto baixo demais na moldura (center.dy = 0.70 => dy = +0.20 > +0.14) -> levantar
+      final moveUp = engine.processObservation(
+        _validFrame(
+          tsMs: 1300,
+          box: const Rect.fromLTWH(0.30, 0.45, 0.40, 0.50),
+        ),
+      );
+      expect(moveUp.contourState, LivenessContourState.invalidRed);
+      expect(moveUp.instruction, 'Levante um pouco o rosto na moldura');
+
+      // 5. Dentro da tolerância ergonômica (dx = 0.13 <= 0.14, width ratio = 0.26/0.66 = 0.394 >= 0.38) -> válido
+      final ergonomicValid = engine.processObservation(
+        _validFrame(
+          tsMs: 1400,
+          box: const Rect.fromLTWH(0.50, 0.25, 0.26, 0.50),
+        ),
+      );
+      expect(ergonomicValid.contourState, LivenessContourState.validGreen);
     });
 
     test('rejeita monitor/tela azulada, baixa iluminação, pouca nitidez e foto estática parada', () {
@@ -388,6 +462,56 @@ void main() {
     });
   });
 
+  group('ActiveLivenessFullscreenModal — Espelhamento, câmera frontal estrita e ausência de troca de câmera', () {
+    test('shouldMirrorFrontPreview desativa flip manual no Android/iOS e ativa apenas na Web', () {
+      expect(
+        ActiveLivenessFullscreenModal.shouldMirrorFrontPreview(isWeb: false),
+        isFalse,
+      );
+      expect(
+        ActiveLivenessFullscreenModal.shouldMirrorFrontPreview(isWeb: true),
+        isTrue,
+      );
+    });
+
+    test('selectStrictFrontCamera trava na lente frontal e jamais faz fallback para câmera traseira', () {
+      const backCam = CameraDescription(
+        name: '0',
+        lensDirection: CameraLensDirection.back,
+        sensorOrientation: 90,
+      );
+      const frontCam = CameraDescription(
+        name: '1',
+        lensDirection: CameraLensDirection.front,
+        sensorOrientation: 270,
+      );
+      const namedSelfieCam = CameraDescription(
+        name: 'Integrated User Selfie Camera',
+        lensDirection: CameraLensDirection.external,
+        sensorOrientation: 0,
+      );
+
+      expect(
+        ActiveLivenessFullscreenModal.selectStrictFrontCamera(
+          const <CameraDescription>[backCam, frontCam],
+        ),
+        equals(frontCam),
+      );
+      expect(
+        ActiveLivenessFullscreenModal.selectStrictFrontCamera(
+          const <CameraDescription>[backCam, namedSelfieCam],
+        ),
+        equals(namedSelfieCam),
+      );
+      expect(
+        ActiveLivenessFullscreenModal.selectStrictFrontCamera(
+          const <CameraDescription>[backCam],
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('ActiveLivenessFullscreenModal — Widget, responsividade, contorno e acessibilidade', () {
     Future<void> pumpModal(
       WidgetTester tester, {
@@ -476,6 +600,7 @@ void main() {
       // Estado inicial sem rosto -> vermelho
       expect(findOvalPainter(tester).contourColor, AppTokens.dark.danger);
       expect(find.text('Etapa 1 de 3'), findsOneWidget);
+      expect(find.byIcon(Icons.cameraswitch_rounded), findsNothing);
       assertNoBannedJargonVisible(tester);
 
       // 2 faces -> continua vermelho com orientação curta
@@ -512,6 +637,7 @@ void main() {
         tester.getSize(find.byKey(ActiveLivenessFullscreenModal.closeButtonKey)).width,
         greaterThanOrEqualTo(48.0),
       );
+      expect(find.byIcon(Icons.cameraswitch_rounded), findsNothing);
       assertNoBannedJargonVisible(tester);
 
       // 1280x800 (desktop / Web — centralizado em <= 520px sem esticar webcam)
@@ -529,6 +655,7 @@ void main() {
         tester.getSize(find.byKey(ActiveLivenessFullscreenModal.viewportFrameKey)).width,
         520.0,
       );
+      expect(find.byIcon(Icons.cameraswitch_rounded), findsNothing);
       assertNoBannedJargonVisible(tester);
     });
 

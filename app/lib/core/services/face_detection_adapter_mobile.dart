@@ -152,9 +152,14 @@ class MobileFaceDetectionAdapter implements FaceDetectionAdapter {
         updateMotionBaseline: true,
       );
 
-      // ML Kit reporta headEulerAngleY positivo quando o rosto vira para a direita da câmera
-      // (esquerda do usuário). Na câmera frontal (espelhada), invertemos o sinal para manter
-      // convenção unificada: positivo = direita do usuário, negativo = esquerda do usuário.
+      // Convenção de espelho natural (coerente com o preview nativo da câmera frontal
+      // no Android/iOS, que já espelha horizontalmente sem Transform.flip extra):
+      // - No ML Kit, `headEulerAngleY` positivo significa rosto virado para a direita da
+      //   câmera (ou seja, para a ESQUERDA do usuário); negativo = DIREITA do usuário.
+      // - Na câmera frontal (`isFrontCamera == true`), invertemos o sinal (`-rawYaw`)
+      //   para a convenção unificada de espelho natural:
+      //     unifiedYaw > 0 -> usuário virou a cabeça para a sua DIREITA
+      //     unifiedYaw < 0 -> usuário virou a cabeça para a sua ESQUERDA
       final double rawYaw = primary.headEulerAngleY ?? 0.0;
       final double unifiedYaw = isFrontCamera ? -rawYaw : rawYaw;
       final double pitch = primary.headEulerAngleX ?? 0.0;
@@ -365,6 +370,11 @@ class MobileFaceDetectionAdapter implements FaceDetectionAdapter {
     final double top = (box.top / effH).clamp(0.0, 1.0);
     final double bottom = (box.bottom / effH).clamp(0.0, 1.0);
 
+    // Espelhamento horizontal no espaço normalizado [0..1] para alinhar 1:1 com o
+    // preview espelhado natural da câmera frontal (SurfaceTexture/AVFoundation):
+    // - Se o rosto aparece à direita do centro na tela (dx > 0.50), `normalizedBox`
+    //   reflete `center.dx > 0.50`, permitindo instrução natural "mova para a esquerda".
+    // - Se aparece à esquerda do centro (dx < 0.50), permite "mova para a direita".
     if (isFrontCamera) {
       final double mirroredLeft = (1.0 - right).clamp(0.0, 1.0);
       final double mirroredRight = (1.0 - left).clamp(0.0, 1.0);
