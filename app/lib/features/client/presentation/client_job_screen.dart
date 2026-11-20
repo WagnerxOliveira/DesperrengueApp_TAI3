@@ -1456,10 +1456,29 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final margin = context.layout.margin;
+    final layout = context.layout;
+    final margin = layout.margin;
     final p = widget.provider;
     final q = widget.quote;
     final avatar = AppAvatar(url: p?.avatarUrl, name: p?.fullName ?? '?', radius: 32, verified: true);
+    final ratingBlock = (p != null && p.ratingCount > 0)
+        ? Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s4,
+            children: [
+              AppRating(value: p.ratingAvg, size: 16),
+              Text(
+                '${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} (${p.ratingCount})',
+                style: AppType.tabular(AppType.bodySm).copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: tk.textMuted,
+                ),
+              ),
+            ],
+          )
+        : null;
+    final avatarHero = p != null ? AppHero(tag: 'provider-avatar-${p.id}', child: avatar) : avatar;
     return AppScaffold(
       appBar: const AppAppBar(title: 'Orçamento recebido'),
       body: ListView(
@@ -1475,38 +1494,40 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
           const SizedBox(height: AppSpace.s16),
           AppCard(
             variant: AppCardVariant.outlined,
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (p != null)
-                  AppHero(tag: 'provider-avatar-${p.id}', child: avatar)
-                else
-                  avatar,
-                const SizedBox(width: AppSpace.s16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        p?.fullName ?? 'Profissional',
-                        style: AppType.title.copyWith(color: tk.text),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    avatarHero,
+                    const SizedBox(width: AppSpace.s16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p?.fullName ?? 'Profissional',
+                            style: AppType.title.copyWith(color: tk.text),
+                          ),
+                          if ((p?.title ?? '').isNotEmpty)
+                            Text(
+                              p!.title,
+                              style: AppType.bodySm.copyWith(color: tk.textMuted),
+                            ),
+                          if (ratingBlock != null && !layout.isCompact && !layout.isLargeText) ...[
+                            const SizedBox(height: AppSpace.s4),
+                            ratingBlock,
+                          ],
+                        ],
                       ),
-                      if ((p?.title ?? '').isNotEmpty)
-                        Text(
-                          p!.title,
-                          style: AppType.bodySm.copyWith(color: tk.textMuted),
-                        ),
-                      if (p != null && p.ratingCount > 0) ...[
-                        const SizedBox(height: AppSpace.s4),
-                        AppRating(
-                          value: p.ratingAvg,
-                          count: p.ratingCount,
-                          showValue: true,
-                          size: 16,
-                        ),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+                if (ratingBlock != null && (layout.isCompact || layout.isLargeText)) ...[
+                  const SizedBox(height: AppSpace.s12),
+                  ratingBlock,
+                ],
               ],
             ),
           ),

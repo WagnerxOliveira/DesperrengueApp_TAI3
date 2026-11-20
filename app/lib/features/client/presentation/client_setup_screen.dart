@@ -1305,12 +1305,17 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
         const SizedBox(height: AppSpace.s24),
+        Text(
+          'Como podemos te chamar?',
+          style: AppType.bodyStrong.copyWith(color: tk.text),
+        ),
+        const SizedBox(height: AppSpace.s8),
         AppTextField(
           key: const ValueKey('client-setup-name'),
           controller: _name,
           textCapitalization: TextCapitalization.words,
-          label: 'Como podemos te chamar?',
           hint: 'Nome e sobrenome completos',
+          semanticLabel: 'Como podemos te chamar?',
           prefixIcon: Icons.person_outline,
         ),
         const SizedBox(height: AppSpace.s12),
@@ -1371,6 +1376,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                   ),
                   Expanded(
                     child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () {
                         final next = !_termsAccepted;
                         if (next) {
@@ -1381,13 +1387,19 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                           if (next) _error = null;
                         });
                       },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
-                        child: Text(
-                          'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
-                          style: AppType.bodySm.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: tk.text,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
+                            child: Text(
+                              'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
+                              style: AppType.bodySm.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: tk.text,
+                              ),
+                            ),
                           ),
                         ),
                       ),

@@ -206,11 +206,16 @@ class OrdersTabs extends StatelessWidget {
                             ),
                             backgroundColor: tk.accent,
                             textColor: tk.onAccent,
-                            offset: const Offset(10, -6),
-                            child: Text(
-                              label,
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
+                            offset: const Offset(-2, -4),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: unreadCount > 0 ? AppSpace.s16 : 0,
+                              ),
+                              child: Text(
+                                label,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                              ),
                             ),
                           ),
                         );
