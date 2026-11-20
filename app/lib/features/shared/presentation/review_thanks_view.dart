@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart';
 
@@ -27,7 +29,7 @@ class ReviewThanksView extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final other = isProvider ? 'o cliente' : 'o profissional';
-    final accent = isProvider ? tk.providerAccent : tk.clientAccent;
+    final accent = isProvider ? tk.providerAccentInk : tk.clientAccentInk;
     final accentSoft = isProvider ? tk.providerSoft : tk.clientSoft;
     final margin = context.layout.margin;
     return Column(
@@ -110,13 +112,14 @@ class _GlassShieldIconState extends State<_GlassShieldIcon>
 
   late final AnimationController _pulse = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2600),
+    duration: AppMotion.success,
   );
   late final AnimationController _burst = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1400),
   );
 
+  bool _pulsePlayed = false;
   bool _burstPlayed = false;
 
   @override
@@ -127,8 +130,9 @@ class _GlassShieldIconState extends State<_GlassShieldIcon>
       _pulse.value = 0;
       _burst.stop();
       _burst.value = 1;
-    } else if (!_pulse.isAnimating) {
-      _pulse.repeat(reverse: true);
+    } else if (!_pulsePlayed) {
+      _pulsePlayed = true;
+      _pulse.forward(from: 0);
     }
   }
 
@@ -144,7 +148,7 @@ class _GlassShieldIconState extends State<_GlassShieldIcon>
     final tk = context.tk;
     final accent = widget.accent;
     final reduced = AppMotion.reduced(context);
-    final starColor = tk.isDark ? tk.card : AppTokens.onColor(accent);
+    final onAccent = AppTokens.onColor(accent);
     final borderColor = (tk.isDark ? tk.border : accent)
         .withValues(alpha: tk.isDark ? 0.55 : 0.35);
 
@@ -157,7 +161,7 @@ class _GlassShieldIconState extends State<_GlassShieldIcon>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            accent.withValues(alpha: tk.isDark ? 0.30 : 0.22),
+            accent.withValues(alpha: tk.isDark ? 0.24 : 0.14),
             widget.soft.withValues(alpha: 0.55),
           ],
         ),
@@ -169,7 +173,15 @@ class _GlassShieldIconState extends State<_GlassShieldIcon>
           Icon(Icons.shield_rounded, size: 68, color: accent),
           Padding(
             padding: const EdgeInsets.only(bottom: 3),
-            child: Icon(Icons.star_rounded, size: 28, color: starColor),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: accent,
+              ),
+              child: Icon(Icons.star_rounded, size: 22, color: onAccent),
+            ),
           ),
           Positioned(
             right: 6,
@@ -202,13 +214,13 @@ class _GlassShieldIconState extends State<_GlassShieldIcon>
             AnimatedBuilder(
               animation: _pulse,
               builder: (context, _) {
-                final t = Curves.easeInOut.transform(_pulse.value);
+                final t = math.sin(_pulse.value * math.pi).clamp(0.0, 1.0);
                 return Container(
                   width: 112 + 32 * t,
                   height: 112 + 32 * t,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: accent.withValues(alpha: 0.16 * (1 - t) + 0.03),
+                    color: accent.withValues(alpha: 0.18 * t),
                   ),
                 );
               },
@@ -279,14 +291,14 @@ class _TransparencyCard extends StatelessWidget {
           const SizedBox(height: AppSpace.s16),
           _TimelineStep(
             icon: Icons.check_rounded,
-            color: tk.success,
+            color: tk.successInk,
             filled: true,
             text: 'Passo 1: Sua avaliação foi registrada e criptografada.',
             isLast: false,
           ),
           _TimelineStep(
             icon: revealed ? Icons.check_rounded : Icons.hourglass_top_rounded,
-            color: revealed ? tk.success : accent,
+            color: revealed ? tk.successInk : accent,
             filled: revealed,
             text: revealed
                 ? 'Passo 2: As duas avaliações já foram reveladas.'

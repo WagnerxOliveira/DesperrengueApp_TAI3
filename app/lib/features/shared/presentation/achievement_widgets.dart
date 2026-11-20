@@ -679,10 +679,17 @@ class SuccessHeroHalo extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [tk.success, tk.info],
+                colors: [
+                  tk.successInk,
+                  tk.isDark ? tk.info : tk.providerAccentInk,
+                ],
               ),
             ),
-            child: Icon(icon, size: core * 0.58, color: AppTokens.onColor(tk.info)),
+            child: Icon(
+              icon,
+              size: core * 0.58,
+              color: AppTokens.onColor(tk.successInk),
+            ),
           ),
         ],
       ),
