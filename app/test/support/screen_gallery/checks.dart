@@ -213,6 +213,13 @@ void checkTapTargets(GalleryRun run, ViolationLog log) {
     // fora da tela (rolagem) ou invisível
     if (t.rect.right < 0 || t.rect.bottom < 0 || t.rect.left > size.width || t.rect.top > size.height * 4) continue;
     if (t.rect.isEmpty) continue;
+    // Recorte parcial nas bordas de rolagem (ex.: botão de 56px aparecendo só
+    // os 2px superiores no fim da tela não é um botão de 2px).
+    final clippedVert = t.rect.height < kMinTapTarget - 0.5 &&
+        (t.rect.bottom >= size.height - 1.0 || t.rect.top <= 1.0);
+    final clippedHoriz = t.rect.width < kMinTapTarget - 0.5 &&
+        (t.rect.right >= size.width - 1.0 || t.rect.left <= 1.0);
+    if (clippedVert || clippedHoriz) continue;
     if (t.minSide < kMinTapTarget - 0.5) {
       log.add(GalleryRules.tapTarget, 'alvo de toque ${t.toString()} < 48x48', v);
     }

@@ -29,6 +29,8 @@ void main() {
       if (e is! File || !e.path.endsWith('.dart')) continue;
       final p = e.path.replaceAll(r'\', '/');
       if (p.contains('/features/founder/') || p.endsWith('main_founder.dart')) continue;
+      // Spec §3.1/§6.5: shimmer de skeleton no Design System é permitido.
+      if (p.endsWith('core/ui/design_system/app_states.dart')) continue;
       final lines = readSourceFile(e).split('\n');
       final shown = p.substring(p.indexOf('lib/') + 4);
       for (var i = 0; i < lines.length; i++) {

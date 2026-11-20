@@ -21,12 +21,11 @@ void main() {
   );
 
   // Tokens de tema: texto/acento sobre fundo e cartão, nos dois acentos e nos
-  // dois brilhos (contratos do spec §2.3). `accentInk` (≥ 4,5:1) é exigido
-  // assim que o `foundation` o entregar (ver `AppTokens`).
+  // dois brilhos (contratos do spec §2.3).
   group('tokens de tema · contraste', () {
     for (final mode in <UserMode?>[null, UserMode.client, UserMode.provider]) {
       for (final b in Brightness.values) {
-        test('texto principal/mudo ≥ 4,5:1 sobre fundo e cartão · ${mode?.wire ?? 'marca'} · ${b.name}', () {
+        test('texto, mudo, accentInk e dangerInk ≥ 4,5:1 sobre fundo/cartão/superfície · ${mode?.wire ?? 'marca'} · ${b.name}', () {
           final tk = (AppTheme.resolve(mode, b).extension<AppTokens>())!;
           for (final bg in <Color>[tk.background, tk.card, tk.surface]) {
             expect(
@@ -39,23 +38,34 @@ void main() {
               greaterThanOrEqualTo(4.5),
               reason: 'textMuted sobre ${bg.toARGB32().toRadixString(16)}',
             );
+            expect(
+              contrastRatio(tk.accentInk, bg),
+              greaterThanOrEqualTo(4.5),
+              reason: 'accentInk sobre ${bg.toARGB32().toRadixString(16)}',
+            );
+            expect(
+              contrastRatio(tk.dangerInk, bg),
+              greaterThanOrEqualTo(4.5),
+              reason: 'dangerInk sobre ${bg.toARGB32().toRadixString(16)}',
+            );
           }
+          expect(contrastRatio(tk.onAccent, tk.accent), greaterThanOrEqualTo(3.0), reason: 'onAccent sobre accent');
         });
       }
     }
 
-    test('acento de preenchimento como TEXTO sobre o fundo claro (informativo: marca laranja ≈ 3,05:1)', () {
+    test('clientAccentInk (≥ 4,5:1) corrige o contraste do laranja de marca sobre branco', () {
       final light = AppTokens.light;
-      final client = contrastRatio(light.clientAccent, light.background);
-      final provider = contrastRatio(light.providerAccent, light.background);
+      final fill = contrastRatio(light.clientAccent, light.background);
+      final ink = contrastRatio(light.clientAccentInk, light.background);
+      final provider = contrastRatio(light.providerAccentInk, light.background);
       // ignore: avoid_print
       print(
-        'GALERIA contraste acento/branco: cliente=${client.toStringAsFixed(2)}:1 profissional=${provider.toStringAsFixed(2)}:1',
+        'GALERIA contraste acento/branco: fill=${fill.toStringAsFixed(2)}:1 '
+        'clientAccentInk=${ink.toStringAsFixed(2)}:1 providerAccentInk=${provider.toStringAsFixed(2)}:1',
       );
+      expect(ink, greaterThanOrEqualTo(4.5));
       expect(provider, greaterThanOrEqualTo(4.5));
-      // O laranja de marca NÃO passa como texto < 24px (spec §1.2.3); o teste
-      // registra o valor e passa a exigir `accentInk` quando existir no tema.
-      expect(client, greaterThan(2.9));
     });
   });
 }

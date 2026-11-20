@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -78,7 +79,7 @@ List<TextProbe> collectProbes(WidgetTester tester, {Finder? within}) {
     final rect = topLeft & ro.size;
     final scaler = widget.textScaler;
     final truncated = ro.didExceedMaxLines;
-    final tscale = ro.getTransformTo(null).getMaxScaleOnAxis();
+    final tscale = _xyScale(ro.getTransformTo(null));
     _walkSpan(widget.text, const TextStyle(), (text, style) {
       if (text.trim().isEmpty) return;
       final family = style.fontFamily;
@@ -183,12 +184,20 @@ List<TapTarget> collectTapTargets(WidgetTester tester) {
   return out;
 }
 
-/// Escala global (acumulada) aplicada ao elemento por `Transform`s ancestrais.
+double _xyScale(Matrix4 m) {
+  final s = m.storage;
+  final sx = math.sqrt(s[0] * s[0] + s[1] * s[1]);
+  final sy = math.sqrt(s[4] * s[4] + s[5] * s[5]);
+  return math.min(sx, sy);
+}
+
+/// Escala 2D (plano XY) acumulada por `Transform`/`ScaleTransition` ancestrais.
+/// (Não usar `Matrix4.getMaxScaleOnAxis()`: o eixo Z fica em `1.0`, então
+/// reduções como `0.97` sumiriam em `max(0.97, 0.97, 1.0) == 1.0`.)
 double globalScaleOf(Element e) {
   final ro = e.renderObject;
   if (ro is! RenderBox) return 1.0;
-  final m = ro.getTransformTo(null);
-  return m.getMaxScaleOnAxis();
+  return _xyScale(ro.getTransformTo(null));
 }
 
 /// Localização (arquivo:linha) do widget que CRIOU [e]: sobe os ancestrais até
