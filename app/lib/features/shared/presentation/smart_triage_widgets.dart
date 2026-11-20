@@ -67,15 +67,23 @@ class SmartTriageTriggerBar extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpace.s12),
-          AppButton(
-            key: const ValueKey('btn-smart-triage'),
-            label: hasResult
-                ? 'Atualizar Diagnóstico e Lista de Peças com IA'
-                : 'Diagnosticar e Listar Peças com IA',
-            icon: Icons.auto_awesome_rounded,
-            loading: analyzing,
-            compact: true,
-            onPressed: analyzing ? null : onTrigger,
+          Builder(
+            builder: (context) {
+              final reduced = AppMotion.reduced(context);
+              final showSpinner = analyzing && !reduced;
+              final label = analyzing
+                  ? 'Analisando diagnóstico com IA...'
+                  : (hasResult
+                      ? 'Atualizar Diagnóstico e Lista de Peças com IA'
+                      : 'Diagnosticar e Listar Peças com IA');
+              return AppButton(
+                key: const ValueKey('btn-smart-triage'),
+                label: label,
+                icon: analyzing && reduced ? Icons.hourglass_top_rounded : Icons.auto_awesome_rounded,
+                loading: showSpinner,
+                onPressed: analyzing ? null : onTrigger,
+              );
+            },
           ),
         ],
       ),
@@ -125,6 +133,9 @@ class SmartTriageCard extends StatelessWidget {
               if (showApplyCategory)
                 ActionChip(
                   key: const ValueKey('triage-apply-category'),
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.standard,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
                   avatar: Icon(Icons.check_circle_outline_rounded, size: 16, color: tk.accentInk),
                   label: Text(
                     'Aplicar categoria',
@@ -485,7 +496,7 @@ class ProviderTriageBriefCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Contenção de emergência pelo cliente: ${guide.completedStepsCount}/${guide.steps.length} passos concluídos',
-                      style: AppType.tabular(AppType.caption).copyWith(
+                      style: AppType.tabular(AppType.bodySm).copyWith(
                         fontWeight: FontWeight.w700,
                         color: guide.isFullyContained ? tk.successInk : tk.providerAccentInk,
                       ),
@@ -777,14 +788,16 @@ class EmergencyContainmentBanner extends StatelessWidget {
           // ---- Botão de Emergência Pública (193 / 199)
           if (guide.emergencyPublicPhone != null) ...[
             const SizedBox(height: AppSpace.s8),
-            AppButton(
-              key: const ValueKey('emergency-public-call'),
-              variant: AppButtonVariant.destructive,
-              compact: true,
-              icon: Icons.phone_in_talk_rounded,
-              label: guide.emergencyPublicLabel ??
-                  'Emergência Pública (${guide.emergencyPublicPhone})',
-              onPressed: () => _callEmergency(context, guide.emergencyPublicPhone!),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: AppGeometry.buttonHeight),
+              child: AppButton(
+                key: const ValueKey('emergency-public-call'),
+                variant: AppButtonVariant.destructive,
+                icon: Icons.phone_in_talk_rounded,
+                label: guide.emergencyPublicLabel ??
+                    'Emergência Pública (${guide.emergencyPublicPhone})',
+                onPressed: () => _callEmergency(context, guide.emergencyPublicPhone!),
+              ),
             ),
           ],
         ],

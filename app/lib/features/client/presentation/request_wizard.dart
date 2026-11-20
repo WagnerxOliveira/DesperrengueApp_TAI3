@@ -699,11 +699,17 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                   label: Text(c.name),
                   avatar: Icon(
                     categoryIcon(c.name),
-                    size: 16,
+                    size: 18,
                     color: _category == c.name ? tk.onAccent : tk.accentInk,
                   ),
                   selected: _category == c.name,
                   showCheckmark: false,
+                  backgroundColor: tk.surface,
+                  selectedColor: tk.accent,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.standard,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
+                  labelPadding: const EdgeInsets.symmetric(vertical: AppSpace.s2),
                   labelStyle: AppType.bodySm.copyWith(
                     color: _category == c.name ? tk.onAccent : tk.text,
                     fontWeight: FontWeight.w600,
@@ -787,7 +793,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
               Expanded(
                 child: Text(
                   'Toque em uma foto anexada para adicionar ou editar a descrição breve ou sugestão.',
-                  style: AppType.caption.copyWith(color: tk.textMuted, fontWeight: FontWeight.w600),
+                  style: AppType.bodySm.copyWith(color: tk.textMuted, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -901,17 +907,45 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                   key: const ValueKey('when-scheduled'),
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Escolha o dia', style: AppType.titleSm.copyWith(color: tk.text)),
-                    CalendarDatePicker(
-                      initialDate: _date,
-                      firstDate: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
-                      lastDate: DateTime.now().add(const Duration(days: 90)),
-                      onDateChanged: (d) => setState(() {
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Escolha o dia', style: AppType.titleSm.copyWith(color: tk.text)),
+                        ),
+                        AppButton(
+                          label: 'Calendário',
+                          icon: Icons.calendar_month_rounded,
+                          variant: AppButtonVariant.tertiary,
+                          expand: false,
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final first = DateTime(now.year, now.month, now.day);
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _date.isBefore(first) ? first : _date,
+                              firstDate: first,
+                              lastDate: first.add(const Duration(days: 90)),
+                            );
+                            if (picked != null && mounted) {
+                              setState(() {
+                                _date = picked;
+                                _hour = null;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.s8),
+                    _DateStripPicker(
+                      selected: _date,
+                      days: 90,
+                      onSelected: (d) => setState(() {
                         _date = d;
                         _hour = null;
                       }),
                     ),
-                    const SizedBox(height: AppSpace.s4),
+                    const SizedBox(height: AppSpace.s16),
                     Text(
                       'Horários para ${weekdayName(_date)}, ${_date.day} de ${monthName(_date.month)}',
                       style: AppType.titleSm.copyWith(color: tk.text),
@@ -937,6 +971,12 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                                 ),
                                 selected: selected,
                                 showCheckmark: false,
+                                backgroundColor: tk.surface,
+                                selectedColor: tk.accent,
+                                materialTapTargetSize: MaterialTapTargetSize.padded,
+                                visualDensity: VisualDensity.standard,
+                                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
+                                labelPadding: const EdgeInsets.symmetric(vertical: AppSpace.s2),
                                 onSelected: disabled ? null : (_) => setState(() => _hour = h),
                               );
                             },
@@ -1009,7 +1049,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                                 Expanded(
                                   child: Text(
                                     'Foto ${i + 1}: ${_images[i].combinedSummary}',
-                                    style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: tk.text),
+                                    style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600, color: tk.text),
                                   ),
                                 ),
                               ],
@@ -1097,7 +1137,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                         const SizedBox(height: AppSpace.s4),
                         Text(
                           'Toque para ver no mapa em tempo real',
-                          style: AppType.caption.copyWith(
+                          style: AppType.bodySm.copyWith(
                             fontWeight: FontWeight.w700,
                             color: tk.accentInk,
                           ),
@@ -1148,7 +1188,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                   Text(
                     'Valor bloqueado para garantir a ida do profissional. Reembolsável se ele recusar ou não responder. '
                     'O orçamento final é combinado no local.',
-                    style: AppType.caption.copyWith(color: tk.textMuted),
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
                   ),
                 ],
               ),
@@ -1229,16 +1269,127 @@ class _ProviderMini extends StatelessWidget {
   }
 }
 
+class _DateStripPicker extends StatelessWidget {
+  const _DateStripPicker({
+    required this.selected,
+    required this.days,
+    required this.onSelected,
+  });
+
+  final DateTime selected;
+  final int days;
+  final ValueChanged<DateTime> onSelected;
+
+  static String _shortWeekday(DateTime d) {
+    final full = weekdayName(d);
+    return full.length <= 3 ? full : full.substring(0, 3);
+  }
+
+  static String _shortMonth(DateTime d) {
+    final full = monthName(d.month);
+    return full.length <= 3 ? full : full.substring(0, 3);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final stripHeight = MediaQuery.textScalerOf(context).scale(84).clamp(84.0, 118.0);
+    return SizedBox(
+      height: stripHeight,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: days,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
+        itemBuilder: (context, i) {
+          final d = today.add(Duration(days: i));
+          final isSelected = d.year == selected.year && d.month == selected.month && d.day == selected.day;
+          final fg = isSelected ? tk.onAccent : tk.text;
+          final muted = isSelected ? tk.onAccent.withValues(alpha: 0.85) : tk.textMuted;
+          return Semantics(
+            button: true,
+            selected: isSelected,
+            label: '${weekdayName(d)}, ${d.day} de ${monthName(d.month)}',
+            child: AppPressable(
+              onTap: () => onSelected(d),
+              borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+              isButton: false,
+              child: AnimatedContainer(
+                duration: AppMotion.d(context, AppMotion.fadeShort),
+                curve: AppMotion.fadeCurve,
+                constraints: const BoxConstraints(minWidth: 64, minHeight: AppGeometry.minTarget),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s8),
+                decoration: BoxDecoration(
+                  color: isSelected ? tk.accent : tk.card,
+                  borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                  border: Border.all(
+                    color: isSelected ? tk.accent : tk.border,
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      i == 0 ? 'Hoje' : _shortWeekday(d),
+                      style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: muted),
+                    ),
+                    const SizedBox(height: AppSpace.s2),
+                    Text(
+                      two(d.day),
+                      style: AppType.tabular(AppType.title).copyWith(color: fg),
+                    ),
+                    Text(
+                      _shortMonth(d),
+                      style: AppType.caption.copyWith(color: muted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _PublicRequestHeader extends StatelessWidget {
   const _PublicRequestHeader();
 
   @override
-  Widget build(BuildContext context) => const InfoBanner(
-        'Seu pedido ficará visível apenas para profissionais verificados da região que atendem esta especialidade. Você recebe até 3 orçamentos e escolhe o melhor.',
-        title: 'Pedido para profissionais da área',
-        icon: Icons.groups_rounded,
-        tone: BannerTone.promo,
-      );
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return AppCard(
+      variant: AppCardVariant.tonal,
+      color: tk.accentSoft,
+      borderColor: tk.accent.withValues(alpha: 0.35),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.groups_rounded, color: tk.accentInk, size: 22),
+          const SizedBox(width: AppSpace.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pedido para profissionais da área',
+                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s2),
+                Text(
+                  'Seu pedido ficará visível apenas para profissionais verificados da região que atendem esta especialidade. Você recebe até 3 orçamentos e escolhe o melhor.',
+                  style: AppType.bodySm.copyWith(color: tk.text),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Confirmação compacta da categoria já escolhida na tela anterior.
