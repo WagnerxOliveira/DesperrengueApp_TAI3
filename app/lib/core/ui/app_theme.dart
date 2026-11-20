@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../models/user_profile.dart';
 import 'app_tokens.dart';
+import 'design_system/app_navigation.dart';
+import 'design_system/tokens/app_motion.dart';
+import 'design_system/tokens/app_space.dart';
+import 'design_system/tokens/app_type.dart';
 
 /// Constantes de MARCA (a análise dos protótipos mostrou 4 azuis e 3 laranjas
 /// diferentes; aqui há UM por modo).
@@ -53,6 +57,7 @@ extension UserModeStyle on UserMode {
   Color get soft => this == UserMode.client ? AppColors.clientSoft : AppColors.providerSoft;
   String get label => this == UserMode.client ? 'Cliente' : 'Profissional';
 }
+
 class AppTheme {
   AppTheme._();
 
@@ -71,17 +76,51 @@ class AppTheme {
   static ThemeData forMode(UserMode mode, [Brightness brightness = Brightness.light]) =>
       _build(mode.accent, brightness, mode);
 
+  /// Mapa M3 → [AppType]. `Text` sem estilo (bodyMedium) já sai em Inter 15/22;
+  /// títulos em Plus Jakarta Sans.
+  static TextTheme textTheme(AppTokens tk) => TextTheme(
+        displayLarge: AppType.displayL,
+        displayMedium: AppType.display,
+        displaySmall: AppType.headline,
+        headlineLarge: AppType.headline,
+        headlineMedium: AppType.title,
+        headlineSmall: AppType.titleSm,
+        titleLarge: AppType.title,
+        titleMedium: AppType.titleSm,
+        titleSmall: AppType.bodyStrong,
+        bodyLarge: AppType.body,
+        bodyMedium: AppType.body,
+        bodySmall: AppType.bodySm,
+        labelLarge: AppType.button,
+        labelMedium: AppType.caption.copyWith(fontWeight: FontWeight.w600),
+        labelSmall: AppType.overline,
+      ).apply(bodyColor: tk.text, displayColor: tk.text);
+
   static ThemeData _build(Color lightAccent, Brightness brightness, UserMode? mode) {
-    final tk = brightness == Brightness.dark ? AppTokens.dark : AppTokens.light;
+    final base = brightness == Brightness.dark ? AppTokens.dark : AppTokens.light;
     // No escuro o acento vem do token (dessaturado), nunca da constante.
-    final accent = !tk.isDark
+    final accent = !base.isDark
         ? lightAccent
         : switch (mode) {
-            UserMode.client => tk.clientAccent,
-            UserMode.provider => tk.providerAccent,
-            null => tk.brand,
+            UserMode.client => base.clientAccent,
+            UserMode.provider => base.providerAccent,
+            null => base.brand,
           };
-    final onAccent = AppTokens.onColor(accent);
+    // Tinta de TEXTO do acento (>= 4,5:1): no claro, versão escurecida.
+    final accentInk = !base.isDark
+        ? switch (mode) {
+            UserMode.client => base.clientAccentInk,
+            UserMode.provider => base.providerAccentInk,
+            null => base.brand,
+          }
+        : accent;
+    final accentSoft = switch (mode) {
+      UserMode.client => base.clientSoft,
+      UserMode.provider => base.providerSoft,
+      null => base.infoSoft,
+    };
+    final tk = base.forAccent(accent: accent, accentInk: accentInk, accentSoft: accentSoft);
+    final onAccent = tk.onAccent;
     final scheme = ColorScheme.fromSeed(
       seedColor: lightAccent,
       brightness: brightness,
@@ -95,44 +134,77 @@ class AppTheme {
       // Elevação tonal: o M3 mistura este tom nas superfícies elevadas.
       surfaceTint: tk.isDark ? Colors.white : Colors.transparent,
     );
-    final radius28 = RoundedRectangleBorder(borderRadius: BorderRadius.circular(28));
+    final texts = textTheme(tk);
+    final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.buttonRadius));
+    final fieldBorderColor = tk.isDark ? tk.border : const Color(0xFFD0D5DD);
+    final clickCursor = WidgetStateProperty.resolveWith<MouseCursor>(
+      (s) => s.contains(WidgetState.disabled) ? SystemMouseCursors.basic : SystemMouseCursors.click,
+    );
+    WidgetStateProperty<Color?> interactiveOverlay(Color tint) => WidgetStateProperty.resolveWith<Color?>((s) {
+          if (s.contains(WidgetState.disabled)) return null;
+          if (s.contains(WidgetState.pressed)) return tint.withValues(alpha: 0.10);
+          if (s.contains(WidgetState.focused)) return tint.withValues(alpha: 0.12);
+          if (s.contains(WidgetState.hovered)) return tint.withValues(alpha: 0.04);
+          return null;
+        });
+    final filledFocusRingColor = tk.isDark ? tk.text : tk.accentInk;
+    OutlineInputBorder fieldBorder(Color c, [double w = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+          borderSide: BorderSide(color: c, width: w),
+        );
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
       extensions: [tk],
+      // Tipografia GLOBAL: qualquer Text sem estilo já sai em Inter/Jakarta.
+      fontFamily: AppFonts.inter,
+      fontFamilyFallback: AppFonts.fallback,
+      textTheme: texts,
+      primaryTextTheme: texts,
+      pageTransitionsTheme: AppPageTransitions.theme,
+      materialTapTargetSize: MaterialTapTargetSize.padded,
       scaffoldBackgroundColor: tk.background,
       canvasColor: tk.background,
       cardColor: tk.card,
       dividerColor: tk.border,
+      hoverColor: tk.accent.withValues(alpha: 0.04),
+      focusColor: tk.accent.withValues(alpha: 0.12),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: tk.accentInk,
+        selectionColor: tk.accent.withValues(alpha: 0.28),
+        selectionHandleColor: tk.accentInk,
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: tk.background,
         foregroundColor: tk.text,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: true,
-        titleTextStyle: TextStyle(color: tk.text, fontSize: 18, fontWeight: FontWeight.w700),
+        titleTextStyle: AppType.title.copyWith(color: tk.text),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: tk.isDark ? tk.surface : tk.background,
-        indicatorColor: switch (mode) {
-          UserMode.client => tk.clientSoft,
-          UserMode.provider => tk.providerSoft,
-          null => tk.infoSoft,
-        },
+        indicatorColor: tk.accentSoft,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        height: 68,
+        height: 72,
         iconTheme: WidgetStateProperty.resolveWith(
-          (s) => IconThemeData(color: s.contains(WidgetState.selected) ? accent : tk.textMuted, size: 25),
+          (s) => IconThemeData(color: s.contains(WidgetState.selected) ? tk.accentInk : tk.textMuted, size: 25),
         ),
         labelTextStyle: WidgetStateProperty.resolveWith(
-          (s) => TextStyle(
-            fontSize: 12,
-            fontWeight: s.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
+          (s) => AppType.caption.copyWith(
+            fontWeight: s.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w600,
             color: s.contains(WidgetState.selected) ? tk.text : tk.textMuted,
           ),
         ),
+      ),
+      tabBarTheme: TabBarThemeData(
+        labelStyle: AppType.bodyStrong,
+        unselectedLabelStyle: AppType.bodyStrong,
+        labelColor: tk.accentInk,
+        unselectedLabelColor: tk.textMuted,
+        indicatorColor: tk.accent,
       ),
       sliderTheme: SliderThemeData(
         activeTrackColor: accent,
@@ -140,7 +212,7 @@ class AppTheme {
         thumbColor: accent,
         overlayColor: accent.withValues(alpha: 0.16),
         valueIndicatorColor: accent,
-        valueIndicatorTextStyle: TextStyle(color: onAccent, fontWeight: FontWeight.w800),
+        valueIndicatorTextStyle: AppType.bodyStrong.copyWith(color: onAccent),
         trackHeight: 5,
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -152,70 +224,142 @@ class AppTheme {
         backgroundColor: tk.raised,
         surfaceTintColor: Colors.transparent,
         modalBackgroundColor: tk.raised,
-        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        modalBarrierColor: tk.scrim,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AppGeometry.sheetRadius)),
+        ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: tk.raised,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.cardRadius)),
+        titleTextStyle: AppType.title.copyWith(color: tk.text),
+        contentTextStyle: AppType.body.copyWith(color: tk.text),
       ),
       cardTheme: CardThemeData(color: tk.card, surfaceTintColor: Colors.transparent, elevation: 0),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: accent,
           foregroundColor: onAccent,
-          minimumSize: const Size.fromHeight(54),
-          shape: radius28,
-          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          minimumSize: const Size.fromHeight(AppGeometry.buttonHeight),
+          shape: buttonShape,
+          textStyle: AppType.button,
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(Colors.white),
+          side: WidgetStateProperty.resolveWith<BorderSide?>(
+            (s) => s.contains(WidgetState.focused) ? BorderSide(color: filledFocusRingColor, width: 2) : BorderSide.none,
+          ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: accent,
-          minimumSize: const Size.fromHeight(50),
-          side: BorderSide(color: accent, width: 1.5),
-          shape: radius28,
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          foregroundColor: tk.accentInk,
+          minimumSize: const Size.fromHeight(AppGeometry.buttonHeightCompact + 2),
+          shape: buttonShape,
+          textStyle: AppType.button,
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(tk.accentInk),
+          side: WidgetStateProperty.resolveWith<BorderSide?>((s) {
+            if (s.contains(WidgetState.disabled)) return BorderSide(color: tk.border, width: 1.5);
+            if (s.contains(WidgetState.focused)) return BorderSide(color: tk.accentInk, width: 2);
+            return BorderSide(color: tk.accentInk, width: 1.5);
+          }),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(foregroundColor: accent),
+        style: TextButton.styleFrom(
+          foregroundColor: tk.accentInk,
+          minimumSize: const Size(AppGeometry.minTarget, AppGeometry.minTarget),
+          textStyle: AppType.bodyStrong,
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(tk.accentInk),
+          side: WidgetStateProperty.resolveWith<BorderSide?>(
+            (s) => s.contains(WidgetState.focused) ? BorderSide(color: tk.accentInk, width: 2) : BorderSide.none,
+          ),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(AppGeometry.minTarget),
+          animationDuration: AppMotion.fadeShort,
+        ).copyWith(
+          mouseCursor: clickCursor,
+          overlayColor: interactiveOverlay(tk.accentInk),
+          side: WidgetStateProperty.resolveWith<BorderSide?>(
+            (s) => s.contains(WidgetState.focused) ? BorderSide(color: tk.accentInk, width: 2) : BorderSide.none,
+          ),
+        ),
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        radius: const Radius.circular(AppGeometry.pillRadius),
+        interactive: true,
+        thickness: WidgetStateProperty.resolveWith<double>(
+          (s) => s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? 8.0 : 6.0,
+        ),
+        thumbColor: WidgetStateProperty.resolveWith<Color>(
+          (s) => (s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? tk.accentInk : tk.textMuted)
+              .withValues(alpha: s.contains(WidgetState.hovered) || s.contains(WidgetState.dragged) ? 0.72 : 0.38),
+        ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: tk.isDark ? tk.surface : Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        hintStyle: TextStyle(color: tk.textMuted),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: tk.isDark ? tk.border : const Color(0xFFD0D5DD)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: tk.isDark ? tk.border : const Color(0xFFD0D5DD)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: accent, width: 1.8),
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: AppSpace.s16),
+        labelStyle: AppType.body.copyWith(color: tk.textMuted),
+        floatingLabelStyle: AppType.bodySm.copyWith(color: tk.accentInk, fontWeight: FontWeight.w600),
+        hintStyle: AppType.body.copyWith(color: tk.textMuted),
+        helperStyle: AppType.caption.copyWith(color: tk.textMuted),
+        errorStyle: AppType.caption.copyWith(color: tk.dangerInk, fontWeight: FontWeight.w600),
+        helperMaxLines: 3,
+        errorMaxLines: 3,
+        border: fieldBorder(fieldBorderColor),
+        enabledBorder: fieldBorder(fieldBorderColor),
+        focusedBorder: fieldBorder(tk.accentInk, 1.8),
+        errorBorder: fieldBorder(tk.danger, 1.5),
+        focusedErrorBorder: fieldBorder(tk.danger, 2),
       ),
       chipTheme: ChipThemeData(
         shape: const StadiumBorder(),
         side: BorderSide(color: tk.border),
         selectedColor: accent,
-        labelStyle: TextStyle(color: tk.text, fontWeight: FontWeight.w600),
-        secondaryLabelStyle: TextStyle(color: onAccent, fontWeight: FontWeight.w600),
+        labelStyle: AppType.bodySm.copyWith(color: tk.text, fontWeight: FontWeight.w600),
+        secondaryLabelStyle: AppType.bodySm.copyWith(color: onAccent, fontWeight: FontWeight.w600),
         checkmarkColor: onAccent,
       ),
       dividerTheme: DividerThemeData(color: tk.border, space: 1),
-      listTileTheme: ListTileThemeData(iconColor: tk.textMuted, textColor: tk.text),
+      listTileTheme: ListTileThemeData(
+        iconColor: tk.textMuted,
+        textColor: tk.text,
+        titleTextStyle: AppType.bodyStrong.copyWith(color: tk.text),
+        subtitleTextStyle: AppType.bodySm.copyWith(color: tk.textMuted),
+        minVerticalPadding: AppSpace.s8,
+      ),
+      tooltipTheme: TooltipThemeData(
+        textStyle: AppType.bodySm.copyWith(color: tk.background),
+        decoration: BoxDecoration(color: tk.text, borderRadius: BorderRadius.circular(8)),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: tk.raised,
+        surfaceTintColor: Colors.transparent,
+        textStyle: AppType.body.copyWith(color: tk.text),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.itemRadius)),
+      ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? onAccent : tk.textMuted),
         trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? accent : tk.surface),
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: tk.text,
+        contentTextStyle: AppType.bodySm.copyWith(color: tk.background),
+        actionTextColor: tk.isDark ? tk.background : tk.accentSoft,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.fieldRadius)),
       ),
     );
   }

@@ -1,0 +1,11 @@
+{
+  "tap_target|client/edit_address": 1,
+  "tap_target|client/order_tracking": 1,
+  "tap_target|client/order_tracking_notas": 1,
+  "tap_target|client/request_wizard_0": 2,
+  "tap_target|client/request_wizard_1": 3,
+  "tap_target|client/setup_0": 1,
+  "tap_target|provider/edit_profile_setup": 3,
+  "tap_target|shared/report_problem_job": 1,
+  "tap_target|shared/warranty_three_layer_sheet": 1
+}

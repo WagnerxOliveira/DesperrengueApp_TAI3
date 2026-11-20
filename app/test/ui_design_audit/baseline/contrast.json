@@ -1,0 +1,23 @@
+{
+  "contrast|client/detalhe_servico_concluido": 1,
+  "contrast|client/detalhe_servico_orcamentos": 2,
+  "contrast|client/historico": 1,
+  "contrast|client/orders_tab_cheia": 2,
+  "contrast|client/published_overlay": 1,
+  "contrast|client/published_overlay_direto": 1,
+  "contrast|client/rating": 2,
+  "contrast|client/request_wizard_1": 2,
+  "contrast|core/media_imagens": 3,
+  "contrast|provider/pix_withdraw": 2,
+  "contrast|provider/pix_withdraw_disputa": 2,
+  "contrast|provider/portfolio_historico": 2,
+  "contrast|provider/portfolio_historico_vazio": 2,
+  "contrast|provider/rate_client": 2,
+  "contrast|shared/chat_screen": 2,
+  "contrast|shared/chat_screen_leitura": 2,
+  "contrast|shared/chat_screen_vazio": 1,
+  "contrast|shared/delete_account_dois_perfis": 1,
+  "contrast|shared/property_passport_wizard": 2,
+  "contrast|shared/review_card": 4,
+  "contrast|shared/support_center": 2
+}

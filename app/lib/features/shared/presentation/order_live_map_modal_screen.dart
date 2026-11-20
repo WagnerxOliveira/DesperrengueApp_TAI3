@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -11,9 +13,8 @@ import '../../../core/models/structured_service_address.dart';
 import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/real_time_route_and_traffic_service.dart';
-import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/duotone_service_icons.dart';
-import '../../../core/ui/widgets.dart';
+import '../../../core/ui/widgets.dart' show friendlyError;
 import 'service_map_widgets.dart';
 
 /// Alias semântico para a tela cartográfica em tela cheia (`100%` da viewport).
@@ -50,11 +51,11 @@ class OfflineCartographicMeshLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = context.tk.isDark;
+    final tk = context.tk;
     return IgnorePointer(
       child: SizedBox.expand(
         child: CustomPaint(
-          painter: _OfflineCartographicMeshPainter(isDark: isDark),
+          painter: _OfflineCartographicMeshPainter(tk: tk),
         ),
       ),
     );
@@ -62,21 +63,20 @@ class OfflineCartographicMeshLayer extends StatelessWidget {
 }
 
 class _OfflineCartographicMeshPainter extends CustomPainter {
-  const _OfflineCartographicMeshPainter({required this.isDark});
+  const _OfflineCartographicMeshPainter({required this.tk});
 
-  final bool isDark;
+  final AppTokens tk;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final isDark = tk.isDark;
     final bgPaint = Paint()
-      ..color = isDark ? const Color(0xFF0C1424) : const Color(0xFFEAF0F8);
+      ..color = isDark ? tk.surfaceInset : tk.surface;
     canvas.drawRect(Offset.zero & size, bgPaint);
 
     // Áreas verdes / parques suaves
     final parkPaint = Paint()
-      ..color = isDark
-          ? const Color(0xFF10B981).withValues(alpha: 0.08)
-          : const Color(0xFF10B981).withValues(alpha: 0.12);
+      ..color = tk.success.withValues(alpha: isDark ? 0.08 : 0.12);
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(
@@ -85,7 +85,7 @@ class _OfflineCartographicMeshPainter extends CustomPainter {
           size.width * 0.24,
           size.height * 0.28,
         ),
-        const Radius.circular(14),
+        const Radius.circular(AppGeometry.fieldRadius),
       ),
       parkPaint,
     );
@@ -97,16 +97,15 @@ class _OfflineCartographicMeshPainter extends CustomPainter {
           size.width * 0.22,
           size.height * 0.26,
         ),
-        const Radius.circular(14),
+        const Radius.circular(AppGeometry.fieldRadius),
       ),
       parkPaint,
     );
 
     // Ruas secundárias da malha urbana
     final streetPaint = Paint()
-      ..color = isDark
-          ? Colors.white.withValues(alpha: 0.06)
-          : const Color(0xFF94A3B8).withValues(alpha: 0.28)
+      ..color = (isDark ? tk.text : tk.textMuted)
+          .withValues(alpha: isDark ? 0.06 : 0.24)
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
 
@@ -121,9 +120,7 @@ class _OfflineCartographicMeshPainter extends CustomPainter {
 
     // Avenidas arteriais diagonais
     final avenuePaint = Paint()
-      ..color = isDark
-          ? const Color(0xFF38BDF8).withValues(alpha: 0.14)
-          : const Color(0xFF2563EB).withValues(alpha: 0.18)
+      ..color = tk.info.withValues(alpha: isDark ? 0.14 : 0.18)
       ..strokeWidth = 5.0
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
@@ -141,7 +138,7 @@ class _OfflineCartographicMeshPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _OfflineCartographicMeshPainter oldDelegate) =>
-      oldDelegate.isDark != isDark;
+      oldDelegate.tk.brightness != tk.brightness;
 }
 
 /// Pino cartográfico customizado para a residência exata do cliente.
@@ -152,8 +149,10 @@ class DestinationMapPin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor =
-        confirmed ? const Color(0xFF10B981) : const Color(0xFF2563EB);
+    final tk = context.tk;
+    final darkTk = AppTokens.dark;
+    final primaryColor = confirmed ? tk.success : tk.info;
+    final onPrimary = AppTokens.onColor(primaryColor);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -166,11 +165,11 @@ class DestinationMapPin extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [
                 primaryColor,
-                Color.lerp(primaryColor, Colors.black, 0.22)!,
+                Color.lerp(primaryColor, darkTk.background, 0.24)!,
               ],
             ),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2.5),
+            border: Border.all(color: onPrimary, width: 2.5),
             boxShadow: [
               BoxShadow(
                 color: primaryColor.withValues(alpha: 0.45),
@@ -182,7 +181,7 @@ class DestinationMapPin extends StatelessWidget {
           child: Icon(
             confirmed ? Icons.verified_rounded : Icons.home_rounded,
             size: 20,
-            color: Colors.white,
+            color: onPrimary,
           ),
         ),
         Container(
@@ -190,15 +189,15 @@ class DestinationMapPin extends StatelessWidget {
           height: 9,
           decoration: BoxDecoration(
             color: primaryColor,
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: BorderRadius.circular(AppSpace.s2),
           ),
         ),
         Container(
           width: 10,
           height: 4,
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(999),
+            color: darkTk.background.withValues(alpha: 0.38),
+            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
           ),
         ),
       ],
@@ -221,6 +220,7 @@ class PrecisionStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final darkTk = AppTokens.dark;
     final isConfirmed =
         pinConfirmed || precision == DestinationPrecision.exact;
     final isHouse = precision == DestinationPrecision.house;
@@ -230,48 +230,45 @@ class PrecisionStatusPill extends StatelessWidget {
     final IconData icon;
 
     if (isConfirmed) {
-      accent = const Color(0xFF10B981);
+      accent = darkTk.success;
       label = 'Pino Confirmado';
       icon = Icons.verified_rounded;
     } else if (isHouse) {
-      accent = const Color(0xFF38BDF8);
+      accent = darkTk.info;
       label = 'Rua e Nº';
       icon = Icons.home_work_rounded;
     } else {
-      accent = const Color(0xFFF59E0B);
+      accent = darkTk.warning;
       label = 'Local da via';
       icon = Icons.place_rounded;
     }
 
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 9,
-        vertical: compact ? 3.5 : 4,
+        horizontal: compact ? AppSpace.s8 : AppSpace.s12 - 2,
+        vertical: AppSpace.s4,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1120).withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(999),
+        color: darkTk.background.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
         border: Border.all(color: accent.withValues(alpha: 0.45)),
       ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: compact ? 11.5 : 12.5, color: accent),
-            const SizedBox(width: 4),
-            Text(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: accent),
+          const SizedBox(width: AppSpace.s4),
+          Flexible(
+            child: Text(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: compact ? 10.5 : 11,
+              maxLines: 2,
+              style: AppType.caption.copyWith(
+                color: darkTk.text,
                 fontWeight: FontWeight.w700,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -584,8 +581,10 @@ class _InteractiveLocationPreviewCardState
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final darkTk = AppTokens.dark;
     final dest = LatLng(_lat, _lng);
-    final isDark = context.tk.isDark;
+    final isDark = tk.isDark;
     final isConfirmed =
         widget.pinConfirmed || _precision == DestinationPrecision.exact;
     final cleanAddress = widget.addressLine.trim().isEmpty
@@ -620,8 +619,7 @@ class _InteractiveLocationPreviewCardState
         ? Icons.alt_route_rounded
         : Icons.open_in_full_rounded;
 
-    final circleAccent =
-        isConfirmed ? const Color(0xFF10B981) : const Color(0xFF3B82F6);
+    final circleAccent = isConfirmed ? tk.success : tk.info;
 
     return AppCard(
       key: widget.cardKey,
@@ -630,7 +628,7 @@ class _InteractiveLocationPreviewCardState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
             child: SizedBox(
               height: widget.previewHeight,
               width: double.infinity,
@@ -693,9 +691,9 @@ class _InteractiveLocationPreviewCardState
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.transparent,
-                              Colors.black
-                                  .withValues(alpha: isDark ? 0.60 : 0.44),
+                              darkTk.background.withValues(alpha: 0),
+                              darkTk.background
+                                  .withValues(alpha: isDark ? 0.62 : 0.46),
                             ],
                           ),
                         ),
@@ -703,59 +701,62 @@ class _InteractiveLocationPreviewCardState
                     ),
                   ),
                   Positioned(
-                    left: 10,
-                    top: 10,
-                    child: IgnorePointer(
-                      child: PrecisionStatusPill(
-                        precision: _precision,
-                        pinConfirmed: widget.pinConfirmed,
+                    left: AppSpace.s12 - 2,
+                    top: AppSpace.s12 - 2,
+                    right: AppSpace.s12 - 2,
+                    child: Align(
+                      alignment: Alignment.topLeft,
+                      child: IgnorePointer(
+                        child: PrecisionStatusPill(
+                          precision: _precision,
+                          pinConfirmed: widget.pinConfirmed,
+                        ),
                       ),
                     ),
                   ),
                   Positioned(
-                    right: 10,
-                    bottom: 10,
-                    child: IgnorePointer(
-                      child: Container(
-                        key: const ValueKey('preview-live-map-cta-pill'),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5.5,
-                        ),
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFF0B1120).withValues(alpha: 0.88),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color:
-                                const Color(0xFF38BDF8).withValues(alpha: 0.42),
+                    left: AppSpace.s12 - 2,
+                    right: AppSpace.s12 - 2,
+                    bottom: AppSpace.s12 - 2,
+                    child: Align(
+                      alignment: Alignment.bottomRight,
+                      child: IgnorePointer(
+                        child: Container(
+                          key: const ValueKey('preview-live-map-cta-pill'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpace.s12 - 2,
+                            vertical: AppSpace.s4 + 1,
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.25),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                          decoration: BoxDecoration(
+                            color: darkTk.background.withValues(alpha: 0.88),
+                            borderRadius:
+                                BorderRadius.circular(AppGeometry.pillRadius),
+                            border: Border.all(
+                              color: darkTk.info.withValues(alpha: 0.45),
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              ctaIcon,
-                              size: 13.5,
-                              color: const Color(0xFF38BDF8),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              ctaLabel,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
+                            boxShadow: tk.elevation(1),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                ctaIcon,
+                                size: 14,
+                                color: darkTk.info,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: AppSpace.s4 + 1),
+                              Flexible(
+                                child: Text(
+                                  ctaLabel,
+                                  maxLines: 2,
+                                  style: AppType.caption.copyWith(
+                                    color: darkTk.text,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -764,15 +765,16 @@ class _InteractiveLocationPreviewCardState
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               DarkGlassDuotoneBadge.kind(
                 ServiceMetaIconKind.location,
+                accentColor: tk.clientAccentInk,
                 size: 36,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -780,35 +782,27 @@ class _InteractiveLocationPreviewCardState
                     Text(
                       primaryStreetLine,
                       key: const ValueKey('preview-street-number'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14.5,
-                        color: context.tk.text,
-                        height: 1.25,
-                      ),
+                      maxLines: 2,
+                      style: AppType.bodyStrong.copyWith(color: tk.text),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: AppSpace.s2),
                     Text(
                       secondaryLocationLine,
                       key: const ValueKey('preview-district-city-cep'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: context.tk.textMuted,
+                      maxLines: 2,
+                      style: AppType.caption.copyWith(
+                        color: tk.textMuted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: AppSpace.s8 - 2),
               Icon(
                 Icons.open_in_full_rounded,
                 size: 16,
-                color: context.tk.textMuted,
+                color: tk.textMuted,
               ),
             ],
           ),
@@ -882,8 +876,8 @@ class OrderLiveMapModalScreen extends StatefulWidget {
     String title = 'Localização Exata do Serviço',
   }) {
     return Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
+      AppRoute<void>(
+        fullscreenModal: true,
         builder: (_) => OrderLiveMapModalScreen(
           addressLine: addressLine,
           jobId: jobId,
@@ -917,8 +911,9 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
   final MapController _mapController = MapController();
   late final AnimationController _pulseController = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1800),
+    duration: AppMotion.success,
   );
+  bool _arrivalPulsed = false;
 
   Timer? _interactionIdleTimer;
   bool _isInteractingWithMap = false;
@@ -1011,13 +1006,19 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    if (disableAnimations) {
+    if (AppMotion.reduced(context)) {
       if (_pulseController.isAnimating) _pulseController.stop();
       _pulseController.value = 0.0;
-    } else if (!_pulseController.isAnimating) {
-      _pulseController.repeat(reverse: true);
+      _arrivalPulsed = true;
+    } else if (!_arrivalPulsed) {
+      _arrivalPulsed = true;
+      _pulseController.forward(from: 0.0);
     }
+  }
+
+  void _triggerSinglePulse() {
+    if (!mounted || AppMotion.reduced(context)) return;
+    _pulseController.forward(from: 0.0);
   }
 
   @override
@@ -1128,6 +1129,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
         _fitCompleteRoute(activateRoute: false);
       } else if (coordsChanged) {
         _centerOnDestination();
+        _triggerSinglePulse();
       }
     } catch (_) {
       // Mantém telemetria determinística já calculada.
@@ -1167,14 +1169,14 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
     }
   }
 
-  Color _trafficColor(TrafficConditionLevel level) {
+  Color _trafficColor(TrafficConditionLevel level, AppTokens darkTk) {
     switch (level) {
       case TrafficConditionLevel.fluent:
-        return const Color(0xFF10B981);
+        return darkTk.success;
       case TrafficConditionLevel.moderate:
-        return const Color(0xFFF59E0B);
+        return darkTk.warning;
       case TrafficConditionLevel.heavy:
-        return const Color(0xFFEF4444);
+        return darkTk.danger;
     }
   }
 
@@ -1250,7 +1252,11 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
         : widget.addressLine.trim();
     await Clipboard.setData(ClipboardData(text: textToCopy));
     if (!mounted) return;
-    showSnack(context, 'Endereço completo copiado.');
+    AppSnackbar.show(
+      context,
+      'Endereço completo copiado.',
+      kind: AppSnackKind.success,
+    );
   }
 
   Future<void> _openExternalNavigation() async {
@@ -1266,10 +1272,10 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (!mounted) return;
-      showSnack(
+      AppSnackbar.show(
         context,
         'Não foi possível abrir o navegador externo.',
-        error: true,
+        kind: AppSnackKind.error,
       );
     }
   }
@@ -1294,11 +1300,16 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
           pinConfirmed: true,
         );
       });
-      showSnack(context, 'Localização exata confirmada.');
+      _triggerSinglePulse();
+      AppSnackbar.show(
+        context,
+        'Localização exata confirmada.',
+        kind: AppSnackKind.success,
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _savingPin = false);
-      showSnack(context, friendlyError(e), error: true);
+      AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
@@ -1306,7 +1317,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
     return IgnorePointer(
       ignoring: _isInteractingWithMap,
       child: AnimatedOpacity(
-        duration: const Duration(milliseconds: 180),
+        duration: AppMotion.d(context, const Duration(milliseconds: 180)),
         opacity: _isInteractingWithMap ? 0.20 : 1.0,
         child: child,
       ),
@@ -1315,6 +1326,8 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final darkTk = AppTokens.dark;
     final dest = LatLng(_lat, _lng);
     final initialCameraCenter = _isShowingRoute
         ? LatLng(
@@ -1328,8 +1341,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
             bottomOverlayPx: _kBottomOverlayHeightPx,
           );
 
-    final trafficAccent = _trafficColor(_telemetry.condition);
-    final isDark = context.tk.isDark;
+    final trafficAccent = _trafficColor(_telemetry.condition, darkTk);
     final headerTitle = _shouldShowArrivalClock || _isShowingRoute
         ? 'Rota e Trânsito ao Vivo'
         : 'Localização Exata do Serviço';
@@ -1363,14 +1375,14 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
             ? widget.summary!.trim()
             : 'Localização verificada no mapa');
 
-    final circleAccent =
-        _pinConfirmed ? const Color(0xFF10B981) : const Color(0xFF3B82F6);
+    final circleAccent = _pinConfirmed ? tk.success : tk.info;
     final strokePattern = _telemetry.isRoadGeometry
         ? const StrokePattern.solid()
         : StrokePattern.dashed(segments: const [10, 8]);
+    final onOrigin = AppTokens.onColor(tk.info);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0C1424),
+      backgroundColor: darkTk.background,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1423,13 +1435,13 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                       Polyline(
                         points: _telemetry.polylinePoints,
                         strokeWidth: 8.0,
-                        color: const Color(0xFF0F172A).withValues(alpha: 0.42),
+                        color: darkTk.background.withValues(alpha: 0.42),
                         pattern: strokePattern,
                       ),
                       Polyline(
                         points: _telemetry.polylinePoints,
                         strokeWidth: 4.5,
-                        color: const Color(0xFF3B82F6),
+                        color: tk.info,
                         pattern: strokePattern,
                       ),
                     ],
@@ -1443,21 +1455,20 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                         height: 34,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: const Color(0xFF2563EB),
+                            color: tk.info,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2.5),
+                            border: Border.all(color: onOrigin, width: 2.5),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF2563EB)
-                                    .withValues(alpha: 0.45),
+                                color: tk.info.withValues(alpha: 0.45),
                                 blurRadius: 10,
                               ),
                             ],
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.navigation_rounded,
                             size: 16,
-                            color: Colors.white,
+                            color: onOrigin,
                           ),
                         ),
                       ),
@@ -1470,8 +1481,9 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                         child: AnimatedBuilder(
                           animation: _pulseController,
                           builder: (context, child) {
-                            final scale =
-                                1.0 + (_pulseController.value * 0.05);
+                            final pulse =
+                                math.sin(_pulseController.value * math.pi);
+                            final scale = 1.0 + (pulse * 0.08);
                             return Transform.scale(
                               scale: scale,
                               child: child,
@@ -1487,7 +1499,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
             ),
           ),
 
-          // 2. Barra Flutuante Superior Fina (50px) + Faixa Contextual Única (36px)
+          // 2. Barra Flutuante Superior + Faixa Contextual Única
           Positioned(
             top: 0,
             left: 0,
@@ -1496,181 +1508,179 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
               bottom: false,
               child: _wrapImmersiveOverlay(
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.s12,
+                    AppSpace.s4,
+                    AppSpace.s12,
+                    0,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
                         key: const ValueKey('order-live-map-top-bar'),
-                        height: 50,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        constraints: const BoxConstraints(
+                          minHeight: AppGeometry.minTarget,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.s4,
+                        ),
                         decoration: BoxDecoration(
-                          color:
-                              const Color(0xFF0B1120).withValues(alpha: 0.88),
-                          borderRadius: BorderRadius.circular(16),
+                          color: darkTk.background.withValues(alpha: 0.88),
+                          borderRadius:
+                              BorderRadius.circular(AppGeometry.itemRadius),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.14),
+                            color: darkTk.text.withValues(alpha: 0.14),
                           ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.24),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
+                          boxShadow: tk.elevation(2),
                         ),
                         child: Row(
                           children: [
-                            IconButton(
+                            AppIconButton(
                               key: const ValueKey('order-live-map-close'),
                               tooltip: 'Fechar mapa',
-                              visualDensity: VisualDensity.compact,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 34,
-                                minHeight: 34,
-                              ),
                               onPressed: () => Navigator.of(context).pop(),
-                              icon: const Icon(
-                                Icons.arrow_back_rounded,
-                                color: Colors.white,
-                                size: 20,
-                              ),
+                              icon: Icons.arrow_back_rounded,
+                              color: darkTk.text,
+                              size: 20,
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: AppSpace.s4),
                             Expanded(
                               child: Text(
                                 headerTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
+                                maxLines: 2,
+                                style: AppType.bodySm.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: darkTk.text,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 128),
-                              child: PrecisionStatusPill(
-                                precision: _precision,
-                                pinConfirmed: _pinConfirmed,
-                                compact: true,
+                            const SizedBox(width: AppSpace.s8 - 2),
+                            Flexible(
+                              flex: 0,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 148),
+                                child: PrecisionStatusPill(
+                                  precision: _precision,
+                                  pinConfirmed: _pinConfirmed,
+                                  compact: true,
+                                ),
                               ),
                             ),
+                            const SizedBox(width: AppSpace.s4),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: AppSpace.s4),
                       Container(
                         key: const ValueKey('shortest-route-summary'),
-                        height: 36,
+                        constraints: const BoxConstraints(minHeight: 32),
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.s8,
+                          vertical: AppSpace.s2,
+                        ),
                         decoration: BoxDecoration(
-                          color:
-                              const Color(0xFF0B1120).withValues(alpha: 0.86),
-                          borderRadius: BorderRadius.circular(999),
+                          color: darkTk.background.withValues(alpha: 0.86),
+                          borderRadius:
+                              BorderRadius.circular(AppGeometry.itemRadius),
                           border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.12),
+                            color: darkTk.text.withValues(alpha: 0.12),
                           ),
                         ),
                         alignment: Alignment.centerLeft,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _TelemetryPill(
-                                pillKey: const ValueKey('telemetry-eta-pill'),
-                                icon: Icons.schedule_rounded,
-                                accent: const Color(0xFF38BDF8),
-                                label: _telemetry.formattedEta,
-                              ),
-                              const SizedBox(width: 6),
+                        child: Wrap(
+                          spacing: AppSpace.s4 + 2,
+                          runSpacing: AppSpace.s2,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _TelemetryPill(
+                              pillKey: const ValueKey('telemetry-eta-pill'),
+                              icon: Icons.schedule_rounded,
+                              accent: darkTk.info,
+                              label: _telemetry.formattedEta,
+                            ),
+                            _TelemetryPill(
+                              pillKey:
+                                  const ValueKey('telemetry-distance-pill'),
+                              icon: Icons.route_rounded,
+                              accent: darkTk.providerAccent,
+                              label: _telemetry.formattedDistance,
+                            ),
+                            if (_isShowingRoute)
                               _TelemetryPill(
                                 pillKey:
-                                    const ValueKey('telemetry-distance-pill'),
-                                icon: Icons.route_rounded,
-                                accent: const Color(0xFF60A5FA),
-                                label: _telemetry.formattedDistance,
+                                    const ValueKey('telemetry-traffic-pill'),
+                                icon: Icons.traffic_rounded,
+                                accent: trafficAccent,
+                                label: _telemetry.conditionLabel,
                               ),
-                              if (_isShowingRoute) ...[
-                                const SizedBox(width: 6),
-                                _TelemetryPill(
-                                  pillKey:
-                                      const ValueKey('telemetry-traffic-pill'),
-                                  icon: Icons.traffic_rounded,
-                                  accent: trafficAccent,
-                                  label: _telemetry.conditionLabel,
+                            if (_shouldShowArrivalClock)
+                              _TelemetryPill(
+                                pillKey:
+                                    const ValueKey('telemetry-arrival-pill'),
+                                icon: Icons.flag_circle_rounded,
+                                accent: darkTk.security,
+                                label:
+                                    'Chegada ~${_telemetry.formattedArrivalTime}',
+                              )
+                            else
+                              Material(
+                                color: darkTk.info.withValues(alpha: 0.24),
+                                borderRadius: BorderRadius.circular(
+                                  AppGeometry.pillRadius,
                                 ),
-                              ],
-                              if (_shouldShowArrivalClock) ...[
-                                const SizedBox(width: 6),
-                                _TelemetryPill(
-                                  pillKey:
-                                      const ValueKey('telemetry-arrival-pill'),
-                                  icon: Icons.flag_circle_rounded,
-                                  accent: const Color(0xFFA78BFA),
-                                  label:
-                                      'Chegada ~${_telemetry.formattedArrivalTime}',
-                                ),
-                              ] else ...[
-                                const SizedBox(width: 8),
-                                Material(
-                                  color: const Color(0xFF2563EB)
-                                      .withValues(alpha: 0.24),
-                                  borderRadius: BorderRadius.circular(999),
-                                  child: InkWell(
-                                    key: const ValueKey(
-                                      'toggle-reference-route-button',
+                                child: InkWell(
+                                  key: const ValueKey(
+                                    'toggle-reference-route-button',
+                                  ),
+                                  borderRadius: BorderRadius.circular(
+                                    AppGeometry.pillRadius,
+                                  ),
+                                  onTap: _toggleReferenceRoute,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppSpace.s8,
+                                      vertical: AppSpace.s2,
                                     ),
-                                    borderRadius: BorderRadius.circular(999),
-                                    onTap: _toggleReferenceRoute,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 9,
-                                        vertical: 4,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(
+                                        AppGeometry.pillRadius,
                                       ),
-                                      decoration: BoxDecoration(
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                        border: Border.all(
-                                          color: const Color(0xFF60A5FA)
-                                              .withValues(alpha: 0.55),
+                                      border: Border.all(
+                                        color: darkTk.info
+                                            .withValues(alpha: 0.55),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          _userRequestedRoute
+                                              ? Icons.home_rounded
+                                              : Icons.alt_route_rounded,
+                                          size: 14,
+                                          color: darkTk.info,
                                         ),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            _userRequestedRoute
-                                                ? Icons.home_rounded
-                                                : Icons.alt_route_rounded,
-                                            size: 12.5,
-                                            color: const Color(0xFF93C5FD),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
+                                        const SizedBox(width: AppSpace.s4),
+                                        Flexible(
+                                          child: Text(
                                             _userRequestedRoute
                                                 ? 'Focar no imóvel'
                                                 : 'Ver rota no mapa',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w800,
+                                            maxLines: 2,
+                                            style: AppType.caption.copyWith(
+                                              color: darkTk.text,
+                                              fontWeight: FontWeight.w700,
                                             ),
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
-                              ],
-                            ],
-                          ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
@@ -1680,28 +1690,22 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
             ),
           ),
 
-          // 3. Pílula Vertical Lateral Compacta (width: 38px, acima do card inferior)
+          // 3. Pílula Vertical Lateral de Controles (alvos 48×48, acima do card inferior)
           Positioned(
-            right: 12,
-            bottom: _adjustingPin ? 182 : 132,
+            right: AppSpace.s12,
+            bottom: _adjustingPin ? 204 : 152,
             child: SafeArea(
               top: false,
               child: _wrapImmersiveOverlay(
                 Container(
-                  width: 38,
+                  width: AppGeometry.minTarget + 2,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0B1120).withValues(alpha: 0.88),
-                    borderRadius: BorderRadius.circular(14),
+                    color: darkTk.background.withValues(alpha: 0.88),
+                    borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
+                      color: darkTk.text.withValues(alpha: 0.16),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.26),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    boxShadow: tk.elevation(2),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Column(
@@ -1716,7 +1720,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                       Divider(
                         height: 1,
                         thickness: 1,
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: darkTk.text.withValues(alpha: 0.10),
                       ),
                       _FloatingMapControlButton(
                         buttonKey: const ValueKey('map-zoom-out'),
@@ -1727,7 +1731,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                       Divider(
                         height: 1,
                         thickness: 1,
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: darkTk.text.withValues(alpha: 0.10),
                       ),
                       _FloatingMapControlButton(
                         buttonKey: const ValueKey('map-center-destination'),
@@ -1738,7 +1742,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                       Divider(
                         height: 1,
                         thickness: 1,
-                        color: Colors.white.withValues(alpha: 0.10),
+                        color: darkTk.text.withValues(alpha: 0.10),
                       ),
                       _FloatingMapControlButton(
                         buttonKey: const ValueKey('map-fit-route'),
@@ -1755,29 +1759,28 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
 
           if (_adjustingPin)
             Positioned(
-              left: 12,
-              right: 60,
-              bottom: 184,
+              left: AppSpace.s12,
+              right: 68,
+              bottom: 204,
               child: SafeArea(
                 top: false,
                 child: _wrapImmersiveOverlay(
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                      horizontal: AppSpace.s12,
+                      vertical: AppSpace.s8,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A).withValues(alpha: 0.92),
-                      borderRadius: BorderRadius.circular(12),
+                      color: darkTk.background.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(AppSpace.s12),
                       border: Border.all(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.45),
+                        color: darkTk.info.withValues(alpha: 0.45),
                       ),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Toque no ponto exato da entrada do imóvel no mapa e confirme abaixo.',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11.5,
+                      style: AppType.caption.copyWith(
+                        color: darkTk.text,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1786,28 +1789,27 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
               ),
             ),
 
-          // 4. Card Inferior Ultra-Compacto (max ~156px, ZERO duplicação e 1 linha de botões)
+          // 4. Card Inferior Compacto (ZERO duplicação e 1 linha de botões)
           Positioned(
-            left: 12,
-            right: 12,
-            bottom: 8,
+            left: AppSpace.s12,
+            right: AppSpace.s12,
+            bottom: AppSpace.s4,
             child: SafeArea(
               top: false,
               child: _wrapImmersiveOverlay(
                 Container(
                   key: const ValueKey('order-live-map-executive-card'),
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpace.s12,
+                    AppSpace.s8,
+                    AppSpace.s12,
+                    AppSpace.s8,
+                  ),
                   decoration: BoxDecoration(
-                    color: context.tk.card.withValues(alpha: 0.96),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: context.tk.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.28),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
+                    color: tk.card.withValues(alpha: 0.96),
+                    borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+                    border: Border.all(color: tk.border),
+                    boxShadow: tk.elevation(2),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1818,9 +1820,10 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                         children: [
                           DarkGlassDuotoneBadge.kind(
                             ServiceMetaIconKind.location,
+                            accentColor: tk.clientAccentInk,
                             size: 36,
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: AppSpace.s12 - 2),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1830,26 +1833,21 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                                   streetLine,
                                   key:
                                       const ValueKey('live-map-street-number'),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 15.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: context.tk.text,
+                                  maxLines: 2,
+                                  style: AppType.bodyStrong.copyWith(
+                                    color: tk.text,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
+                                const SizedBox(height: AppSpace.s2),
                                 Text(
                                   secondaryLine,
                                   key: const ValueKey(
                                     'live-map-district-city-cep',
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
+                                  maxLines: 2,
+                                  style: AppType.caption.copyWith(
                                     fontWeight: FontWeight.w600,
-                                    color: context.tk.textMuted,
+                                    color: tk.textMuted,
                                   ),
                                 ),
                               ],
@@ -1857,100 +1855,40 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 40,
+                      const SizedBox(height: AppSpace.s4 + 2),
+                      IntrinsicHeight(
                         child: Row(
                           key: const ValueKey('live-map-actions-row'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Expanded(
-                              child: SizedBox(
-                                height: 40,
-                                child: OutlinedButton(
-                                  key: const ValueKey('copy-address-button'),
-                                  onPressed: _copyAddress,
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size(0, 40),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                    ),
-                                    backgroundColor: isDark
-                                        ? Colors.white.withValues(alpha: 0.04)
-                                        : null,
-                                  ),
-                                  child: const FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.copy_rounded, size: 15),
-                                        SizedBox(width: 5),
-                                        Text('Copiar'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                              child: _MapActionChipButton(
+                                buttonKey: const ValueKey('copy-address-button'),
+                                icon: Icons.copy_rounded,
+                                label: 'Copiar',
+                                onPressed: _copyAddress,
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: AppSpace.s8 - 2),
                             Expanded(
-                              child: SizedBox(
-                                height: 40,
-                                child: OutlinedButton(
-                                  key: const ValueKey(
-                                    'open-external-maps-button',
-                                  ),
-                                  onPressed: _openExternalNavigation,
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size(0, 40),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                    ),
-                                  ),
-                                  child: const FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.near_me_rounded, size: 15),
-                                        SizedBox(width: 5),
-                                        Text('Maps / Waze'),
-                                      ],
-                                    ),
-                                  ),
+                              child: _MapActionChipButton(
+                                buttonKey: const ValueKey(
+                                  'open-external-maps-button',
                                 ),
+                                icon: Icons.near_me_rounded,
+                                label: 'Maps / Waze',
+                                onPressed: _openExternalNavigation,
                               ),
                             ),
                             if (_canAdjustPin && !_adjustingPin) ...[
-                              const SizedBox(width: 8),
+                              const SizedBox(width: AppSpace.s8 - 2),
                               Expanded(
-                                child: SizedBox(
-                                  height: 40,
-                                  child: OutlinedButton(
-                                    key: const ValueKey('adjust-pin'),
-                                    onPressed: () =>
-                                        setState(() => _adjustingPin = true),
-                                    style: OutlinedButton.styleFrom(
-                                      minimumSize: const Size(0, 40),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                      ),
-                                    ),
-                                    child: const FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.edit_location_alt_rounded,
-                                            size: 15,
-                                          ),
-                                          SizedBox(width: 5),
-                                          Text('Ajustar Pino'),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                                child: _MapActionChipButton(
+                                  buttonKey: const ValueKey('adjust-pin'),
+                                  icon: Icons.edit_location_alt_rounded,
+                                  label: 'Ajustar Pino',
+                                  onPressed: () =>
+                                      setState(() => _adjustingPin = true),
                                 ),
                               ),
                             ],
@@ -1958,40 +1896,32 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                         ),
                       ),
                       if (_adjustingPin) ...[
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          height: 38,
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: _savingPin
-                                      ? null
-                                      : () =>
-                                          setState(() => _adjustingPin = false),
-                                  child: const Text('Cancelar'),
-                                ),
+                        const SizedBox(height: AppSpace.s8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: AppButton(
+                                label: 'Cancelar',
+                                variant: AppButtonVariant.secondary,
+                                compact: true,
+                                onPressed: _savingPin
+                                    ? null
+                                    : () =>
+                                        setState(() => _adjustingPin = false),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  key: const ValueKey('confirm-adjusted-pin'),
-                                  onPressed:
-                                      _savingPin ? null : _saveAdjustedPin,
-                                  icon:
-                                      const Icon(Icons.check_rounded, size: 16),
-                                  label: FittedBox(
-                                    fit: BoxFit.scaleDown,
-                                    child: Text(
-                                      _savingPin
-                                          ? 'Salvando...'
-                                          : 'Confirmar localização',
-                                    ),
-                                  ),
-                                ),
+                            ),
+                            const SizedBox(width: AppSpace.s8),
+                            Expanded(
+                              child: AppButton(
+                                key: const ValueKey('confirm-adjusted-pin'),
+                                label: 'Confirmar localização',
+                                icon: Icons.check_rounded,
+                                compact: true,
+                                loading: _savingPin,
+                                onPressed: _saveAdjustedPin,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ],
                     ],
@@ -2001,6 +1931,63 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapActionChipButton extends StatelessWidget {
+  const _MapActionChipButton({
+    required this.buttonKey,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final Key buttonKey;
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return AppPressScale(
+      child: OutlinedButton(
+        key: buttonKey,
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, AppGeometry.minTarget),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s8 - 2,
+            vertical: AppSpace.s4,
+          ),
+          foregroundColor: tk.accentInk,
+          backgroundColor: tk.isDark ? tk.surface : null,
+          side: BorderSide(color: tk.border),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: tk.accentInk),
+            const SizedBox(width: AppSpace.s4),
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: AppType.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: tk.accentInk,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2021,25 +2008,31 @@ class _TelemetryPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final darkTk = AppTokens.dark;
     return Container(
       key: pillKey,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.s8 - 2,
+        vertical: AppSpace.s2,
+      ),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
         border: Border.all(color: accent.withValues(alpha: 0.38)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12.5, color: accent),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
+          Icon(icon, size: 14, color: accent),
+          const SizedBox(width: AppSpace.s4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 2,
+              style: AppType.tabular(AppType.caption).copyWith(
+                color: darkTk.text,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -2063,20 +2056,14 @@ class _FloatingMapControlButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        key: buttonKey,
-        onTap: onPressed,
-        child: Tooltip(
-          message: tooltip,
-          child: SizedBox(
-            width: 38,
-            height: 34,
-            child: Icon(icon, color: Colors.white, size: 18),
-          ),
-        ),
-      ),
+    final darkTk = AppTokens.dark;
+    return AppIconButton(
+      key: buttonKey,
+      icon: icon,
+      tooltip: tooltip,
+      color: darkTk.text,
+      size: 20,
+      onPressed: onPressed,
     );
   }
 }

@@ -1,14 +1,14 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/welcome_cinema_tracker.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import 'cadastro_sucesso_routing.dart';
-
-import '../../../core/ui/light_island.dart';
 
 class CadastroVerificacaoOtpScreen extends StatefulWidget {
   final String email;
@@ -23,7 +23,7 @@ class _CadastroVerificacaoOtpScreenState
     extends State<CadastroVerificacaoOtpScreen> {
   final _otpController = TextEditingController();
   bool _isLoading = false;
-  final Color _primaryBlue = const Color(0xFF003366);
+  String? _otpError;
 
   // ===========================================================================
   // ESTADOS DO CRONÔMETRO PROGRESSIVO (EXPONENTIAL BACKOFF)
@@ -86,23 +86,18 @@ class _CadastroVerificacaoOtpScreenState
       _iniciarCronometro(); // Dispara o bloqueio de tempo
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Novo código solicitado ao servidor!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
+        AppSnackbar.show(
+          context,
+          'Novo código solicitado ao servidor!',
+          kind: AppSnackKind.success,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Aguarde um momento antes de pedir um novo código (Limite de Servidor).',
-            ),
-            backgroundColor: Colors.orange,
-          ),
+        AppSnackbar.show(
+          context,
+          'Aguarde um momento antes de pedir um novo código (Limite de Servidor).',
+          kind: AppSnackKind.warning,
         );
       }
     } finally {
@@ -114,16 +109,19 @@ class _CadastroVerificacaoOtpScreenState
     final token = _otpController.text.trim();
 
     if (token.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('O código deve ter exatamente 6 dígitos.'),
-          backgroundColor: Colors.redAccent,
-        ),
+      setState(() => _otpError = 'O código deve ter exatamente 6 dígitos.');
+      AppSnackbar.show(
+        context,
+        'O código deve ter exatamente 6 dígitos.',
+        kind: AppSnackKind.error,
       );
       return;
     }
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _otpError = null;
+      _isLoading = true;
+    });
 
     try {
       await Supabase.instance.client.auth.verifyOTP(
@@ -143,36 +141,33 @@ class _CadastroVerificacaoOtpScreenState
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('E-mail verificado com sucesso!'),
-            backgroundColor: Colors.green,
-          ),
+        AppSnackbar.show(
+          context,
+          'E-mail verificado com sucesso!',
+          kind: AppSnackKind.success,
         );
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
+          AppRoute<void>(
             builder: (context) => const CadastroSucessoRoutingScreen(),
           ),
         );
       }
     } on AuthException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro: ${e.message}'),
-            backgroundColor: Colors.redAccent,
-          ),
+        AppSnackbar.show(
+          context,
+          'Erro: ${e.message}',
+          kind: AppSnackKind.error,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Código inválido ou expirado.'),
-            backgroundColor: Colors.redAccent,
-          ),
+        AppSnackbar.show(
+          context,
+          'Código inválido ou expirado.',
+          kind: AppSnackKind.error,
         );
       }
     } finally {
@@ -184,145 +179,170 @@ class _CadastroVerificacaoOtpScreenState
   String _formatarTempoRestante(int segundosTotais) {
     if (segundosTotais < 60) return '$segundosTotais segundos';
 
-    int minutos = segundosTotais ~/ 60;
-    int segundos = segundosTotais % 60;
-    String segundosFormatados = segundos.toString().padLeft(2, '0');
+    final int minutos = segundosTotais ~/ 60;
+    final int segundos = segundosTotais % 60;
+    final String segundosFormatados = segundos.toString().padLeft(2, '0');
 
     return '$minutos:$segundosFormatados minutos';
   }
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
+    final tk = context.tk;
+    final layout = context.layout;
+
+    return AppScaffold(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
+          onPressed: _isLoading ? null : () => Navigator.pop(context),
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Verifique seu e-mail',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: _primaryBlue,
-                ),
-                textAlign: TextAlign.center,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                layout.margin,
+                AppSpace.s16,
+                layout.margin,
+                AppSpace.s32,
               ),
-              const SizedBox(height: 12),
-              Text(
-                'Digite o código de 6 dígitos\nenviado para ${widget.email}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 16,
-                  height: 1.4,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: (constraints.maxHeight - AppSpace.s48)
+                      .clamp(0.0, double.infinity),
                 ),
-              ),
-              const SizedBox(height: 48),
-
-              TextField(
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 32, // Tamanho restaurado para melhor legibilidade com 6 dígitos
-                  letterSpacing: 16, // Espaçamento aumentado para 6 dígitos
-                  fontWeight: FontWeight.bold,
-                ),
-                decoration: InputDecoration(
-                  counterText: '',
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: _primaryBlue, width: 2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 32),
-
-              ElevatedButton(
-                onPressed: _isLoading ? null : _verificarCodigo,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  elevation: 0,
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: tk.accentSoft,
+                          shape: BoxShape.circle,
                         ),
-                      )
-                    : const Text(
-                        'Confirmar Código',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                        child: Icon(
+                          Icons.mark_email_read_outlined,
+                          color: tk.accentInk,
+                          size: 32,
                         ),
                       ),
-              ),
-              const SizedBox(height: 24),
-
-              // ===============================================================
-              // INTERFACE DO BOTÃO DE REENVIO INTELIGENTE
-              // ===============================================================
-              Center(
-                child: _segundosRestantes > 0
-                    ? Text(
-                        'Aguarde ${_formatarTempoRestante(_segundosRestantes)} para reenviar.',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : TextButton(
-                        onPressed: _isResending ? null : _reenviarCodigo,
-                        child: _isResending
-                            ? const SizedBox(
-                                height: 16,
-                                width: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Text(
-                                'Não recebeu o código? Reenviar',
-                                style: TextStyle(
-                                  color: _primaryBlue,
-                                  fontWeight: FontWeight.bold,
-                                  decoration: TextDecoration.underline,
-                                ),
-                              ),
+                    ),
+                    const SizedBox(height: AppSpace.s20),
+                    Text(
+                      'Verifique seu e-mail',
+                      style: AppType.display.copyWith(color: tk.accentInk),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: AppSpace.s12),
+                    Text(
+                      'Digite o código de 6 dígitos\nenviado para ${widget.email}',
+                      textAlign: TextAlign.center,
+                      style: AppType.body.copyWith(color: tk.textMuted),
+                    ),
+                    const SizedBox(height: AppSpace.s32),
+                    TextField(
+                      controller: _otpController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      enabled: !_isLoading,
+                      textAlign: TextAlign.center,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      style: AppType.figure.copyWith(
+                        letterSpacing: 12,
+                        color: tk.text,
                       ),
+                      cursorColor: tk.accentInk,
+                      onChanged: (_) {
+                        if (_otpError != null) setState(() => _otpError = null);
+                      },
+                      onSubmitted: (_) {
+                        if (!_isLoading) _verificarCodigo();
+                      },
+                      decoration: InputDecoration(
+                        counterText: '',
+                        hintText: '000000',
+                        hintStyle: AppType.figure.copyWith(
+                          letterSpacing: 12,
+                          color: tk.textMuted,
+                        ),
+                        filled: true,
+                        fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
+                        errorText: _otpError,
+                        errorMaxLines: 2,
+                        errorStyle: AppType.bodySm.copyWith(
+                          color: tk.dangerInk,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.s16,
+                          vertical: AppSpace.s16,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.fieldRadius,
+                          ),
+                          borderSide: BorderSide(color: tk.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.fieldRadius,
+                          ),
+                          borderSide: BorderSide(color: tk.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.fieldRadius,
+                          ),
+                          borderSide: BorderSide(color: tk.accentInk, width: 2),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.fieldRadius,
+                          ),
+                          borderSide: BorderSide(color: tk.dangerInk, width: 2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.s24),
+                    AppButton(
+                      label: 'Confirmar Código',
+                      loading: _isLoading,
+                      onPressed: _verificarCodigo,
+                    ),
+                    const SizedBox(height: AppSpace.s20),
+                    // =========================================================
+                    // INTERFACE DO BOTÃO DE REENVIO INTELIGENTE
+                    // =========================================================
+                    Center(
+                      child: _segundosRestantes > 0
+                          ? Text(
+                              'Aguarde ${_formatarTempoRestante(_segundosRestantes)} para reenviar.',
+                              textAlign: TextAlign.center,
+                              style: AppType.tabular(AppType.bodyStrong)
+                                  .copyWith(color: tk.textMuted),
+                            )
+                          : AppButton(
+                              label: 'Não recebeu o código? Reenviar',
+                              variant: AppButtonVariant.tertiary,
+                              expand: false,
+                              loading: _isResending,
+                              onPressed: _isResending ? null : _reenviarCodigo,
+                            ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
-    ));
+    );
   }
 }

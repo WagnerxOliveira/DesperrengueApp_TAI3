@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -7,31 +6,31 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/achievements.dart';
+import '../../../core/models/fintech_warranty_models.dart' show ForensicStage;
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/security/geo_privacy_policy_engine.dart' show ProviderLocationView;
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/social_service.dart';
-import '../../../core/ui/app_theme.dart';
+import '../../../core/state/anti_bypass_fintech_controller.dart';
+import '../../../core/state/provider_portfolio_controller.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../../services/forensic_photo_service.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
+import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/geo_privacy_widgets.dart';
-import 'material_receipt_capture_screen.dart';
-import '../../../services/forensic_photo_service.dart';
-import '../../../core/models/fintech_warranty_models.dart' show ForensicStage;
-import '../../../core/security/geo_privacy_policy_engine.dart' show ProviderLocationView;
 import '../../shared/presentation/review_thanks_view.dart';
 import '../../shared/presentation/review_widgets.dart';
-import '../../shared/presentation/fintech_warranty_widgets.dart';
 import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../shared/presentation/support_screens.dart';
-import '../../../core/state/anti_bypass_fintech_controller.dart';
-import '../../../core/state/provider_portfolio_controller.dart';
-import '../../../core/state/smart_triage_controller.dart';
-import '../../../core/ui/app_tokens.dart';
+import 'material_receipt_capture_screen.dart';
 
 /// Volta até a tela raiz do serviço (ProviderJobScreen) que reage ao stream.
 void _backToJob(BuildContext context) {
@@ -41,16 +40,30 @@ void _backToJob(BuildContext context) {
 // ================================================================ execução (1)
 
 class ServiceExecutionScreen extends StatefulWidget {
-  const ServiceExecutionScreen({super.key, required this.job});
+  const ServiceExecutionScreen({
+    super.key,
+    required this.job,
+    this.myId,
+    this.jobService,
+    this.forensicService,
+  });
 
   final Job job;
+
+  /// Ganchos opcionais para testes (padrão `null`, zero impacto em produção).
+  final String? myId;
+  final JobService? jobService;
+  final ForensicPhotoService? forensicService;
 
   @override
   State<ServiceExecutionScreen> createState() => _ServiceExecutionScreenState();
 }
 
 class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
-  final _jobs = JobService();
+  JobService? _jobsOrNull;
+  JobService get _jobs => _jobsOrNull ??= widget.jobService ?? JobService();
+  ForensicPhotoService? _forensicOrNull;
+  ForensicPhotoService get _forensic => _forensicOrNull ??= widget.forensicService ?? ForensicPhotoService();
   Map<String, dynamic>? _client;
 
   @override
@@ -67,14 +80,13 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
     } catch (_) {}
   }
 
-  final _forensic = ForensicPhotoService();
   bool _forensicBusy = false;
 
   /// Nota fiscal REAL dos materiais: o dossiê só recebe o que o servidor confirmou.
   Future<void> _addMaterialReceipt() async {
     final job = widget.job;
     final r = await Navigator.of(context).push<MaterialReceiptResult>(
-      MaterialPageRoute(builder: (_) => MaterialReceiptCaptureScreen(jobId: job.id)),
+      AppRoute(builder: (_) => MaterialReceiptCaptureScreen(jobId: job.id)),
     );
     if (r == null || !mounted) return;
     FintechLedgerStore.instance.addMaterialReceipt(
@@ -87,7 +99,7 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
       receiptStoragePath: r.outcome.photoPath,
       realCapture: (lat: null, lng: null, gpsVerified: false),
     );
-    showSnack(context, r.outcome.message);
+    AppSnackbar.show(context, r.outcome.message, kind: AppSnackKind.success);
   }
 
   /// Foto REAL de check-in/check-out (câmera ao vivo, no local, EXIF removido, cofre privado).
@@ -120,7 +132,9 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
           );
         }
       }
-      if (o.state != ForensicCaptureState.cancelled) showSnack(context, o.message, error: !o.stored);
+      if (o.state != ForensicCaptureState.cancelled) {
+        AppSnackbar.show(context, o.message, kind: o.stored ? AppSnackKind.success : AppSnackKind.error);
+      }
     } finally {
       if (mounted) setState(() => _forensicBusy = false);
     }
@@ -128,134 +142,164 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final job = widget.job;
     final price = job.agreedPrice ?? 0;
     final net = price - price * 0.15;
     final clientName = (_client?['full_name'] as String?) ?? 'Cliente';
-    final me = Supabase.instance.client.auth.currentUser!.id;
+    final me = widget.myId ?? Supabase.instance.client.auth.currentUser?.id ?? '';
     return AppScaffold(
-      appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
-        title: const BrandLogo(),
+      appBar: AppAppBar(
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        titleWidget: const BrandLogo(),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
         children: [
           AppCard(
-            color: context.tk.successSoft,
-            borderColor: context.tk.success,
+            variant: AppCardVariant.tonal,
+            color: tk.successSoft,
+            borderColor: tk.success,
             child: Row(
               children: [
-                Icon(Icons.lock_rounded, color: context.tk.success),
-                const SizedBox(width: 12),
+                Icon(Icons.lock_rounded, color: tk.successInk),
+                const SizedBox(width: AppSpace.s12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Pagamento retido e garantido: ${brl(price)}', style: TextStyle(fontWeight: FontWeight.w900, color: context.tk.successInk)),
-                      Text('Você recebe ${brl(net)} após a confirmação.', style: TextStyle(color: context.tk.successInk, fontSize: 13)),
+                      Text(
+                        'Pagamento retido e garantido: ${brl(price)}',
+                        style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.successInk),
+                      ),
+                      const SizedBox(height: AppSpace.s2),
+                      Text(
+                        'Você recebe ${brl(net)} após a confirmação.',
+                        style: AppType.tabular(AppType.bodySm).copyWith(color: tk.successInk),
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpace.s24),
           Center(child: _ElapsedClock(since: job.startedAt ?? job.paidAt)),
-          Center(
-            child: const StatusChip('● Serviço em execução...', color: AppColors.providerBright),
+          const SizedBox(height: AppSpace.s8),
+          const Center(
+            child: AppStatusChip(
+              'Serviço em execução...',
+              tone: AppTone.accent,
+              icon: Icons.radio_button_checked_rounded,
+            ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpace.s20),
           AppCard(
-            radius: 20,
+            variant: AppCardVariant.elevated,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
-                    UserAvatar(url: _client?['avatar_url'] as String?, name: clientName, radius: 24),
-                    const SizedBox(width: 12),
+                    AppAvatar(url: _client?['avatar_url'] as String?, name: clientName, radius: 24),
+                    const SizedBox(width: AppSpace.s12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Cliente: $clientName', style: const TextStyle(fontWeight: FontWeight.w900)),
-                          Text(job.title, style: TextStyle(color: context.tk.textMuted)),
+                          Text('Cliente: $clientName', style: AppType.titleSm.copyWith(color: tk.text)),
+                          Text(job.title, style: AppType.bodySm.copyWith(color: tk.textMuted)),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpace.s12),
                 ProviderLocationBuilder(
                   jobId: job.id,
                   builder: (context, view, loading) =>
                       view == null ? ProviderLocationPending(loading: loading) : ProviderLocationPanel(view: view),
                 ),
                 if (job.scheduledFor != null) ...[
-                  const SizedBox(height: 10),
-                  Text('Agendado: ${dateLong(job.scheduledFor!)}', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
+                  const SizedBox(height: AppSpace.s12),
+                  Text('Agendado: ${dateLong(job.scheduledFor!)}', style: AppType.bodySm.copyWith(color: tk.textMuted)),
                 ],
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ChatScreen(job: job, providerId: me, peerName: clientName, peerAvatar: _client?['avatar_url'] as String?),
-                  )),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                  label: const Text('Chat com o cliente'),
+                const SizedBox(height: AppSpace.s12),
+                AppButton(
+                  label: 'Chat com o cliente',
+                  variant: AppButtonVariant.secondary,
+                  compact: true,
+                  expand: false,
+                  icon: Icons.chat_bubble_outline_rounded,
+                  onPressed: () => Navigator.of(context).push(
+                    AppRoute(
+                      builder: (_) => ChatScreen(
+                        job: job,
+                        providerId: me,
+                        peerName: clientName,
+                        peerAvatar: _client?['avatar_url'] as String?,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           ValueListenableBuilder(
             valueListenable: JobTriageStore.instance,
             builder: (context, _, _) => ProviderTriageBriefCard(
               result: JobTriageStore.instance.resolveForJob(job),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           ProviderLocationBuilder(
             jobId: job.id,
             builder: (context, locView, _) => ValueListenableBuilder(
-            valueListenable: FintechLedgerStore.instance,
-            builder: (context, _, _) {
-              // Nunca usa `job.addressSummary` (pode conter rua): só o endereço liberado pelo
-              // servidor ou, antes disso, Bairro • Cidade-UF.
-              final dossier = FintechLedgerStore.instance.resolveForJob(
-                job,
-                addressOverride: locView != null && locView.exactUnlocked
-                    ? exactAddressLineOf(locView)
-                    : protectedAreaTitle(locView),
-              );
-              return Column(
-                children: [
-                  SmartSplitTransparencyCard(
-                    dossier: dossier,
-                    isProviderView: true,
-                    onAddMaterialReceipt: _addMaterialReceipt,
-                  ),
-                  const SizedBox(height: 12),
-                  ForensicCheckInOutCard(
-                    dossier: dossier,
-                    isProviderView: true,
-                    onAddCheckInPhoto: _forensicBusy ? null : () => _captureForensic(ForensicStage.beforeCheckIn, locView),
-                    onAddCheckOutPhoto: _forensicBusy ? null : () => _captureForensic(ForensicStage.afterCheckOut, locView),
-                    onOpenThreeLayerWarranty: () =>
-                        WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
-                  ),
-                ],
-              );
-            },
-          ),
+              valueListenable: FintechLedgerStore.instance,
+              builder: (context, _, _) {
+                // Nunca usa `job.addressSummary` (pode conter rua): só o endereço liberado pelo
+                // servidor ou, antes disso, Bairro • Cidade-UF.
+                final dossier = FintechLedgerStore.instance.resolveForJob(
+                  job,
+                  addressOverride: locView != null && locView.exactUnlocked
+                      ? exactAddressLineOf(locView)
+                      : protectedAreaTitle(locView),
+                );
+                return Column(
+                  children: [
+                    SmartSplitTransparencyCard(
+                      dossier: dossier,
+                      isProviderView: true,
+                      onAddMaterialReceipt: _addMaterialReceipt,
+                    ),
+                    const SizedBox(height: AppSpace.s12),
+                    ForensicCheckInOutCard(
+                      dossier: dossier,
+                      isProviderView: true,
+                      onAddCheckInPhoto: _forensicBusy ? null : () => _captureForensic(ForensicStage.beforeCheckIn, locView),
+                      onAddCheckOutPhoto: _forensicBusy ? null : () => _captureForensic(ForensicStage.afterCheckOut, locView),
+                      onOpenThreeLayerWarranty: () =>
+                          WarrantyThreeLayerResolutionSheet.show(context, orderId: job.id),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           label: 'Finalizar serviço',
           trailingArrow: true,
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => WarrantyIntroScreen(job: job))),
+          onPressed: () => Navigator.of(context).push(AppRoute(builder: (_) => WarrantyIntroScreen(job: job))),
         ),
       ),
     );
@@ -302,16 +346,15 @@ class _ElapsedClockState extends State<_ElapsedClock> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return RepaintBoundary(
       child: Semantics(
         label: 'Tempo de serviço',
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            clockHms(_elapsed),
-            key: const ValueKey('service-elapsed-clock'),
-            style: TextStyle(fontSize: 56, fontWeight: FontWeight.w900, color: context.tk.providerAccent, fontFeatures: const [FontFeature.tabularFigures()]),
-          ),
+        child: Text(
+          clockHms(_elapsed),
+          key: const ValueKey('service-elapsed-clock'),
+          textAlign: TextAlign.center,
+          style: AppType.figureXl.copyWith(color: tk.accentInk),
         ),
       ),
     );
@@ -325,31 +368,47 @@ class WarrantyIntroScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Garantia e Portfólio')),
+      appBar: const AppAppBar(title: 'Garantia e Portfólio'),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.symmetric(horizontal: context.layout.margin, vertical: AppSpace.s24),
         children: [
-          const SizedBox(height: 8),
-          Center(child: CircleAvatar(radius: 70, backgroundColor: context.tk.providerSoft, child: Icon(Icons.emoji_events_rounded, size: 72, color: Color(0xFFE8B23A)))),
-          const SizedBox(height: 22),
-          Text('Mostre o seu talento para o mundo!', textAlign: TextAlign.center, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, height: 1.15, color: context.tk.providerAccent)),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s8),
+          Center(
+            child: CircleAvatar(
+              radius: 70,
+              backgroundColor: tk.providerSoft,
+              child: Icon(Icons.emoji_events_rounded, size: 72, color: tk.star),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s24),
+          Text(
+            'Mostre o seu talento para o mundo!',
+            textAlign: TextAlign.center,
+            style: AppType.display.copyWith(color: tk.accentInk),
+          ),
+          const SizedBox(height: AppSpace.s16),
           Text(
             'As próximas 4 fotos garantem a finalização do serviço e ficam salvas como prova para o cliente e para a sua proteção. Mostre o seu trabalho e feche ainda mais clientes!',
             textAlign: TextAlign.center,
-            style: TextStyle(height: 1.5, color: context.tk.text),
+            style: AppType.body.copyWith(color: tk.text),
           ),
-          const SizedBox(height: 18),
-          const InfoBanner('Acenda as luzes, limpe a lente e mostre o antes/depois.', tone: BannerTone.info, icon: Icons.lightbulb_outline_rounded, title: 'Dica'),
+          const SizedBox(height: AppSpace.s20),
+          const InfoBanner(
+            'Acenda as luzes, limpe a lente e mostre o antes/depois.',
+            tone: BannerTone.info,
+            icon: Icons.lightbulb_outline_rounded,
+            title: 'Dica',
+          ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           label: 'Tirar fotos',
           icon: Icons.photo_camera_rounded,
           trailingArrow: true,
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => EvidenceChecklistScreen(job: job))),
+          onPressed: () => Navigator.of(context).push(AppRoute(builder: (_) => EvidenceChecklistScreen(job: job))),
         ),
       ),
     );
@@ -425,7 +484,7 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
       await _jobs.addEvidence(jobId: widget.job.id, slot: slot, bytes: img.bytes, ext: img.ext);
       await _load();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busySlot = null);
     }
@@ -433,14 +492,23 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
 
   /// Vídeo curto do serviço (opcional, até 30 s / 25 MB): aparece no Case de Sucesso.
   Future<void> _pickVideo() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: const Icon(Icons.videocam_rounded), title: const Text('Gravar agora (até 30 s)'), onTap: () => Navigator.pop(ctx, ImageSource.camera)),
-          ListTile(leading: const Icon(Icons.video_library_rounded), title: const Text('Escolher da galeria'), onTap: () => Navigator.pop(ctx, ImageSource.gallery)),
-        ]),
+    final source = await AppSheet.show<ImageSource>(
+      context,
+      title: 'Adicionar vídeo do serviço',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppListTile(
+            leadingIcon: Icons.videocam_rounded,
+            title: 'Gravar agora (até 30 s)',
+            onTap: () => Navigator.pop(ctx, ImageSource.camera),
+          ),
+          AppListTile(
+            leadingIcon: Icons.video_library_rounded,
+            title: 'Escolher da galeria',
+            onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+          ),
+        ],
       ),
     );
     if (source == null || !mounted) return;
@@ -449,7 +517,9 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
       final x = await ImagePicker().pickVideo(source: source, maxDuration: const Duration(seconds: 30));
       if (x == null) return;
       if (await x.length() > 25 * 1024 * 1024) {
-        if (mounted) showSnack(context, 'O vídeo passa de 25 MB. Grave um trecho mais curto.', error: true);
+        if (mounted) {
+          AppSnackbar.show(context, 'O vídeo passa de 25 MB. Grave um trecho mais curto.', kind: AppSnackKind.error);
+        }
         return;
       }
       final name = x.name.toLowerCase();
@@ -457,7 +527,7 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
       await _jobs.addEvidence(jobId: widget.job.id, slot: 'video', bytes: await x.readAsBytes(), ext: ext);
       await _load();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _videoBusy = false);
     }
@@ -471,12 +541,12 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
         await ProviderService().setJobReport(widget.job.id, text);
         _savedReport = text;
       } catch (e) {
-        if (mounted) showSnack(context, friendlyError(e), error: true);
+        if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
         return;
       }
     }
     if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ReleasePaymentScreen(job: widget.job)));
+    await Navigator.of(context).push(AppRoute(builder: (_) => ReleasePaymentScreen(job: widget.job)));
   }
 
   Future<void> _remove(String slot) async {
@@ -486,76 +556,124 @@ class _EvidenceChecklistScreenState extends State<EvidenceChecklistScreen> {
       await _jobs.removeEvidence(id);
       await _load();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final count = _slots.where((s) => _items.containsKey(s.$1)).length;
     final done = count == 4;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Evidências do serviço')),
-      body: _loading
-          ? const LoadingView()
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+      appBar: const AppAppBar(title: 'Evidências do serviço'),
+      body: AppSkeletonSwitcher(
+        loading: _loading,
+        skeleton: const AppSkeletonList(count: 4),
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
+          children: [
+            Text('Capture as 4 fotos obrigatórias', style: AppType.headline.copyWith(color: tk.accentInk)),
+            const SizedBox(height: AppSpace.s8),
+            Row(
               children: [
-                Text('Capture as 4 fotos obrigatórias', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: context.tk.providerAccent)),
-                const SizedBox(height: 8),
-                Text(done ? '✓ Fotos obrigatórias (4/4)' : 'Fotos obrigatórias ($count/4)', style: TextStyle(fontWeight: FontWeight.w800, color: done ? const Color(0xFF1E8E4E) : context.tk.textMuted)),
-                const SizedBox(height: 14),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
+                if (done) ...[
+                  Icon(Icons.check_circle_rounded, size: 18, color: tk.successInk),
+                  const SizedBox(width: AppSpace.s8),
+                ],
+                Flexible(
+                  child: Text(
+                    'Fotos obrigatórias ($count/4)',
+                    style: AppType.tabular(AppType.bodyStrong).copyWith(color: done ? tk.successInk : tk.textMuted),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.s16),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: context.layout.isLargeText ? 0.78 : 1.0,
+              mainAxisSpacing: AppSpace.s12,
+              crossAxisSpacing: AppSpace.s12,
+              children: [
+                for (final (slot, label, hint) in _slots)
+                  _SlotCard(
+                    label: label,
+                    path: _items[slot]?['path'] as String?,
+                    busy: _busySlot == slot,
+                    onTap: () => _capture(slot, label, hint),
+                    onDelete: _items.containsKey(slot) ? () => _remove(slot) : null,
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.s16),
+            const InfoBanner(
+              'As fotos ficam salvas no pedido: protegem você e o cliente em caso de qualquer dúvida.',
+              tone: BannerTone.security,
+            ),
+            const SizedBox(height: AppSpace.section),
+            AppSection(
+              title: 'Vídeo do serviço (opcional)',
+              child: AppCard(
+                onTap: _videoBusy ? null : _pickVideo,
+                child: Row(
                   children: [
-                    for (final (slot, label, hint) in _slots)
-                      _SlotCard(
-                        label: label,
-                        path: _items[slot]?['path'] as String?,
-                        busy: _busySlot == slot,
-                        onTap: () => _capture(slot, label, hint),
-                        onDelete: _items.containsKey(slot) ? () => _remove(slot) : null,
+                    Icon(
+                      _items.containsKey('video') ? Icons.check_circle_rounded : Icons.videocam_outlined,
+                      color: _items.containsKey('video') ? tk.successInk : tk.accentInk,
+                    ),
+                    const SizedBox(width: AppSpace.s12),
+                    Expanded(
+                      child: Text(
+                        _items.containsKey('video')
+                            ? 'Vídeo anexado. Toque para trocar.'
+                            : 'Grave um vídeo curto do serviço pronto (até 30 s). Ele aparece no seu Case de Sucesso.',
+                        style: AppType.bodySm.copyWith(color: tk.text),
+                      ),
+                    ),
+                    if (_videoBusy)
+                      const SizedBox(width: 28, height: 28, child: AppLoading())
+                    else if (_items.containsKey('video'))
+                      AppIconButton(
+                        tooltip: 'Remover vídeo',
+                        icon: Icons.delete_outline_rounded,
+                        color: tk.dangerInk,
+                        onPressed: () => _remove('video'),
                       ),
                   ],
                 ),
-                const SizedBox(height: 14),
-                const InfoBanner('As fotos ficam salvas no pedido: protegem você e o cliente em caso de qualquer dúvida.', tone: BannerTone.security),
-                const SectionTitle('Vídeo do serviço (opcional)'),
-                AppCard(
-                  onTap: _videoBusy ? null : _pickVideo,
-                  child: Row(children: [
-                    Icon(_items.containsKey('video') ? Icons.check_circle_rounded : Icons.videocam_outlined, color: _items.containsKey('video') ? context.tk.success : context.tk.providerAccent),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _items.containsKey('video') ? 'Vídeo anexado. Toque para trocar.' : 'Grave um vídeo curto do serviço pronto (até 30 s). Ele aparece no seu Case de Sucesso.',
-                        style: TextStyle(color: context.tk.text, height: 1.3),
-                      ),
-                    ),
-                    if (_videoBusy) const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))
-                    else if (_items.containsKey('video')) IconButton(onPressed: () => _remove('video'), icon: Icon(Icons.delete_outline_rounded, color: context.tk.danger)),
-                  ]),
-                ),
-                const SectionTitle('Relatório técnico (opcional)'),
-                TextField(
-                  controller: _report,
-                  minLines: 3,
-                  maxLines: 6,
-                  maxLength: 2000,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                    hintText: 'O que você encontrou, o que fez e o que foi trocado. Ex.: Troquei o disjuntor de 20A por um DR de 25A e reapertei o quadro.',
-                  ),
-                ),
-                Text('Aparece para os clientes no seu Case de Sucesso e ajuda a fechar mais serviços.', style: TextStyle(fontSize: 12.5, color: context.tk.textMuted)),
-              ],
+              ),
             ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+            const SizedBox(height: AppSpace.section),
+            AppSection(
+              title: 'Relatório técnico (opcional)',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppTextField(
+                    controller: _report,
+                    minLines: 3,
+                    maxLines: 6,
+                    maxLength: 2000,
+                    textCapitalization: TextCapitalization.sentences,
+                    hint: 'O que você encontrou, o que fez e o que foi trocado. Ex.: Troquei o disjuntor de 20A por um DR de 25A e reapertei o quadro.',
+                  ),
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    'Aparece para os clientes no seu Case de Sucesso e ajuda a fechar mais serviços.',
+                    style: AppType.caption.copyWith(color: tk.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           label: 'Continuar para liberar pagamento',
           trailingArrow: true,
           onPressed: done ? _continue : null,
@@ -576,23 +694,32 @@ class _SlotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     if (path == null) {
-      return InkWell(
+      return AppPressable(
         onTap: busy ? null : onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
         child: Container(
-          decoration: BoxDecoration(color: context.tk.border, borderRadius: BorderRadius.circular(18), border: Border.all(color: context.tk.border, width: 1.5)),
+          decoration: BoxDecoration(
+            color: tk.surface,
+            borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+            border: Border.all(color: tk.border, width: 1.5),
+          ),
           child: Center(
             child: busy
-                ? const CircularProgressIndicator()
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.photo_camera_outlined, size: 34, color: context.tk.textMuted),
-                      const SizedBox(height: 4),
-                      Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-                      Text('+', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: context.tk.providerAccent)),
-                    ],
+                ? const AppLoading()
+                : Padding(
+                    padding: const EdgeInsets.all(AppSpace.s12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.photo_camera_outlined, size: 32, color: tk.textMuted),
+                        const SizedBox(height: AppSpace.s8),
+                        Text(label, textAlign: TextAlign.center, style: AppType.bodyStrong.copyWith(color: tk.text)),
+                        const SizedBox(height: AppSpace.s4),
+                        Icon(Icons.add_rounded, size: 22, color: tk.accentInk),
+                      ],
+                    ),
                   ),
           ),
         ),
@@ -601,21 +728,47 @@ class _SlotCard extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        SignedImage(path: path!, radius: 18),
-        Positioned(left: 0, right: 0, bottom: 0, child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(18)), gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black.withValues(alpha: 0.7), Colors.transparent])),
-          child: Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-        )),
-        const Positioned(left: 8, top: 8, child: CircleAvatar(radius: 13, backgroundColor: Color(0xFF2FA55A), child: Icon(Icons.check_rounded, size: 16, color: Colors.white))),
+        SignedImage(path: path!, radius: AppGeometry.cardRadius),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: const EdgeInsets.all(AppSpace.s8),
+            decoration: BoxDecoration(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(AppGeometry.cardRadius)),
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.black.withValues(alpha: 0.72), Colors.transparent],
+              ),
+            ),
+            child: Text(label, style: AppType.bodyStrong.copyWith(color: Colors.white)),
+          ),
+        ),
+        Positioned(
+          left: AppSpace.s8,
+          top: AppSpace.s8,
+          child: CircleAvatar(
+            radius: 13,
+            backgroundColor: tk.success,
+            child: Icon(Icons.check_rounded, size: 16, color: AppTokens.onColor(tk.success)),
+          ),
+        ),
         if (onDelete != null)
           Positioned(
-            right: 8,
-            top: 8,
+            right: AppSpace.s4,
+            top: AppSpace.s4,
             child: Material(
-              color: Colors.white.withValues(alpha: 0.92),
+              color: tk.card.withValues(alpha: 0.92),
               shape: const CircleBorder(),
-              child: InkWell(customBorder: const CircleBorder(), onTap: onDelete, child: Padding(padding: EdgeInsets.all(7), child: Icon(Icons.delete_outline_rounded, size: 18, color: context.tk.danger))),
+              child: AppIconButton(
+                tooltip: 'Remover foto',
+                icon: Icons.delete_outline_rounded,
+                size: 18,
+                color: tk.dangerInk,
+                onPressed: onDelete,
+              ),
             ),
           ),
       ],
@@ -691,18 +844,27 @@ class _ReleasePaymentScreenState extends State<ReleasePaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Liberar pagamento')),
+      appBar: const AppAppBar(title: 'Liberar pagamento'),
       body: Column(
         children: [
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+              padding: EdgeInsets.fromLTRB(context.layout.margin, AppSpace.s8, context.layout.margin, AppSpace.s8),
               children: [
-                Text('Insira o código de liberação', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: context.tk.providerAccent)),
-                const SizedBox(height: 8),
-                Text('Peça a $_clientName o PIN de 4 dígitos para validar a transação.', textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-                const SizedBox(height: 22),
+                Text(
+                  'Insira o código de liberação',
+                  textAlign: TextAlign.center,
+                  style: AppType.display.copyWith(color: tk.accentInk),
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  'Peça a $_clientName o PIN de 4 dígitos para validar a transação.',
+                  textAlign: TextAlign.center,
+                  style: AppType.body.copyWith(color: tk.textMuted),
+                ),
+                const SizedBox(height: AppSpace.s24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -710,60 +872,113 @@ class _ReleasePaymentScreenState extends State<ReleasePaymentScreen> {
                       Container(
                         width: 56,
                         height: 64,
-                        margin: const EdgeInsets.symmetric(horizontal: 6),
+                        margin: const EdgeInsets.symmetric(horizontal: AppSpace.s4 + 2),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: _error != null ? context.tk.danger : (i == _pin.length ? context.tk.providerAccent : context.tk.border), width: i == _pin.length ? 2 : 1.2),
+                          color: tk.surfaceInset,
+                          borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                          border: Border.all(
+                            color: _error != null
+                                ? tk.dangerInk
+                                : (i == _pin.length ? tk.accentInk : tk.border),
+                            width: i == _pin.length ? 2 : 1.2,
+                          ),
                         ),
-                        child: Text(i < _pin.length ? '•' : '', style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w900)),
+                        child: Text(
+                          i < _pin.length ? '•' : '',
+                          style: AppType.displayL.copyWith(color: tk.text),
+                        ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 40,
+                const SizedBox(height: AppSpace.s12),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 40),
                   child: Center(
                     child: _busy
-                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))
-                        : Text(_error ?? '', textAlign: TextAlign.center, style: TextStyle(color: context.tk.danger, fontWeight: FontWeight.w700)),
+                        ? const AppLoading()
+                        : Text(
+                            _error ?? '',
+                            textAlign: TextAlign.center,
+                            style: AppType.bodyStrong.copyWith(color: tk.dangerInk),
+                          ),
                   ),
                 ),
                 Center(
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => SafetyScreen(job: widget.job))),
-                    child: Text('Tive um problema / o cliente não tem o código', style: TextStyle(color: context.tk.danger, decoration: TextDecoration.underline, fontWeight: FontWeight.w700)),
+                  child: AppPressScale(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        AppRoute(builder: (_) => SafetyScreen(job: widget.job)),
+                      ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: tk.dangerInk,
+                        minimumSize: const Size(
+                          AppGeometry.minTarget,
+                          AppGeometry.minTarget,
+                        ),
+                      ),
+                      child: Text(
+                        'Tive um problema / o cliente não tem o código',
+                        textAlign: TextAlign.center,
+                        style: AppType.bodyStrong.copyWith(
+                          decoration: TextDecoration.underline,
+                          color: tk.dangerInk,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
           Container(
-            color: context.tk.surface,
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
+            color: tk.surface,
+            padding: const EdgeInsets.fromLTRB(AppSpace.s24, AppSpace.s12, AppSpace.s24, AppSpace.s20),
             child: SafeArea(
               top: false,
-              child: GridView.count(
-                crossAxisCount: 3,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: 2.1,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                children: [
-                  for (final k in ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', ''])
-                    k.isEmpty
-                        ? const SizedBox.shrink()
-                        : Material(
-                            color: context.tk.border,
-                            borderRadius: BorderRadius.circular(30),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(30),
-                              onTap: () => k == '⌫' ? _back() : _press(k),
-                              child: Center(child: Text(k, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: context.tk.providerAccent))),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Builder(
+                    builder: (context) {
+                      const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', ''];
+                      return GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: keys.length,
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          mainAxisExtent: AppGeometry.minTarget + 4,
+                          mainAxisSpacing: AppSpace.s12,
+                          crossAxisSpacing: AppSpace.s12,
+                        ),
+                        itemBuilder: (context, index) {
+                          final k = keys[index];
+                          if (k.isEmpty) return const SizedBox.shrink();
+                          return Material(
+                            color: tk.card,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(AppGeometry.buttonRadius),
+                              side: BorderSide(color: tk.border),
                             ),
-                          ),
-                ],
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(AppGeometry.buttonRadius),
+                              onTap: () => k == 'back' ? _back() : _press(k),
+                              child: Center(
+                                child: k == 'back'
+                                    ? Semantics(
+                                        label: 'Apagar dígito',
+                                        child: Icon(Icons.backspace_outlined, size: 22, color: tk.accentInk),
+                                      )
+                                    : Text(k, style: AppType.headline.copyWith(color: tk.accentInk)),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
           ),
@@ -782,30 +997,45 @@ class SafetyScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Garantia e segurança')),
+      appBar: const AppAppBar(title: 'Garantia e segurança'),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.symmetric(horizontal: context.layout.margin, vertical: AppSpace.s24),
         children: [
-          Center(child: CircleAvatar(radius: 56, backgroundColor: context.tk.providerSoft, child: Icon(Icons.shield_rounded, size: 60, color: context.tk.providerAccent))),
-          const SizedBox(height: 18),
-          const Text('O seu dinheiro está 100% protegido.', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, height: 1.15)),
-          const SizedBox(height: 12),
+          Center(
+            child: CircleAvatar(
+              radius: 56,
+              backgroundColor: tk.providerSoft,
+              child: Icon(Icons.shield_rounded, size: 60, color: tk.accentInk),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s20),
+          Text(
+            'O seu dinheiro está 100% protegido.',
+            textAlign: TextAlign.center,
+            style: AppType.display.copyWith(color: tk.text),
+          ),
+          const SizedBox(height: AppSpace.s12),
           Text(
             'Fique tranquilo: o valor de ${brl(job.agreedPrice)} está bloqueado em nosso sistema para garantir que você não saia no prejuízo. Abra um chamado e a nossa equipe de mediação assume o caso.',
             textAlign: TextAlign.center,
-            style: TextStyle(height: 1.5, color: context.tk.text),
+            style: AppType.body.copyWith(color: tk.text),
           ),
-          const SizedBox(height: 16),
-          const InfoBanner('Recomendamos que você saia do local em segurança. Não há necessidade de discussão.', tone: BannerTone.warning, icon: Icons.shield_outlined),
+          const SizedBox(height: AppSpace.s16),
+          const InfoBanner(
+            'Recomendamos que você saia do local em segurança. Não há necessidade de discussão.',
+            tone: BannerTone.warning,
+            icon: Icons.shield_outlined,
+          ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           label: 'Falar com a mediação',
           icon: Icons.chat_bubble_outline_rounded,
           onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => ReportProblemScreen(job: job, asProvider: true, initialReason: 'O cliente não tem o código')),
+            AppRoute(builder: (_) => ReportProblemScreen(job: job, asProvider: true, initialReason: 'O cliente não tem o código')),
           ),
         ),
       ),
@@ -820,48 +1050,62 @@ class MediationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Mediação em andamento'), automaticallyImplyLeading: true),
+      appBar: const AppAppBar(title: 'Mediação em andamento', automaticallyImplyLeading: true),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: SocialService().myTickets(),
         builder: (context, snap) {
           final t = (snap.data ?? const []).where((x) => x['job_id'] == job.id).firstOrNull;
           final protocol = t == null ? '' : protocolOf(t['id'] as String);
           return ListView(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.symmetric(horizontal: context.layout.margin, vertical: AppSpace.s24),
             children: [
-              Center(child: CircleAvatar(radius: 52, backgroundColor: context.tk.providerSoft, child: Icon(Icons.gavel_rounded, size: 54, color: context.tk.providerAccent))),
-              const SizedBox(height: 16),
-              const Text('Pagamento retido para análise.', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 12),
+              Center(
+                child: CircleAvatar(
+                  radius: 52,
+                  backgroundColor: tk.providerSoft,
+                  child: Icon(Icons.gavel_rounded, size: 54, color: tk.accentInk),
+                ),
+              ),
+              const SizedBox(height: AppSpace.s16),
+              Text(
+                'Pagamento retido para análise.',
+                textAlign: TextAlign.center,
+                style: AppType.headline.copyWith(color: tk.text),
+              ),
+              const SizedBox(height: AppSpace.s12),
               if (protocol.isNotEmpty)
                 Center(
                   child: ActionChip(
                     avatar: const Icon(Icons.copy_rounded, size: 16),
-                    label: Text('Protocolo: $protocol', style: const TextStyle(fontWeight: FontWeight.w800)),
+                    label: Text('Protocolo: $protocol', style: AppType.bodyStrong.copyWith(color: tk.text)),
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: protocol));
-                      showSnack(context, 'Protocolo copiado.');
+                      AppSnackbar.show(context, 'Protocolo copiado.', kind: AppSnackKind.success);
                     },
                   ),
                 ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpace.s12),
               Text(
                 'O valor de ${brl(job.agreedPrice)} fica bloqueado com a Desperrengue. Suas fotos e o histórico do serviço já estão salvos no chamado.',
                 textAlign: TextAlign.center,
-                style: TextStyle(height: 1.5, color: context.tk.text),
+                style: AppType.body.copyWith(color: tk.text),
               ),
-              const SizedBox(height: 14),
-              const InfoBanner('A equipe da Desperrengue assumiu este caso e responde em até 24 horas.', tone: BannerTone.warning),
+              const SizedBox(height: AppSpace.s16),
+              const InfoBanner(
+                'A equipe da Desperrengue assumiu este caso e responde em até 24 horas.',
+                tone: BannerTone.warning,
+              ),
             ],
           );
         },
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           label: 'Acompanhar caso',
           trailingArrow: true,
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SupportCenterScreen())),
+          onPressed: () => Navigator.of(context).push(AppRoute(builder: (_) => const SupportCenterScreen())),
         ),
       ),
     );
@@ -915,66 +1159,87 @@ class _PaidSuccessScreenState extends State<PaidSuccessScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     // Blindagem de layout: SafeArea + rolagem + SliverFillRemaining(hasScrollBody: false)
     // mantêm os botões 100% visíveis em telas baixas e com barra de botões/gestos.
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return AppScaffold(
-      appBar: AppBar(automaticallyImplyLeading: false, title: const BrandLogo()),
+      appBar: const AppAppBar(automaticallyImplyLeading: false, titleWidget: BrandLogo()),
       body: SafeArea(
         top: true,
         bottom: true,
         child: LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxHeight < 620;
-            final gap = compact ? 10.0 : 18.0;
+            final gap = compact ? AppSpace.s12 : AppSpace.s20;
             return CustomScrollView(
               slivers: [
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Padding(
-                    padding: EdgeInsets.fromLTRB(24, compact ? 8 : 16, 24, 0),
+                    padding: EdgeInsets.fromLTRB(context.layout.margin, compact ? AppSpace.s8 : AppSpace.s16, context.layout.margin, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Center(child: SuccessHeroHalo(size: compact ? 96 : 128)),
                         SizedBox(height: gap),
-                        Text('Serviço finalizado e pago!', textAlign: TextAlign.center, style: TextStyle(fontSize: compact ? 24 : 28, fontWeight: FontWeight.w900, color: context.tk.providerAccent)),
-                        const SizedBox(height: 10),
-                        Text('O código foi validado e suas fotos ficaram registradas. ${brl(_credited)} foram adicionados com segurança à sua carteira!',
-                            textAlign: TextAlign.center, style: TextStyle(height: 1.45, color: context.tk.textMuted)),
+                        Text(
+                          'Serviço finalizado e pago!',
+                          textAlign: TextAlign.center,
+                          style: AppType.display.copyWith(color: tk.accentInk),
+                        ),
+                        const SizedBox(height: AppSpace.s12),
+                        Text(
+                          'O código foi validado e suas fotos ficaram registradas. ${brl(_credited)} foram adicionados com segurança à sua carteira!',
+                          textAlign: TextAlign.center,
+                          style: AppType.body.copyWith(color: tk.textMuted),
+                        ),
                         SizedBox(height: gap),
                         AppCard(
-                          color: context.tk.successSoft,
-                          borderColor: context.tk.success,
+                          variant: AppCardVariant.tonal,
+                          color: tk.successSoft,
+                          borderColor: tk.success,
                           child: Row(
                             children: [
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Seu novo saldo é de', style: TextStyle(color: context.tk.successInk)),
-                                    Text(_hide ? 'R\$ •••••' : brl(_balance), style: TextStyle(fontSize: compact ? 28 : 34, fontWeight: FontWeight.w900, color: context.tk.successInk)),
+                                    Text('Seu novo saldo é de', style: AppType.bodySm.copyWith(color: tk.successInk)),
+                                    if (_hide)
+                                      Text('R\$ •••••', style: AppType.figure.copyWith(color: tk.successInk))
+                                    else
+                                      AppCountText(
+                                        value: _balance,
+                                        format: brl,
+                                        style: AppType.figure.copyWith(color: tk.successInk),
+                                      ),
                                   ],
                                 ),
                               ),
-                              IconButton(onPressed: () => setState(() => _hide = !_hide), icon: Icon(_hide ? Icons.visibility_off_rounded : Icons.visibility_rounded, color: context.tk.successInk)),
+                              AppIconButton(
+                                tooltip: _hide ? 'Mostrar saldo' : 'Ocultar saldo',
+                                onPressed: () => setState(() => _hide = !_hide),
+                                icon: _hide ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                color: tk.successInk,
+                              ),
                             ],
                           ),
                         ),
                         SizedBox(height: gap),
                         NewAchievementsBanner(achievements: _newAchievements),
-                        const Expanded(child: SizedBox(height: 12)),
+                        const Expanded(child: SizedBox(height: AppSpace.s12)),
                         Padding(
-                          padding: EdgeInsets.only(bottom: bottomInset + 16),
+                          padding: EdgeInsets.only(bottom: bottomInset + AppSpace.s16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (_reviewStatus == 'none')
-                                PrimaryButton(
+                                AppButton(
                                   label: 'Avaliar atendimento do cliente',
                                   trailingArrow: true,
                                   onPressed: () async {
-                                    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RateClientScreen(job: widget.job)));
+                                    await Navigator.of(context).push(AppRoute(builder: (_) => RateClientScreen(job: widget.job)));
                                     _load();
                                   },
                                 )
@@ -987,8 +1252,12 @@ class _PaidSuccessScreenState extends State<PaidSuccessScreen> {
                                 )
                               else
                                 const InfoBanner('Avaliação enviada. Obrigado!', tone: BannerTone.success),
-                              const SizedBox(height: 10),
-                              SecondaryButton(label: 'Ir para o painel', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
+                              const SizedBox(height: AppSpace.s12),
+                              AppButton(
+                                label: 'Ir para o painel',
+                                variant: AppButtonVariant.secondary,
+                                onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
+                              ),
                             ],
                           ),
                         ),
@@ -1049,7 +1318,7 @@ class _RateClientScreenState extends State<RateClientScreen> {
 
   Future<void> _submit() async {
     if (_rating == 0) {
-      showSnack(context, 'Toque nas estrelas para dar uma nota.', error: true);
+      AppSnackbar.show(context, 'Toque nas estrelas para dar uma nota.', kind: AppSnackKind.error);
       return;
     }
     setState(() => _busy = true);
@@ -1057,9 +1326,9 @@ class _RateClientScreenState extends State<RateClientScreen> {
       await SocialService().submitReview(jobId: widget.job.id, rating: _rating, comment: _comment.text, tags: _tags.toList());
       final status = await SocialService().reviewStatus(widget.job.id);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => ThanksScreen(revealed: status == 'revealed')));
+      Navigator.of(context).pushReplacement(AppRoute(builder: (_) => ThanksScreen(revealed: status == 'revealed')));
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1067,31 +1336,38 @@ class _RateClientScreenState extends State<RateClientScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final negative = ReviewTags.isNegative(_rating);
     final rep = _reputation;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Avaliar cliente')),
+      appBar: const AppAppBar(title: 'Avaliar cliente'),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(context.layout.margin, AppSpace.s8, context.layout.margin, AppSpace.s24),
         children: [
-          Center(child: UserAvatar(url: _avatar, name: _name, radius: 40)),
-          const SizedBox(height: 8),
-          Center(child: Text('$_name (Cliente)', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18))),
+          Center(child: AppAvatar(url: _avatar, name: _name, radius: 40)),
+          const SizedBox(height: AppSpace.s8),
+          Center(child: Text('$_name (Cliente)', style: AppType.title.copyWith(color: tk.text))),
           if (rep != null && rep.count > 0)
             Center(
               child: Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('Nota atual do cliente: ${rep.avg.toStringAsFixed(1).replaceAll('.', ',')} (${rep.count} avaliações)',
-                    style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
+                padding: const EdgeInsets.only(top: AppSpace.s4),
+                child: Text(
+                  'Nota atual do cliente: ${rep.avg.toStringAsFixed(1).replaceAll('.', ',')} (${rep.count} avaliações)',
+                  style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
+                ),
               ),
             ),
-          const SizedBox(height: 14),
-          Text('Como foi sua experiência com ${firstName(_name)}?', textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, height: 1.2)),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
+          Text(
+            'Como foi sua experiência com ${firstName(_name)}?',
+            textAlign: TextAlign.center,
+            style: AppType.headline.copyWith(color: tk.text),
+          ),
+          const SizedBox(height: AppSpace.s16),
           Center(
-            child: RatingStars(
+            child: AppRating(
               value: _rating.toDouble(),
-              size: 46,
+              size: 40,
               onChanged: (v) => setState(() {
                 _rating = v;
                 _tags = ReviewTags.keepValid(_tags, v, byClient: false);
@@ -1099,21 +1375,25 @@ class _RateClientScreenState extends State<RateClientScreen> {
             ),
           ),
           AnimatedSize(
-            duration: const Duration(milliseconds: 250),
+            duration: AppMotion.d(context, const Duration(milliseconds: 250)),
             alignment: Alignment.topCenter,
             child: _rating == 0
                 ? Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Text('Toque numa estrela para começar', textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted)),
+                    padding: const EdgeInsets.only(top: AppSpace.s12),
+                    child: Text(
+                      'Toque numa estrela para começar',
+                      textAlign: TextAlign.center,
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
+                    ),
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 22),
-                      Text(ReviewTags.title(_rating), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-                      const SizedBox(height: 4),
-                      Text('Escolha quantas quiser (opcional).', style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: AppSpace.s24),
+                      Text(ReviewTags.title(_rating), style: AppType.title.copyWith(color: tk.text)),
+                      const SizedBox(height: AppSpace.s4),
+                      Text('Escolha quantas quiser (opcional).', style: AppType.caption.copyWith(color: tk.textMuted)),
+                      const SizedBox(height: AppSpace.s12),
                       ReviewTagPills(
                         options: ReviewTags.options(_rating, byClient: false),
                         selected: _tags,
@@ -1123,15 +1403,22 @@ class _RateClientScreenState extends State<RateClientScreen> {
                     ],
                   ),
           ),
-          const SizedBox(height: 22),
-          const Text('Deixe um comentário (opcional)', style: TextStyle(fontWeight: FontWeight.w900)),
-          const SizedBox(height: 8),
-          TextField(controller: _comment, maxLines: 3, maxLength: 1000, decoration: const InputDecoration(hintText: 'Descreva como foi o atendimento e a postura do cliente...')),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s24),
+          Text('Deixe um comentário (opcional)', style: AppType.titleSm.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s8),
+          AppTextField(
+            controller: _comment,
+            maxLines: 3,
+            maxLength: 1000,
+            hint: 'Descreva como foi o atendimento e a postura do cliente...',
+          ),
+          const SizedBox(height: AppSpace.s12),
           const BlindReviewBanner(who: 'o cliente'),
         ],
       ),
-      bottomNavigationBar: BottomBar(child: PrimaryButton(label: 'Enviar avaliação', loading: _busy, onPressed: _submit)),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(label: 'Enviar avaliação', loading: _busy, onPressed: _submit),
+      ),
     );
   }
 }
@@ -1144,7 +1431,7 @@ class ThanksScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      appBar: AppBar(automaticallyImplyLeading: false, title: const BrandLogo()),
+      appBar: const AppAppBar(automaticallyImplyLeading: false, titleWidget: BrandLogo()),
       body: ReviewThanksView(
         isProvider: true,
         revealed: revealed,

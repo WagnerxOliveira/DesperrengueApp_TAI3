@@ -191,7 +191,7 @@ void main() {
       ]));
     });
 
-    testWidgets('CategoryTile usa CategoryBrandEmblem (Dark Glass Squircle) e FittedBox em palavras longas únicas para nunca quebrar sílabas', (t) async {
+    testWidgets('CategoryTile usa CategoryBrandEmblem (Dark Glass Squircle) e reflui em até 2 linhas sem FittedBox', (t) async {
       tall(t, h: 9000);
       await t.pumpWidget(host(Scaffold(body: SingleChildScrollView(child: CategoryGrid(onPick: (_) {})))));
       await t.tap(find.byKey(const ValueKey('categories-see-all')));
@@ -204,7 +204,12 @@ void main() {
 
       final imperTile = find.byKey(const ValueKey('category:Impermeabilização'));
       expect(imperTile, findsOneWidget);
-      expect(find.descendant(of: imperTile, matching: find.byType(FittedBox)), findsOneWidget);
+      expect(find.descendant(of: imperTile, matching: find.byType(FittedBox)), findsNothing);
+      final labelText = t.widget<Text>(find.descendant(of: imperTile, matching: find.text('Impermeabilização')));
+      expect(labelText.maxLines, 2);
+      expect(labelText.softWrap, isTrue);
+      expect(labelText.style?.fontSize ?? 14.0, greaterThanOrEqualTo(12.5));
+      expect(t.takeException(), isNull);
 
       await t.tap(find.byKey(const ValueKey('category-family:agua_clima')));
       await t.pumpAndSettle();

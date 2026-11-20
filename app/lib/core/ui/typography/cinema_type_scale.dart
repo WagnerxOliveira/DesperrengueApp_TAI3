@@ -1,5 +1,8 @@
 import 'package:flutter/painting.dart';
 
+import '../design_system/tokens/app_space.dart';
+import '../design_system/tokens/app_type.dart';
+
 /// Escala tipográfica, espaçamento e geometria da apresentação pós-cadastro
 /// (v2.27.0).
 ///
@@ -15,8 +18,8 @@ import 'package:flutter/painting.dart';
 
 /// Famílias de fonte embarcadas.
 abstract final class CinemaFonts {
-  static const String jakarta = 'PlusJakartaSans';
-  static const String inter = 'Inter';
+  static const String jakarta = AppFonts.jakarta;
+  static const String inter = AppFonts.inter;
 }
 
 /// Cores de texto e superfície da apresentação.
@@ -38,13 +41,13 @@ abstract final class CinemaColors {
 
 /// Grade de 4 pt para espaçamentos.
 abstract final class CinemaSpace {
-  static const double s4 = 4;
-  static const double s8 = 8;
-  static const double s12 = 12;
-  static const double s16 = 16;
-  static const double s20 = 20;
-  static const double s24 = 24;
-  static const double s32 = 32;
+  static const double s4 = AppSpace.s4;
+  static const double s8 = AppSpace.s8;
+  static const double s12 = AppSpace.s12;
+  static const double s16 = AppSpace.s16;
+  static const double s20 = AppSpace.s20;
+  static const double s24 = AppSpace.s24;
+  static const double s32 = AppSpace.s32;
 }
 
 /// Geometria (raios e alturas mínimas).
@@ -77,7 +80,7 @@ abstract final class CinemaGeometry {
 /// Tokens tipográficos (fonte / tamanho / entrelinha / peso).
 abstract final class CinemaType {
   /// Mínimo absoluto aceito em qualquer texto da apresentação.
-  static const double minimumFontSize = 12.5;
+  static const double minimumFontSize = AppType.minimumFontSize;
 
   static const List<FontFeature> _tabular = <FontFeature>[
     FontFeature.tabularFigures(),

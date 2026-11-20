@@ -1,7 +1,7 @@
 name: desperrengue_app
 description: "Desperrengue: marketplace de serviços residenciais."
 publish_to: "none"
-version: 2.27.0+239920200
+version: 2.28.0+239920300
 
 environment:
   sdk: ^3.13.4
@@ -73,8 +73,12 @@ flutter:
     - assets/licenses/
 
   fonts:
+    # Subsets gerados por scripts/gen_font_subset.mjs (OFL em assets/licenses).
+    # Politica de pesos: Inter 400/500/600/700; Jakarta 600/700/800. w800/w900 em Inter casam com 700.
     - family: PlusJakartaSans
       fonts:
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
         - asset: assets/fonts/PlusJakartaSans-Bold.ttf
           weight: 700
         - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf

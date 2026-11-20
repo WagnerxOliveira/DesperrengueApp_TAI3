@@ -1,12 +1,11 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
-// Importação ativa. O VS Code não apagará esta linha pois a classe está em uso.
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import 'verificacao_step3_selfie.dart';
-import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep2VersoScreen extends StatefulWidget {
   final XFile frenteDocumento; // Recebe a imagem da Etapa 1
@@ -20,7 +19,6 @@ class VerificacaoStep2VersoScreen extends StatefulWidget {
 
 class _VerificacaoStep2VersoScreenState
     extends State<VerificacaoStep2VersoScreen> {
-  final Color _primaryBlue = const Color(0xFF003366);
   XFile? _imagemSelecionada;
   Uint8List? _previewBytes;
   final ImagePicker _picker = ImagePicker();
@@ -43,32 +41,27 @@ class _VerificacaoStep2VersoScreenState
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Erro ao aceder à câmara ou galeria.'),
-          backgroundColor: Colors.redAccent,
-        ),
+      AppSnackbar.show(
+        context,
+        'Erro ao aceder à câmara ou galeria.',
+        kind: AppSnackKind.error,
       );
     }
   }
 
   void _avancarParaEtapa3() {
     if (_imagemSelecionada == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Por favor, carregue o verso do seu documento para avançar.',
-          ),
-          backgroundColor: Colors.orange,
-        ),
+      AppSnackbar.show(
+        context,
+        'Por favor, carregue o verso do seu documento para avançar.',
+        kind: AppSnackKind.warning,
       );
       return;
     }
 
-    // Navegação ATIVADA. Passa a Frente (recebida no widget) e o Verso atual para a Etapa 3.
     Navigator.push(
       context,
-      MaterialPageRoute(
+      AppRoute<void>(
         builder: (context) => VerificacaoStep3SelfieScreen(
           frenteDocumento: widget.frenteDocumento,
           versoDocumento: _imagemSelecionada!,
@@ -79,245 +72,166 @@ class _VerificacaoStep2VersoScreenState
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
+    final tk = context.tk;
+    final layout = context.layout;
+    final stackActions = layout.isCompact || layout.isLargeText;
+
+    return AppScaffold(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        title: 'Desperrengue',
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Desperrengue',
-          style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.bold),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Avançar',
+          trailingArrow: true,
+          onPressed: _avancarParaEtapa3,
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            layout.margin,
+            AppSpace.s16,
+            layout.margin,
+            AppSpace.s24,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 16),
-
-              const Text(
+              Text(
                 'Etapa 2 de 5: Verso do Documento',
-                style: TextStyle(fontSize: 18, color: Colors.black87),
+                style: AppType.title.copyWith(color: tk.text),
               ),
-              const SizedBox(height: 8),
-              // Barra de Progresso (Etapa 2 preenchida)
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _primaryBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _primaryBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade300),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: AppSpace.s12),
+              const AppStepper(total: 5, current: 2),
+              const SizedBox(height: AppSpace.s24),
+              AppCard(
+                variant: AppCardVariant.elevated,
+                padding: const EdgeInsets.all(AppSpace.cardLarge),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
+                    Text(
                       '2. VERSO DO\nDOCUMENTO (RG / CNH)',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        height: 1.1,
-                      ),
+                      style: AppType.headline.copyWith(color: tk.text),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
+                    const SizedBox(height: AppSpace.s8),
+                    Text(
                       'Envie fotos nítidas do verso do documento original.',
-                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
                     ),
-                    const SizedBox(height: 24),
-
-                    Container(
-                      height: 180,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          style: BorderStyle.solid,
-                        ),
+                    const SizedBox(height: AppSpace.s20),
+                    AppPressable(
+                      onTap: () => _capturarImagem(ImageSource.camera),
+                      borderRadius: BorderRadius.circular(
+                        AppGeometry.fieldRadius,
                       ),
-                      child: _imagemSelecionada != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(
-                                _previewBytes!,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                                cacheWidth: 1080,
-                              ),
-                            )
-                          : Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.credit_card_outlined,
-                                  size: 64,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Toque p/ carregar o Verso',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () =>
-                                _capturarImagem(ImageSource.gallery),
-                            icon: const Icon(
-                              Icons.cloud_upload_rounded,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'Galeria',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2C56D1),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
+                      semanticLabel: 'Capturar verso do documento',
+                      child: Container(
+                        height: 184,
+                        decoration: BoxDecoration(
+                          color: tk.isDark ? tk.surface : tk.surfaceInset,
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.fieldRadius,
+                          ),
+                          border: Border.all(
+                            color: _imagemSelecionada != null
+                                ? tk.successInk
+                                : tk.border,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () =>
-                                _capturarImagem(ImageSource.camera),
-                            icon: const Icon(
-                              Icons.camera_alt_rounded,
-                              color: Colors.white,
-                            ),
-                            label: const Text(
-                              'Tirar Foto',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
+                        child: _imagemSelecionada != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(
+                                  AppGeometry.fieldRadius,
+                                ),
+                                child: Image.memory(
+                                  _previewBytes!,
+                                  fit: BoxFit.cover,
+                                  gaplessPlayback: true,
+                                  cacheWidth: 1080,
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.all(AppSpace.s16),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.credit_card_outlined,
+                                      size: 56,
+                                      color: tk.textMuted,
+                                    ),
+                                    const SizedBox(height: AppSpace.s12),
+                                    Text(
+                                      'Toque p/ carregar o Verso',
+                                      textAlign: TextAlign.center,
+                                      style: AppType.body.copyWith(
+                                        color: tk.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2C56D1),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.s20),
+                    if (stackActions) ...[
+                      AppButton(
+                        label: 'Tirar Foto',
+                        icon: Icons.camera_alt_rounded,
+                        variant: AppButtonVariant.secondary,
+                        compact: true,
+                        onPressed: () => _capturarImagem(ImageSource.camera),
+                      ),
+                      const SizedBox(height: AppSpace.s12),
+                      AppButton(
+                        label: 'Galeria',
+                        icon: Icons.cloud_upload_rounded,
+                        variant: AppButtonVariant.secondary,
+                        compact: true,
+                        onPressed: () => _capturarImagem(ImageSource.gallery),
+                      ),
+                    ] else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: AppButton(
+                              label: 'Galeria',
+                              icon: Icons.cloud_upload_rounded,
+                              variant: AppButtonVariant.secondary,
+                              compact: true,
+                              onPressed: () =>
+                                  _capturarImagem(ImageSource.gallery),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: AppSpace.s12),
+                          Expanded(
+                            child: AppButton(
+                              label: 'Tirar Foto',
+                              icon: Icons.camera_alt_rounded,
+                              variant: AppButtonVariant.secondary,
+                              compact: true,
+                              onPressed: () =>
+                                  _capturarImagem(ImageSource.camera),
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
-
-              const Spacer(),
-
-              ElevatedButton(
-                onPressed: _avancarParaEtapa3,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Avançar',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
-    ));
+    );
   }
 }

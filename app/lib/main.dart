@@ -6,6 +6,7 @@ import 'core/models/user_profile.dart';
 import 'core/services/app_session.dart';
 import 'core/state/theme_controller.dart';
 import 'core/ui/app_theme.dart';
+import 'core/ui/design_system/responsive_shell.dart';
 import 'features/boot/boot_gate.dart';
 import 'features/boot/update_gate.dart';
 
@@ -43,25 +44,17 @@ class DesperrengueApp extends ConsumerWidget {
         theme: AppTheme.resolve(mode, Brightness.light),
         darkTheme: AppTheme.resolve(mode, Brightness.dark),
         themeMode: themeMode.material,
-        // Mantém o UpdateGate ativo e trava a largura em 480px apenas em telas largas (PC).
+        scrollBehavior: const AppScrollBehavior(),
+        // Política global de fonte: escala do sistema respeitada entre 1,0 e 1,5
+        // (acima disso o conteúdo reflui, nunca encolhe). UpdateGate segue ativo e
+        // o ResponsiveShell compõe a coluna do app em telas largas (sem o hack
+        // de MediaQuery 480). Predictive Back/transições vêm do tema.
         builder: (context, child) {
-          final effectiveChild = UpdateGate(
-            child: child ?? const SizedBox.shrink(),
-          );
-          final mq = MediaQuery.of(context);
-          if (mq.size.width <= 480) {
-            return effectiveChild;
-          }
-          return ColoredBox(
-            color: const Color(0xFF0F172A),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: MediaQuery(
-                  data: mq.copyWith(size: Size(480, mq.size.height)),
-                  child: ClipRect(child: effectiveChild),
-                ),
-              ),
+          return MediaQuery.withClampedTextScaling(
+            minScaleFactor: 1.0,
+            maxScaleFactor: 1.5,
+            child: ResponsiveShell(
+              child: UpdateGate(child: child ?? const SizedBox.shrink()),
             ),
           );
         },

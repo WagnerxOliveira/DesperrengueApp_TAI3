@@ -1,13 +1,10 @@
-import '../../../core/ui/app_scaffold.dart';
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 
 import '../../../core/services/draft_store.dart';
-
-// Importação ATIVADA para que a navegação funcione
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import 'verificacao_step5_finalizacao.dart';
-import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep4RegistroScreen extends StatefulWidget {
   final XFile frenteDocumento;
@@ -28,9 +25,8 @@ class VerificacaoStep4RegistroScreen extends StatefulWidget {
 
 class _VerificacaoStep4RegistroScreenState
     extends State<VerificacaoStep4RegistroScreen> {
-  final Color _primaryBlue = const Color(0xFF003366);
-  final _formKey = GlobalKey<FormState>();
   final _numeroRegistroController = TextEditingController();
+  String? _numeroError;
 
   String? _tipoRegistroSelecionado;
   final List<String> _tiposRegistro = [
@@ -63,269 +59,202 @@ class _VerificacaoStep4RegistroScreenState
     if (d == null || !mounted) return;
     final tipo = d['type'] as String?;
     setState(() {
-      if (tipo != null && _tiposRegistro.contains(tipo)) _tipoRegistroSelecionado = tipo;
+      if (tipo != null && _tiposRegistro.contains(tipo)) {
+        _tipoRegistroSelecionado = tipo;
+      }
       _numeroRegistroController.text = (d['number'] as String?) ?? '';
     });
   }
 
   void _saveDraft() => DraftStore.write(_draftKey, {
-        'type': _tipoRegistroSelecionado,
-        'number': _numeroRegistroController.text,
-      });
+    'type': _tipoRegistroSelecionado,
+    'number': _numeroRegistroController.text,
+  });
 
   void _avancarParaEtapa5() {
-    if (!_formKey.currentState!.validate()) {
+    final numClean = _numeroRegistroController.text.trim();
+    if (numClean.isEmpty) {
+      setState(() => _numeroError = 'O número do registro é obrigatório.');
       return;
     }
 
     if (_tipoRegistroSelecionado == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, selecione o tipo de registro.'),
-          backgroundColor: Colors.orange,
-        ),
+      AppSnackbar.show(
+        context,
+        'Por favor, selecione o tipo de registro.',
+        kind: AppSnackKind.warning,
       );
       return;
     }
 
-    // Navegação ATIVADA para a Etapa 5 (Finalização) com TODOS os dados na memória
     Navigator.push(
       context,
-      MaterialPageRoute(
+      AppRoute<void>(
         builder: (context) => VerificacaoStep5FinalizacaoScreen(
           frenteDocumento: widget.frenteDocumento,
           versoDocumento: widget.versoDocumento,
           selfie: widget.selfie,
           tipoRegistro: _tipoRegistroSelecionado!,
-          numeroRegistro: _numeroRegistroController.text.trim(),
+          numeroRegistro: numClean,
         ),
       ),
     );
 
-    // Texto ajustado conforme solicitado
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Dados salvos! Indo para a Revisão Final...'),
-        backgroundColor: Colors.green,
-      ),
+    AppSnackbar.show(
+      context,
+      'Dados salvos! Indo para a Revisão Final...',
+      kind: AppSnackKind.success,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
+    final tk = context.tk;
+    final layout = context.layout;
+    final radius = BorderRadius.circular(AppGeometry.fieldRadius);
+
+    return AppScaffold(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        title: 'Desperrengue',
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Desperrengue',
-          style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.bold),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Salvar e Avançar',
+          icon: Icons.check_circle_outline_rounded,
+          onPressed: _avancarParaEtapa5,
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 16),
-
-                const Text(
-                  'Etapa 4 de 5: Registro Profissional',
-                  style: TextStyle(fontSize: 18, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
-                // Barra de Progresso (Etapa 4 preenchida)
-                Row(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            layout.margin,
+            AppSpace.s16,
+            layout.margin,
+            AppSpace.s24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Etapa 4 de 5: Registro Profissional',
+                style: AppType.title.copyWith(color: tk.text),
+              ),
+              const SizedBox(height: AppSpace.s12),
+              const AppStepper(total: 5, current: 4),
+              const SizedBox(height: AppSpace.s24),
+              AppCard(
+                variant: AppCardVariant.elevated,
+                padding: const EdgeInsets.all(AppSpace.cardLarge),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
+                    Text(
+                      '4. REGISTRO\nPROFISSIONAL',
+                      style: AppType.headline.copyWith(color: tk.text),
+                    ),
+                    const SizedBox(height: AppSpace.s8),
+                    Text(
+                      'Preencha os dados do seu registro profissional para que possamos validar sua qualificação e direcionar as ofertas compatíveis.',
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
+                    ),
+                    const SizedBox(height: AppSpace.s20),
+                    Center(
                       child: Container(
-                        height: 6,
+                        width: 64,
+                        height: 64,
                         decoration: BoxDecoration(
-                          color: _primaryBlue,
-                          borderRadius: BorderRadius.circular(10),
+                          color: tk.accentSoft,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.badge_rounded,
+                          size: 32,
+                          color: tk.accentInk,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: _primaryBlue,
-                          borderRadius: BorderRadius.circular(10),
+                    const SizedBox(height: AppSpace.s20),
+                    DropdownButtonFormField<String>(
+                      key: ValueKey(_tipoRegistroSelecionado),
+                      initialValue: _tipoRegistroSelecionado,
+                      isExpanded: true,
+                      dropdownColor: tk.raised,
+                      style: AppType.body.copyWith(color: tk.text),
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(
+                          Icons.badge_outlined,
+                          size: 22,
+                          color: tk.textMuted,
+                        ),
+                        labelText: 'Selecione o tipo (ex: CREA, CFT, CNPJ)',
+                        labelStyle: AppType.body.copyWith(color: tk.textMuted),
+                        floatingLabelStyle: AppType.caption
+                            .copyWith(color: tk.textMuted)
+                            .apply(fontSizeFactor: 1 / 0.75),
+                        filled: true,
+                        fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
+                        border: OutlineInputBorder(
+                          borderRadius: radius,
+                          borderSide: BorderSide(color: tk.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: radius,
+                          borderSide: BorderSide(color: tk.border),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: radius,
+                          borderSide: BorderSide(color: tk.accentInk, width: 2),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: AppSpace.s16,
+                          vertical: AppSpace.s16,
                         ),
                       ),
+                      items: _tiposRegistro.map((String tipo) {
+                        return DropdownMenuItem<String>(
+                          value: tipo,
+                          child: Text(
+                            tipo,
+                            style: AppType.body.copyWith(color: tk.text),
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (String? newValue) {
+                        setState(() {
+                          _tipoRegistroSelecionado = newValue;
+                        });
+                        _saveDraft();
+                      },
                     ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: _primaryBlue,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: _primaryBlue,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
+                    const SizedBox(height: AppSpace.s16),
+                    AppTextField(
+                      controller: _numeroRegistroController,
+                      label: 'Insira o número do registro',
+                      prefixIcon: Icons.edit_outlined,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.done,
+                      errorText: _numeroError,
+                      onChanged: (_) {
+                        if (_numeroError != null) {
+                          setState(() => _numeroError = null);
+                        }
+                      },
+                      onSubmitted: (_) => _avancarParaEtapa5(),
                     ),
                   ],
                 ),
-                const SizedBox(height: 24),
-
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade300),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Text(
-                        '4. REGISTRO\nPROFISSIONAL',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          height: 1.1,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Preencha os dados do seu registro profissional para que possamos validar sua qualificação e direcionar as ofertas compatíveis.',
-                        style: TextStyle(fontSize: 14, color: Colors.black87),
-                      ),
-                      const SizedBox(height: 24),
-
-                      Center(
-                        child: Icon(
-                          Icons.badge,
-                          size: 64,
-                          color: Colors.grey.shade400,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-
-                      // Dropdown para Tipo de Registro
-                      DropdownButtonFormField<String>(
-                        key: ValueKey(_tipoRegistroSelecionado),
-                        initialValue: _tipoRegistroSelecionado,
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 16,
-                          ),
-                          labelText: 'Selecione o tipo (ex: CREA, CFT, CNPJ)',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                        ),
-                        items: _tiposRegistro.map((String tipo) {
-                          return DropdownMenuItem<String>(
-                            value: tipo,
-                            child: Text(tipo),
-                          );
-                        }).toList(),
-                        onChanged: (String? newValue) {
-                          setState(() {
-                            _tipoRegistroSelecionado = newValue;
-                          });
-                          _saveDraft();
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Campo de Texto para o Número do Registro
-                      TextFormField(
-                        controller: _numeroRegistroController,
-                        keyboardType: TextInputType.text,
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(Icons.edit_outlined),
-                          labelText: 'Insira o número do registro',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 16,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'O número do registro é obrigatório.';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Spacer(),
-
-                ElevatedButton.icon(
-                  onPressed: _avancarParaEtapa5,
-                  icon: const Icon(Icons.check_circle, color: Colors.white),
-                  label: const Text(
-                    'Salvar e Avançar',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
-    ));
+    );
   }
 }

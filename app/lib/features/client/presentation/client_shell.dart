@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
@@ -6,6 +5,8 @@ import '../../../core/models/user_profile.dart';
 import '../../../core/services/app_version_and_update_service.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/job_service.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
 import '../../shared/presentation/notifications_screen.dart';
@@ -16,10 +17,9 @@ import 'client_setup_screen.dart';
 import 'provider_search_screen.dart';
 import 'request_wizard.dart';
 import 'wallet_chip.dart';
-import '../../../core/ui/app_tokens.dart';
 
 void openClientJob(BuildContext context, String jobId) {
-  Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientJobScreen(jobId: jobId)));
+  Navigator.of(context).push(AppRoute(builder: (_) => ClientJobScreen(jobId: jobId)));
 }
 
 /// Casca do modo CLIENTE: Início / Meus Pedidos / Perfil.
@@ -32,8 +32,17 @@ class ClientShell extends StatefulWidget {
   State<ClientShell> createState() => _ClientShellState();
 }
 
-class _ClientShellState extends State<ClientShell> {
+class _ClientShellState extends State<ClientShell> with SingleTickerProviderStateMixin {
   int _index = 0;
+  late final AnimationController _tabFade = AnimationController(
+    vsync: this,
+    duration: AppMotion.tabSwitch,
+    value: 1.0,
+  );
+  late final Animation<double> _tabOpacity = CurvedAnimation(
+    parent: _tabFade,
+    curve: AppMotion.fadeCurve,
+  ).drive(Tween<double>(begin: 0.25, end: 1.0));
 
   @override
   void initState() {
@@ -51,19 +60,28 @@ class _ClientShellState extends State<ClientShell> {
 
   @override
   void dispose() {
+    _tabFade.dispose();
     EagerImagePrefetcher.cancelPending();
     super.dispose();
   }
 
   void _selectTab(int i) {
+    if (i == _index) return;
     if (i == 1) {
       JobService.notifyJobsChanged();
     }
     setState(() => _index = i);
+    if (AppMotion.reduced(context)) {
+      _tabFade.value = 1.0;
+    } else {
+      _tabFade.forward(from: 0.0);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final reduced = AppMotion.reduced(context);
     final pages = [
       ClientHomeTab(profile: widget.profile, onSeeOrders: () => _selectTab(1)),
       const ClientOrdersTab(),
@@ -72,26 +90,63 @@ class _ClientShellState extends State<ClientShell> {
     return PopScope(
       canPop: _index == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(() => _index = 0);
+        if (!didPop) _selectTab(0);
       },
       child: AppScaffold(
-        body: SafeArea(child: IndexedStack(index: _index, children: pages)),
+        body: SafeArea(
+          child: reduced
+              ? IndexedStack(index: _index, children: pages)
+              : FadeTransition(
+                  opacity: _tabOpacity,
+                  child: IndexedStack(index: _index, children: pages),
+                ),
+        ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: _selectTab,
-          backgroundColor: context.tk.card,
-          indicatorColor: context.tk.clientSoft,
-          destinations: const [
-            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home_rounded), label: 'Início'),
+          animationDuration: reduced ? Duration.zero : const Duration(milliseconds: 180),
+          backgroundColor: tk.isDark ? tk.surface : tk.background,
+          indicatorColor: tk.accentSoft,
+          destinations: [
             NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long_rounded),
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: _ActiveNavIcon(icon: Icons.home_rounded, active: _index == 0),
+              label: 'Início',
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.receipt_long_outlined),
+              selectedIcon: _ActiveNavIcon(icon: Icons.receipt_long_rounded, active: _index == 1),
               label: 'Meus Pedidos',
             ),
-            NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person_rounded), label: 'Perfil'),
+            NavigationDestination(
+              icon: const Icon(Icons.person_outline),
+              selectedIcon: _ActiveNavIcon(icon: Icons.person_rounded, active: _index == 2),
+              label: 'Perfil',
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Micro-pop de 120 ms no ícone ativo da barra de navegação (respeita `AppMotion.reduced`).
+class _ActiveNavIcon extends StatelessWidget {
+  const _ActiveNavIcon({required this.icon, required this.active});
+
+  final IconData icon;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!active || AppMotion.reduced(context)) return Icon(icon);
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('nav-pop-$icon'),
+      tween: Tween<double>(begin: 0.86, end: 1.0),
+      duration: AppMotion.fadeShort,
+      curve: Curves.easeOutBack,
+      builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+      child: Icon(icon),
     );
   }
 }
@@ -119,13 +174,13 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
 
   void _openSearch({String? category, String? query}) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ProviderSearchScreen(category: category, query: query, profile: widget.profile)),
+      AppRoute(builder: (_) => ProviderSearchScreen(category: category, query: query, profile: widget.profile)),
     );
   }
 
   Future<void> _editAddress() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EditAddressScreen(currentLine: widget.profile.addressLine)),
+      AppRoute(builder: (_) => EditAddressScreen(currentLine: widget.profile.addressLine)),
     );
   }
 
@@ -138,9 +193,11 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final hasAddress = (widget.profile.addressLine ?? '').trim().isNotEmpty;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
       children: [
         Row(
           children: [
@@ -150,38 +207,46 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                 child: BrandLogo(size: 20),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpace.s4),
             const AppQuickUpdateButton(compact: true),
-            const SizedBox(width: 6),
+            const SizedBox(width: AppSpace.s8 - 2),
             const WalletChip(),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpace.s4),
             UnreadBell(onOpenJob: (c, id) => openClientJob(c, id)),
           ],
         ),
-        const SizedBox(height: 8),
-        Text('Olá, ${widget.profile.firstName}! 👋',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: context.tk.brand)),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpace.s12),
+        Text(
+          'Olá, ${widget.profile.firstName}!',
+          style: AppType.headline.copyWith(color: tk.text),
+        ),
+        const SizedBox(height: AppSpace.s4),
         Row(
           children: [
             Expanded(
-              child: InkWell(
+              child: AppPressable(
                 onTap: hasAddress ? null : _editAddress,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                isButton: !hasAddress,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.s4),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.place_rounded, size: 18, color: context.tk.clientAccent),
-                      const SizedBox(width: 4),
-                      Flexible(child: Text(_addressLabel, style: const TextStyle(fontWeight: FontWeight.w600))),
+                      Icon(Icons.place_rounded, size: 18, color: tk.accentInk),
+                      const SizedBox(width: AppSpace.s4),
+                      Flexible(
+                        child: Text(
+                          _addressLabel,
+                          style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600, color: tk.text),
+                        ),
+                      ),
                       if (!hasAddress) ...[
-                        const SizedBox(width: 4),
+                        const SizedBox(width: AppSpace.s4),
                         Icon(
                           Icons.keyboard_arrow_down_rounded,
-                          size: 17,
-                          color: context.tk.clientAccent,
+                          size: 18,
+                          color: tk.accentInk,
                         ),
                       ],
                     ],
@@ -190,55 +255,52 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
               ),
             ),
             if (hasAddress)
-              TextButton.icon(
+              AppButton(
+                label: 'Trocar',
+                icon: Icons.edit_location_alt_outlined,
+                variant: AppButtonVariant.tertiary,
+                expand: false,
+                compact: true,
                 onPressed: _editAddress,
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                ),
-                icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
-                label: const Text('Trocar', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
               ),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpace.s16),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: TextField(
+              child: AppTextField(
                 controller: _search,
+                hint: 'Do que você precisa hoje? (ex: eletricista)',
+                prefixIcon: Icons.search_rounded,
                 textInputAction: TextInputAction.search,
                 onSubmitted: (v) => _openSearch(query: v),
-                decoration: InputDecoration(
-                  hintText: 'Do que você precisa hoje? (ex: eletricista)',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  filled: true,
-                  fillColor: context.tk.surface,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                ),
               ),
             ),
-            const SizedBox(width: 10),
-            Semantics(
-              button: true,
-              label: 'Filtrar busca',
-              child: Tooltip(
-                message: 'Filtrar busca',
-                child: Material(
-                  color: context.tk.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => _openSearch(query: _search.text),
-                    child: const SizedBox(width: 54, height: 54, child: Icon(Icons.tune_rounded)),
+            const SizedBox(width: AppSpace.s8),
+            SizedBox(
+              width: AppGeometry.inputHeight,
+              height: AppGeometry.inputHeight,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: tk.isDark ? tk.surface : tk.surfaceInset,
+                  borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+                  border: Border.all(color: tk.border),
+                ),
+                child: Center(
+                  child: AppIconButton(
+                    icon: Icons.tune_rounded,
+                    tooltip: 'Filtrar busca',
+                    color: tk.text,
+                    onPressed: () => _openSearch(query: _search.text),
                   ),
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: AppSpace.s20),
         StreamBuilder<List<Job>>(
           stream: _myJobsStream,
           builder: (context, snap) {
@@ -253,12 +315,15 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
                 if (active.length > 1)
                   Align(
                     alignment: Alignment.centerRight,
-                    child: TextButton(
+                    child: AppButton(
+                      label: 'Ver todos os pedidos em andamento (${active.length})',
+                      variant: AppButtonVariant.tertiary,
+                      expand: false,
+                      compact: true,
                       onPressed: widget.onSeeOrders,
-                      child: Text('Ver todos os pedidos em andamento (${active.length})'),
                     ),
                   ),
-                const SizedBox(height: 14),
+                const SizedBox(height: AppSpace.s16),
               ],
             );
           },
@@ -266,14 +331,16 @@ class _ClientHomeTabState extends State<ClientHomeTab> {
         _OpenJobBanner(
           onTap: () async {
             await Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => RequestWizardScreen(profile: widget.profile)),
+              AppRoute(builder: (_) => RequestWizardScreen(profile: widget.profile)),
             );
             JobService.notifyJobsChanged();
           },
         ),
-        const SizedBox(height: 20),
-        const SectionTitle('Categorias'),
-        CategoryGrid(onPick: (name) => _openSearch(category: name)),
+        const SizedBox(height: AppSpace.section),
+        AppSection(
+          title: 'Categorias',
+          child: CategoryGrid(onPick: (name) => _openSearch(category: name)),
+        ),
       ],
     );
   }
@@ -285,47 +352,80 @@ class _ActiveJobCard extends StatelessWidget {
   final Job job;
   final VoidCallback onTap;
 
-  (String, String, String) get _copy {
+  (bool, String, String, String) get _copy {
     if (job.isEmergency && job.status == JobStatus.open) {
-      return ('⚡ Buscando profissional...', 'Aguardando alguém aceitar a sua emergência.', 'Ver radar →');
+      return (true, 'Buscando profissional...', 'Aguardando alguém aceitar a sua emergência.', 'Ver radar');
     }
     return switch (job.status) {
       JobStatus.open => (
+        false,
         'Aguardando orçamento',
         job.quoteCount > 0
             ? '${job.quoteCount} orçamento(s) recebido(s) para "${job.title}".'
             : 'Seu pedido "${job.title}" foi enviado.',
-        job.quoteCount > 0 ? 'Ver orçamentos →' : 'Acompanhar →',
+        job.quoteCount > 0 ? 'Ver orçamentos' : 'Acompanhar',
       ),
-      JobStatus.awaitingPayment => ('Orçamento aceito', 'Conclua o pagamento para reservar o profissional.', 'Pagar →'),
-      JobStatus.scheduled => ('Serviço agendado', job.scheduledFor != null ? '"${job.title}" — ${dateShort(job.scheduledFor!)}.' : '"${job.title}" está agendado.', 'Ver detalhes →'),
-      JobStatus.inProgress => ('Serviço em andamento', '"${job.title}" está sendo atendido.', 'Acompanhar →'),
-      JobStatus.awaitingApproval => ('Aguardando sua aprovação', 'Confirme o serviço "${job.title}".', 'Abrir →'),
-      JobStatus.disputed => ('Em mediação', 'Nossa equipe está analisando "${job.title}".', 'Ver caso →'),
-      _ => (job.title, '', 'Abrir →'),
+      JobStatus.awaitingPayment => (false, 'Orçamento aceito', 'Conclua o pagamento para reservar o profissional.', 'Pagar'),
+      JobStatus.scheduled => (
+        false,
+        'Serviço agendado',
+        job.scheduledFor != null ? '"${job.title}" — ${dateShort(job.scheduledFor!)}.' : '"${job.title}" está agendado.',
+        'Ver detalhes',
+      ),
+      JobStatus.inProgress => (false, 'Serviço em andamento', '"${job.title}" está sendo atendido.', 'Acompanhar'),
+      JobStatus.awaitingApproval => (false, 'Aguardando sua aprovação', 'Confirme o serviço "${job.title}".', 'Abrir'),
+      JobStatus.disputed => (false, 'Em mediação', 'Nossa equipe está analisando "${job.title}".', 'Ver caso'),
+      _ => (false, job.title, '', 'Abrir'),
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final (title, body, cta) = _copy;
+    final tk = context.tk;
+    final (isUrgent, title, body, cta) = _copy;
     return AppCard(
-      color: context.tk.clientSoft,
-      borderColor: context.tk.clientAccent.withValues(alpha: 0.5),
+      variant: AppCardVariant.elevated,
+      color: tk.accentSoft,
+      borderColor: tk.accent.withValues(alpha: 0.45),
       onTap: onTap,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _PulseDot(),
-          const SizedBox(width: 12),
+          const Padding(
+            padding: EdgeInsets.only(top: AppSpace.s4),
+            child: _PulseDot(),
+          ),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 2),
-                Text(body, style: TextStyle(color: context.tk.text, height: 1.3)),
-                const SizedBox(height: 6),
-                Text(cta, style: TextStyle(color: context.tk.clientAccent, fontWeight: FontWeight.w800)),
+                Row(
+                  children: [
+                    if (isUrgent) ...[
+                      Icon(Icons.bolt_rounded, size: 18, color: tk.accentInk),
+                      const SizedBox(width: AppSpace.s4),
+                    ],
+                    Expanded(
+                      child: Text(title, style: AppType.titleSm.copyWith(color: tk.text)),
+                    ),
+                  ],
+                ),
+                if (body.isNotEmpty) ...[
+                  const SizedBox(height: AppSpace.s4),
+                  Text(body, style: AppType.bodySm.copyWith(color: tk.text)),
+                ],
+                const SizedBox(height: AppSpace.s8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(cta, style: AppType.bodyStrong.copyWith(color: tk.accentInk)),
+                    ),
+                    const SizedBox(width: AppSpace.s4),
+                    Icon(Icons.arrow_forward_rounded, size: 16, color: tk.accentInk),
+                  ],
+                ),
               ],
             ),
           ),
@@ -343,17 +443,18 @@ class _PulseDot extends StatefulWidget {
 }
 
 class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 1));
+  late final AnimationController _c = AnimationController(vsync: this, duration: AppMotion.success);
+  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    if (disableAnimations) {
-      if (_c.isAnimating) _c.stop();
+    if (_started) return;
+    _started = true;
+    if (AppMotion.reduced(context)) {
       _c.value = 1.0;
-    } else if (!_c.isAnimating) {
-      _c.repeat(reverse: true);
+    } else {
+      _c.forward(from: 0.0);
     }
   }
 
@@ -366,8 +467,14 @@ class _PulseDotState extends State<_PulseDot> with SingleTickerProviderStateMixi
   @override
   Widget build(BuildContext context) => RepaintBoundary(
         child: FadeTransition(
-          opacity: Tween(begin: 0.35, end: 1.0).animate(_c),
-          child: Container(width: 14, height: 14, decoration: BoxDecoration(color: context.tk.clientAccent, shape: BoxShape.circle)),
+          opacity: Tween(begin: 0.45, end: 1.0).animate(
+            CurvedAnimation(parent: _c, curve: AppMotion.fadeCurve),
+          ),
+          child: Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(color: context.tk.accent, shape: BoxShape.circle),
+          ),
         ),
       );
 }
@@ -379,40 +486,56 @@ class _OpenJobBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
+    final tk = context.tk;
+    return AppCard(
+      variant: AppCardVariant.hero,
+      color: tk.accentSoft,
+      borderColor: tk.accent.withValues(alpha: 0.28),
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(colors: [context.tk.clientSoft, context.tk.clientSoft]),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Resolva seu "desperrengue"!',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: context.tk.brand)),
-                  const SizedBox(height: 6),
-                  Text('Descreva o problema e receba até 3 orçamentos de profissionais verificados.',
-                      style: TextStyle(height: 1.35, color: context.tk.text)),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(color: context.tk.clientAccent, borderRadius: BorderRadius.circular(20)),
-                    child: const Text('Pedir orçamentos grátis',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Resolva seu "desperrengue"!',
+                  style: AppType.title.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  'Descreva o problema e receba até 3 orçamentos de profissionais verificados.',
+                  style: AppType.bodySm.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: AppSpace.s8),
+                  decoration: BoxDecoration(
+                    color: tk.accent,
+                    borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Pedir orçamentos grátis',
+                          style: AppType.bodyStrong.copyWith(color: tk.onAccent),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpace.s4),
+                      Icon(Icons.arrow_forward_rounded, size: 16, color: tk.onAccent),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Icon(Icons.home_repair_service_rounded, size: 64, color: context.tk.clientAccent),
-          ],
-        ),
+          ),
+          const SizedBox(width: AppSpace.s12),
+          ExcludeSemantics(
+            child: Icon(Icons.home_repair_service_rounded, size: 56, color: tk.accentInk),
+          ),
+        ],
       ),
     );
   }

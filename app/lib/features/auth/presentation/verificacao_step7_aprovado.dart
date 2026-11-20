@@ -1,10 +1,9 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/services/profile_service.dart';
-import 'auth_gate.dart';
-import '../../../core/ui/light_island.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
+import 'auth_gate.dart';
 
 /// Tela 7: Celebração de Aprovação (Fim do Onboarding de Verificação)
 /// Destino do Deep-Link do e-mail de aprovação.
@@ -33,195 +32,154 @@ class _VerificacaoStep7AprovadoScreenState
   Future<void> _ativarConta() async {
     setState(() => _isActivating = true);
     final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
 
     try {
       await ProfileService().activateProvider();
       navigator.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const AuthGate()),
+        AppRoute<void>(builder: (_) => const AuthGate()),
         (_) => false,
       );
     } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Não foi possível ativar a conta. Tente novamente.'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      if (mounted) setState(() => _isActivating = false);
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          'Não foi possível ativar a conta. Tente novamente.',
+          kind: AppSnackKind.error,
+        );
+        setState(() => _isActivating = false);
+      }
     }
   }
 
-  // Paleta de Cores Institucionais
-  static const Color _primaryBlue = Color(0xFF003366);
-  static const Color _accentBlue = Color(0xFF2563EB);
-  static const Color _successGreen = Color(0xFF10B981);
-  static const Color _bgPearlGray = Color(0xFFF8FAFC);
-  static const Color _textDark = Color(0xFF0F172A);
-  static const Color _textMuted = Color(0xFF475569);
-
   @override
   Widget build(BuildContext context) {
-    // Força a barra de status do celular a ficar escura, combinando com o fundo branco
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    final tk = context.tk;
+    final layout = context.layout;
 
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 64), // Margem superior generosa
-                      // 1. Hero Section (Ilustração de Sucesso Nativa)
-                      _buildCelebrationHero(),
-
-                      const SizedBox(height: 48),
-
-                      // 2. Copywriting (Mensagem de Impacto)
-                      Text(
-                        'Tudo pronto, ${widget.nomeProfissional}!',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: _primaryBlue,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'A sua conta foi verificada com sucesso pela nossa equipe. Você acaba de se tornar um parceiro oficial do Desperrengue.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: _textMuted.withValues(alpha: 0.9),
-                          height: 1.5,
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // 3. A Caixa de Direcionamento (Próximo Passo)
-                      _buildNextStepCard(),
-
-                      const SizedBox(height: 32),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // 4. Rodapé de Ação (Bottom CTA - Fixo na parte inferior)
-            _buildBottomCTA(context),
-          ],
+    return AppScaffold(
+      backgroundColor: tk.background,
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Configurar Meu Perfil',
+          trailingArrow: true,
+          loading: _isActivating,
+          onPressed: _ativarConta,
         ),
       ),
-    ));
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            layout.margin,
+            AppSpace.s48,
+            layout.margin,
+            AppSpace.s32,
+          ),
+          child: AppStagger(
+            spacing: AppSpace.s24,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 1. Hero Section (Ilustração de Sucesso Nativa)
+              _buildCelebrationHero(context),
+              // 2. Copywriting (Mensagem de Impacto)
+              Column(
+                children: [
+                  const AppStatusChip(
+                    'Perfil verificado',
+                    tone: AppTone.success,
+                    icon: Icons.verified_rounded,
+                  ),
+                  const SizedBox(height: AppSpace.s12),
+                  Text(
+                    'Tudo pronto, ${widget.nomeProfissional}!',
+                    textAlign: TextAlign.center,
+                    style: AppType.display.copyWith(color: tk.accentInk),
+                  ),
+                  const SizedBox(height: AppSpace.s12),
+                  Text(
+                    'A sua conta foi verificada com sucesso pela nossa equipe. Você acaba de se tornar um parceiro oficial do Desperrengue.',
+                    textAlign: TextAlign.center,
+                    style: AppType.body.copyWith(color: tk.textMuted),
+                  ),
+                ],
+              ),
+              // 3. A Caixa de Direcionamento (Próximo Passo)
+              _buildNextStepCard(context),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  /// Constrói a ilustração do Escudo de Verificação com "confetes" em código nativo
-  Widget _buildCelebrationHero() {
+  /// Constrói a ilustração do Escudo de Verificação com confetes sutis
+  Widget _buildCelebrationHero(BuildContext context) {
+    final tk = context.tk;
     return SizedBox(
       width: 200,
       height: 200,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Partículas simulando confetes de celebração
           Positioned(
             top: 10,
             left: 40,
-            child: _buildParticle(
-              Icons.star_rounded,
-              const Color(0xFFEAB308),
-              16,
-            ),
+            child: _buildParticle(Icons.star_rounded, tk.warningInk, 16),
           ),
           Positioned(
             top: 30,
             right: 30,
-            child: _buildParticle(Icons.circle, _accentBlue, 8),
+            child: _buildParticle(Icons.circle, tk.accentInk, 8),
           ),
           Positioned(
             bottom: 50,
             left: 10,
-            child: _buildParticle(Icons.square_rounded, _accentBlue, 10),
+            child: _buildParticle(Icons.square_rounded, tk.accentInk, 10),
           ),
           Positioned(
             bottom: 20,
             right: 40,
-            child: _buildParticle(
-              Icons.star_rounded,
-              const Color(0xFFEAB308),
-              20,
-            ),
+            child: _buildParticle(Icons.star_rounded, tk.warningInk, 20),
           ),
           Positioned(
             top: 80,
             left: 10,
-            child: _buildParticle(Icons.circle, _successGreen, 6),
+            child: _buildParticle(Icons.circle, tk.successInk, 6),
           ),
           Positioned(
             bottom: 80,
             right: 10,
-            child: _buildParticle(
-              Icons.square_rounded,
-              const Color(0xFFEAB308),
-              8,
-            ),
+            child: _buildParticle(Icons.square_rounded, tk.warningInk, 8),
           ),
-
-          // O Escudo Central
           Container(
             width: 140,
             height: 140,
             decoration: BoxDecoration(
-              color: _bgPearlGray,
+              color: tk.surface,
               shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: _primaryBlue.withValues(alpha: 0.08),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              boxShadow: tk.elevation(2),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.shield_outlined,
               size: 80,
-              color: _primaryBlue,
+              color: tk.accentInk,
             ),
           ),
-
-          // O Check de Sucesso (Verde Vibrante) posicionado no canto inferior direito do escudo
           Positioned(
             bottom: 25,
             right: 25,
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: _successGreen,
+                color: tk.successInk,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 4),
-                boxShadow: [
-                  BoxShadow(
-                    color: _successGreen.withValues(alpha: 0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                border: Border.all(color: tk.background, width: 4),
+                boxShadow: tk.elevation(1),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.check_rounded,
                 size: 32,
-                color: Colors.white,
+                color: AppTokens.onColor(tk.successInk),
                 weight: 800,
               ),
             ),
@@ -233,95 +191,48 @@ class _VerificacaoStep7AprovadoScreenState
 
   /// Gera pequenas formas geométricas decorativas
   Widget _buildParticle(IconData icon, Color color, double size) {
-    return Transform.rotate(
-      angle: 0.5, // Leve inclinação para dar dinamismo
-      child: Icon(icon, color: color.withValues(alpha: 0.6), size: size),
+    return ExcludeSemantics(
+      child: Transform.rotate(
+        angle: 0.5,
+        child: Icon(icon, color: color, size: size),
+      ),
     );
   }
 
   /// Cartão de instrução para o próximo passo (Configuração do perfil)
-  Widget _buildNextStepCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _bgPearlGray,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-      ),
+  Widget _buildNextStepCard(BuildContext context) {
+    final tk = context.tk;
+    return AppCard(
+      variant: AppCardVariant.tonal,
+      borderColor: tk.border,
+      padding: const EdgeInsets.all(AppSpace.cardLarge),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(AppSpace.s12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              color: tk.card,
+              borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+              boxShadow: tk.elevation(1),
             ),
-            // Ícone de ferramentas representando a montagem do perfil
-            child: const Icon(
+            child: Icon(
               Icons.handyman_rounded,
-              color: _textMuted,
+              color: tk.accentInk,
               size: 20,
             ),
           ),
-          const SizedBox(width: 16),
-          const Expanded(
+          const SizedBox(width: AppSpace.s16),
+          Expanded(
             child: Text(
               'Para começar a aparecer nas buscas e receber pedidos, precisamos configurar os detalhes do seu perfil profissional.',
-              style: TextStyle(
-                fontSize: 14,
+              style: AppType.bodySm.copyWith(
                 fontWeight: FontWeight.w500,
-                color: _textDark,
-                height: 1.5,
+                color: tk.text,
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  /// Botão de Ação Primária fixo no rodapé
-  Widget _buildBottomCTA(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: ElevatedButton(
-        // Próximo passo do produto: levar para a edição do perfil público
-        // (features/profile_setup). Por ora ativa a conta e abre o painel.
-        onPressed: _isActivating ? null : _ativarConta,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: _accentBlue,
-          minimumSize: const Size(double.infinity, 56), // match_parent x 56px
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 0,
-        ),
-        child: _isActivating
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                  strokeWidth: 2,
-                ),
-              )
-            : const Text(
-                'Configurar Meu Perfil',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 0.5,
-                ),
-              ),
       ),
     );
   }

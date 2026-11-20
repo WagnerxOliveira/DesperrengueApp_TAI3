@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,9 +7,9 @@ import '../../../core/services/draft_store.dart';
 import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/utils/image_metadata_stripper.dart';
 import '../../../core/utils/off_thread.dart';
-import '../../../core/ui/light_island.dart';
 import 'auth_gate.dart';
 
 class VerificacaoStep5FinalizacaoScreen extends StatefulWidget {
@@ -36,7 +35,6 @@ class VerificacaoStep5FinalizacaoScreen extends StatefulWidget {
 
 class _VerificacaoStep5FinalizacaoScreenState
     extends State<VerificacaoStep5FinalizacaoScreen> {
-  final Color _primaryBlue = const Color(0xFF003366);
   bool _isUploading = false;
 
   /// Extensão segura (jpg/png/webp) a partir do caminho do arquivo capturado.
@@ -50,9 +48,7 @@ class _VerificacaoStep5FinalizacaoScreenState
 
   void _mostrarErro(String mensagem) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
-    );
+    AppSnackbar.show(context, mensagem, kind: AppSnackKind.error);
   }
 
   Future<void> _enviarParaAnalise() async {
@@ -67,9 +63,16 @@ class _VerificacaoStep5FinalizacaoScreenState
       // Guarda Forense pHash (Frente != Verso) em Worker Isolate
       try {
         final isDuplicate = await runOffMainThread(() {
-          final hFront = PerceptualHashGuard.compute64BitPerceptualHash(frontBytes);
-          final hBack = PerceptualHashGuard.compute64BitPerceptualHash(backBytes);
-          return PerceptualHashGuard.isDuplicateDocumentFrontAndBack(frontBytes, backBytes) &&
+          final hFront = PerceptualHashGuard.compute64BitPerceptualHash(
+            frontBytes,
+          );
+          final hBack = PerceptualHashGuard.compute64BitPerceptualHash(
+            backBytes,
+          );
+          return PerceptualHashGuard.isDuplicateDocumentFrontAndBack(
+                frontBytes,
+                backBytes,
+              ) &&
               PerceptualHashGuard.isDuplicateEvidence(hFront, hBack);
         });
         if (isDuplicate) {
@@ -105,7 +108,7 @@ class _VerificacaoStep5FinalizacaoScreenState
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const AuthGate()),
+          AppRoute<void>(builder: (context) => const AuthGate()),
           (route) => false,
         );
       }
@@ -130,152 +133,93 @@ class _VerificacaoStep5FinalizacaoScreenState
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(
-      child: AppScaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
-            onPressed: _isUploading ? null : () => Navigator.pop(context),
-          ),
-          title: Text(
-            'Desperrengue',
-            style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.bold),
-          ),
+    final tk = context.tk;
+    final layout = context.layout;
+
+    return AppScaffold(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        title: 'Desperrengue',
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
+          onPressed: _isUploading ? null : () => Navigator.pop(context),
         ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 16),
-                const Text(
-                  'Etapa 5 de 5: Finalização',
-                  style: TextStyle(fontSize: 18, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
-
-                // Barra de Progresso Completa
-                Row(
-                  children: List.generate(
-                    5,
-                    (index) => Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.only(right: 4),
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: _primaryBlue,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: _isUploading ? 'Enviando...' : 'ENVIAR PARA ANÁLISE',
+          icon: Icons.upload_rounded,
+          loading: _isUploading,
+          onPressed: _enviarParaAnalise,
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            layout.margin,
+            AppSpace.s16,
+            layout.margin,
+            AppSpace.s24,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Etapa 5 de 5: Finalização',
+                style: AppType.title.copyWith(color: tk.text),
+              ),
+              const SizedBox(height: AppSpace.s12),
+              const AppStepper(total: 5, current: 5),
+              const SizedBox(height: AppSpace.s24),
+              AppCard(
+                variant: AppCardVariant.elevated,
+                padding: const EdgeInsets.all(AppSpace.cardLarge),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '5. REVISÃO E ENVIO',
+                        style: AppType.headline.copyWith(color: tk.text),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade300),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                    const SizedBox(height: AppSpace.s8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Tudo pronto! Seus dados foram salvos com sucesso. Envie seu cadastro para análise profissional.',
+                        style: AppType.bodySm.copyWith(color: tk.textMuted),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '5. REVISÃO E ENVIO',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            height: 1.1,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Tudo pronto! Seus dados foram salvos com sucesso. Envie seu cadastro para análise profissional.',
-                          style: TextStyle(fontSize: 14, color: Colors.black87),
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.mark_email_read_rounded,
-                          size: 80,
-                          color: _primaryBlue,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      const Text(
-                        'Sua documentação e registro profissional serão analisados pela nossa equipe. A aprovação leva até 48h.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const Spacer(),
-
-                ElevatedButton.icon(
-                  onPressed: _isUploading ? null : _enviarParaAnalise,
-                  icon: _isUploading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
-                      : const Icon(Icons.upload_rounded, color: Colors.white),
-                  label: Text(
-                    _isUploading ? 'A ENVIAR...' : 'ENVIAR PARA ANÁLISE',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      letterSpacing: 1,
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primaryBlue,
-                    padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    const SizedBox(height: AppSpace.s32),
+                    Container(
+                      padding: const EdgeInsets.all(AppSpace.s32),
+                      decoration: BoxDecoration(
+                        color: tk.accentSoft,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.mark_email_read_rounded,
+                        size: 72,
+                        color: tk.accentInk,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: AppSpace.s24),
+                    Text(
+                      'Sua documentação e registro profissional serão analisados pela nossa equipe. A aprovação leva até 48h.',
+                      textAlign: TextAlign.center,
+                      style: AppType.bodySm.copyWith(
+                        color: tk.text,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

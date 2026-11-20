@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 import 'dart:math' show Random;
 
@@ -8,10 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/models/wallet_models.dart';
-import '../../../core/ui/currency_input_formatter.dart';
 import '../../../core/state/wallet_providers.dart';
-import '../../../core/ui/app_tokens.dart';
-import '../../../core/ui/widgets.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/currency_input_formatter.dart';
+import '../../../core/ui/design_system/design_system.dart';
+import '../../../core/ui/widgets.dart' show BannerTone, InfoBanner, friendlyError;
 import '../../boot/animated_splash_screen.dart' show ConfettiPainter;
 
 /// Modo de homologação: mostra o card "Simular Pagamento Pix". Desligue em produção com
@@ -39,7 +39,9 @@ class _AdicionarSaldoScreenState extends ConsumerState<AdicionarSaldoScreen> {
   static const int _max = 500000;
   static const _quick = [5000, 10000, 20000, 50000];
 
-  late final TextEditingController _ctrl = TextEditingController(text: Money.brl(widget.suggestedCents ?? 0));
+  late final TextEditingController _ctrl = TextEditingController(
+    text: Money.brl(widget.suggestedCents ?? 0),
+  );
   StreamSubscription<PixTopup>? _sub;
   Timer? _closeTimer;
   PixTopup? _topup;
@@ -78,7 +80,7 @@ class _AdicionarSaldoScreenState extends ConsumerState<AdicionarSaldoScreen> {
   }
 
   Future<void> _generate() async {
-    if (!_valid || _busy || _topup != null) return; // já gerado: o toque extra na transição é ignorado
+    if (!_valid || _busy || _topup != null) return;
     HapticFeedback.mediumImpact();
     setState(() {
       _busy = true;
@@ -107,7 +109,7 @@ class _AdicionarSaldoScreenState extends ConsumerState<AdicionarSaldoScreen> {
       await ref.read(walletServiceProvider).simulatePayment(t.id);
       _markPaid();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _simBusy = false);
     }
@@ -130,12 +132,18 @@ class _AdicionarSaldoScreenState extends ConsumerState<AdicionarSaldoScreen> {
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
-      appBar: AppBar(title: const Text('Adicionar saldo')),
+      appBar: const AppAppBar(title: 'Adicionar saldo'),
       body: SafeArea(
         child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
+          duration: AppMotion.d(context, AppMotion.page),
+          switchInCurve: AppMotion.pageCurve,
+          switchOutCurve: AppMotion.pageReverseCurve,
           child: _done
-              ? _SuccessView(key: const ValueKey('ok'), cents: _topup?.amountCents ?? _cents, onDone: () => Navigator.of(context).pop(true))
+              ? _SuccessView(
+                  key: const ValueKey('ok'),
+                  cents: _topup?.amountCents ?? _cents,
+                  onDone: () => Navigator.of(context).pop(true),
+                )
               : _topup != null
                   ? _PixView(
                       key: const ValueKey('pix'),
@@ -186,47 +194,110 @@ class _AmountView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final margin = context.layout.margin;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: EdgeInsets.fromLTRB(margin, AppSpace.s16, margin, AppSpace.s24),
       children: [
-        Text('Quanto você quer adicionar?', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: tk.textMuted)),
-        const SizedBox(height: 14),
-        TextField(
-          controller: controller,
-          autofocus: false,
+        Text(
+          'Quanto você quer adicionar?',
           textAlign: TextAlign.center,
-          keyboardType: TextInputType.number,
-          inputFormatters: const [CurrencyInputFormatter(maxCents: 500000)],
-          onChanged: (_) => onChanged(),
-          style: TextStyle(fontSize: 44, fontWeight: FontWeight.w900, color: tk.text, letterSpacing: -1),
-          decoration: const InputDecoration(border: InputBorder.none, enabledBorder: InputBorder.none, focusedBorder: InputBorder.none, filled: false),
+          style: AppType.title.copyWith(color: tk.textMuted),
         ),
-        Text('Mínimo R\$ 5,00 · máximo R\$ 5.000,00', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: tk.textMuted)),
-        const SizedBox(height: 18),
+        const SizedBox(height: AppSpace.s16),
+        AppCard(
+          variant: AppCardVariant.tonal,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: AppSpace.s20),
+          child: Column(
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: false,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.number,
+                inputFormatters: const [CurrencyInputFormatter(maxCents: 500000)],
+                onChanged: (_) => onChanged(),
+                style: AppType.figureXl.copyWith(color: tk.text),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                ),
+              ),
+              const SizedBox(height: AppSpace.s4),
+              Text(
+                'Mínimo R\$ 5,00 · máximo R\$ 5.000,00',
+                textAlign: TextAlign.center,
+                style: AppType.caption.copyWith(color: tk.textMuted),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpace.s16),
         Wrap(
           alignment: WrapAlignment.center,
-          spacing: 10,
-          runSpacing: 10,
+          spacing: AppSpace.s8,
+          runSpacing: AppSpace.s8,
           children: [
             for (final c in quick)
               ActionChip(
-                label: Text('+ ${Money.brl(c).replaceAll(',00', '')}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                label: Text(
+                  '+ ${Money.brl(c).replaceAll(',00', '')}',
+                  style: AppType.tabular(AppType.bodySm).copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: tk.text,
+                  ),
+                ),
                 onPressed: () => onQuick(c),
               ),
           ],
         ),
-        if (error != null) Padding(padding: const EdgeInsets.only(top: 16), child: InfoBanner(error!, tone: BannerTone.danger)),
-        const SizedBox(height: 22),
-        PrimaryButton(label: 'Gerar Pix de Recarga', icon: Icons.pix_rounded, loading: busy, onPressed: valid ? onGenerate : null),
-        const SizedBox(height: 14),
-        const InfoBanner('O valor adicionado fica disponível na sua carteira e é usado nos pedidos. Em cada serviço ele fica protegido em garantia até você aprovar.', tone: BannerTone.security, icon: Icons.shield_outlined),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpace.s16),
+            child: InfoBanner(error!, tone: BannerTone.danger),
+          ),
+        const SizedBox(height: AppSpace.s24),
+        AppButton(
+          label: 'Gerar Pix de Recarga',
+          icon: Icons.pix_rounded,
+          loading: busy,
+          onPressed: valid ? onGenerate : null,
+        ),
+        const SizedBox(height: AppSpace.s16),
+        AppCard(
+          variant: AppCardVariant.tonal,
+          color: tk.successSoft,
+          borderColor: tk.success.withValues(alpha: 0.35),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const AppStatusChip(
+                'Pagamento protegido',
+                tone: AppTone.success,
+                icon: Icons.verified_user_rounded,
+              ),
+              const SizedBox(height: AppSpace.s8),
+              Text(
+                'O valor adicionado fica disponível na sua carteira e é usado nos pedidos. Em cada serviço ele fica protegido em garantia até você aprovar.',
+                style: AppType.bodySm.copyWith(color: tk.text),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
 class _PixView extends StatelessWidget {
-  const _PixView({super.key, required this.topup, required this.simulating, required this.onSimulate, required this.onChangeAmount});
+  const _PixView({
+    super.key,
+    required this.topup,
+    required this.simulating,
+    required this.onSimulate,
+    required this.onChangeAmount,
+  });
 
   final PixTopup topup;
   final bool simulating;
@@ -236,64 +307,100 @@ class _PixView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final margin = context.layout.margin;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+      padding: EdgeInsets.fromLTRB(margin, AppSpace.s12, margin, AppSpace.s32),
       children: [
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(Money.brl(topup.amountCents), textAlign: TextAlign.center, style: TextStyle(fontSize: 34, fontWeight: FontWeight.w900, color: tk.text)),
+        Text(
+          Money.brl(topup.amountCents),
+          textAlign: TextAlign.center,
+          style: AppType.figureXl.copyWith(color: tk.text),
         ),
-        const SizedBox(height: 4),
-        Text('Pague com o Pix abaixo', textAlign: TextAlign.center, style: TextStyle(color: tk.textMuted)),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpace.s4),
+        Text(
+          'Pague com o Pix abaixo',
+          textAlign: TextAlign.center,
+          style: AppType.body.copyWith(color: tk.textMuted),
+        ),
+        const SizedBox(height: AppSpace.s16),
         Center(
-          // Fundo branco FIXO: o leitor de QR precisa de contraste, inclusive no tema escuro.
+          // Fundo branco fixo (AppTokens.light.card): o leitor de QR exige contraste, inclusive no tema escuro.
           child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-            child: QrImageView(data: topup.brcode, size: 220, version: QrVersions.auto, errorCorrectionLevel: QrErrorCorrectLevel.M),
+            padding: const EdgeInsets.all(AppSpace.s16),
+            decoration: BoxDecoration(
+              color: AppTokens.light.card,
+              borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
+              border: Border.all(color: tk.border),
+              boxShadow: tk.elevation(1),
+            ),
+            child: QrImageView(
+              data: topup.brcode,
+              size: 220,
+              version: QrVersions.auto,
+              errorCorrectionLevel: QrErrorCorrectLevel.M,
+            ),
           ),
         ),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
+        const SizedBox(height: AppSpace.s16),
+        AppButton(
+          label: 'Copiar código Pix (copia e cola)',
+          icon: Icons.copy_rounded,
+          variant: AppButtonVariant.secondary,
           onPressed: () {
             Clipboard.setData(ClipboardData(text: topup.brcode));
             HapticFeedback.selectionClick();
-            showSnack(context, 'Código Pix copiado!');
+            AppSnackbar.show(
+              context,
+              'Código Pix copiado!',
+              kind: AppSnackKind.success,
+            );
           },
-          icon: const Icon(Icons.copy_rounded, size: 18),
-          label: const Text('Copiar código Pix (copia e cola)'),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: AppSpace.s16),
         const _Waiting(),
         if (kPixSandboxUi) ...[
-          const SizedBox(height: 20),
+          const SizedBox(height: AppSpace.s20),
           AppCard(
+            variant: AppCardVariant.tonal,
             color: tk.infoSoft,
-            borderColor: tk.info.withValues(alpha: 0.5),
+            borderColor: tk.info.withValues(alpha: 0.45),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Icon(Icons.science_rounded, color: tk.info, size: 20),
-                  const SizedBox(width: 8),
-                  Text('Modo de teste ativo', style: TextStyle(fontWeight: FontWeight.w900, color: tk.info)),
-                ]),
-                const SizedBox(height: 6),
-                Text('Este Pix é de homologação: nenhum dinheiro real é cobrado. Toque abaixo para simular o banco aprovando.', style: TextStyle(fontSize: 13, height: 1.35, color: tk.text)),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: simulating ? null : onSimulate,
-                  style: FilledButton.styleFrom(backgroundColor: tk.info, foregroundColor: AppTokens.onColor(tk.info)),
-                  icon: simulating ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.bolt_rounded),
-                  label: const Text('Simular pagamento Pix agora'),
+                Row(
+                  children: [
+                    Icon(Icons.science_rounded, color: tk.info, size: 20),
+                    const SizedBox(width: AppSpace.s8),
+                    Expanded(
+                      child: Text(
+                        'Modo de teste ativo',
+                        style: AppType.titleSm.copyWith(color: tk.text),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  'Este Pix é de homologação: nenhum dinheiro real é cobrado. Toque abaixo para simular o banco aprovando.',
+                  style: AppType.bodySm.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s12),
+                AppButton(
+                  label: 'Simular pagamento Pix agora',
+                  icon: Icons.bolt_rounded,
+                  loading: simulating,
+                  onPressed: onSimulate,
                 ),
               ],
             ),
           ),
         ],
-        const SizedBox(height: 8),
-        TextButton(onPressed: onChangeAmount, child: const Text('Alterar valor')),
+        const SizedBox(height: AppSpace.s8),
+        AppButton(
+          label: 'Alterar valor',
+          variant: AppButtonVariant.tertiary,
+          onPressed: onChangeAmount,
+        ),
       ],
     );
   }
@@ -308,13 +415,15 @@ class _Waiting extends StatefulWidget {
 }
 
 class _WaitingState extends State<_Waiting> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100));
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    if (disableAnimations) {
+    if (AppMotion.reduced(context)) {
       if (_c.isAnimating) _c.stop();
       _c.value = 1.0;
     } else if (!_c.isAnimating) {
@@ -340,8 +449,13 @@ class _WaitingState extends State<_Waiting> with SingleTickerProviderStateMixin 
             child: Icon(Icons.circle, size: 10, color: tk.warningInk),
           ),
         ),
-        const SizedBox(width: 10),
-        Flexible(child: Text('Aguardando confirmação automática do banco...', style: TextStyle(color: tk.textMuted, fontSize: 13.5))),
+        const SizedBox(width: AppSpace.s12),
+        Flexible(
+          child: Text(
+            'Aguardando confirmação automática do banco...',
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
+          ),
+        ),
       ],
     );
   }
@@ -359,7 +473,23 @@ class _SuccessView extends StatefulWidget {
 }
 
 class _SuccessViewState extends State<_SuccessView> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..forward();
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (AppMotion.reduced(context)) {
+      _c.value = 1.0;
+    } else {
+      _c.forward();
+    }
+  }
 
   @override
   void dispose() {
@@ -370,34 +500,56 @@ class _SuccessViewState extends State<_SuccessView> with SingleTickerProviderSta
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final reduced = AppMotion.reduced(context);
     return Stack(
       children: [
-        Positioned.fill(
-          child: RepaintBoundary(
-            child: AnimatedBuilder(animation: _c, builder: (_, _) => CustomPaint(painter: ConfettiPainter(progress: _c.value))),
+        if (!reduced)
+          Positioned.fill(
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (_, _) => CustomPaint(painter: ConfettiPainter(progress: _c.value)),
+              ),
+            ),
           ),
-        ),
         Center(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpace.s24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 ScaleTransition(
-                  scale: CurvedAnimation(parent: _c, curve: const Interval(0, .45, curve: Curves.elasticOut)),
+                  scale: reduced
+                      ? const AlwaysStoppedAnimation(1.0)
+                      : CurvedAnimation(
+                          parent: _c,
+                          curve: const Interval(0, 0.45, curve: Curves.elasticOut),
+                        ),
                   child: Container(
                     width: 104,
                     height: 104,
                     decoration: BoxDecoration(shape: BoxShape.circle, color: tk.success),
-                    child: Icon(Icons.check_rounded, size: 64, color: AppTokens.onColor(tk.success)),
+                    child: Icon(
+                      Icons.check_rounded,
+                      size: 64,
+                      color: AppTokens.onColor(tk.success),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 22),
-                Text('Pix confirmado!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: tk.text)),
-                const SizedBox(height: 6),
-                Text('${Money.brl(widget.cents)} adicionados ao seu saldo.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: tk.textMuted)),
-                const SizedBox(height: 24),
-                PrimaryButton(label: 'Continuar', onPressed: widget.onDone),
+                const SizedBox(height: AppSpace.s24),
+                Text(
+                  'Pix confirmado!',
+                  textAlign: TextAlign.center,
+                  style: AppType.display.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  '${Money.brl(widget.cents)} adicionados ao seu saldo.',
+                  textAlign: TextAlign.center,
+                  style: AppType.tabular(AppType.body).copyWith(color: tk.textMuted),
+                ),
+                const SizedBox(height: AppSpace.s24),
+                AppButton(label: 'Continuar', onPressed: widget.onDone),
               ],
             ),
           ),

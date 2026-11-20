@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kReleaseMode;
@@ -9,22 +8,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/scheduling_models.dart';
+import '../../../core/security/geo_privacy_policy_engine.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/scheduling_service.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
-import '../../../core/ui/widgets.dart';
+import '../../../core/ui/widgets.dart' show BrandLogo, friendlyError;
 import '../../../core/utils/format.dart';
 import '../../../core/utils/geo.dart';
 import '../../../core/utils/names.dart';
-import '../../../core/security/geo_privacy_policy_engine.dart';
 import 'chat_screen.dart';
 import 'geo_privacy_widgets.dart';
 import 'service_map_widgets.dart';
 import 'smart_triage_widgets.dart';
-import '../../../core/state/smart_triage_controller.dart';
 
 /// Botão de teste "Simular dia/hora e GPS no local" (ignora a trava de horário e de distância).
 ///
@@ -32,7 +32,8 @@ import '../../../core/state/smart_triage_controller.dart';
 /// build de homologação específico use `--dart-define=CHECKIN_SANDBOX=true`. Em produção o servidor
 /// também fica com `app_settings.checkin_sandbox = 'false'`, então mesmo que o botão apareça o
 /// servidor recusa (`START_SANDBOX_OFF`).
-bool shouldShowCheckinSandbox({required bool releaseMode, bool? envOverride}) => envOverride ?? !releaseMode;
+bool shouldShowCheckinSandbox({required bool releaseMode, bool? envOverride}) =>
+    envOverride ?? !releaseMode;
 
 const bool _kCheckinSandboxEnvSet = bool.hasEnvironment('CHECKIN_SANDBOX');
 const bool _kCheckinSandboxEnv = bool.fromEnvironment('CHECKIN_SANDBOX');
@@ -40,6 +41,7 @@ final bool kCheckinSandboxUi = shouldShowCheckinSandbox(
   releaseMode: kReleaseMode,
   envOverride: _kCheckinSandboxEnvSet ? _kCheckinSandboxEnv : null,
 );
+
 enum LocationAccess { granted, denied }
 
 /// Dependências do pré-serviço (tudo que toca rede/GPS), substituíveis nos testes.
@@ -62,10 +64,12 @@ class SchedulingDeps {
   final Future<Map<String, dynamic>?> Function(String jobId) clientCard;
 
   /// Nome/foto do profissional (visão do cliente).
-  final Future<({String name, String? avatar})?> Function(String providerId) peer;
+  final Future<({String name, String? avatar})?> Function(String providerId)
+      peer;
 
   /// Geocodificação feita no celular do CLIENTE; o servidor não consegue (403 em datacenter).
-  final Future<GeocodeHit?> Function(String addressLine, String? summary) geocode;
+  final Future<GeocodeHit?> Function(String addressLine, String? summary)
+      geocode;
 
   /// Localização protegida do PROFISSIONAL (servidor decide o que ele pode ver). Padrão: [ProviderLocationSource].
   final Future<ProviderLocationView?> Function(String jobId)? location;
@@ -76,21 +80,33 @@ class SchedulingDeps {
       backend: SupabaseSchedulingBackend(),
       requestLocation: () async {
         var perm = await Geolocator.checkPermission();
-        if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
-        return perm == LocationPermission.denied || perm == LocationPermission.deniedForever
+        if (perm == LocationPermission.denied) {
+          perm = await Geolocator.requestPermission();
+        }
+        return perm == LocationPermission.denied ||
+                perm == LocationPermission.deniedForever
             ? LocationAccess.denied
             : LocationAccess.granted;
       },
       positions: () => Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 5),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 5,
+        ),
       ).map((p) => GeoFix(p.latitude, p.longitude, accuracyM: p.accuracy)),
       address: jobs.jobAddress,
       clientCard: jobs.clientCard,
       peer: (id) async {
         final p = await ProviderService().byId(id);
-        return p == null ? null : (name: friendlyName(p.fullName, fallback: 'Profissional'), avatar: p.avatarUrl);
+        return p == null
+            ? null
+            : (
+                name: friendlyName(p.fullName, fallback: 'Profissional'),
+                avatar: p.avatarUrl,
+              );
       },
-      geocode: (line, summary) => PreciseGeocoder().geocode(line, summary: summary),
+      geocode: (line, summary) =>
+          PreciseGeocoder().geocode(line, summary: summary),
       location: (id) => ProviderLocationSource.load(id),
     );
   }
@@ -101,7 +117,12 @@ class SchedulingDeps {
 /// DUPLA TRAVA: (1) horário (relógio do servidor, a partir de 15 min antes) e (2) estar a ≤ 100 m
 /// do endereço (Haversine). O servidor revalida tudo em `start_job`; a UI só antecipa o resultado.
 class ScheduledServiceScreen extends StatefulWidget {
-  const ScheduledServiceScreen({super.key, required this.job, required this.asProvider, @visibleForTesting this.deps});
+  const ScheduledServiceScreen({
+    super.key,
+    required this.job,
+    required this.asProvider,
+    @visibleForTesting this.deps,
+  });
 
   final Job job;
   final bool asProvider;
@@ -117,6 +138,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   final ValueNotifier<GeoFix?> _pos = ValueNotifier<GeoFix?>(null);
   StreamSubscription<GeoFix>? _posSub;
   Timer? _tick;
+
   /// Pulso de 1 s: só a contagem regressiva e o botão de iniciar escutam (não a tela toda).
   final ValueNotifier<int> _clockTick = ValueNotifier<int>(0);
 
@@ -125,6 +147,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   bool _permDenied = false;
   bool _starting = false;
   Map<String, dynamic>? _address;
+
   /// Visão de localização do PROFISSIONAL (null = ainda não confirmada: nada de endereço).
   ProviderLocationView? _locView;
   bool _locLoaded = false;
@@ -158,7 +181,9 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
 
   Future<void> _bootstrap() async {
     // Relógio do servidor primeiro: sem ele a UI cairia no relógio do celular (adulterável).
-    unawaited(_clock.sync().then((_) => mounted ? setState(() {}) : null).catchError((_) {}));
+    unawaited(
+      _clock.sync().then((_) => mounted ? setState(() {}) : null).catchError((_) {}),
+    );
     // O endereço vem primeiro: o cliente precisa dele para geocodificar o destino.
     if (widget.asProvider) await _loadProviderLocation();
     await _loadPeerAndAddress();
@@ -171,7 +196,9 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     ProviderLocationView? v;
     try {
       final custom = _deps.location;
-      v = await (custom != null ? custom(job.id) : ProviderLocationSource.load(job.id));
+      v = await (custom != null
+          ? custom(job.id)
+          : ProviderLocationSource.load(job.id));
     } catch (_) {
       v = null;
     }
@@ -194,14 +221,20 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
 
   /// No instante do desbloqueio (00h00 SP, relógio do servidor) rebusca e carrega o destino exato.
   void _maybeRefreshLocation() {
-    if (!widget.asProvider || _locRefreshing || DateTime.now().isBefore(_nextLocRefreshAt)) return;
+    if (!widget.asProvider ||
+        _locRefreshing ||
+        DateTime.now().isBefore(_nextLocRefreshAt)) {
+      return;
+    }
     final v = _locView;
     if (v == null || v.exactUnlocked) return;
     final at = v.unlockAt;
     if (at == null || _clock.now().isBefore(at)) return;
     _locRefreshing = true;
     _loadProviderLocation().then((_) async {
-      if (mounted && (_locView?.exactUnlocked ?? false)) await _loadDestination();
+      if (mounted && (_locView?.exactUnlocked ?? false)) {
+        await _loadDestination();
+      }
     }).whenComplete(() {
       // Evita martelar o servidor se ele ainda não liberou (relógio do aparelho adiantado).
       _nextLocRefreshAt = DateTime.now().add(const Duration(seconds: 20));
@@ -220,7 +253,8 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
         name = friendlyName(c?['full_name'] as String?);
         avatar = c?['avatar_url'] as String?;
       } else {
-        final p = job.providerId == null ? null : await _deps.peer(job.providerId!);
+        final p =
+            job.providerId == null ? null : await _deps.peer(job.providerId!);
         name = p?.name ?? 'Profissional';
         avatar = p?.avatar;
       }
@@ -248,7 +282,13 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
         // resultado. O servidor não confia no profissional para isso.
         final hit = await _deps.geocode(line, job.addressSummary);
         if (hit != null) {
-          d = await _deps.backend.setLocation(job.id, hit.lat, hit.lng, source: 'client_geocode', precision: hit.precision.wire);
+          d = await _deps.backend.setLocation(
+            job.id,
+            hit.lat,
+            hit.lng,
+            source: 'client_geocode',
+            precision: hit.precision.wire,
+          );
         }
       }
       if (!mounted) return;
@@ -290,27 +330,37 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
   Future<void> _start({bool simulate = false}) async {
     if (_starting) return;
     if (simulate) {
-      final ok = await confirmDialog(
+      final ok = await AppDialog.confirm(
         context,
         title: 'Modo de teste',
-        message: 'Isto ignora a data/hora e o GPS e inicia o serviço agora. Só existe em versões de teste do aplicativo.',
+        message:
+            'Isto ignora a data/hora e o GPS e inicia o serviço agora. Só existe em versões de teste do aplicativo.',
         confirmLabel: 'Simular e iniciar',
       );
       if (!ok || !mounted) return;
     }
     setState(() => _starting = true);
     try {
-      await _deps.backend.startJob(job.id, position: _pos.value, simulate: simulate);
-      if (mounted) showSnack(context, 'Serviço iniciado! O cronômetro começou.');
+      await _deps.backend
+          .startJob(job.id, position: _pos.value, simulate: simulate);
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          'Serviço iniciado! O cronômetro começou.',
+          kind: AppSnackKind.success,
+        );
+      }
       // O stream do pedido troca esta tela pela de execução; nada mais a fazer aqui.
     } on StartJobFailure catch (e) {
       if (!mounted) return;
-      showSnack(context, e.message, error: true);
+      AppSnackbar.show(context, e.message, kind: AppSnackKind.error);
       // Servidor discordou da UI (relógio/destino/GPS): ressincroniza.
       unawaited(_clock.sync().catchError((_) {}));
       unawaited(_loadDestination());
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) {
+        AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
+      }
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -320,9 +370,16 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     final me = Supabase.instance.client.auth.currentUser?.id;
     final providerId = widget.asProvider ? me : job.providerId;
     if (providerId == null) return;
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ChatScreen(job: job, providerId: providerId, peerName: _peerName.isEmpty ? null : _peerName, peerAvatar: _peerAvatar),
-    ));
+    await Navigator.of(context).push(
+      AppRoute<void>(
+        builder: (_) => ChatScreen(
+          job: job,
+          providerId: providerId,
+          peerName: _peerName.isEmpty ? null : _peerName,
+          peerAvatar: _peerAvatar,
+        ),
+      ),
+    );
   }
 
   Future<void> _onAddressTap() async {
@@ -372,7 +429,38 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
         if (mounted) setState(() => _dest = d);
       },
     );
-    if (ok == true && mounted) showSnack(context, 'Local confirmado! O profissional será guiado até este ponto.');
+    if (ok == true && mounted) {
+      AppSnackbar.show(
+        context,
+        'Local confirmado! O profissional será guiado até este ponto.',
+        kind: AppSnackKind.success,
+      );
+    }
+  }
+
+  void _openPhotoDialog(String path) {
+    AppDialog.show<void>(
+      context,
+      title: 'Foto do serviço',
+      content: AspectRatio(
+        aspectRatio: 1,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+          child: InteractiveViewer(
+            child: SignedImage(path: path, fit: BoxFit.contain, radius: 0),
+          ),
+        ),
+      ),
+      actions: [
+        Builder(
+          builder: (ctx) => AppButton(
+            label: 'Fechar',
+            variant: AppButtonVariant.secondary,
+            onPressed: () => Navigator.of(ctx).pop(),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -380,18 +468,24 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
     final tk = context.tk;
     final price = job.agreedPrice ?? 0;
     final net = price - price * 0.15;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded), onPressed: () => Navigator.maybePop(context)),
-        title: const BrandLogo(),
+      appBar: AppAppBar(
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        titleWidget: const BrandLogo(),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
         children: [
           // ---- cabeçalho: código, status e data/hora agendada
           AppCard(
+            variant: AppCardVariant.tonal,
             color: tk.infoSoft,
-            borderColor: tk.info.withValues(alpha: 0.5),
+            borderColor: tk.info.withValues(alpha: 0.45),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -399,22 +493,37 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
                 Wrap(
                   alignment: WrapAlignment.spaceBetween,
                   crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
-                  runSpacing: 6,
+                  spacing: AppSpace.s12,
+                  runSpacing: AppSpace.s8,
                   children: [
-                    StatusChip('Serviço agendado', color: tk.info, icon: Icons.event_available_rounded),
-                    Text(job.code, style: TextStyle(fontWeight: FontWeight.w800, color: tk.textMuted)),
+                    const AppStatusChip(
+                      'Serviço agendado',
+                      tone: AppTone.info,
+                      icon: Icons.event_available_rounded,
+                    ),
+                    Text(
+                      job.code,
+                      style: AppType.tabular(AppType.bodyStrong)
+                          .copyWith(color: tk.textMuted),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpace.s12),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.calendar_month_rounded, color: tk.info),
-                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpace.s2),
+                      child: Icon(Icons.calendar_month_rounded, color: tk.info),
+                    ),
+                    const SizedBox(width: AppSpace.s8),
                     Expanded(
                       child: Text(
-                        job.scheduledFor != null ? 'Agendado para ${dateLong(job.scheduledFor!)}' : 'Aguardando combinar o horário',
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                        job.scheduledFor != null
+                            ? 'Agendado para ${dateLong(job.scheduledFor!)}'
+                            : 'Aguardando combinar o horário',
+                        style: AppType.tabular(AppType.titleSm)
+                            .copyWith(color: tk.text),
                       ),
                     ),
                   ],
@@ -422,28 +531,38 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.item),
           // ---- custódia
           AppCard(
+            variant: AppCardVariant.tonal,
             color: tk.successSoft,
-            borderColor: tk.success,
+            borderColor: tk.success.withValues(alpha: 0.65),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.lock_rounded, color: tk.success),
-                const SizedBox(width: 12),
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpace.s2),
+                  child: Icon(Icons.lock_rounded, color: tk.successInk),
+                ),
+                const SizedBox(width: AppSpace.s12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.asProvider ? 'Pagamento retido e garantido: ${brl(price)}' : 'Valor retido em custódia: ${brl(price)}',
-                        style: TextStyle(fontWeight: FontWeight.w900, color: tk.successInk),
+                        widget.asProvider
+                            ? 'Pagamento retido e garantido: ${brl(price)}'
+                            : 'Valor retido em custódia: ${brl(price)}',
+                        style: AppType.tabular(AppType.titleSm)
+                            .copyWith(color: tk.successInk),
                       ),
+                      const SizedBox(height: AppSpace.s4),
                       Text(
                         widget.asProvider
                             ? 'Você recebe ${brl(net)} após a confirmação do cliente.'
                             : 'Só é liberado ao profissional quando você informar o código no fim do serviço.',
-                        style: TextStyle(color: tk.successInk, fontSize: 13),
+                        style: AppType.tabular(AppType.bodySm)
+                            .copyWith(color: tk.successInk),
                       ),
                     ],
                   ),
@@ -451,33 +570,45 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.item),
           // ---- pedido: título, descrição e fotos
           AppCard(
+            variant: AppCardVariant.elevated,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(job.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 6),
-                Text(job.description.isEmpty ? 'Sem descrição detalhada.' : job.description, style: TextStyle(color: tk.textMuted, height: 1.35)),
+                Text(
+                  job.title,
+                  style: AppType.titleSm.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  job.description.isEmpty
+                      ? 'Sem descrição detalhada.'
+                      : job.description,
+                  style: AppType.body.copyWith(color: tk.textMuted),
+                ),
                 if (job.photoPaths.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpace.s12),
                   SizedBox(
                     height: 96,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
                       itemCount: job.photoPaths.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, i) => GestureDetector(
-                        onTap: () => showDialog<void>(
-                          context: context,
-                          builder: (_) => Dialog(
-                            backgroundColor: Colors.black,
-                            insetPadding: const EdgeInsets.all(12),
-                            child: InteractiveViewer(child: SignedImage(path: job.photoPaths[i], fit: BoxFit.contain, radius: 0)),
-                          ),
+                      separatorBuilder: (_, _) =>
+                          const SizedBox(width: AppSpace.s8),
+                      itemBuilder: (context, i) => AppPressable(
+                        onTap: () => _openPhotoDialog(job.photoPaths[i]),
+                        borderRadius: BorderRadius.circular(
+                          AppGeometry.iconTileRadius,
                         ),
-                        child: SignedImage(path: job.photoPaths[i], width: 96, height: 96, radius: 12),
+                        semanticLabel: 'Ampliar foto ${i + 1}',
+                        child: SignedImage(
+                          path: job.photoPaths[i],
+                          width: 96,
+                          height: 96,
+                          radius: AppGeometry.iconTileRadius,
+                        ),
                       ),
                     ),
                   ),
@@ -485,15 +616,20 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.item),
           // ---- endereço (com trava temporal de privacidade para o profissional e somente leitura para o cliente)
           if (widget.asProvider)
             (_locView == null)
                 ? ProviderLocationPending(loading: !_locLoaded)
-                : ProviderLocationPanel(view: _locView!, onOpenExactMap: _onAddressTap)
+                : ProviderLocationPanel(
+                    view: _locView!,
+                    onOpenExactMap: _onAddressTap,
+                  )
           else
             _AddressCard(
-              line: (_address?['address_line'] as String?) ?? job.addressSummary ?? 'Carregando endereço…',
+              line: (_address?['address_line'] as String?) ??
+                  job.addressSummary ??
+                  'Carregando endereço…',
               reference: _address?['reference'] as String?,
               asProvider: false,
               destination: _dest,
@@ -501,7 +637,7 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
               allowTestPin: widget.deps != null,
               onTap: _onAddressTap,
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.item),
           // A contagem regressiva muda a cada segundo: só estes blocos reconstroem (não a tela inteira).
           ValueListenableBuilder<int>(
             valueListenable: _clockTick,
@@ -516,13 +652,16 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
                   : _ClientRules(gate: _gate, scheduledFor: job.scheduledFor),
             ),
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
+          const SizedBox(height: AppSpace.item),
+          AppButton(
+            label: widget.asProvider
+                ? 'Chat com o cliente'
+                : 'Chat com o profissional',
+            icon: Icons.chat_bubble_outline_rounded,
+            variant: AppButtonVariant.secondary,
             onPressed: _openChat,
-            icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-            label: Text(widget.asProvider ? 'Chat com o cliente' : 'Chat com o profissional'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.item),
           ValueListenableBuilder(
             valueListenable: JobTriageStore.instance,
             builder: (context, _, _) {
@@ -537,18 +676,24 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
                     EmergencyContainmentBanner(
                       guide: triage.containmentGuide!,
                       onToggleStep: (step) {
-                        final updated = JobTriageStore.instance.toggleContainmentStepForJob(job, step);
-                        maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(job.id, updated);
+                        final updated = JobTriageStore.instance
+                            .toggleContainmentStepForJob(job, step);
+                        maybeProviderContainer(context)
+                            ?.read(jobTriageRegistryProvider.notifier)
+                            .saveForJob(job.id, updated);
                       },
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: AppSpace.item),
                   ],
                   SmartTriageCard(
                     result: triage,
                     selectedCategory: job.category,
                     onToggleMaterial: (materialId) {
-                      final updated = JobTriageStore.instance.toggleMaterialForJob(job, materialId);
-                      maybeProviderContainer(context)?.read(jobTriageRegistryProvider.notifier).saveForJob(job.id, updated);
+                      final updated = JobTriageStore.instance
+                          .toggleMaterialForJob(job, materialId);
+                      maybeProviderContainer(context)
+                          ?.read(jobTriageRegistryProvider.notifier)
+                          .saveForJob(job.id, updated);
                     },
                   ),
                 ],
@@ -558,27 +703,26 @@ class _ScheduledServiceScreenState extends State<ScheduledServiceScreen> {
         ],
       ),
       bottomNavigationBar: widget.asProvider
-          ? BottomBar(
-              footnote: 'O cronômetro só começa quando você iniciar o serviço no local e no horário.',
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ValueListenableBuilder<int>(
-                    valueListenable: _clockTick,
-                    builder: (context, _, _) => PrimaryButton(
-                      label: 'Iniciar serviço (ativar cronômetro)',
-                      icon: Icons.play_arrow_rounded,
-                      loading: _starting,
-                      onPressed: _gate.canStart ? () => _start() : null,
-                    ),
-                  ),
-                  if (kCheckinSandboxUi)
-                    TextButton.icon(
+          ? AppBottomBar(
+              footnote:
+                  'O cronômetro só começa quando você iniciar o serviço no local e no horário.',
+              secondary: kCheckinSandboxUi
+                  ? AppButton(
+                      label: 'Simular dia/hora e GPS no local',
+                      icon: Icons.science_outlined,
+                      variant: AppButtonVariant.tertiary,
+                      compact: true,
                       onPressed: _starting ? null : () => _start(simulate: true),
-                      icon: const Icon(Icons.science_outlined, size: 18),
-                      label: const Text('🧪 Simular dia/hora e GPS no local'),
-                    ),
-                ],
+                    )
+                  : null,
+              child: ValueListenableBuilder<int>(
+                valueListenable: _clockTick,
+                builder: (context, _, _) => AppButton(
+                  label: 'Iniciar serviço (ativar cronômetro)',
+                  icon: Icons.play_arrow_rounded,
+                  loading: _starting,
+                  onPressed: _gate.canStart ? () => _start() : null,
+                ),
               ),
             )
           : null,
@@ -610,37 +754,63 @@ class _AddressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final needsPin = allowTestPin && !asProvider && (destination == null || destination!.needsClientPin);
+    final needsPin = allowTestPin &&
+        !asProvider &&
+        (destination == null || destination!.needsClientPin);
     final hint = needsPin
         ? 'Confirmar o local exato no mapa'
         : 'Endereço registrado para o atendimento';
     return AppCard(
+      variant: AppCardVariant.elevated,
       onTap: needsPin ? onTap : null,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.place_rounded, color: asProvider ? tk.providerAccent : tk.clientAccent),
-          const SizedBox(width: 10),
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpace.s2),
+            child: Icon(
+              Icons.place_rounded,
+              color: asProvider ? tk.providerAccentInk : tk.clientAccentInk,
+            ),
+          ),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(line, style: const TextStyle(fontWeight: FontWeight.w700, height: 1.3)),
+                Text(
+                  line,
+                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                ),
                 if (reference != null && reference!.isNotEmpty)
-                  Padding(padding: const EdgeInsets.only(top: 4), child: Text('Ref: $reference', style: TextStyle(color: tk.textMuted, fontSize: 13))),
-                const SizedBox(height: 6),
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpace.s4),
+                    child: Text(
+                      'Ref: $reference',
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
+                    ),
+                  ),
+                const SizedBox(height: AppSpace.s8),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     if (needsPin) ...[
-                      Icon(Icons.edit_location_alt_outlined, size: 16, color: tk.warningInk),
-                      const SizedBox(width: 6),
+                      Padding(
+                        padding: const EdgeInsets.only(top: AppSpace.s2),
+                        child: Icon(
+                          Icons.edit_location_alt_outlined,
+                          size: 16,
+                          color: tk.warningInk,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpace.s8),
                     ],
-                    Flexible(
+                    Expanded(
                       child: Text(
                         hint,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: needsPin ? FontWeight.w700 : FontWeight.w500,
+                        style: AppType.caption.copyWith(
+                          fontWeight:
+                              needsPin ? FontWeight.w700 : FontWeight.w500,
                           color: needsPin ? tk.warningInk : tk.textMuted,
                         ),
                       ),
@@ -659,7 +829,12 @@ class _AddressCard extends StatelessWidget {
 
 /// Checklist de liberação do botão "Iniciar serviço" (as DUAS travas).
 class _Checklist extends StatelessWidget {
-  const _Checklist({required this.gate, required this.scheduledFor, required this.onEnableLocation, this.addressLocked = false});
+  const _Checklist({
+    required this.gate,
+    required this.scheduledFor,
+    required this.onEnableLocation,
+    this.addressLocked = false,
+  });
 
   /// Endereço ainda protegido: não há distância nem local exato para mostrar.
   final bool addressLocked;
@@ -669,18 +844,28 @@ class _Checklist extends StatelessWidget {
 
   static String _countdown(Duration d) {
     if (d.inDays >= 1) return '${d.inDays}d ${d.inHours % 24}h';
-    if (d.inHours >= 1) return '${d.inHours}h ${(d.inMinutes % 60).toString().padLeft(2, '0')}min';
+    if (d.inHours >= 1) {
+      return '${d.inHours}h ${(d.inMinutes % 60).toString().padLeft(2, '0')}min';
+    }
     final m = d.inMinutes;
-    return m >= 1 ? '${m}min ${(d.inSeconds % 60).toString().padLeft(2, '0')}s' : '${d.inSeconds}s';
+    return m >= 1
+        ? '${m}min ${(d.inSeconds % 60).toString().padLeft(2, '0')}s'
+        : '${d.inSeconds}s';
   }
 
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final when = scheduledFor == null ? 'sem horário definido' : '${two(scheduledFor!.day)}/${two(scheduledFor!.month)} às ${hhmm(scheduledFor!)}';
+    final when = scheduledFor == null
+        ? 'sem horário definido'
+        : '${two(scheduledFor!.day)}/${two(scheduledFor!.month)} às ${hhmm(scheduledFor!)}';
 
     final (timeIcon, timeColor, timeText) = gate.timeOk
-        ? (Icons.check_circle_rounded, tk.success, 'Data e horário do agendamento ($when)')
+        ? (
+            Icons.check_circle_rounded,
+            tk.successInk,
+            'Data e horário do agendamento ($when)',
+          )
         : (
             Icons.hourglass_top_rounded,
             tk.warningInk,
@@ -690,52 +875,113 @@ class _Checklist extends StatelessWidget {
     final radius = gate.radiusM?.round();
     final dist = gate.distanceM;
     final (geoIcon, geoColor, geoText) = addressLocked
-        ? (Icons.lock_clock_rounded, tk.info, 'O local exato e a distância até o cliente são liberados às 00h00 do dia do serviço.')
+        ? (
+            Icons.lock_clock_rounded,
+            tk.info,
+            'O local exato e a distância até o cliente são liberados às 00h00 do dia do serviço.',
+          )
         : switch (gate.geo) {
-      GeoGateState.ok => (Icons.check_circle_rounded, tk.success, 'No local do cliente (distância atual: ${formatMeters(dist ?? 0)})'),
-      GeoGateState.tooFar => (
-          Icons.place_outlined,
-          tk.warningInk,
-          'Chegue a menos de $radius m do cliente — distância atual: ${formatMeters(dist ?? 0)}',
-        ),
-      GeoGateState.noPosition => (Icons.gps_not_fixed_rounded, tk.warningInk, 'Aguardando o sinal de GPS…'),
-      GeoGateState.lowAccuracy => (Icons.gps_not_fixed_rounded, tk.warningInk, 'Sinal de GPS fraco. Vá para um local aberto.'),
-      GeoGateState.permissionDenied => (Icons.location_off_rounded, tk.danger, 'Localização desativada. Ative para liberar o início.'),
-      GeoGateState.noDestination => (Icons.search_rounded, tk.warningInk, 'O cliente ainda não confirmou o local no mapa. Peça a ele pelo chat.'),
-      GeoGateState.imprecise => (Icons.edit_location_alt_outlined, tk.warningInk, 'Endereço impreciso no mapa. Peça ao cliente para confirmar o local.'),
-    };
+            GeoGateState.ok => (
+                Icons.check_circle_rounded,
+                tk.successInk,
+                'No local do cliente (distância atual: ${formatMeters(dist ?? 0)})',
+              ),
+            GeoGateState.tooFar => (
+                Icons.place_outlined,
+                tk.warningInk,
+                'Chegue a menos de $radius m do cliente — distância atual: ${formatMeters(dist ?? 0)}',
+              ),
+            GeoGateState.noPosition => (
+                Icons.gps_not_fixed_rounded,
+                tk.warningInk,
+                'Aguardando o sinal de GPS…',
+              ),
+            GeoGateState.lowAccuracy => (
+                Icons.gps_not_fixed_rounded,
+                tk.warningInk,
+                'Sinal de GPS fraco. Vá para um local aberto.',
+              ),
+            GeoGateState.permissionDenied => (
+                Icons.location_off_rounded,
+                tk.dangerInk,
+                'Localização desativada. Ative para liberar o início.',
+              ),
+            GeoGateState.noDestination => (
+                Icons.search_rounded,
+                tk.warningInk,
+                'O cliente ainda não confirmou o local no mapa. Peça a ele pelo chat.',
+              ),
+            GeoGateState.imprecise => (
+                Icons.edit_location_alt_outlined,
+                tk.warningInk,
+                'Endereço impreciso no mapa. Peça ao cliente para confirmar o local.',
+              ),
+          };
 
-    Widget row(IconData icon, Color color, String text, {Widget? trailing}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+    Widget row(IconData icon, Color color, String text, {Widget? trailing}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(icon, color: color, size: 22),
-              const SizedBox(width: 10),
-              Expanded(child: Text(text, style: TextStyle(fontWeight: FontWeight.w700, height: 1.3, color: color == tk.success ? tk.successInk : null))),
-              ?trailing,
+              const SizedBox(width: AppSpace.s12),
+              Expanded(
+                child: Text(
+                  text,
+                  style: AppType.tabular(AppType.bodySm).copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: color == tk.successInk ? tk.successInk : tk.text,
+                  ),
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: AppSpace.s8),
+                trailing,
+              ],
             ],
           ),
         );
 
     return AppCard(
+      variant: AppCardVariant.elevated,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(gate.canStart ? Icons.lock_open_rounded : Icons.lock_outline_rounded, color: gate.canStart ? tk.success : tk.textMuted),
-              const SizedBox(width: 8),
-              Expanded(child: Text(gate.canStart ? 'Tudo certo para iniciar' : 'Liberação para iniciar', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900))),
+              Icon(
+                gate.canStart
+                    ? Icons.lock_open_rounded
+                    : Icons.lock_outline_rounded,
+                color: gate.canStart ? tk.successInk : tk.textMuted,
+              ),
+              const SizedBox(width: AppSpace.s8),
+              Expanded(
+                child: Text(
+                  gate.canStart
+                      ? 'Tudo certo para iniciar'
+                      : 'Liberação para iniciar',
+                  style: AppType.titleSm.copyWith(color: tk.text),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpace.s4),
           row(timeIcon, timeColor, timeText),
           row(
             geoIcon,
             geoColor,
             geoText,
-            trailing: gate.geo == GeoGateState.permissionDenied ? TextButton(onPressed: onEnableLocation, child: const Text('Ativar')) : null,
+            trailing: gate.geo == GeoGateState.permissionDenied
+                ? AppButton(
+                    label: 'Ativar',
+                    variant: AppButtonVariant.tertiary,
+                    expand: false,
+                    compact: true,
+                    onPressed: onEnableLocation,
+                  )
+                : null,
           ),
         ],
       ),
@@ -755,24 +1001,30 @@ class _ClientRules extends StatelessWidget {
     final tk = context.tk;
     final opens = gate.opensAt;
     return AppCard(
-      color: tk.surface,
+      variant: AppCardVariant.tonal,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Icon(Icons.verified_user_outlined, color: tk.security),
-              const SizedBox(width: 8),
-              const Expanded(child: Text('Como o início é protegido', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
+              const SizedBox(width: AppSpace.s8),
+              Expanded(
+                child: Text(
+                  'Como o início é protegido',
+                  style: AppType.titleSm.copyWith(color: tk.text),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpace.s8),
           Text(
             opens == null
                 ? 'O profissional só inicia o serviço quando estiver no seu endereço.'
                 : 'O profissional só consegue iniciar o serviço a partir de ${dateShort(opens)} e quando estiver no seu endereço (a menos de 100 m). '
                     'Até lá, não há cronômetro e o serviço não pode ser finalizado.',
-            style: TextStyle(color: tk.textMuted, height: 1.4, fontSize: 13.5),
+            style: AppType.tabular(AppType.bodySm)
+                .copyWith(color: tk.textMuted),
           ),
         ],
       ),

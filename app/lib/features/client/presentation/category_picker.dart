@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/utils/tag_normalizer.dart';
 
@@ -11,11 +11,18 @@ import '../../../core/utils/tag_normalizer.dart';
 const int kHomeCategoryCount = 11;
 
 double _categoryGridAspectRatio(BuildContext context) {
-  final width = MediaQuery.sizeOf(context).width;
-  final scale = MediaQuery.textScalerOf(context).scale(12.5) / 12.5;
-  final base = width < 360 ? 0.82 : 0.90;
-  final extraScale = (scale - 1.0).clamp(0.0, 0.6);
-  return (base - extraScale * 0.22).clamp(0.64, 0.92);
+  final layout = context.layout;
+  final cols = _categoryColumns(context);
+  final base = cols == 2 ? 1.12 : (layout.isWide ? 0.96 : 0.88);
+  final extraScale = (layout.textScale - 1.0).clamp(0.0, 0.6);
+  return (base - extraScale * 0.24).clamp(0.68, 1.15);
+}
+
+int _categoryColumns(BuildContext context) {
+  final layout = context.layout;
+  if (layout.isCompact || (!layout.isWide && layout.isLargeText)) return 2;
+  if (layout.isWide) return 4;
+  return 3;
 }
 
 /// Categorias cujo nome OU sinônimo contém [query] ("eletricista" → Elétrica).
@@ -68,15 +75,24 @@ class CategoryGrid extends StatelessWidget {
     final shown = kCategories.take(count).toList();
     final hasMore = kCategories.length > count;
     return GridView.count(
-      crossAxisCount: 3,
+      crossAxisCount: _categoryColumns(context),
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 8,
+      mainAxisSpacing: AppSpace.s16,
+      crossAxisSpacing: AppSpace.s8,
       childAspectRatio: _categoryGridAspectRatio(context),
       children: [
-        for (final c in shown) CategoryTile(category: c, onTap: () => onPick(c.name)),
-        if (hasMore) _MoreTile(total: kCategories.length, onTap: () => showAllCategoriesSheet(context, onPick: onPick)),
+        for (var i = 0; i < shown.length; i++)
+          AppStaggerItem(
+            index: i,
+            scope: 'home-categories',
+            child: CategoryTile(category: shown[i], onTap: () => onPick(shown[i].name)),
+          ),
+        if (hasMore)
+          _MoreTile(
+            total: kCategories.length,
+            onTap: () => showAllCategoriesSheet(context, onPick: onPick),
+          ),
       ],
     );
   }
@@ -88,105 +104,42 @@ class CategoryTile extends StatelessWidget {
   final ServiceCategory category;
   final VoidCallback onTap;
 
-  static double _measureWordWidth(
-    String word,
-    TextStyle style,
-    TextScaler textScaler,
-    TextDirection textDirection,
-  ) {
-    final painter = TextPainter(
-      text: TextSpan(text: word, style: style),
-      maxLines: 1,
-      textScaler: textScaler,
-      textDirection: textDirection,
-    )..layout();
-    return painter.width;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final trimmed = category.name.trim();
-    final words = trimmed.split(RegExp(r'\s+'));
-    final isSingleWord = words.length <= 1;
-    const singleStyle = TextStyle(
+    final tk = context.tk;
+    final labelStyle = AppType.caption.copyWith(
       fontWeight: FontWeight.w700,
-      fontSize: 12.5,
-      letterSpacing: -0.2,
-      height: 1.15,
-    );
-    const multiStyle = TextStyle(
-      fontWeight: FontWeight.w700,
-      fontSize: 12.2,
-      letterSpacing: -0.2,
-      height: 1.15,
+      letterSpacing: -0.1,
+      height: 1.2,
+      color: tk.text,
     );
 
-    return Semantics(
-      button: true,
-      label: 'Categoria ${category.name}',
-      child: InkWell(
-        key: ValueKey('category:${category.name}'),
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CategoryBrandEmblem(
-                categoryName: category.name,
-                size: 64,
+    return AppPressable(
+      key: ValueKey('category:${category.name}'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppGeometry.itemRadius + 2),
+      semanticLabel: 'Categoria ${category.name}',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s4, vertical: AppSpace.s2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CategoryBrandEmblem(
+              categoryName: category.name,
+              size: 64,
+            ),
+            const SizedBox(height: AppSpace.s8 - 2),
+            Flexible(
+              child: Text(
+                category.name,
+                maxLines: 2,
+                softWrap: true,
+                textAlign: TextAlign.center,
+                style: labelStyle,
               ),
-              const SizedBox(height: 6),
-              Flexible(
-                child: isSingleWord
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            category.name,
-                            maxLines: 1,
-                            softWrap: false,
-                            textAlign: TextAlign.center,
-                            style: singleStyle,
-                          ),
-                        ),
-                      )
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          final scaler = MediaQuery.textScalerOf(context);
-                          final dir = Directionality.of(context);
-                          double longestWord = 0;
-                          for (final w in words) {
-                            final ww = _measureWordWidth(w, multiStyle, scaler, dir);
-                            if (ww > longestWord) longestWord = ww;
-                          }
-                          final availW = constraints.maxWidth.isFinite && constraints.maxWidth > 0
-                              ? constraints.maxWidth
-                              : 96.0;
-                          final boxWidth = math.max(availW, longestWord + 4.0);
-                          return SizedBox(
-                            width: double.infinity,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: SizedBox(
-                                width: boxWidth,
-                                child: Text(
-                                  category.name,
-                                  maxLines: 2,
-                                  softWrap: true,
-                                  textAlign: TextAlign.center,
-                                  style: multiStyle,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -202,60 +155,45 @@ class _MoreTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Semantics(
-      button: true,
-      label: 'Ver todas as $total categorias',
-      child: InkWell(
-        key: const ValueKey('categories-see-all'),
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF1A273D), Color(0xFF0E1525)],
-                  ),
-                  border: Border.all(
-                    color: tk.clientAccent.withValues(alpha: 0.48),
-                    width: 1.4,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF020617).withValues(alpha: 0.35),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+    return AppPressable(
+      key: const ValueKey('categories-see-all'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppGeometry.itemRadius + 2),
+      semanticLabel: 'Ver todas as $total categorias',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s2, vertical: AppSpace.s2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(AppGeometry.itemRadius + 2),
+                color: tk.accentSoft,
+                border: Border.all(
+                  color: tk.accent.withValues(alpha: 0.45),
+                  width: 1.4,
                 ),
-                child: Icon(Icons.grid_view_rounded, size: 28, color: tk.clientAccent),
+                boxShadow: tk.elevation(1),
               ),
-              const SizedBox(height: 6),
-              Flexible(
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'Ver todas ($total)',
-                      maxLines: 1,
-                      softWrap: false,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: tk.clientAccent),
-                    ),
-                  ),
+              child: Icon(Icons.grid_view_rounded, size: 28, color: tk.accentInk),
+            ),
+            const SizedBox(height: AppSpace.s8 - 2),
+            Flexible(
+              child: Text(
+                'Ver todas ($total)',
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                style: AppType.tabular(AppType.caption).copyWith(
+                  fontWeight: FontWeight.w700,
+                  height: 1.15,
+                  color: tk.accentInk,
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -264,24 +202,33 @@ class _MoreTile extends StatelessWidget {
 
 /// Todas as categorias, com busca (por nome ou profissão) e filtro rápido por Família Cromática.
 Future<void> showAllCategoriesSheet(BuildContext context, {required ValueChanged<String> onPick}) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    builder: (ctx) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.9,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (ctx, scroll) => _AllCategories(
-        scroll: scroll,
-        onPick: (name) {
-          Navigator.of(ctx).pop();
-          onPick(name);
-        },
-      ),
-    ),
+  return AppSheet.show<void>(
+    context,
+    title: 'Todas as categorias',
+    maxHeightFactor: 0.92,
+    builder: (ctx) {
+      final media = MediaQuery.of(ctx);
+      final maxSheetHeight = math.max(
+        280.0,
+        media.size.height * 0.74 - media.viewInsets.bottom,
+      );
+      return SizedBox(
+        height: maxSheetHeight,
+        child: DraggableScrollableSheet(
+          expand: true,
+          initialChildSize: 1.0,
+          minChildSize: 0.85,
+          maxChildSize: 1.0,
+          builder: (sheetCtx, scroll) => _AllCategories(
+            scroll: scroll,
+            onPick: (name) {
+              Navigator.of(sheetCtx).pop();
+              onPick(name);
+            },
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -309,36 +256,32 @@ class _AllCategoriesState extends State<_AllCategories> {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final list = searchCategories(_q.text, family: _selectedFamily);
-    final filterBarHeight = MediaQuery.textScalerOf(context).scale(40).clamp(40.0, 56.0);
+    final filterBarHeight = MediaQuery.textScalerOf(context).scale(48).clamp(48.0, 64.0);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-          child: TextField(
-            key: const ValueKey('category-search'),
-            controller: _q,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              hintText: 'Buscar categoria ou profissão (ex.: jardineiro)',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _q.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Limpar busca',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => setState(_q.clear),
-                    ),
-            ),
-          ),
+        AppTextField(
+          key: const ValueKey('category-search'),
+          controller: _q,
+          hint: 'Buscar categoria ou profissão (ex.: jardineiro)',
+          prefixIcon: Icons.search_rounded,
+          onChanged: (_) => setState(() {}),
+          suffix: _q.text.isEmpty
+              ? null
+              : AppIconButton(
+                  tooltip: 'Limpar busca',
+                  icon: Icons.close_rounded,
+                  onPressed: () => setState(_q.clear),
+                ),
         ),
+        const SizedBox(height: AppSpace.s8),
         // Faixa horizontal de Filtro Rápido por Família Cromática (Lei de Hick)
         SizedBox(
           height: filterBarHeight,
           child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
             itemCount: CategoryColorFamily.values.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s4 + 2),
             itemBuilder: (context, idx) {
               final fam = CategoryColorFamily.values[idx];
               final selected = _selectedFamily == fam;
@@ -346,22 +289,24 @@ class _AllCategoriesState extends State<_AllCategories> {
                 button: true,
                 selected: selected,
                 label: 'Filtro ${fam.label}',
-                child: GestureDetector(
+                child: AppPressable(
                   key: ValueKey('category-family:${fam.id}'),
                   onTap: () => setState(() => _selectedFamily = fam),
+                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                  isButton: false,
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
+                    duration: AppMotion.d(context, AppMotion.fadeShort),
+                    curve: AppMotion.fadeCurve,
                     alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8, vertical: AppSpace.s8),
                     decoration: BoxDecoration(
                       color: selected
-                          ? fam.primary.withValues(alpha: 0.20)
+                          ? fam.primary.withValues(alpha: tk.isDark ? 0.24 : 0.16)
                           : tk.surface,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                       border: Border.all(
-                        color: selected
-                            ? fam.primary
-                            : tk.border,
+                        color: selected ? fam.primary : tk.border,
                         width: selected ? 1.5 : 1.0,
                       ),
                     ),
@@ -369,19 +314,18 @@ class _AllCategoriesState extends State<_AllCategories> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 8,
-                          height: 8,
+                          width: 6,
+                          height: 6,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: fam.primary,
                           ),
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: AppSpace.s4),
                         Text(
                           fam.label,
-                          style: TextStyle(
-                            fontSize: 12.2,
-                            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                          style: AppType.caption.copyWith(
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                             color: selected ? tk.text : tk.textMuted,
                           ),
                         ),
@@ -393,16 +337,20 @@ class _AllCategoriesState extends State<_AllCategories> {
             },
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpace.s8),
         Expanded(
           child: list.isEmpty
-              ? Center(child: Text('Nenhuma categoria encontrada.', style: TextStyle(color: tk.textMuted)))
+              ? const AppEmptyState(
+                  icon: Icons.category_outlined,
+                  title: 'Nenhuma categoria encontrada.',
+                  padding: EdgeInsets.all(AppSpace.s24),
+                )
               : GridView.count(
                   controller: widget.scroll,
-                  crossAxisCount: 3,
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 24 + MediaQuery.paddingOf(context).bottom),
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 8,
+                  crossAxisCount: _categoryColumns(context),
+                  padding: EdgeInsets.only(top: AppSpace.s8, bottom: AppSpace.s24 + MediaQuery.paddingOf(context).bottom),
+                  mainAxisSpacing: AppSpace.s16,
+                  crossAxisSpacing: AppSpace.s8,
                   childAspectRatio: _categoryGridAspectRatio(context),
                   children: [for (final c in list) CategoryTile(category: c, onTap: () => widget.onPick(c.name))],
                 ),

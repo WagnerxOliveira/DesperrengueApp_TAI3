@@ -1,19 +1,146 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
-import '../../../core/ui/widgets.dart';
+import '../../../core/ui/widgets.dart' show BannerTone, InfoBanner;
 import '../../../core/utils/format.dart';
-import '../../../core/ui/app_tokens.dart';
 
-/// Ícone e cor de cada selo automático.
-({IconData icon, Color color}) badgeStyle(BuildContext context, ProviderBadge b) => switch (b) {
-      ProviderBadge.superPro => (icon: Icons.local_fire_department_rounded, color: context.tk.clientAccent),
-      ProviderBadge.organizacao => (icon: Icons.cleaning_services_rounded, color: context.tk.security),
-      ProviderBadge.pontual => (icon: Icons.alarm_on_rounded, color: context.tk.info),
-      ProviderBadge.mestre => (icon: Icons.workspace_premium_rounded, color: context.tk.providerAccent),
-      ProviderBadge.honesto => (icon: Icons.handshake_rounded, color: context.tk.success),
-      ProviderBadge.confiavel => (icon: Icons.verified_user_rounded, color: context.tk.info),
+/// Seletor interativo de estrelas com *pop* escalonado de 40 ms por estrela
+/// até a nota selecionada. Alvos >= 48×48 e respeito total a [AppMotion.reduced].
+class InteractiveReviewStars extends StatefulWidget {
+  const InteractiveReviewStars({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.size = 36,
+  });
+
+  final int value;
+  final ValueChanged<int> onChanged;
+  final double size;
+
+  @override
+  State<InteractiveReviewStars> createState() => _InteractiveReviewStarsState();
+}
+
+class _InteractiveReviewStarsState extends State<InteractiveReviewStars> {
+  static const Duration _staggerStep = Duration(milliseconds: 40);
+  static const Duration _popDuration = Duration(milliseconds: 140);
+
+  final List<double> _scales = List<double>.filled(5, 1.0);
+  final List<Timer> _timers = <Timer>[];
+
+  void _clearTimers() {
+    for (final t in _timers) {
+      t.cancel();
+    }
+    _timers.clear();
+  }
+
+  @override
+  void dispose() {
+    _clearTimers();
+    super.dispose();
+  }
+
+  void _triggerPop(int star) {
+    HapticFeedback.selectionClick();
+    widget.onChanged(star);
+    if (AppMotion.reduced(context)) return;
+    _clearTimers();
+    for (var i = 0; i < star; i++) {
+      final idx = i;
+      _timers.add(
+        Timer(_staggerStep * idx, () {
+          if (!mounted) return;
+          setState(() => _scales[idx] = 1.18);
+          _timers.add(
+            Timer(_popDuration, () {
+              if (!mounted) return;
+              setState(() => _scales[idx] = 1.0);
+            }),
+          );
+        }),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final dur = AppMotion.d(context, _popDuration);
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: AppSpace.s4,
+      runSpacing: AppSpace.s4,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          Semantics(
+            button: true,
+            selected: widget.value >= i,
+            label: '$i ${i == 1 ? 'estrela' : 'estrelas'}',
+            child: InkResponse(
+              onTap: () => _triggerPop(i),
+              radius: AppGeometry.minTarget / 2,
+              child: SizedBox(
+                width: AppGeometry.minTarget,
+                height: AppGeometry.minTarget,
+                child: Center(
+                  child: AnimatedScale(
+                    scale: _scales[i - 1],
+                    duration: dur,
+                    curve: Curves.easeOutBack,
+                    child: Icon(
+                      widget.value >= i
+                          ? Icons.star_rounded
+                          : Icons.star_outline_rounded,
+                      size: widget.size,
+                      color: widget.value >= i ? tk.star : tk.border,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Ícone e cor de cada selo automático (cores com contraste >= 4,5:1).
+({IconData icon, Color color}) badgeStyle(
+  BuildContext context,
+  ProviderBadge b,
+) =>
+    switch (b) {
+      ProviderBadge.superPro => (
+          icon: Icons.local_fire_department_rounded,
+          color: context.tk.clientAccentInk,
+        ),
+      ProviderBadge.organizacao => (
+          icon: Icons.cleaning_services_rounded,
+          color: context.tk.security,
+        ),
+      ProviderBadge.pontual => (
+          icon: Icons.alarm_on_rounded,
+          color: context.tk.info,
+        ),
+      ProviderBadge.mestre => (
+          icon: Icons.workspace_premium_rounded,
+          color: context.tk.providerAccentInk,
+        ),
+      ProviderBadge.honesto => (
+          icon: Icons.handshake_rounded,
+          color: context.tk.successInk,
+        ),
+      ProviderBadge.confiavel => (
+          icon: Icons.verified_user_rounded,
+          color: context.tk.info,
+        ),
     };
 
 /// Selos conquistados (códigos vindos do banco), em chips.
@@ -29,64 +156,84 @@ class BadgeChips extends StatelessWidget {
     final shown = max == null ? badges : badges.take(max!).toList();
     if (shown.isEmpty) return const SizedBox.shrink();
     return Wrap(
-      spacing: 6,
-      runSpacing: 6,
+      spacing: AppSpace.s8,
+      runSpacing: AppSpace.s8,
       children: [
-        for (final b in shown) StatusChip(b.label, color: badgeStyle(context, b).color, icon: badgeStyle(context, b).icon),
+        for (final b in shown)
+          AppStatusChip(
+            b.label,
+            color: badgeStyle(context, b).color,
+            icon: badgeStyle(context, b).icon,
+          ),
       ],
     );
   }
 }
 
 /// Metadados educativos e dicas práticas de conquista para cada um dos 6 selos.
-({String howToEarn, List<String> tips, String benefit}) badgeGuide(ProviderBadge b) => switch (b) {
+({String howToEarn, List<String> tips, String benefit}) badgeGuide(
+  ProviderBadge b,
+) =>
+    switch (b) {
       ProviderBadge.superPro => (
-          howToEarn: 'Receba nota máxima (5 estrelas) nos seus últimos 20 serviços concluídos.',
+          howToEarn:
+              'Receba nota máxima (5 estrelas) nos seus últimos 20 serviços concluídos.',
           tips: const <String>[
             'Alinhe o que será feito pelo chat antes de iniciar e cumpra o horário combinado.',
             'Registre fotos nítidas do antes e depois e revise o funcionamento junto com o cliente.',
           ],
-          benefit: 'Destaca seu perfil com o selo máximo de excelência, aumentando a preferência dos clientes pelos seus orçamentos.',
+          benefit:
+              'Destaca seu perfil com o selo máximo de excelência, aumentando a preferência dos clientes pelos seus orçamentos.',
         ),
       ProviderBadge.organizacao => (
-          howToEarn: 'Receba o elogio "Limpou tudo depois" de 15 clientes ao finalizar seus atendimentos.',
+          howToEarn:
+              'Receba o elogio "Limpou tudo depois" de 15 clientes ao finalizar seus atendimentos.',
           tips: const <String>[
             'Proteja a área de trabalho antes de começar e recolha embalagens ou resíduos ao terminar.',
             'Registre a última foto mostrando o local limpo e organizado na entrega.',
           ],
-          benefit: 'Transmite tranquilidade para clientes que valorizam cuidado e capricho dentro de casa.',
+          benefit:
+              'Transmite tranquilidade para clientes que valorizam cuidado e capricho dentro de casa.',
         ),
       ProviderBadge.pontual => (
-          howToEarn: 'Receba o elogio "Super pontual" de 15 clientes por chegar no horário combinado.',
+          howToEarn:
+              'Receba o elogio "Super pontual" de 15 clientes por chegar no horário combinado.',
           tips: const <String>[
             'Avise pelo chat assim que sair a caminho do endereço do cliente.',
             'Caso surja qualquer imprevisto no trânsito, comunique com antecedência pelo chat.',
           ],
-          benefit: 'Aumenta sua conversão em pedidos com horário agendado e emergências.',
+          benefit:
+              'Aumenta sua conversão em pedidos com horário agendado e emergências.',
         ),
       ProviderBadge.mestre => (
-          howToEarn: 'Receba o elogio "Mestre no que faz" de 15 clientes pela qualidade técnica do serviço.',
+          howToEarn:
+              'Receba o elogio "Mestre no que faz" de 15 clientes pela qualidade técnica do serviço.',
           tips: const <String>[
             'Explique de forma simples e clara a causa do problema e a solução aplicada.',
             'Teste o serviço na frente do cliente antes de pedir o código PIN de conclusão.',
           ],
-          benefit: 'Comprova seu domínio técnico no perfil público, valorizando sua mão de obra.',
+          benefit:
+              'Comprova seu domínio técnico no perfil público, valorizando sua mão de obra.',
         ),
       ProviderBadge.honesto => (
-          howToEarn: 'Receba o elogio "Preço honesto" de 15 clientes pela transparência nos seus orçamentos.',
+          howToEarn:
+              'Receba o elogio "Preço honesto" de 15 clientes pela transparência nos seus orçamentos.',
           tips: const <String>[
             'Detalhe no orçamento o que é mão de obra e o que são peças ou materiais.',
             'Mantenha o valor combinado sem cobranças surpresa fora do aplicativo.',
           ],
-          benefit: 'Reduz a hesitação do cliente na hora de aprovar o seu orçamento.',
+          benefit:
+              'Reduz a hesitação do cliente na hora de aprovar o seu orçamento.',
         ),
       ProviderBadge.confiavel => (
-          howToEarn: 'Receba o elogio "Educado e confiável" de 15 clientes pelo atendimento respeitoso e seguro.',
+          howToEarn:
+              'Receba o elogio "Educado e confiável" de 15 clientes pelo atendimento respeitoso e seguro.',
           tips: const <String>[
             'Apresente-se com cordialidade ao chegar e respeite as regras da residência ou condomínio.',
             'Esclareça dúvidas com paciência e mantenha toda a comunicação registrada no chat.',
           ],
-          benefit: 'Gera confiança imediata para famílias e moradores contratarem você.',
+          benefit:
+              'Gera confiança imediata para famílias e moradores contratarem você.',
         ),
     };
 
@@ -102,242 +249,184 @@ Future<void> showProviderBadgeInfoSheet(
   final clamped = currentCount.clamp(0, badge.goal);
   final progress = isEarned ? 1.0 : (clamped / badge.goal).clamp(0.0, 1.0);
 
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
+  return AppSheet.show<void>(
+    context,
+    actions: [
+      Builder(
+        builder: (sheetCtx) => AppButton(
+          key: const ValueKey('btn-badge-sheet-close'),
+          label: 'Entendi',
+          onPressed: () => Navigator.of(sheetCtx).pop(),
+        ),
+      ),
+    ],
     builder: (ctx) {
       final tk = ctx.tk;
-      return SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: style.color.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(
-                        color: style.color.withValues(alpha: 0.4),
-                      ),
-                    ),
-                    child: Icon(style.icon, color: style.color, size: 30),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          badge.label,
-                          key: ValueKey('badge-sheet-title-${badge.code}'),
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w900,
-                            color: tk.text,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isEarned
-                                ? tk.successSoft
-                                : style.color.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            isEarned
-                                ? 'Selo conquistado ✓'
-                                : 'Progresso: $clamped de ${badge.goal}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: isEarned ? tk.successInk : style.color,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 8,
-                  color: isEarned ? tk.success : style.color,
-                  backgroundColor: tk.border,
-                ),
-              ),
-              const SizedBox(height: 18),
               Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                width: 56,
+                height: 56,
                 decoration: BoxDecoration(
-                  color: tk.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: tk.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.flag_rounded,
-                          size: 18,
-                          color: style.color,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Como conquistar',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            color: tk.text,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      guide.howToEarn,
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        height: 1.4,
-                        color: tk.text,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: tk.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: tk.border),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.tips_and_updates_rounded,
-                          size: 18,
-                          color: tk.providerAccent,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Dicas práticas no dia a dia',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            color: tk.text,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    for (final tip in guide.tips)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 16,
-                              color: tk.success,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                tip,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  height: 1.38,
-                                  color: tk.textMuted,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: style.color.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
+                  color: style.color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
                   border: Border.all(
-                    color: style.color.withValues(alpha: 0.3),
+                    color: style.color.withValues(alpha: 0.4),
                   ),
                 ),
+                child: Icon(style.icon, color: style.color, size: 30),
+              ),
+              const SizedBox(width: AppSpace.s16),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.verified_rounded, size: 18, color: style.color),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Vantagem real no perfil',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            color: tk.text,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
                     Text(
-                      guide.benefit,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        height: 1.4,
-                        fontWeight: FontWeight.w600,
-                        color: tk.text,
-                      ),
+                      badge.label,
+                      key: ValueKey('badge-sheet-title-${badge.code}'),
+                      style: AppType.title.copyWith(color: tk.text),
                     ),
+                    const SizedBox(height: AppSpace.s4),
+                    if (isEarned)
+                      const AppStatusChip(
+                        'Selo conquistado',
+                        tone: AppTone.success,
+                        icon: Icons.check_circle_rounded,
+                      )
+                    else
+                      AppStatusChip(
+                        'Progresso: $clamped de ${badge.goal}',
+                        color: style.color,
+                      ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  key: const ValueKey('btn-badge-sheet-close'),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('Entendi'),
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: AppSpace.s16),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              color: isEarned ? tk.success : style.color,
+              backgroundColor: tk.border,
+            ),
+          ),
+          const SizedBox(height: AppSpace.s20),
+          AppCard(
+            variant: AppCardVariant.tonal,
+            borderColor: tk.border,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.flag_rounded, size: 18, color: style.color),
+                    const SizedBox(width: AppSpace.s8),
+                    Expanded(
+                      child: Text(
+                        'Como conquistar',
+                        style: AppType.titleSm.copyWith(color: tk.text),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  guide.howToEarn,
+                  style: AppType.bodySm.copyWith(color: tk.text),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpace.item),
+          AppCard(
+            variant: AppCardVariant.tonal,
+            borderColor: tk.border,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.tips_and_updates_rounded,
+                      size: 18,
+                      color: tk.providerAccentInk,
+                    ),
+                    const SizedBox(width: AppSpace.s8),
+                    Expanded(
+                      child: Text(
+                        'Dicas práticas no dia a dia',
+                        style: AppType.titleSm.copyWith(color: tk.text),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.s8),
+                for (final tip in guide.tips)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppSpace.s8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpace.s2),
+                          child: Icon(
+                            Icons.check_circle_outline_rounded,
+                            size: 16,
+                            color: tk.successInk,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpace.s8),
+                        Expanded(
+                          child: Text(
+                            tip,
+                            style: AppType.bodySm.copyWith(color: tk.textMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpace.item),
+          AppCard(
+            variant: AppCardVariant.tonal,
+            color: style.color.withValues(alpha: 0.08),
+            borderColor: style.color.withValues(alpha: 0.3),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.verified_rounded, size: 18, color: style.color),
+                    const SizedBox(width: AppSpace.s8),
+                    Expanded(
+                      child: Text(
+                        'Vantagem real no perfil',
+                        style: AppType.titleSm.copyWith(color: tk.text),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpace.s8),
+                Text(
+                  guide.benefit,
+                  style: AppType.bodySm.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: tk.text,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     },
   );
@@ -371,48 +460,52 @@ class BadgeWall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final locked = [for (final b in ProviderBadge.values) if (!earned.contains(b.code)) b];
+    final tk = context.tk;
+    final locked = [
+      for (final b in ProviderBadge.values)
+        if (!earned.contains(b.code)) b,
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (earned.isEmpty)
           Text(
             'Nenhum selo conquistado ainda. Toque em qualquer selo abaixo para ver como conquistá-lo.',
-            style: TextStyle(color: context.tk.textMuted, height: 1.4),
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
           )
         else
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: AppSpace.s12,
+            runSpacing: AppSpace.s12,
             children: [
-              for (final c in earned)
-                _tile(context, ProviderBadge.parse(c)),
+              for (final c in earned) _tile(context, ProviderBadge.parse(c)),
             ],
           ),
         if (showProgress && locked.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Row(
+          const SizedBox(height: AppSpace.s16),
+          Wrap(
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s4,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Expanded(
-                child: Text(
-                  'Próximos selos',
-                  style: TextStyle(fontWeight: FontWeight.w900),
-                ),
+              Text(
+                'Próximos selos',
+                style: AppType.titleSm.copyWith(color: tk.text),
               ),
               Text(
                 'Toque para saber como ganhar',
-                style: TextStyle(
-                  fontSize: 12,
+                style: AppType.caption.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: context.tk.providerAccent,
+                  color: tk.providerAccentInk,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpace.s12),
           for (final b in locked)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: AppSpace.item),
               child: _progressCard(context, b),
             ),
         ],
@@ -423,46 +516,41 @@ class BadgeWall extends StatelessWidget {
   Widget _tile(BuildContext context, ProviderBadge? b) {
     if (b == null) return const SizedBox.shrink();
     final s = badgeStyle(context, b);
-    return Material(
-      color: s.color.withValues(alpha: 0.10),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
+    return SizedBox(
+      width: 156,
+      child: AppCard(
         key: ValueKey('badge-item-${b.code}'),
-        borderRadius: BorderRadius.circular(16),
+        variant: AppCardVariant.tonal,
+        color: s.color.withValues(alpha: 0.10),
+        borderColor: s.color.withValues(alpha: 0.35),
+        radius: AppGeometry.itemRadius,
+        padding: const EdgeInsets.all(AppSpace.s12),
+        semanticLabel: 'Detalhes do selo ${b.label}',
         onTap: () => showProviderBadgeInfoSheet(
           context,
           b,
           currentCount: b.goal,
           isEarned: true,
         ),
-        child: Container(
-          width: 155,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: s.color.withValues(alpha: 0.35)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(s.icon, color: s.color, size: 26),
-                  Icon(Icons.info_outline_rounded, size: 16, color: s.color),
-                ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(s.icon, color: s.color, size: 26),
+                Icon(Icons.info_outline_rounded, size: 16, color: s.color),
+              ],
+            ),
+            const SizedBox(height: AppSpace.s8),
+            Text(
+              b.label,
+              style: AppType.bodyStrong.copyWith(
+                fontWeight: FontWeight.w700,
+                color: s.color,
               ),
-              const SizedBox(height: 6),
-              Text(
-                b.label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: s.color,
-                  height: 1.15,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -474,85 +562,73 @@ class BadgeWall extends StatelessWidget {
     final count = _countFor(b);
     final frac = (count / b.goal).clamp(0.0, 1.0);
 
-    return Material(
-      color: tk.card,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        key: ValueKey('badge-item-${b.code}'),
-        borderRadius: BorderRadius.circular(16),
-        onTap: () => showProviderBadgeInfoSheet(
-          context,
-          b,
-          currentCount: count,
-          isEarned: false,
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: tk.border),
+    return AppCard(
+      key: ValueKey('badge-item-${b.code}'),
+      variant: AppCardVariant.outlined,
+      radius: AppGeometry.itemRadius,
+      padding: const EdgeInsets.all(AppSpace.s12),
+      semanticLabel: 'Detalhes do selo ${b.label}',
+      onTap: () => showProviderBadgeInfoSheet(
+        context,
+        b,
+        currentCount: count,
+        isEarned: false,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: AppGeometry.iconTileSize,
+            height: AppGeometry.iconTileSize,
+            decoration: BoxDecoration(
+              color: s.color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+            ),
+            child: Icon(s.icon, size: 20, color: s.color),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: s.color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(s.icon, size: 20, color: s.color),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(width: AppSpace.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            b.label,
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
-                        ),
-                        Text(
-                          '$count/${b.goal}',
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w800,
-                            color: tk.textMuted,
-                          ),
-                        ),
-                      ],
+                    Expanded(
+                      child: Text(
+                        b.label,
+                        style: AppType.bodyStrong.copyWith(color: tk.text),
+                      ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(width: AppSpace.s8),
                     Text(
-                      b.description,
-                      style: TextStyle(color: tk.textMuted, fontSize: 12),
-                    ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: LinearProgressIndicator(
-                        value: frac,
-                        minHeight: 6,
-                        color: s.color,
-                        backgroundColor: tk.border,
+                      '$count/${b.goal}',
+                      style: AppType.tabular(AppType.caption).copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: tk.textMuted,
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: tk.textMuted,
-              ),
-            ],
+                const SizedBox(height: AppSpace.s2),
+                Text(
+                  b.description,
+                  style: AppType.caption.copyWith(color: tk.textMuted),
+                ),
+                const SizedBox(height: AppSpace.s8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                  child: LinearProgressIndicator(
+                    value: frac,
+                    minHeight: 6,
+                    color: s.color,
+                    backgroundColor: tk.border,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: AppSpace.s8),
+          Icon(Icons.chevron_right_rounded, size: 20, color: tk.textMuted),
+        ],
       ),
     );
   }
@@ -560,7 +636,13 @@ class BadgeWall extends StatelessWidget {
 
 /// Pílulas de contexto (Quick Tags): trocam de conjunto conforme a nota.
 class ReviewTagPills extends StatelessWidget {
-  const ReviewTagPills({super.key, required this.options, required this.selected, required this.onToggle, required this.negative});
+  const ReviewTagPills({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onToggle,
+    required this.negative,
+  });
 
   final List<String> options;
   final Set<String> selected;
@@ -569,25 +651,37 @@ class ReviewTagPills extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = negative ? context.tk.danger : context.tk.clientAccent;
+    final tk = context.tk;
+    final tone = negative ? tk.danger : tk.clientAccent;
+    final onTone = AppTokens.onColor(tone);
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 220),
+      duration: AppMotion.d(context, AppMotion.sheet),
       child: Wrap(
         key: ValueKey(negative),
-        spacing: 8,
-        runSpacing: 8,
+        spacing: AppSpace.s8,
+        runSpacing: AppSpace.s8,
         children: [
           for (final t in options)
             FilterChip(
               label: Text(t),
               selected: selected.contains(t),
               showCheckmark: false,
-              avatar: selected.contains(t) ? const Icon(Icons.check_rounded, size: 16, color: Colors.white) : null,
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+              avatar: selected.contains(t)
+                  ? Icon(Icons.check_rounded, size: 16, color: onTone)
+                  : null,
               selectedColor: tone,
-              backgroundColor: tone.withValues(alpha: 0.07),
-              side: BorderSide(color: tone.withValues(alpha: selected.contains(t) ? 1 : 0.35)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-              labelStyle: TextStyle(color: selected.contains(t) ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
+              backgroundColor: tone.withValues(alpha: 0.08),
+              side: BorderSide(
+                color: tone.withValues(alpha: selected.contains(t) ? 1 : 0.35),
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+              ),
+              labelStyle: AppType.bodySm.copyWith(
+                color: selected.contains(t) ? onTone : tk.text,
+                fontWeight: FontWeight.w600,
+              ),
               onSelected: (v) => onToggle(t, v),
             ),
         ],
@@ -621,27 +715,49 @@ class ReviewPhotoStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (paths.isEmpty) return const SizedBox.shrink();
+    final tk = context.tk;
     return SizedBox(
       height: size,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: paths.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
         itemBuilder: (_, i) => Stack(
           children: [
-            PublicImage(path: paths[i], width: size, height: size, radius: 12),
+            PublicImage(
+              path: paths[i],
+              width: size,
+              height: size,
+              radius: AppGeometry.iconTileRadius,
+            ),
             Positioned(
-              left: 4,
-              bottom: 4,
+              left: AppSpace.s4,
+              bottom: AppSpace.s4,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(color: context.tk.success, borderRadius: BorderRadius.circular(8)),
-                child: const Row(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.s8,
+                  vertical: AppSpace.s2,
+                ),
+                decoration: BoxDecoration(
+                  color: tk.successSoft,
+                  borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                ),
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.verified_rounded, size: 11, color: Colors.white),
-                    SizedBox(width: 2),
-                    Text('Verificado', style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800)),
+                    Icon(
+                      Icons.verified_rounded,
+                      size: 13,
+                      color: tk.successInk,
+                    ),
+                    const SizedBox(width: AppSpace.s2),
+                    Text(
+                      'Verificado',
+                      style: AppType.caption.copyWith(
+                        color: tk.successInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -655,10 +771,18 @@ class ReviewPhotoStrip extends StatelessWidget {
 
 /// Cartão de avaliação pública: estrelas, pílulas, comentário, fotos e resposta.
 class ReviewCard extends StatelessWidget {
-  const ReviewCard({super.key, required this.review, this.onReply, this.onOpenDetails, this.ownerHint});
+  const ReviewCard({
+    super.key,
+    required this.review,
+    this.onReply,
+    this.onOpenDetails,
+    this.ownerHint,
+  });
 
   /// Texto padrão da dica mostrada ao dono (quando [onOpenDetails] é informado).
-  static const String defaultOwnerHint = 'Toque para ver detalhes financeiros e do serviço ➔';
+  /// Mantém o glifo exigido literalmente por `test/dossier_test.dart`.
+  static const String defaultOwnerHint =
+      'Toque para ver detalhes financeiros e do serviço ➔';
 
   /// Só o profissional DONO passa isto (abre o dossiê interno). Na visão pública fica
   /// null: o card não é tocável e não revela que existem detalhes financeiros.
@@ -674,84 +798,132 @@ class ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final r = review;
     return AppCard(
-      margin: const EdgeInsets.only(bottom: 10),
+      variant: AppCardVariant.outlined,
+      margin: const EdgeInsets.only(bottom: AppSpace.item),
       onTap: onOpenDetails,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              UserAvatar(name: r.reviewerName, radius: 20),
-              const SizedBox(width: 10),
-              Expanded(child: Text(r.reviewerName, style: const TextStyle(fontWeight: FontWeight.w800))),
-              Text(relativeTime(r.createdAt), style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
+              AppAvatar(name: r.reviewerName, radius: 20),
+              const SizedBox(width: AppSpace.s12),
+              Expanded(
+                child: Text(
+                  r.reviewerName,
+                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                ),
+              ),
+              const SizedBox(width: AppSpace.s8),
+              Text(
+                relativeTime(r.createdAt),
+                style: AppType.tabular(AppType.caption)
+                    .copyWith(color: tk.textMuted),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          RatingStars(value: r.rating.toDouble(), size: 16),
+          const SizedBox(height: AppSpace.s8),
+          AppRating(value: r.rating.toDouble(), size: 16),
           if (r.tags.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.s8),
             Wrap(
-              spacing: 6,
-              runSpacing: 6,
+              spacing: AppSpace.s8,
+              runSpacing: AppSpace.s8,
               children: [
                 for (final t in r.tags)
-                  StatusChip(t, color: ReviewTags.isNegative(r.rating) ? context.tk.danger : context.tk.clientAccent),
+                  AppStatusChip(
+                    t,
+                    tone: ReviewTags.isNegative(r.rating)
+                        ? AppTone.danger
+                        : AppTone.accent,
+                    color: ReviewTags.isNegative(r.rating)
+                        ? tk.dangerInk
+                        : tk.clientAccentInk,
+                  ),
               ],
             ),
           ],
           if (r.comment != null && r.comment!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(r.comment!, style: const TextStyle(height: 1.4)),
+            const SizedBox(height: AppSpace.s8),
+            Text(r.comment!, style: AppType.body.copyWith(color: tk.text)),
           ],
           if (r.photoPaths.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.s12),
             ReviewPhotoStrip(r.photoPaths),
           ],
           if (r.hasReply) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: AppSpace.s12),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(AppSpace.s12),
               decoration: BoxDecoration(
-                color: context.tk.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border(left: BorderSide(color: context.tk.providerAccent, width: 3)),
+                color: tk.surface,
+                borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+                border: Border(
+                  left: BorderSide(color: tk.providerAccent, width: 3),
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.reply_rounded, size: 16, color: context.tk.providerAccent),
-                      SizedBox(width: 6),
-                      Flexible(child: Text('Resposta do profissional', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5))),
+                      Icon(
+                        Icons.reply_rounded,
+                        size: 16,
+                        color: tk.providerAccentInk,
+                      ),
+                      const SizedBox(width: AppSpace.s8),
+                      Expanded(
+                        child: Text(
+                          'Resposta do profissional',
+                          style: AppType.caption.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: tk.text,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(r.reply!, style: const TextStyle(height: 1.4)),
+                  const SizedBox(height: AppSpace.s4),
+                  Text(r.reply!, style: AppType.bodySm.copyWith(color: tk.text)),
                 ],
               ),
             ),
           ] else if (onReply != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpace.s8),
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(onPressed: onReply, icon: const Icon(Icons.reply_rounded, size: 18), label: const Text('Responder')),
+              child: AppButton(
+                label: 'Responder',
+                icon: Icons.reply_rounded,
+                variant: AppButtonVariant.tertiary,
+                expand: false,
+                compact: true,
+                onPressed: onReply,
+              ),
             ),
           ],
           if (onOpenDetails != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.s8),
             Row(
               children: [
-                Icon(Icons.receipt_long_rounded, size: 16, color: context.tk.providerAccent),
-                const SizedBox(width: 6),
+                Icon(
+                  Icons.receipt_long_rounded,
+                  size: 16,
+                  color: tk.providerAccentInk,
+                ),
+                const SizedBox(width: AppSpace.s8),
                 Expanded(
                   child: Text(
                     ownerHint ?? defaultOwnerHint,
-                    style: TextStyle(color: context.tk.providerAccent, fontSize: 12.5, fontWeight: FontWeight.w800),
+                    style: AppType.caption.copyWith(
+                      color: tk.providerAccentInk,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],

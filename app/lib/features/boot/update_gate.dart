@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/services/app_version_and_update_service.dart';
 import '../../core/services/public_ota_installer.dart';
 import '../../core/services/update_service.dart';
-import '../../core/ui/app_tokens.dart';
+import '../../core/ui/design_system/design_system.dart';
 
 /// Portão flutuante discreto de **Atualização Sem Dor de Cabeça** do aplicativo
 /// `Desperrengue` (montado em `MaterialApp.builder` de `lib/main.dart`).
@@ -364,7 +364,6 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final accent = Theme.of(context).colorScheme.primary;
     final phase = otaState.phase;
     final busy = otaState.isBusy;
 
@@ -374,7 +373,15 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
       PublicOtaInstallPhase.installerLaunched =>
         tk.success,
       PublicOtaInstallPhase.awaitingPermission => tk.warningInk,
-      _ => accent,
+      _ => tk.accent,
+    };
+    final statusInk = switch (phase) {
+      PublicOtaInstallPhase.error => tk.dangerInk,
+      PublicOtaInstallPhase.verifying ||
+      PublicOtaInstallPhase.installerLaunched =>
+        tk.successInk,
+      PublicOtaInstallPhase.awaitingPermission => tk.warningInk,
+      _ => tk.accentInk,
     };
 
     final String title;
@@ -422,25 +429,22 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
         info.notes.isNotEmpty;
 
     final Widget leadingBadge = Container(
-      width: 34,
-      height: 34,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
-        color: statusColor.withValues(alpha: tk.isDark ? 0.16 : 0.10),
-        borderRadius: BorderRadius.circular(11),
+        color: statusColor.withValues(alpha: tk.isDark ? 0.16 : 0.12),
+        borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
       ),
       alignment: Alignment.center,
       child: busy
-          ? SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                value: phase == PublicOtaInstallPhase.downloading &&
-                        otaState.progress > 0
-                    ? otaState.progress
-                    : null,
-                color: statusColor,
-              ),
+          ? AppProgressRing(
+              value: phase == PublicOtaInstallPhase.downloading &&
+                      otaState.progress > 0
+                  ? otaState.progress
+                  : (phase == PublicOtaInstallPhase.verifying ? 1.0 : 0.4),
+              size: 20,
+              strokeWidth: 2.5,
+              color: statusInk,
             )
           : Icon(
               switch (phase) {
@@ -452,8 +456,8 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
                 PublicOtaInstallPhase.error => Icons.error_outline_rounded,
                 _ => Icons.system_update_rounded,
               },
-              color: statusColor,
-              size: 18,
+              color: statusInk,
+              size: 20,
             ),
     );
 
@@ -464,21 +468,26 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
         ? 'Fechar'
         : 'Depois';
 
-    final Widget dismissButton = TextButton(
-      key: const ValueKey<String>('public-ota-later-btn'),
-      onPressed: onDismiss,
-      style: TextButton.styleFrom(
-        visualDensity: VisualDensity.compact,
-        minimumSize: const Size(0, 32),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        foregroundColor: tk.textMuted,
-      ),
-      child: Text(
-        dismissLabel,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+    final Widget dismissButton = AppPressScale(
+      child: TextButton(
+        key: const ValueKey<String>('public-ota-later-btn'),
+        onPressed: onDismiss,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(
+            AppGeometry.minTarget,
+            AppGeometry.minTarget,
+          ),
+          tapTargetSize: MaterialTapTargetSize.padded,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s12,
+            vertical: AppSpace.s8,
+          ),
+          foregroundColor: tk.textMuted,
+        ),
+        child: Text(
+          dismissLabel,
+          style: AppType.caption.copyWith(fontWeight: FontWeight.w600),
+        ),
       ),
     );
 
@@ -489,7 +498,8 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
           primaryActionButton = _DiscreetCapsuleActionButton(
             buttonKey: const ValueKey<String>('public-ota-install-btn'),
             label: 'Atualizar',
-            accent: accent,
+            fillColor: tk.accent,
+            inkColor: tk.accentInk,
             isDark: tk.isDark,
             onPressed: onUpdateNow,
           );
@@ -497,7 +507,8 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
           primaryActionButton = _DiscreetCapsuleActionButton(
             buttonKey: const ValueKey<String>('public-ota-resume-btn'),
             label: 'Instalar agora',
-            accent: accent,
+            fillColor: tk.accent,
+            inkColor: tk.accentInk,
             isDark: tk.isDark,
             onPressed: onTriggerPendingInstall,
           );
@@ -505,7 +516,8 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
           primaryActionButton = _DiscreetCapsuleActionButton(
             buttonKey: const ValueKey<String>('public-ota-reopen-btn'),
             label: 'Abrir instalador',
-            accent: tk.success,
+            fillColor: tk.success,
+            inkColor: tk.successInk,
             isDark: tk.isDark,
             tonal: true,
             onPressed: onTriggerPendingInstall,
@@ -514,7 +526,8 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
           primaryActionButton = _DiscreetCapsuleActionButton(
             buttonKey: const ValueKey<String>('public-ota-retry-btn'),
             label: 'Tentar de novo',
-            accent: accent,
+            fillColor: tk.accent,
+            inkColor: tk.accentInk,
             isDark: tk.isDark,
             onPressed: onUpdateNow,
           );
@@ -530,8 +543,8 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
       label: 'Nova versão do aplicativo disponível',
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
+        duration: AppMotion.d(context, AppMotion.page),
+        curve: AppMotion.pageCurve,
         builder: (context, anim, child) => Opacity(
           opacity: anim,
           child: Transform.translate(
@@ -541,22 +554,26 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
         ),
         child: Material(
           key: const ValueKey<String>('public-floating-ota-card'),
-          color: tk.isDark ? tk.raised : tk.surface,
-          elevation: tk.isDark ? 0 : 8,
-          shadowColor: tk.shadow,
-          borderRadius: BorderRadius.circular(18),
+          color: tk.isDark ? tk.raised : tk.card,
+          elevation: 0,
+          borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpace.s12,
+              vertical: AppSpace.s12,
+            ),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              color: tk.isDark ? tk.raised : tk.card,
+              borderRadius: BorderRadius.circular(AppGeometry.cardRadius),
               border: Border.all(
-                color: statusColor.withValues(alpha: tk.isDark ? 0.28 : 0.18),
+                color: statusColor.withValues(alpha: tk.isDark ? 0.30 : 0.22),
               ),
+              boxShadow: tk.elevation(2),
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-                final stackActions = constraints.maxWidth < 340 ||
+                final textScale = context.layout.textScale;
+                final stackActions = constraints.maxWidth < 360 ||
                     textScale > 1.15 ||
                     (!legacyDownloading && phase != PublicOtaInstallPhase.idle);
 
@@ -565,60 +582,44 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: <Widget>[
                         Flexible(
                           child: Text(
                             title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: tk.text,
-                              fontSize: 13.5,
-                              letterSpacing: -0.15,
-                            ),
+                            style: AppType.bodyStrong.copyWith(color: tk.text),
                           ),
                         ),
                         if (!legacyDownloading &&
                             phase == PublicOtaInstallPhase.idle &&
                             info.sha256 != null) ...<Widget>[
-                          const SizedBox(width: 5),
+                          const SizedBox(width: AppSpace.s4),
                           Semantics(
                             label:
                                 'Pacote com assinatura digital e SHA-256 verificados',
                             child: Icon(
                               Icons.verified_rounded,
-                              size: 13.5,
-                              color: tk.success,
+                              size: 16,
+                              color: tk.successInk,
                             ),
                           ),
                         ],
                       ],
                     ),
                     if (subtitle.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 1.5),
+                      const SizedBox(height: AppSpace.s2),
                       Text(
                         subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: tk.textMuted,
-                          fontSize: 11.5,
-                          height: 1.25,
-                        ),
+                        style: AppType.tabular(AppType.caption)
+                            .copyWith(color: tk.textMuted),
                       ),
                     ],
                     if (showIdleNotes) ...<Widget>[
-                      const SizedBox(height: 1.5),
+                      const SizedBox(height: AppSpace.s2),
                       Text(
                         info.notes,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: tk.textMuted.withValues(alpha: 0.85),
-                          fontSize: 11,
-                          height: 1.2,
-                        ),
+                        maxLines: 2,
+                        style: AppType.caption.copyWith(color: tk.textMuted),
                       ),
                     ],
                   ],
@@ -628,12 +629,12 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
                   return Row(
                     children: <Widget>[
                       leadingBadge,
-                      const SizedBox(width: 10),
+                      const SizedBox(width: AppSpace.s12),
                       Expanded(child: textColumn),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: AppSpace.s8),
                       dismissButton,
                       if (primaryActionButton != null) ...<Widget>[
-                        const SizedBox(width: 4),
+                        const SizedBox(width: AppSpace.s4),
                         primaryActionButton,
                       ],
                     ],
@@ -648,37 +649,37 @@ class _DiscreetFloatingUpdateCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         leadingBadge,
-                        const SizedBox(width: 10),
+                        const SizedBox(width: AppSpace.s12),
                         Expanded(child: textColumn),
                       ],
                     ),
                     if (busy) ...<Widget>[
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpace.s8),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                         child: LinearProgressIndicator(
                           key: const ValueKey<String>(
                             'public-ota-progress-bar',
                           ),
-                          minHeight: 4.5,
+                          minHeight: 5,
                           value: phase == PublicOtaInstallPhase.downloading &&
                                   otaState.progress > 0
                               ? otaState.progress
                               : null,
                           backgroundColor:
-                              statusColor.withValues(alpha: 0.14),
+                              statusColor.withValues(alpha: 0.16),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             statusColor,
                           ),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppSpace.s8),
                     Wrap(
                       alignment: WrapAlignment.end,
                       crossAxisAlignment: WrapCrossAlignment.center,
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: AppSpace.s8,
+                      runSpacing: AppSpace.s8,
                       children: <Widget>[
                         dismissButton,
                         ?primaryActionButton,
@@ -699,7 +700,8 @@ class _DiscreetCapsuleActionButton extends StatelessWidget {
   const _DiscreetCapsuleActionButton({
     required this.buttonKey,
     required this.label,
-    required this.accent,
+    required this.fillColor,
+    required this.inkColor,
     required this.isDark,
     required this.onPressed,
     this.tonal = false,
@@ -707,7 +709,8 @@ class _DiscreetCapsuleActionButton extends StatelessWidget {
 
   final Key buttonKey;
   final String label;
-  final Color accent;
+  final Color fillColor;
+  final Color inkColor;
   final bool isDark;
   final VoidCallback onPressed;
   final bool tonal;
@@ -715,31 +718,30 @@ class _DiscreetCapsuleActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = tonal
-        ? accent.withValues(alpha: isDark ? 0.18 : 0.12)
-        : accent;
-    final fg = tonal ? accent : Colors.white;
-    return FilledButton(
-      key: buttonKey,
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        backgroundColor: bg,
-        foregroundColor: fg,
-        elevation: 0,
-        visualDensity: VisualDensity.compact,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        minimumSize: const Size(0, 32),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        shape: const StadiumBorder(),
-        textStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.1,
+        ? fillColor.withValues(alpha: isDark ? 0.18 : 0.12)
+        : fillColor;
+    final fg = tonal ? inkColor : AppTokens.onColor(fillColor);
+    return AppPressScale(
+      child: FilledButton(
+        key: buttonKey,
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: fg,
+          elevation: 0,
+          tapTargetSize: MaterialTapTargetSize.padded,
+          minimumSize: const Size(
+            AppGeometry.minTarget,
+            AppGeometry.minTarget,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.s16,
+            vertical: AppSpace.s8,
+          ),
+          shape: const StadiumBorder(),
+          textStyle: AppType.caption.copyWith(fontWeight: FontWeight.w700),
         ),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        child: Text(label),
       ),
     );
   }

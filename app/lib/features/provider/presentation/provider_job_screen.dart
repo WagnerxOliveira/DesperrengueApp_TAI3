@@ -1,67 +1,94 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/marketplace_models.dart';
-import '../../../core/state/smart_triage_controller.dart';
-import '../../shared/presentation/geo_privacy_widgets.dart';
-import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/provider_service.dart';
-import '../../../core/ui/app_theme.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
-import 'provider_execution_screens.dart';
+import '../../shared/presentation/geo_privacy_widgets.dart';
 import '../../shared/presentation/scheduled_service_screen.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
+import 'provider_execution_screens.dart';
 
 /// Acompanha UM serviço do ponto de vista do profissional e mostra a tela
 /// certa para cada estado (orçar, aguardar, executar, concluir).
 class ProviderJobScreen extends StatelessWidget {
-  const ProviderJobScreen({super.key, required this.jobId});
+  const ProviderJobScreen({
+    super.key,
+    required this.jobId,
+    this.stream,
+    this.jobService,
+    this.currentUserId,
+  });
 
   final String jobId;
 
+  /// Ganchos opcionais para testes (padrão `null`, zero impacto em produção).
+  final Stream<Job?>? stream;
+  final JobService? jobService;
+  final String? currentUserId;
+
   @override
   Widget build(BuildContext context) {
-    final jobs = JobService();
-    final me = Supabase.instance.client.auth.currentUser?.id;
+    final jobs = jobService ?? (stream == null ? JobService() : null);
+    final me = currentUserId ?? Supabase.instance.client.auth.currentUser?.id;
     return StreamBuilder<Job?>(
-      stream: jobs.streamJob(jobId),
+      stream: stream ?? jobs!.streamJob(jobId),
       builder: (context, snap) {
-        if (snap.hasError) return AppScaffold(appBar: AppBar(), body: const ErrorView(message: 'Não foi possível carregar o serviço.'));
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) return AppScaffold(appBar: AppBar(), body: const LoadingView());
+        if (snap.hasError) {
+          return const AppScaffold(
+            appBar: AppAppBar(),
+            body: AppErrorState(message: 'Não foi possível carregar o serviço.'),
+          );
+        }
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return const AppScaffold(appBar: AppAppBar(), body: AppSkeletonList(count: 3));
+        }
         final job = snap.data;
         if (job == null) {
-          return AppScaffold(
-            appBar: AppBar(),
-            body: const EmptyView(
+          return const AppScaffold(
+            appBar: AppAppBar(),
+            body: AppEmptyState(
               icon: Icons.lock_outline_rounded,
               title: 'Serviço indisponível',
-              subtitle: 'Este pedido foi cancelado ou contratado com outro profissional.',
+              message: 'Este pedido foi cancelado ou contratado com outro profissional.',
             ),
           );
         }
         final mine = job.providerId == me;
         switch (job.status) {
           case JobStatus.open:
-            return _OpenJobRouter(job: job, jobs: jobs);
+            return _OpenJobRouter(job: job, jobs: jobs ?? JobService(), currentUserId: me);
           case JobStatus.awaitingPayment:
-            return mine ? _WaitingPaymentScreen(job: job) : const _UnavailableScreen('Este pedido foi contratado com outro profissional.');
+            return mine
+                ? ProviderWaitingPaymentScreen(job: job)
+                : const ProviderUnavailableScreen('Este pedido foi contratado com outro profissional.');
           case JobStatus.scheduled:
-            return mine ? ScheduledServiceScreen(job: job, asProvider: true) : const _UnavailableScreen('Este pedido foi contratado com outro profissional.');
+            return mine
+                ? ScheduledServiceScreen(job: job, asProvider: true)
+                : const ProviderUnavailableScreen('Este pedido foi contratado com outro profissional.');
           case JobStatus.inProgress:
           case JobStatus.awaitingApproval:
-            return mine ? ServiceExecutionScreen(job: job) : const _UnavailableScreen('Este pedido foi contratado com outro profissional.');
+            return mine
+                ? ServiceExecutionScreen(job: job, myId: me)
+                : const ProviderUnavailableScreen('Este pedido foi contratado com outro profissional.');
           case JobStatus.completed:
-            return mine ? PaidSuccessScreen(job: job) : const _UnavailableScreen('Este serviço foi concluído por outro profissional.');
+            return mine
+                ? PaidSuccessScreen(job: job)
+                : const ProviderUnavailableScreen('Este serviço foi concluído por outro profissional.');
           case JobStatus.disputed:
-            return mine ? MediationScreen(job: job) : const _UnavailableScreen('Este pedido está em mediação.');
+            return mine
+                ? MediationScreen(job: job)
+                : const ProviderUnavailableScreen('Este pedido está em mediação.');
           case JobStatus.canceled:
-            return const _UnavailableScreen('Este pedido foi cancelado pelo cliente.');
+            return const ProviderUnavailableScreen('Este pedido foi cancelado pelo cliente.');
         }
       },
     );
@@ -69,27 +96,30 @@ class ProviderJobScreen extends StatelessWidget {
 }
 
 class _OpenJobRouter extends StatelessWidget {
-  const _OpenJobRouter({required this.job, required this.jobs});
+  const _OpenJobRouter({required this.job, required this.jobs, this.currentUserId});
 
   final Job job;
   final JobService jobs;
+  final String? currentUserId;
 
   @override
   Widget build(BuildContext context) {
-    final me = Supabase.instance.client.auth.currentUser!.id;
+    final me = currentUserId ?? Supabase.instance.client.auth.currentUser?.id;
     return StreamBuilder<List<Quote>>(
       stream: jobs.streamQuotes(job.id),
       builder: (context, qsnap) {
-        final mine = (qsnap.data ?? const <Quote>[]).where((q) => q.providerId == me).toList();
+        final mine = (qsnap.data ?? const <Quote>[]).where((q) => me != null && q.providerId == me).toList();
         if (mine.isNotEmpty) {
           final q = mine.first;
-          if (q.status == 'rejected') return const _UnavailableScreen('O cliente recusou o seu orçamento. Que tal buscar novos serviços?');
+          if (q.status == 'rejected') {
+            return const ProviderUnavailableScreen('O cliente recusou o seu orçamento. Que tal buscar novos serviços?');
+          }
           return AwaitingResponseScreen(job: job, quote: q);
         }
         return StreamBuilder<List<JobInvite>>(
           stream: jobs.streamInvites(job.id),
           builder: (context, isnap) {
-            final invite = (isnap.data ?? const <JobInvite>[]).where((i) => i.providerId == me).firstOrNull;
+            final invite = (isnap.data ?? const <JobInvite>[]).where((i) => me != null && i.providerId == me).firstOrNull;
             if (job.isEmergency) return EmergencyDecisionScreen(job: job, invite: invite);
             return QuoteFormScreen(job: job, invite: invite);
           },
@@ -99,20 +129,22 @@ class _OpenJobRouter extends StatelessWidget {
   }
 }
 
-class _UnavailableScreen extends StatelessWidget {
-  const _UnavailableScreen(this.message);
+@visibleForTesting
+class ProviderUnavailableScreen extends StatelessWidget {
+  const ProviderUnavailableScreen(this.message, {super.key});
   final String message;
 
   @override
   Widget build(BuildContext context) => AppScaffold(
-    appBar: AppBar(title: const BrandLogo()),
-    body: EmptyView(
-      icon: Icons.info_outline_rounded,
-      title: 'Nada a fazer aqui',
-      subtitle: message,
-      action: PrimaryButton(label: 'Voltar ao painel', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
-    ),
-  );
+        appBar: const AppAppBar(titleWidget: BrandLogo()),
+        body: AppEmptyState(
+          icon: Icons.info_outline_rounded,
+          title: 'Nada a fazer aqui',
+          message: message,
+          actionLabel: 'Voltar ao painel',
+          onAction: () => Navigator.of(context).popUntil((r) => r.isFirst),
+        ),
+      );
 }
 
 /// Cartão do cliente (nome curto antes da contratação, completo depois).
@@ -142,53 +174,51 @@ class _ClientCardTileState extends State<ClientCardTile> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return FutureBuilder<Map<String, dynamic>?>(
       future: _card,
       builder: (context, snap) {
         final name = (snap.data?['full_name'] as String?) ?? 'Cliente';
         return Row(
           children: [
-            UserAvatar(url: snap.data?['avatar_url'] as String?, name: name, radius: 24),
-            const SizedBox(width: 12),
+            AppAvatar(url: snap.data?['avatar_url'] as String?, name: name, radius: 24),
+            const SizedBox(width: AppSpace.s12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                  Text(name, style: AppType.titleSm.copyWith(color: tk.text)),
                   ProviderLocationBuilder(
                     jobId: jobId,
                     builder: (context, view, loading) {
                       final unlocked = isExactLocationUnlocked(view);
-                      final tk = context.tk;
                       return InkWell(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(AppSpace.s8),
                         onTap: unlocked ? () => openProviderLocation(context, view!) : null,
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          padding: const EdgeInsets.symmetric(vertical: AppSpace.s2),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(
                                 unlocked ? Icons.place_outlined : Icons.radar_rounded,
-                                size: 15,
-                                color: unlocked ? tk.providerAccent : tk.warningInk,
+                                size: 16,
+                                color: unlocked ? tk.accentInk : tk.warningInk,
                               ),
-                              const SizedBox(width: 4),
+                              const SizedBox(width: AppSpace.s4),
                               Flexible(
                                 child: Text(
                                   unlocked ? (view!.fullStreetLine ?? protectedAreaTitle(view)) : protectedAreaTitle(view),
                                   maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: unlocked ? tk.providerAccent : tk.textMuted,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
+                                  style: AppType.caption.copyWith(
+                                    color: unlocked ? tk.accentInk : tk.textMuted,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
                               if (unlocked) ...[
-                                const SizedBox(width: 4),
-                                Icon(Icons.map_outlined, size: 14, color: tk.providerAccent),
+                                const SizedBox(width: AppSpace.s4),
+                                Icon(Icons.map_outlined, size: 15, color: tk.accentInk),
                               ],
                             ],
                           ),
@@ -220,11 +250,18 @@ class _ClientReputationChip extends StatelessWidget {
       builder: (context, snap) {
         final r = snap.data;
         if (r == null || r.count == 0) {
-          return Padding(padding: EdgeInsets.only(top: 4), child: StatusChip('Cliente novo', color: context.tk.info, icon: Icons.fiber_new_rounded));
+          return const Padding(
+            padding: EdgeInsets.only(top: AppSpace.s4),
+            child: AppStatusChip('Cliente novo', tone: AppTone.info, icon: Icons.fiber_new_rounded),
+          );
         }
         return Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: StatusChip('${r.avg.toStringAsFixed(1).replaceAll('.', ',')} • ${r.count} avaliações do cliente', color: context.tk.warningInk, icon: Icons.star_rounded),
+          padding: const EdgeInsets.only(top: AppSpace.s4),
+          child: AppStatusChip(
+            '${r.avg.toStringAsFixed(1).replaceAll('.', ',')} • ${r.count} avaliações do cliente',
+            tone: AppTone.warning,
+            icon: Icons.star_rounded,
+          ),
         );
       },
     );
@@ -232,25 +269,36 @@ class _ClientReputationChip extends StatelessWidget {
 }
 
 Widget evidenceCarousel(BuildContext context, Job job) {
+  final tk = context.tk;
   if (job.photoPaths.isEmpty) {
-    return Text('O cliente não anexou fotos.', style: TextStyle(color: context.tk.textMuted));
+    return Text('O cliente não anexou fotos.', style: AppType.bodySm.copyWith(color: tk.textMuted));
   }
   return SizedBox(
     height: 150,
     child: ListView.separated(
       scrollDirection: Axis.horizontal,
       itemCount: job.photoPaths.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 10),
-      itemBuilder: (context, i) => GestureDetector(
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => Dialog(
-            backgroundColor: Colors.black,
-            insetPadding: const EdgeInsets.all(12),
-            child: InteractiveViewer(child: SignedImage(path: job.photoPaths[i], fit: BoxFit.contain, radius: 0)),
+      separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s12),
+      itemBuilder: (context, i) => AppPressable(
+        borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
+        onTap: () => Navigator.of(context).push(
+          AppRoute<void>(
+            fullscreenModal: true,
+            builder: (_) => AppScaffold(
+              backgroundColor: Colors.black,
+              appBar: AppBar(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                title: const Text('Foto enviada pelo cliente'),
+              ),
+              body: InteractiveViewer(
+                maxScale: 5,
+                child: Center(child: SignedImage(path: job.photoPaths[i], fit: BoxFit.contain, radius: 0)),
+              ),
+            ),
           ),
         ),
-        child: SignedImage(path: job.photoPaths[i], width: 150, height: 150, radius: 14),
+        child: SignedImage(path: job.photoPaths[i], width: 150, height: 150, radius: AppGeometry.fieldRadius),
       ),
     ),
   );
@@ -295,7 +343,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
   Future<void> _send() async {
     final v = _value;
     if (v == null || v <= 0) {
-      showSnack(context, 'Informe o valor do orçamento.', error: true);
+      AppSnackbar.show(context, 'Informe o valor do orçamento.', kind: AppSnackKind.error);
       return;
     }
     setState(() => _busy = true);
@@ -303,59 +351,71 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
       await _jobs.sendQuote(jobId: widget.job.id, price: v, message: _note.text, estimatedHours: parseBrl(_hours.text));
       // O stream de orçamentos troca esta tela pela de "Aguardando resposta".
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _decline() async {
-    final ok = await confirmDialog(context, title: 'Recusar solicitação?', message: 'O cliente será avisado para tentar outro profissional.', confirmLabel: 'Recusar', destructive: true);
+    final ok = await AppDialog.confirm(
+      context,
+      title: 'Recusar solicitação?',
+      message: 'O cliente será avisado para tentar outro profissional.',
+      confirmLabel: 'Recusar',
+      destructive: true,
+    );
     if (!ok) return;
     try {
       await _jobs.declineInvite(widget.job.id);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final job = widget.job;
     final v = _value ?? 0;
     final net = v - v * _feePct / 100;
     final full = job.quoteCount >= 3;
     final blocked = _inviteDead || full;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Detalhes do chamado')),
+      appBar: const AppAppBar(title: 'Detalhes do chamado'),
       body: ListView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
         children: [
           if (widget.invite != null && widget.invite!.isLive)
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: AppSpace.s12),
               child: _InviteCountdown(invite: widget.invite!),
             ),
           if (_inviteDead) const InfoBanner('Este convite expirou ou não está mais disponível.', tone: BannerTone.warning),
           if (full && !_inviteDead) const InfoBanner('Este pedido já recebeu 3 orçamentos.', tone: BannerTone.warning),
-          const SectionTitle('Evidências enviadas pelo cliente'),
-          evidenceCarousel(context, job),
-          const SectionTitle('Relato do cliente'),
-          AppCard(
-            color: context.tk.surface,
-            borderColor: context.tk.surface,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClientCardTile(jobId: job.id),
-                const SizedBox(height: 10),
-                Text(job.description, style: const TextStyle(height: 1.45)),
-              ],
+          AppSection(
+            title: 'Evidências enviadas pelo cliente',
+            child: evidenceCarousel(context, job),
+          ),
+          const SizedBox(height: AppSpace.section),
+          AppSection(
+            title: 'Relato do cliente',
+            child: AppCard(
+              variant: AppCardVariant.tonal,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClientCardTile(jobId: job.id),
+                  const SizedBox(height: AppSpace.s12),
+                  Text(job.description, style: AppType.body.copyWith(color: tk.text)),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.s12),
           ProviderLocationBuilder(
             jobId: job.id,
             builder: (context, view, loading) {
@@ -366,71 +426,84 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
                     ProviderLocationPending(loading: loading)
                   else
                     ProviderLocationPanel(view: view),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: AppSpace.s12),
                   Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
+                    spacing: AppSpace.s8,
+                    runSpacing: AppSpace.s8,
                     children: [
-                      StatusChip(job.category, color: context.tk.providerAccent),
+                      AppStatusChip(job.category, tone: AppTone.accent),
                       if (job.scheduledFor != null)
-                        StatusChip(dateShort(job.scheduledFor!), color: context.tk.info, icon: Icons.calendar_month_rounded),
+                        AppStatusChip(dateShort(job.scheduledFor!), tone: AppTone.info, icon: Icons.calendar_month_rounded),
                     ],
                   ),
                 ],
               );
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           ValueListenableBuilder(
             valueListenable: JobTriageStore.instance,
             builder: (context, _, _) => ProviderTriageBriefCard(
               result: JobTriageStore.instance.resolveForJob(job),
             ),
           ),
-          const SizedBox(height: 18),
-          const Text('Qual o seu orçamento para resolver isso?', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, height: 1.25)),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.s20),
+          Text('Qual o seu orçamento para resolver isso?', style: AppType.headline.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s12),
           TextField(
             controller: _price,
             enabled: !blocked,
             textAlign: TextAlign.center,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w900),
+            style: AppType.figure.copyWith(color: tk.text),
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(prefixText: 'R\$ ', hintText: '150,00'),
           ),
           if (v > 0)
             Padding(
-              padding: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.only(top: AppSpace.s8),
               child: Text(
                 'Comissão da plataforma (${_feePct.toStringAsFixed(0)}%): ${brl(v * _feePct / 100)} • Você recebe ${brl(net)}',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: context.tk.textMuted, fontSize: 13),
+                style: AppType.tabular(AppType.bodySm).copyWith(color: tk.textMuted),
               ),
             ),
-          const SizedBox(height: 14),
-          TextField(
+          const SizedBox(height: AppSpace.s16),
+          AppTextField(
             controller: _hours,
             enabled: !blocked,
+            label: 'Tempo estimado em horas (opcional)',
+            hint: 'Ex: 2',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Tempo estimado em horas (opcional)', suffixText: 'h'),
           ),
-          const SizedBox(height: 14),
-          const Text('Observações (opcional)', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          TextField(
+          const SizedBox(height: AppSpace.s16),
+          Text('Observações (opcional)', style: AppType.titleSm.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s8),
+          AppTextField(
             controller: _note,
             enabled: !blocked,
             maxLines: 3,
             maxLength: 500,
-            decoration: const InputDecoration(hintText: 'Ex: Preço inclui a troca da peça, não inclui quebrar azulejo.'),
+            hint: 'Ex: Preço inclui a troca da peça, não inclui quebrar azulejo.',
           ),
           if (widget.invite != null && widget.invite!.isLive)
-            Center(child: LinkButton(label: 'Recusar solicitação', onPressed: _decline, color: context.tk.textMuted)),
+            Center(
+              child: AppButton(
+                label: 'Recusar solicitação',
+                variant: AppButtonVariant.tertiary,
+                expand: false,
+                onPressed: _decline,
+              ),
+            ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(label: 'Enviar orçamento', trailingArrow: true, loading: _busy, onPressed: blocked ? null : _send),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Enviar orçamento',
+          trailingArrow: true,
+          loading: _busy,
+          onPressed: blocked ? null : _send,
+        ),
       ),
     );
   }
@@ -464,11 +537,11 @@ class _InviteCountdownState extends State<_InviteCountdown> {
 
   @override
   Widget build(BuildContext context) => InfoBanner(
-    'Responda em ${clock(widget.invite.remaining)}. Depois disso o convite expira.',
-    tone: BannerTone.info,
-    icon: Icons.timer_outlined,
-    title: 'Solicitação direta',
-  );
+        'Responda em ${clock(widget.invite.remaining)}. Depois disso o convite expira.',
+        tone: BannerTone.info,
+        icon: Icons.timer_outlined,
+        title: 'Solicitação direta',
+      );
 }
 
 // ============================================================ aguardando (17)
@@ -506,51 +579,70 @@ class _AwaitingResponseScreenState extends State<AwaitingResponseScreen> {
   }
 
   Future<void> _cancel() async {
-    final ok = await confirmDialog(context, title: 'Cancelar proposta?', message: 'O cliente não verá mais o seu orçamento.', confirmLabel: 'Cancelar proposta', destructive: true);
+    final ok = await AppDialog.confirm(
+      context,
+      title: 'Cancelar proposta?',
+      message: 'O cliente não verá mais o seu orçamento.',
+      confirmLabel: 'Cancelar proposta',
+      destructive: true,
+    );
     if (!ok) return;
     try {
       await _jobs.withdrawQuote(widget.job.id);
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     final inv = _invite;
     return AppScaffold(
-      appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.maybePop(context)),
-        title: const Text('Aguardando resposta'),
+      appBar: AppAppBar(
+        leading: AppIconButton(
+          icon: Icons.close_rounded,
+          tooltip: 'Fechar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: 'Aguardando resposta',
       ),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.symmetric(horizontal: context.layout.margin, vertical: AppSpace.s24),
         children: [
-          const SizedBox(height: 8),
-          const Center(child: Icon(Icons.send_rounded, size: 64, color: AppColors.providerBright)),
-          const SizedBox(height: 14),
-          Text('Orçamento de ${brl(widget.quote.price)} enviado!', textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.s8),
+          Center(child: Icon(Icons.send_rounded, size: 64, color: tk.accentInk)),
+          const SizedBox(height: AppSpace.s16),
+          Text(
+            'Orçamento de ${brl(widget.quote.price)} enviado!',
+            textAlign: TextAlign.center,
+            style: AppType.tabular(AppType.display).copyWith(color: tk.text),
+          ),
+          const SizedBox(height: AppSpace.s12),
           Text(
             'Assim que o cliente aceitar, o valor fica retido na plataforma e você poderá ir até o local. Avisaremos por notificação.',
             textAlign: TextAlign.center,
-            style: TextStyle(height: 1.45, color: context.tk.textMuted),
+            style: AppType.body.copyWith(color: tk.textMuted),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: AppSpace.s24),
           if (inv != null)
             Center(
-              child: RepaintBoundary(child: CountdownRing(
-                remaining: inv.expiresAt.difference(DateTime.now()),
-                total: const Duration(hours: 2),
-                caption: 'prazo do convite',
-                icon: Icons.hourglass_bottom_rounded,
-              )),
+              child: RepaintBoundary(
+                child: CountdownRing(
+                  remaining: inv.expiresAt.difference(DateTime.now()),
+                  total: const Duration(hours: 2),
+                  caption: 'prazo do convite',
+                  icon: Icons.hourglass_bottom_rounded,
+                ),
+              ),
             )
           else
-            const Center(child: CircularProgressIndicator()),
-          const SizedBox(height: 18),
-          Center(child: LinkButton(label: 'Cancelar proposta', onPressed: _cancel, color: context.tk.danger)),
+            const AppLoading(message: 'Aguardando retorno do cliente...'),
+          const SizedBox(height: AppSpace.s20),
+          Center(
+            child: LinkButton(label: 'Cancelar proposta', onPressed: _cancel, color: tk.dangerInk),
+          ),
         ],
       ),
     );
@@ -593,124 +685,162 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
     try {
       await _jobs.acceptEmergency(widget.job.id);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _decline() async {
-    final ok = await confirmDialog(context, title: 'Recusar emergência?', message: 'O cliente será avisado e a reserva dele estornada.', confirmLabel: 'Recusar', destructive: true);
+    final ok = await AppDialog.confirm(
+      context,
+      title: 'Recusar emergência?',
+      message: 'O cliente será avisado e a reserva dele estornada.',
+      confirmLabel: 'Recusar',
+      destructive: true,
+    );
     if (!ok) return;
     try {
       await _jobs.declineInvite(widget.job.id);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final job = widget.job;
     final live = widget.invite?.isLive ?? false;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Emergência')),
+      appBar: const AppAppBar(title: 'Emergência'),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
         children: [
           Center(
-            child: RepaintBoundary(child: CountdownRing(
-              remaining: widget.invite?.remaining ?? Duration.zero,
-              total: const Duration(minutes: 5),
-              size: 140,
-              caption: 'para aceitar',
-              icon: Icons.bolt_rounded,
-            )),
-          ),
-          const SizedBox(height: 16),
-          const InfoBanner('Se aceitar, vá imediatamente. A reserva de garantia do cliente já está em custódia.', tone: BannerTone.danger, title: 'Atendimento imediato'),
-          const SectionTitle('Evidências enviadas pelo cliente'),
-          evidenceCarousel(context, job),
-          const SectionTitle('Relato'),
-          AppCard(
-            color: context.tk.surface,
-            borderColor: context.tk.surface,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClientCardTile(jobId: job.id),
-                const SizedBox(height: 10),
-                Text(job.description, style: const TextStyle(height: 1.45)),
-              ],
+            child: RepaintBoundary(
+              child: CountdownRing(
+                remaining: widget.invite?.remaining ?? Duration.zero,
+                total: const Duration(minutes: 5),
+                size: 140,
+                caption: 'para aceitar',
+                icon: Icons.bolt_rounded,
+              ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s16),
+          const InfoBanner(
+            'Se aceitar, vá imediatamente. A reserva de garantia do cliente já está em custódia.',
+            tone: BannerTone.danger,
+            title: 'Atendimento imediato',
+          ),
+          const SizedBox(height: AppSpace.section),
+          AppSection(
+            title: 'Evidências enviadas pelo cliente',
+            child: evidenceCarousel(context, job),
+          ),
+          const SizedBox(height: AppSpace.section),
+          AppSection(
+            title: 'Relato',
+            child: AppCard(
+              variant: AppCardVariant.tonal,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClientCardTile(jobId: job.id),
+                  const SizedBox(height: AppSpace.s12),
+                  Text(job.description, style: AppType.body.copyWith(color: tk.text)),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s12),
           ProviderLocationBuilder(
             jobId: job.id,
             builder: (context, view, loading) =>
                 view == null ? ProviderLocationPending(loading: loading) : ProviderLocationPanel(view: view),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           ValueListenableBuilder(
             valueListenable: JobTriageStore.instance,
             builder: (context, _, _) => ProviderTriageBriefCard(
               result: JobTriageStore.instance.resolveForJob(job),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           AppCard(
-            child: Row(
-              children: [
-                Icon(Icons.lock_rounded, color: context.tk.success),
-                const SizedBox(width: 12),
-                const Expanded(child: Text('Reserva em custódia', style: TextStyle(fontWeight: FontWeight.w800))),
-                Text(brl(job.agreedPrice), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-              ],
+            child: AppInfoRow(
+              icon: Icons.lock_rounded,
+              label: 'Reserva em custódia',
+              valueWidget: Text(
+                brl(job.agreedPrice),
+                style: AppType.figureSm.copyWith(color: tk.successInk),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          Text('O orçamento final é combinado no local com o cliente.', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
+          const SizedBox(height: AppSpace.s8),
+          Text(
+            'O orçamento final é combinado no local com o cliente.',
+            style: AppType.bodySm.copyWith(color: tk.textMuted),
+          ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PrimaryButton(label: 'Aceitar emergência', icon: Icons.bolt_rounded, loading: _busy, onPressed: live ? _accept : null),
-            const SizedBox(height: 8),
-            TextButton(onPressed: live ? _decline : null, child: Text('Recusar', style: TextStyle(color: context.tk.textMuted))),
-          ],
+      bottomNavigationBar: AppBottomBar(
+        secondary: AppButton(
+          label: 'Recusar',
+          variant: AppButtonVariant.tertiary,
+          compact: true,
+          onPressed: live ? _decline : null,
+        ),
+        child: AppButton(
+          label: 'Aceitar emergência',
+          icon: Icons.bolt_rounded,
+          loading: _busy,
+          onPressed: live ? _accept : null,
         ),
       ),
     );
   }
 }
 
-class _WaitingPaymentScreen extends StatelessWidget {
-  const _WaitingPaymentScreen({required this.job});
+@visibleForTesting
+class ProviderWaitingPaymentScreen extends StatelessWidget {
+  const ProviderWaitingPaymentScreen({super.key, required this.job});
 
   final Job job;
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Orçamento aceito!')),
+      appBar: const AppAppBar(title: 'Orçamento aceito!'),
       body: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.symmetric(horizontal: context.layout.margin, vertical: AppSpace.s24),
         children: [
-          const SizedBox(height: 20),
-          Center(child: CircleAvatar(radius: 46, backgroundColor: context.tk.successSoft, child: Icon(Icons.handshake_rounded, size: 46, color: context.tk.success))),
-          const SizedBox(height: 16),
-          const Text('O cliente aceitou!', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.s20),
+          Center(
+            child: CircleAvatar(
+              radius: 46,
+              backgroundColor: tk.successSoft,
+              child: Icon(Icons.handshake_rounded, size: 46, color: tk.successInk),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s16),
+          Text(
+            'O cliente aceitou!',
+            textAlign: TextAlign.center,
+            style: AppType.display.copyWith(color: tk.text),
+          ),
+          const SizedBox(height: AppSpace.s12),
           Text(
             'Estamos aguardando o pagamento de ${brl(job.agreedPrice)}. Quando for confirmado, o valor fica em custódia e você será avisado para iniciar.',
             textAlign: TextAlign.center,
-            style: TextStyle(height: 1.45, color: context.tk.textMuted),
+            style: AppType.body.copyWith(color: tk.textMuted),
           ),
-          const SizedBox(height: 24),
-          const Center(child: CircularProgressIndicator()),
+          const SizedBox(height: AppSpace.s24),
+          const AppLoading(message: 'Aguardando confirmação do pagamento...'),
         ],
       ),
     );

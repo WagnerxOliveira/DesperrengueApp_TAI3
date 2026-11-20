@@ -12,7 +12,7 @@ import '../../../core/models/structured_service_address.dart';
 import '../../../core/services/accurate_geo_routing_service.dart';
 import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/scheduling_service.dart';
-import '../../../core/ui/app_tokens.dart';
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import '../../../core/utils/geo.dart';
 import 'order_live_map_modal_screen.dart';
 import 'service_map_widgets.dart' show LocationPickerSheet, MapAttribution;
@@ -107,14 +107,12 @@ class LiveLocationMapSheet extends StatefulWidget {
     Future<void> Function(double lat, double lng)? onAdjustPin,
     FutureOr<void> Function(ReversedAddress address)? onAddressChanged,
   }) =>
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
+      AppSheet.show<void>(
+        context,
         enableDrag: false,
-        useSafeArea: true,
-        showDragHandle: true,
-        builder: (_) => FractionallySizedBox(
-          heightFactor: 0.92,
+        maxHeightFactor: 0.92,
+        builder: (sheetCtx) => SizedBox(
+          height: (MediaQuery.sizeOf(sheetCtx).height * 0.82).clamp(360.0, 760.0),
           child: LiveLocationMapSheet(
             addressLine: addressLine,
             summary: summary,
@@ -434,25 +432,32 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s4, AppSpace.s8),
           child: Row(
             children: [
-              Icon(Icons.place_rounded, color: tk.clientAccent),
-              const SizedBox(width: 8),
+              Icon(Icons.place_rounded, color: tk.clientAccentInk),
+              const SizedBox(width: AppSpace.s8),
               Expanded(
-                child: InkWell(
+                child: AppPressable(
                   onTap: dest == null ? null : () => _fit(includeMe: false),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Text(
-                    _addressLine,
-                    key: const ValueKey('live-map-address-line'),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  borderRadius: BorderRadius.circular(AppSpace.s8),
+                  isButton: dest != null,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpace.s4),
+                    child: Text(
+                      _addressLine,
+                      key: const ValueKey('live-map-address-line'),
+                      maxLines: 2,
+                      style: AppType.bodyStrong.copyWith(color: tk.text),
+                    ),
                   ),
                 ),
               ),
-              IconButton(tooltip: 'Fechar', onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close_rounded)),
+              AppIconButton(
+                tooltip: 'Fechar',
+                onPressed: () => Navigator.of(context).pop(),
+                icon: Icons.close_rounded,
+              ),
             ],
           ),
         ),
@@ -466,120 +471,128 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
         ])
           Container(
             width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: tk.warningSoft, borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.fromLTRB(AppSpace.s16, 0, AppSpace.s16, AppSpace.s8),
+            padding: const EdgeInsets.all(AppSpace.s12 - 2),
+            decoration: BoxDecoration(
+              color: tk.warningSoft,
+              borderRadius: BorderRadius.circular(AppSpace.s12),
+            ),
             child: Row(
               children: [
                 Icon(Icons.info_outline_rounded, size: 18, color: tk.warningInk),
-                const SizedBox(width: 8),
-                Expanded(child: Text(note, style: TextStyle(fontSize: 12.5, color: tk.warningInk))),
+                const SizedBox(width: AppSpace.s8),
+                Expanded(child: Text(note, style: AppType.caption.copyWith(color: tk.warningInk))),
               ],
             ),
           ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
             child: Stack(
               children: [
-                FlutterMap(
-                  key: const ValueKey('live-map'),
-                  mapController: _map,
-                  options: MapOptions(
-                    initialCenter: dest ?? (me != null ? LatLng(me.lat, me.lng) : _fallback),
-                    initialZoom: dest != null ? 17 : 13,
-                    minZoom: 3,
-                    maxZoom: 19,
-                    onMapReady: _fit,
-                  ),
-                  children: [
-                    buildSafeMapTileLayer(
-                      context,
-                      tileLayerOverride: widget.tileLayer,
+                RepaintBoundary(
+                  child: FlutterMap(
+                    key: const ValueKey('live-map'),
+                    mapController: _map,
+                    options: MapOptions(
+                      initialCenter: dest ?? (me != null ? LatLng(me.lat, me.lng) : _fallback),
+                      initialZoom: dest != null ? 17 : 13,
+                      minZoom: 3,
+                      maxZoom: 19,
+                      onMapReady: _fit,
                     ),
-                    if (routePoints.length >= 2)
-                      PolylineLayer(
-                        key: const ValueKey('live-route-polyline'),
-                        polylines: [
-                          Polyline(
-                            points: routePoints,
-                            strokeWidth: 5.5,
-                            color: const Color(0xFF2563EB),
-                            borderStrokeWidth: 2.0,
-                            borderColor: Colors.white,
-                          ),
-                        ],
+                    children: [
+                      buildSafeMapTileLayer(
+                        context,
+                        tileLayerOverride: widget.tileLayer,
                       ),
-                    if (me != null && me.accuracyM != null)
-                      CircleLayer(circles: [
-                        CircleMarker(
-                          point: LatLng(me.lat, me.lng),
-                          radius: me.accuracyM!,
-                          useRadiusInMeter: true,
-                          color: tk.info.withValues(alpha: 0.14),
-                          borderColor: tk.info.withValues(alpha: 0.6),
-                          borderStrokeWidth: 1,
-                        ),
-                      ]),
-                    MarkerLayer(markers: [
-                      if (dest != null)
-                        Marker(
-                          point: dest,
-                          width: 48,
-                          height: 48,
-                          alignment: Alignment.topCenter,
-                          child: Icon(Icons.location_on_rounded, size: 44, color: tk.danger),
-                        ),
-                      if (me != null)
-                        Marker(
-                          point: LatLng(me.lat, me.lng),
-                          width: 26,
-                          height: 26,
-                          child: Container(
-                            decoration: BoxDecoration(
+                      if (routePoints.length >= 2)
+                        PolylineLayer(
+                          key: const ValueKey('live-route-polyline'),
+                          polylines: [
+                            Polyline(
+                              points: routePoints,
+                              strokeWidth: 5.5,
                               color: tk.info,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 3),
-                              boxShadow: [BoxShadow(color: tk.shadow, blurRadius: 6)],
+                              borderStrokeWidth: 2.0,
+                              borderColor: AppTokens.onColor(tk.info),
+                            ),
+                          ],
+                        ),
+                      if (me != null && me.accuracyM != null)
+                        CircleLayer(circles: [
+                          CircleMarker(
+                            point: LatLng(me.lat, me.lng),
+                            radius: me.accuracyM!,
+                            useRadiusInMeter: true,
+                            color: tk.info.withValues(alpha: 0.14),
+                            borderColor: tk.info.withValues(alpha: 0.6),
+                            borderStrokeWidth: 1,
+                          ),
+                        ]),
+                      MarkerLayer(markers: [
+                        if (dest != null)
+                          Marker(
+                            point: dest,
+                            width: 48,
+                            height: 48,
+                            alignment: Alignment.topCenter,
+                            child: Icon(Icons.location_on_rounded, size: 44, color: tk.danger),
+                          ),
+                        if (me != null)
+                          Marker(
+                            point: LatLng(me.lat, me.lng),
+                            width: 26,
+                            height: 26,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: tk.info,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: AppTokens.onColor(tk.info), width: 3),
+                                boxShadow: [BoxShadow(color: tk.shadow, blurRadius: 6)],
+                              ),
                             ),
                           ),
-                        ),
-                    ]),
-                    const MapAttribution(),
-                  ],
+                      ]),
+                      const MapAttribution(),
+                    ],
+                  ),
                 ),
-                if (_resolving) const Positioned(top: 12, left: 12, child: _Pill(label: 'Localizando endereço…', loading: true)),
+                if (_resolving) const Positioned(top: AppSpace.s12, left: AppSpace.s12, child: _Pill(label: 'Localizando endereço…', loading: true)),
                 if (widget.onAdjustPin != null && _dest != null)
                   Positioned(
-                    left: 12,
-                    bottom: 12,
-                    child: FloatingActionButton.extended(
-                      key: const ValueKey('adjust-pin'),
-                      heroTag: 'adjust_pin',
-                      onPressed: _adjustPin,
-                      icon: Icon(_pinConfirmed ? Icons.check_circle_rounded : Icons.edit_location_alt_rounded),
-                      label: Text(_pinConfirmed ? 'Ponto confirmado · ajustar' : 'Ajustar o ponto exato'),
+                    left: AppSpace.s12,
+                    bottom: AppSpace.s12,
+                    right: AppSpace.s12,
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: AppButton(
+                        key: const ValueKey('adjust-pin'),
+                        onPressed: _adjustPin,
+                        expand: false,
+                        compact: true,
+                        icon: _pinConfirmed ? Icons.check_circle_rounded : Icons.edit_location_alt_rounded,
+                        label: _pinConfirmed ? 'Ponto confirmado · ajustar' : 'Ajustar o ponto exato',
+                      ),
                     ),
                   ),
                 Positioned(
-                  right: 10,
-                  top: 10,
+                  right: AppSpace.s12 - 2,
+                  top: AppSpace.s12 - 2,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      FloatingActionButton.small(
-                        heroTag: 'live_fit',
+                      _LiveMapActionFab(
                         onPressed: () => _fit(includeMe: true),
                         tooltip: 'Enquadrar caminho completo',
-                        child: const Icon(Icons.center_focus_strong_rounded),
+                        icon: Icons.center_focus_strong_rounded,
                       ),
                       if (dest != null) ...[
-                        const SizedBox(height: 8),
-                        FloatingActionButton.small(
-                          heroTag: 'live_focus_dest',
+                        const SizedBox(height: AppSpace.s8),
+                        _LiveMapActionFab(
                           onPressed: () => _fit(includeMe: false),
                           tooltip: 'Focar no ponto de encontro',
-                          child: const Icon(Icons.place_rounded),
+                          icon: Icons.place_rounded,
                         ),
                       ],
                     ],
@@ -590,28 +603,28 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
           ),
         ),
         Padding(
-          padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.viewPaddingOf(context).bottom),
+          padding: EdgeInsets.fromLTRB(AppSpace.s16, AppSpace.s12, AppSpace.s16, AppSpace.s12 + MediaQuery.viewPaddingOf(context).bottom),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (_route != null) ...[
                 Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  margin: const EdgeInsets.only(bottom: AppSpace.s8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s8),
                   decoration: BoxDecoration(
-                    color: tk.clientAccent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
+                    color: tk.clientSoft,
+                    borderRadius: BorderRadius.circular(AppSpace.s12 - 2),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.route_rounded, size: 18, color: tk.clientAccent),
-                      const SizedBox(width: 8),
+                      Icon(Icons.route_rounded, size: 18, color: tk.clientAccentInk),
+                      const SizedBox(width: AppSpace.s8),
                       Expanded(
                         child: Text(
                           'Menor caminho pelas ruas: ${formatMeters(_route!.distanceM)} · ~${formatEta(_route!.eta)}',
                           key: const ValueKey('shortest-route-summary'),
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: tk.text),
+                          style: AppType.tabular(AppType.bodySm).copyWith(fontWeight: FontWeight.w700, color: tk.text),
                         ),
                       ),
                     ],
@@ -621,7 +634,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
               Row(
                 children: [
                   Icon(Icons.my_location_rounded, color: me == null ? tk.textMuted : tk.info, size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpace.s8),
                   Expanded(
                     child: Text(
                       me == null
@@ -630,62 +643,99 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                               ? 'Sua posição em tempo real'
                               : '${formatMeters(meters)} do endereço'
                                   '${me.accuracyM != null ? ' · precisão ±${me.accuracyM!.round()} m' : ''}'),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                      style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.text),
                     ),
                   ),
-                  if (me != null) Icon(Icons.fiber_manual_record_rounded, size: 12, color: tk.success),
+                  if (me != null) Icon(Icons.fiber_manual_record_rounded, size: 12, color: tk.successInk),
                 ],
               ),
-              const SizedBox(height: 2),
-              Row(
+              const SizedBox(height: AppSpace.s4),
+              Wrap(
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                alignment: WrapAlignment.spaceBetween,
                 children: [
-                  Expanded(
-                    child: Text(
-                      dest == null
-                          ? 'Marcador do endereço indisponível no momento.'
-                          : '${dest.latitude.toStringAsFixed(5)}, ${dest.longitude.toStringAsFixed(5)}',
-                      style: TextStyle(fontSize: 12, color: tk.textMuted),
-                    ),
+                  Text(
+                    dest == null
+                        ? 'Marcador do endereço indisponível no momento.'
+                        : '${dest.latitude.toStringAsFixed(5)}, ${dest.longitude.toStringAsFixed(5)}',
+                    style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
                   ),
-                  if (dest != null && widget.tileLayer == null) ...[
-                    TextButton.icon(
-                      key: const ValueKey('live-map-open-google-maps'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      ),
-                      onPressed: () => _openExternalNav(
-                        Uri.parse(
-                          AccurateGeoRoutingService.buildGoogleMapsNavigationUrl(
-                            originLat: me?.lat,
-                            originLng: me?.lng,
-                            fullFormattedAddress: _addressLine,
-                            destLat: dest.latitude,
-                            destLng: dest.longitude,
+                  if (dest != null && widget.tileLayer == null)
+                    Wrap(
+                      spacing: AppSpace.s4,
+                      runSpacing: AppSpace.s4,
+                      children: [
+                        AppButton(
+                          key: const ValueKey('live-map-open-google-maps'),
+                          variant: AppButtonVariant.tertiary,
+                          expand: false,
+                          compact: true,
+                          onPressed: () => _openExternalNav(
+                            Uri.parse(
+                              AccurateGeoRoutingService.buildGoogleMapsNavigationUrl(
+                                originLat: me?.lat,
+                                originLng: me?.lng,
+                                fullFormattedAddress: _addressLine,
+                                destLat: dest.latitude,
+                                destLng: dest.longitude,
+                              ),
+                            ),
                           ),
+                          icon: Icons.navigation_rounded,
+                          label: 'Maps',
                         ),
-                      ),
-                      icon: const Icon(Icons.navigation_rounded, size: 15),
-                      label: const Text('Maps', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        AppButton(
+                          variant: AppButtonVariant.tertiary,
+                          expand: false,
+                          compact: true,
+                          onPressed: () => _openExternalNav(
+                            Uri.parse('https://waze.com/ul?ll=${dest.latitude},${dest.longitude}&navigate=yes'),
+                          ),
+                          icon: Icons.alt_route_rounded,
+                          label: 'Waze',
+                        ),
+                      ],
                     ),
-                    TextButton.icon(
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      ),
-                      onPressed: () => _openExternalNav(
-                        Uri.parse('https://waze.com/ul?ll=${dest.latitude},${dest.longitude}&navigate=yes'),
-                      ),
-                      icon: const Icon(Icons.alt_route_rounded, size: 15),
-                      label: const Text('Waze', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                    ),
-                  ],
                 ],
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _LiveMapActionFab extends StatelessWidget {
+  const _LiveMapActionFab({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tk.surfaceAt(2),
+        shape: BoxShape.circle,
+        border: Border.all(color: tk.border),
+        boxShadow: tk.elevation(2),
+      ),
+      child: AppIconButton(
+        icon: icon,
+        tooltip: tooltip,
+        color: tk.text,
+        size: 22,
+        onPressed: onPressed,
+      ),
     );
   }
 }
@@ -699,20 +749,21 @@ class _Pill extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s8),
       decoration: BoxDecoration(
         color: tk.card.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(999),
-        boxShadow: [BoxShadow(color: tk.shadow, blurRadius: 8)],
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+        border: Border.all(color: tk.border),
+        boxShadow: tk.elevation(1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (loading) ...[
-            const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(width: 8),
+            const AppSkeleton(width: 14, height: 14, circle: true),
+            const SizedBox(width: AppSpace.s8),
           ],
-          Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+          Text(label, style: AppType.caption.copyWith(fontWeight: FontWeight.w700, color: tk.text)),
         ],
       ),
     );

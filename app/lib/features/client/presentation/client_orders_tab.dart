@@ -10,7 +10,7 @@ import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/state/unread_orders_badge_controller.dart';
-import '../../../core/ui/app_tokens.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/job_labels.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -64,15 +64,20 @@ class _ClientOrdersTabState extends State<ClientOrdersTab> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return Column(
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 12, 20, 4),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, AppSpace.s12, margin, AppSpace.s4),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              'Meus Pedidos',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+            child: Semantics(
+              header: true,
+              child: Text(
+                'Meus Pedidos',
+                style: AppType.display.copyWith(color: tk.text),
+              ),
             ),
           ),
         ),
@@ -81,20 +86,31 @@ class _ClientOrdersTabState extends State<ClientOrdersTab> {
             stream: _stream,
             builder: (context, snap) {
               if (snap.hasError) {
-                return const ErrorView(
+                return const AppErrorState(
                   message: 'Não foi possível carregar seus pedidos.',
                 );
               }
-              if (!snap.hasData) return const LoadingView();
-              final jobs = snap.data!;
-              unawaited(UnreadOrdersBadgeController.instance.ensureLoaded());
-              EagerImagePrefetcher.prefetchJobs(jobs, context: context);
-              final b = OrderBuckets.from(jobs);
-              return OrdersTabs(
-                buckets: b,
-                includeMediationTab: widget.includeMediationTab,
-                onOpen: widget.onOpen ??
-                    (c, j) => openClientServiceDetail(c, j.id),
+              final loading = !snap.hasData;
+              final jobs = snap.data ?? const <Job>[];
+              if (!loading) {
+                unawaited(UnreadOrdersBadgeController.instance.ensureLoaded());
+                EagerImagePrefetcher.prefetchJobs(jobs, context: context);
+              }
+              return AppSkeletonSwitcher(
+                loading: loading,
+                skeleton: AppSkeletonList(
+                  count: 4,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: margin,
+                    vertical: AppSpace.s16,
+                  ),
+                ),
+                child: OrdersTabs(
+                  buckets: OrderBuckets.from(jobs),
+                  includeMediationTab: widget.includeMediationTab,
+                  onOpen: widget.onOpen ??
+                      (c, j) => openClientServiceDetail(c, j.id),
+                ),
               );
             },
           ),
@@ -120,6 +136,8 @@ class OrdersTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     unawaited(UnreadOrdersBadgeController.instance.ensureLoaded());
+    final tk = context.tk;
+    final layout = context.layout;
     final tabs = [
       (
         OrderTab.inProgress,
@@ -147,6 +165,10 @@ class OrdersTabs extends StatelessWidget {
           'Acionamentos da Reserva de Garantia (Camada 3) aparecem aqui.',
         ),
     ];
+    final scrollable = layout.isCompact || layout.isLargeText;
+    final tabBaseStyle = (includeMediationTab && !scrollable)
+        ? AppType.caption
+        : AppType.bodySm;
     return DefaultTabController(
       length: tabs.length,
       child: ListenableBuilder(
@@ -155,9 +177,16 @@ class OrdersTabs extends StatelessWidget {
           return Column(
             children: [
               TabBar(
-                labelPadding: const EdgeInsets.symmetric(horizontal: 2),
-                labelColor: context.tk.clientAccent,
-                indicatorColor: context.tk.clientAccent,
+                isScrollable: scrollable,
+                tabAlignment: scrollable ? TabAlignment.start : TabAlignment.fill,
+                labelPadding: EdgeInsets.symmetric(
+                  horizontal: scrollable ? AppSpace.s16 : AppSpace.s4,
+                ),
+                labelColor: tk.accentInk,
+                unselectedLabelColor: tk.textMuted,
+                indicatorColor: tk.accent,
+                labelStyle: tabBaseStyle.copyWith(fontWeight: FontWeight.w700),
+                unselectedLabelStyle: tabBaseStyle.copyWith(fontWeight: FontWeight.w500),
                 tabs: [
                   for (final (tab, label, _, _) in tabs)
                     Builder(
@@ -170,22 +199,22 @@ class OrdersTabs extends StatelessWidget {
                             isLabelVisible: unreadCount > 0,
                             label: Text(
                               '$unreadCount',
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w800,
+                              style: AppType.tabular(AppType.caption).copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: tk.onAccent,
                               ),
                             ),
-                            backgroundColor: context.tk.clientAccent,
-                            textColor: Colors.white,
-                            offset: const Offset(10, -8),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
+                            backgroundColor: tk.accent,
+                            textColor: tk.onAccent,
+                            offset: const Offset(-2, -4),
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: unreadCount > 0 ? AppSpace.s16 : 0,
+                              ),
                               child: Text(
                                 label,
-                                style: const TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
                               ),
                             ),
                           ),
@@ -216,6 +245,20 @@ class OrdersTabs extends StatelessWidget {
   }
 }
 
+AppTone _toneForJob(Job job) {
+  if (job.isEmergency && job.status == JobStatus.open) return AppTone.danger;
+  return switch (job.status) {
+    JobStatus.open => AppTone.info,
+    JobStatus.awaitingPayment => AppTone.warning,
+    JobStatus.scheduled => AppTone.info,
+    JobStatus.inProgress => AppTone.success,
+    JobStatus.awaitingApproval => AppTone.warning,
+    JobStatus.completed => AppTone.success,
+    JobStatus.canceled => AppTone.neutral,
+    JobStatus.disputed => AppTone.danger,
+  };
+}
+
 class _List extends StatelessWidget {
   const _List({
     required this.tab,
@@ -234,20 +277,24 @@ class _List extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (jobs.isEmpty) {
-      return EmptyView(
+      return AppEmptyState(
         icon: Icons.receipt_long_outlined,
         title: empty,
-        subtitle: hint,
+        message: hint,
       );
     }
     final tk = context.tk;
+    final layout = context.layout;
     return RefreshIndicator(
       onRefresh: () async => JobService.notifyJobsChanged(),
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.symmetric(
+          horizontal: layout.margin,
+          vertical: AppSpace.s16,
+        ),
         itemCount: jobs.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: AppSpace.item),
         itemBuilder: (context, i) {
           final j = jobs[i];
           final isUnread = UnreadOrdersBadgeController.instance.isUnread(
@@ -259,80 +306,107 @@ class _List extends StatelessWidget {
             category: j.category,
             fallbackDescription: j.description,
           );
-          return AppCard(
-            key: ValueKey('order-card-${j.id}'),
-            borderColor: isUnread
-                ? tk.clientAccent.withValues(alpha: 0.52)
-                : tk.border,
-            onTap: () {
-              unawaited(
-                UnreadOrdersBadgeController.instance.markViewed(j, tab: tab),
-              );
-              onOpen(context, j);
-            },
-            child: Row(
-              children: [
-                CategoryBrandEmblem(
-                  categoryName: j.category,
-                  size: 50,
-                  showCornerBadge: false,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          final statusStyle = jobStatusStyle(context, j);
+          final statusChip = AppStatusChip(
+            statusStyle.label,
+            tone: _toneForJob(j),
+            icon: statusStyle.icon,
+          );
+          final stackPrice = layout.isLargeText || layout.isCompact;
+          return AppStaggerItem(
+            index: i,
+            scope: 'client-orders-${tab.name}',
+            child: AppHero(
+              tag: 'order-card-${j.id}',
+              child: Material(
+                type: MaterialType.transparency,
+                child: AppCard(
+                  key: ValueKey('order-card-${j.id}'),
+                  variant: AppCardVariant.elevated,
+                  borderColor: isUnread
+                      ? tk.accent.withValues(alpha: 0.52)
+                      : tk.border,
+                  onTap: () {
+                    unawaited(
+                      UnreadOrdersBadgeController.instance.markViewed(j, tab: tab),
+                    );
+                    onOpen(context, j);
+                  },
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        headline,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
+                      CategoryBrandEmblem(
+                        categoryName: j.category,
+                        size: 50,
+                        showCornerBadge: false,
+                      ),
+                      const SizedBox(width: AppSpace.s12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              headline,
+                              maxLines: 2,
+                              style: AppType.titleSm.copyWith(color: tk.text),
+                            ),
+                            const SizedBox(height: AppSpace.s4),
+                            Row(
+                              children: [
+                                if (isUnread) ...[
+                                  Container(
+                                    key: ValueKey('order-unread-dot-${j.id}'),
+                                    width: 7,
+                                    height: 7,
+                                    decoration: BoxDecoration(
+                                      color: tk.accent,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpace.s8),
+                                ],
+                                Flexible(
+                                  child: Text(
+                                    '${j.code} • ${relativeTime(j.createdAt)}',
+                                    style: AppType.caption.copyWith(color: tk.textMuted),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: AppSpace.s8),
+                            if (stackPrice && j.agreedPrice != null)
+                              Wrap(
+                                spacing: AppSpace.s8,
+                                runSpacing: AppSpace.s8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  statusChip,
+                                  AppPrice(
+                                    value: j.agreedPrice!,
+                                    size: AppPriceSize.sm,
+                                    color: tk.text,
+                                  ),
+                                ],
+                              )
+                            else
+                              statusChip,
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          if (isUnread) ...[
-                            Container(
-                              key: ValueKey('order-unread-dot-${j.id}'),
-                              width: 7,
-                              height: 7,
-                              decoration: BoxDecoration(
-                                color: tk.clientAccent,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                          ],
-                          Flexible(
-                            child: Text(
-                              '${j.code} • ${relativeTime(j.createdAt)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: tk.textMuted,
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      JobStatusChip(j),
+                      if (!stackPrice && j.agreedPrice != null) ...[
+                        const SizedBox(width: AppSpace.s8),
+                        AppPrice(
+                          value: j.agreedPrice!,
+                          size: AppPriceSize.sm,
+                          color: tk.text,
+                        ),
+                      ],
+                      const SizedBox(width: AppSpace.s4),
+                      Icon(Icons.chevron_right_rounded, color: tk.textMuted),
                     ],
                   ),
                 ),
-                if (j.agreedPrice != null) ...[
-                  const SizedBox(width: 6),
-                  Text(
-                    brl(j.agreedPrice),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ],
-                Icon(Icons.chevron_right_rounded, color: tk.textMuted),
-              ],
+              ),
             ),
           );
         },
@@ -386,118 +460,102 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final profile = widget.profile;
     EagerImagePrefetcher.prefetchUrls([_avatarUrl], context: context);
     final emailSubtitle = profile.emailAddressIfPresent;
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.symmetric(horizontal: margin, vertical: AppSpace.s20),
       children: [
-        const Text(
-          'Perfil',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+        Semantics(
+          header: true,
+          child: Text(
+            'Perfil',
+            style: AppType.display.copyWith(color: tk.text),
+          ),
         ),
-        const SizedBox(height: 18),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            EditableAvatar(
-              url: _avatarUrl,
-              name: profile.officialCivilName,
-              radius: 36,
-              customPicker: widget.customPhotoPicker,
-              customUploader: widget.customAvatarUploader,
-              onChanged: (url) {
-                if (mounted) setState(() => _avatarUrl = url);
-              },
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    profile.officialCivilName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  if (emailSubtitle != null) ...[
-                    const SizedBox(height: 2),
+        const SizedBox(height: AppSpace.s16),
+        AppCard(
+          variant: AppCardVariant.elevated,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              EditableAvatar(
+                url: _avatarUrl,
+                name: profile.officialCivilName,
+                radius: 36,
+                customPicker: widget.customPhotoPicker,
+                customUploader: widget.customAvatarUploader,
+                onChanged: (url) {
+                  if (mounted) setState(() => _avatarUrl = url);
+                },
+              ),
+              const SizedBox(width: AppSpace.s16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      emailSubtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: context.tk.textMuted,
-                      ),
+                      profile.officialCivilName,
+                      style: AppType.title.copyWith(color: tk.text),
                     ),
-                  ],
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      StatusChip('Cliente', color: context.tk.clientAccent),
-                      if (profile.hasVerifiedCivilIdentity)
-                        StatusChip(
-                          'Biometria & Documento Verificados',
-                          color: context.tk.success,
-                        ),
+                    if (emailSubtitle != null) ...[
+                      const SizedBox(height: AppSpace.s2),
+                      Text(
+                        emailSubtitle,
+                        style: AppType.caption.copyWith(color: tk.textMuted),
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    key: const Key('client-profile-change-photo-btn'),
-                    onPressed: _pickAndSavePhoto,
-                    style: OutlinedButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      minimumSize: const Size(0, 36),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      foregroundColor: context.tk.clientAccent,
-                      side: BorderSide(
-                        color: context.tk.clientAccent.withValues(alpha: 0.45),
-                      ),
+                    const SizedBox(height: AppSpace.s8),
+                    Wrap(
+                      spacing: AppSpace.s8,
+                      runSpacing: AppSpace.s4,
+                      children: [
+                        const AppStatusChip('Cliente', tone: AppTone.accent),
+                        if (profile.hasVerifiedCivilIdentity)
+                          const AppStatusChip(
+                            'Biometria & Documento Verificados',
+                            tone: AppTone.success,
+                          ),
+                      ],
                     ),
-                    icon: Icon(
-                      _hasPhoto
+                    const SizedBox(height: AppSpace.s12),
+                    AppButton(
+                      key: const Key('client-profile-change-photo-btn'),
+                      onPressed: _pickAndSavePhoto,
+                      variant: AppButtonVariant.secondary,
+                      compact: true,
+                      expand: false,
+                      icon: _hasPhoto
                           ? Icons.photo_camera_rounded
                           : Icons.add_a_photo_rounded,
-                      size: 16,
+                      label: _hasPhoto ? 'Alterar foto' : 'Adicionar foto de perfil',
                     ),
-                    label: Text(
-                      _hasPhoto ? 'Alterar foto' : 'Adicionar foto de perfil',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpace.s16),
         const AppQuickUpdateButton(compact: false),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpace.section),
+        Semantics(
+          header: true,
+          child: Text('Sua conta', style: AppType.title.copyWith(color: tk.text)),
+        ),
+        const SizedBox(height: AppSpace.s8),
         _Tile(
           kind: ProfileMenuIconKind.clientPassport,
           title: 'Prontuário da Casa (Passaporte)',
           subtitle: 'Histórico auditado e PDF para vistoria/seguradora',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            AppRoute(
               builder: (_) => PropertyPassportScreen(
                 initialOwnerName: profile.officialCivilName,
-                initialAddress: (profile.addressLine ?? '').split(' | ').first,
+                initialAddress:
+                    (profile.addressLine ?? '').split(' | ').first,
               ),
             ),
           ),
@@ -505,11 +563,13 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
         _Tile(
           kind: ProfileMenuIconKind.clientAddress,
           title: 'Meu endereço',
-          subtitle:
-              (profile.addressLine ?? 'Adicionar endereço').split(' | ').first,
+          subtitle: (profile.addressLine ?? 'Adicionar endereço')
+              .split(' | ')
+              .first,
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => EditAddressScreen(currentLine: profile.addressLine),
+            AppRoute(
+              builder: (_) =>
+                  EditAddressScreen(currentLine: profile.addressLine),
             ),
           ),
         ),
@@ -518,7 +578,7 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           title: 'Minha carteira',
           subtitle: 'Saldo, valor em garantia e extrato',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const CarteiraClienteScreen()),
+            AppRoute(builder: (_) => const CarteiraClienteScreen()),
           ),
         ),
         _Tile(
@@ -526,7 +586,7 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           title: 'Histórico de serviços',
           subtitle: 'Reveja serviços concluídos, fotos e conversas',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            AppRoute(
               builder: (_) => const HistoricoServicosClienteScreen(),
             ),
           ),
@@ -536,7 +596,7 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           title: 'Minhas conquistas',
           subtitle: 'Troféus por pedidos, avaliações e mais',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            AppRoute(
               builder: (_) => ClientAchievementsScreen(profile: profile),
             ),
           ),
@@ -546,7 +606,7 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           title: 'Ajuda e suporte',
           subtitle: 'Fale com a central e acompanhe seus chamados',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SupportCenterScreen()),
+            AppRoute(builder: (_) => const SupportCenterScreen()),
           ),
         ),
         _Tile(
@@ -554,14 +614,14 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           title: 'Termos de Uso e Mandato Legal',
           subtitle: 'Contrato, custódia e cláusula-mandato oficial',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(
+            AppRoute(
               builder: (_) => const VerificacaoStep6cTermosScreen(),
             ),
           ),
         ),
         AppearanceTile(
-          accent: context.tk.clientAccent,
-          soft: context.tk.clientSoft,
+          accent: tk.accentInk,
+          soft: tk.accentSoft,
           kind: ProfileMenuIconKind.clientAppearance,
         ),
         _Tile(
@@ -569,10 +629,10 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           title: 'Excluir conta',
           subtitle: 'Receba seu dossiê e apague seus dados',
           onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const DeleteAccountScreen()),
+            AppRoute(builder: (_) => const DeleteAccountScreen()),
           ),
         ),
-        const Divider(height: 32),
+        const SizedBox(height: AppSpace.section),
         InfoBanner(
           profile.isProvider
               ? 'Você também é profissional. Troque de modo quando quiser.'
@@ -580,18 +640,19 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
           tone: BannerTone.promo,
           icon: Icons.swap_horiz_rounded,
         ),
-        const SizedBox(height: 12),
-        SecondaryButton(
+        const SizedBox(height: AppSpace.s12),
+        AppButton(
           label: profile.isProvider
               ? 'Ir para o modo Profissional'
               : 'Quero trabalhar como profissional',
           icon: Icons.engineering_rounded,
+          variant: AppButtonVariant.secondary,
           onPressed: () => AppSession.instance.choose(UserMode.provider),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppSpace.s12),
         TextButton.icon(
           onPressed: () async {
-            final ok = await confirmDialog(
+            final ok = await AppDialog.confirm(
               context,
               title: 'Sair da conta?',
               message:
@@ -601,10 +662,14 @@ class _ClientProfileTabState extends State<ClientProfileTab> {
             );
             if (ok) await ProfileService().signOut();
           },
-          icon: Icon(Icons.logout_rounded, color: context.tk.danger),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(AppGeometry.minTarget, AppGeometry.minTarget),
+            foregroundColor: tk.dangerInk,
+          ),
+          icon: Icon(Icons.logout_rounded, color: tk.dangerInk),
           label: Text(
             'Sair da conta',
-            style: TextStyle(color: context.tk.danger),
+            style: AppType.bodyStrong.copyWith(color: tk.dangerInk),
           ),
         ),
       ],
@@ -627,12 +692,12 @@ class _Tile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
+    return AppListTile(
       leading: ProfileMenuEmblem(kind: kind, size: 42),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-      subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
-      trailing: const Icon(Icons.chevron_right_rounded),
+      title: title,
+      subtitle: subtitle,
+      showChevron: true,
+      padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
       onTap: onTap,
     );
   }

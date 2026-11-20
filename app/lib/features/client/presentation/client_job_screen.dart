@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -7,43 +6,51 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/models/marketplace_models.dart';
+import '../../../core/models/wallet_models.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
-import '../../../core/services/real_time_route_and_traffic_service.dart';
-import '../../../core/state/smart_triage_controller.dart';
-import '../../../core/state/unread_orders_badge_controller.dart';
-import '../../shared/presentation/order_live_map_modal_screen.dart';
-import '../../shared/presentation/smart_triage_widgets.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/services/real_time_route_and_traffic_service.dart';
 import '../../../core/services/scheduling_service.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../../core/state/unread_orders_badge_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
-import 'order_tracking_screen.dart';
+import '../../shared/presentation/order_live_map_modal_screen.dart';
+import '../../shared/presentation/scheduled_service_screen.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import 'completion_screens.dart';
-import '../../../core/models/wallet_models.dart';
 import 'insufficient_funds_sheet.dart';
+import 'order_tracking_screen.dart';
 import 'payment_widgets.dart';
 import 'provider_public_profile_screen.dart';
 import 'provider_search_screen.dart';
-import '../../shared/presentation/scheduled_service_screen.dart';
-import '../../../core/ui/app_tokens.dart';
 
 /// Acompanha UM pedido do cliente em tempo real e mostra a tela certa para
 /// cada estado (aguardando orçamento, radar, pagamento, execução, conclusão).
 class ClientJobScreen extends StatefulWidget {
-  const ClientJobScreen({super.key, required this.jobId});
+  const ClientJobScreen({
+    super.key,
+    required this.jobId,
+    this.jobStreamOverride,
+  });
 
   final String jobId;
+
+  /// Stream opcional para testes/galeria (evita instanciar [JobService] sem Supabase).
+  final Stream<Job?>? jobStreamOverride;
 
   @override
   State<ClientJobScreen> createState() => _ClientJobScreenState();
 }
 
 class _ClientJobScreenState extends State<ClientJobScreen> {
-  final _jobs = JobService();
-  late final Stream<Job?> _stream = _jobs.streamJob(widget.jobId).asBroadcastStream();
+  late final Stream<Job?> _stream =
+      (widget.jobStreamOverride ?? JobService().streamJob(widget.jobId)).asBroadcastStream();
   JobStatus? _previous;
 
   void _maybeShowMatch(Job job) {
@@ -54,10 +61,7 @@ class _ClientJobScreenState extends State<ClientJobScreen> {
         if (!mounted) return;
         final provider = await ProviderService().byId(job.providerId!);
         if (!mounted || provider == null) return;
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => _MatchDialog(provider: provider),
-        );
+        await _showMatchDialog(context, provider);
       });
     }
   }
@@ -68,12 +72,21 @@ class _ClientJobScreenState extends State<ClientJobScreen> {
       stream: _stream,
       builder: (context, snap) {
         if (snap.hasError) {
-          return AppScaffold(appBar: AppBar(), body: const ErrorView(message: 'Não foi possível carregar o pedido.'));
+          return const AppScaffold(
+            appBar: AppAppBar(),
+            body: AppErrorState(message: 'Não foi possível carregar o pedido.'),
+          );
         }
         if (!snap.hasData) {
           return snap.connectionState == ConnectionState.waiting
-              ? AppScaffold(appBar: AppBar(), body: const LoadingView())
-              : AppScaffold(appBar: AppBar(), body: const ErrorView(message: 'Pedido não encontrado.'));
+              ? const AppScaffold(
+                  appBar: AppAppBar(),
+                  body: AppSkeletonList(count: 4),
+                )
+              : const AppScaffold(
+                  appBar: AppAppBar(),
+                  body: AppErrorState(message: 'Pedido não encontrado.'),
+                );
         }
         final job = snap.data!;
         _maybeShowMatch(job);
@@ -101,7 +114,12 @@ class _ClientJobScreenState extends State<ClientJobScreen> {
 // ============================================================ aguardando orçamento
 
 class WaitingQuotesScreen extends StatefulWidget {
-  const WaitingQuotesScreen({super.key, required this.job, @visibleForTesting this.quotesStream, @visibleForTesting this.invitesStream});
+  const WaitingQuotesScreen({
+    super.key,
+    required this.job,
+    @visibleForTesting this.quotesStream,
+    @visibleForTesting this.invitesStream,
+  });
 
   final Job job;
 
@@ -163,7 +181,7 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
   }
 
   Future<void> _cancel() async {
-    final ok = await confirmDialog(
+    final ok = await AppDialog.confirm(
       context,
       title: 'Cancelar pedido?',
       message: 'Os orçamentos recebidos serão descartados. Você não paga nada.',
@@ -175,7 +193,7 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
     try {
       await _jobs.cancelJob(widget.job.id);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
@@ -183,7 +201,7 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
     final profile = await ProfileService().fetchCurrent();
     if (profile == null || !mounted) return;
     await Navigator.of(context).push(
-      MaterialPageRoute(
+      AppRoute(
         builder: (_) => ProviderSearchScreen(
           category: widget.job.category,
           profile: profile,
@@ -193,9 +211,13 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
             try {
               final n = await _jobs.invite(widget.job.id, [p.id]);
               if (!mounted) return;
-              showSnack(context, n > 0 ? 'Pedido enviado para ${p.fullName}!' : 'Não foi possível convidar este profissional.', error: n == 0);
+              AppSnackbar.show(
+                context,
+                n > 0 ? 'Pedido enviado para ${p.fullName}!' : 'Não foi possível convidar este profissional.',
+                kind: n > 0 ? AppSnackKind.success : AppSnackKind.error,
+              );
             } catch (e) {
-              if (mounted) showSnack(context, friendlyError(e), error: true);
+              if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
             }
           },
         ),
@@ -261,17 +283,20 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final job = widget.job;
     return AppScaffold(
-      appBar: AppBar(
+      appBar: AppAppBar(
         // Voltar discreto (seta fina) em vez do "minimizar": sempre volta para onde o cliente estava.
-        leading: IconButton(
+        leading: AppIconButton(
           key: const ValueKey('waiting-back'),
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          icon: Icons.arrow_back_ios_new_rounded,
+          size: 20,
           tooltip: 'Voltar',
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const BrandLogo(),
+        titleWidget: const BrandLogo(),
       ),
       body: StreamBuilder<List<Quote>>(
         stream: _quotes,
@@ -288,67 +313,110 @@ class _WaitingQuotesScreenState extends State<WaitingQuotesScreen> {
 
               return ListView(
                 cacheExtent: 2400,
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
+                padding: EdgeInsets.fromLTRB(margin, AppSpace.s4, margin, AppSpace.s32),
                 children: [
-                  LiveSearchRadarHeader(
-                    job: job,
-                    live: live,
-                    invites: invites,
-                    cards: _cards,
-                    quotes: pendingQuotes,
-                    onOpenMap: () => _openJobMapModal(context),
+                  AppStaggerItem(
+                    index: 0,
+                    scope: 'waiting-quotes-${job.id}',
+                    child: LiveSearchRadarHeader(
+                      job: job,
+                      live: live,
+                      invites: invites,
+                      cards: _cards,
+                      quotes: pendingQuotes,
+                      onOpenMap: () => _openJobMapModal(context),
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  OrderPublishStepper(quotes: pendingQuotes.length),
-                  const SizedBox(height: 16),
-                  _OrderSummary(
-                    job: job,
-                    onOpenMap: () => _openJobMapModal(context),
+                  const SizedBox(height: AppSpace.s16),
+                  AppStaggerItem(
+                    index: 1,
+                    scope: 'waiting-quotes-${job.id}',
+                    child: OrderPublishStepper(quotes: pendingQuotes.length),
                   ),
-                  const SizedBox(height: 18),
-                  _QuoteSlots(received: pendingQuotes.length),
+                  const SizedBox(height: AppSpace.s16),
+                  AppStaggerItem(
+                    index: 2,
+                    scope: 'waiting-quotes-${job.id}',
+                    child: _OrderSummary(
+                      job: job,
+                      onOpenMap: () => _openJobMapModal(context),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s16),
+                  AppStaggerItem(
+                    index: 3,
+                    scope: 'waiting-quotes-${job.id}',
+                    child: _QuoteSlots(received: pendingQuotes.length),
+                  ),
                   if (pendingQuotes.isNotEmpty) ...[
-                    const SizedBox(height: 14),
+                    const SizedBox(height: AppSpace.s16),
                     const InfoBanner(
                       'Compare e aceite o melhor. O pagamento só acontece depois e fica retido até o serviço ser concluído.',
                       tone: BannerTone.security,
                     ),
-                    const SizedBox(height: 14),
-                    for (final q in pendingQuotes) _QuoteCard(quote: q, provider: _cards[q.providerId], job: job),
+                    const SizedBox(height: AppSpace.s16),
+                    AppSection(
+                      title: 'Propostas recebidas',
+                      child: Column(
+                        children: [
+                          for (var i = 0; i < pendingQuotes.length; i++)
+                            AppStaggerItem(
+                              index: i,
+                              scope: 'waiting-quote-list-${job.id}',
+                              child: _QuoteCard(
+                                quote: pendingQuotes[i],
+                                provider: _cards[pendingQuotes[i].providerId],
+                                job: job,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                   ],
                   if (job.isDirect && slotsLeft > 0 && job.status == JobStatus.open) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: AppSpace.s8),
                     AppCard(
-                      color: context.tk.clientSoft,
-                      borderColor: context.tk.clientAccent.withValues(alpha: 0.5),
+                      variant: AppCardVariant.tonal,
+                      color: tk.accentSoft,
+                      borderColor: tk.accent.withValues(alpha: 0.45),
                       child: Column(
                         children: [
                           Row(
                             children: [
-                              Icon(Icons.groups_rounded, color: context.tk.clientAccent),
-                              const SizedBox(width: 10),
-                              const Expanded(
-                                child: Text('Não quer esperar? Envie o mesmo pedido para mais profissionais e compare os preços.',
-                                    style: TextStyle(fontWeight: FontWeight.w600, height: 1.3)),
+                              Icon(Icons.groups_rounded, color: tk.accentInk),
+                              const SizedBox(width: AppSpace.s12),
+                              Expanded(
+                                child: Text(
+                                  'Não quer esperar? Envie o mesmo pedido para mais profissionais e compare os preços.',
+                                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                                ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          SecondaryButton(
+                          const SizedBox(height: AppSpace.s12),
+                          AppButton(
                             label: '+ Adicionar outro profissional (restam $slotsLeft)',
+                            variant: AppButtonVariant.secondary,
                             onPressed: () => _addProvider(invites),
                           ),
                         ],
                       ),
                     ),
                   ],
-                  const SizedBox(height: 14),
+                  const SizedBox(height: AppSpace.s16),
                   Center(
                     child: TextButton.icon(
                       key: const ValueKey('waiting-cancel'),
                       onPressed: _cancel,
-                      icon: Icon(Icons.close_rounded, size: 18, color: context.tk.textMuted),
-                      label: Text('Cancelar pedido', style: TextStyle(color: context.tk.textMuted, fontWeight: FontWeight.w600)),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(AppGeometry.minTarget, AppGeometry.minTarget),
+                        foregroundColor: tk.textMuted,
+                      ),
+                      icon: Icon(Icons.close_rounded, size: 18, color: tk.textMuted),
+                      label: Text(
+                        'Cancelar pedido',
+                        style: AppType.bodyStrong.copyWith(color: tk.textMuted),
+                      ),
                     ),
                   ),
                 ],
@@ -409,8 +477,7 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    if (disableAnimations) {
+    if (AppMotion.reduced(context)) {
       if (_radarCtrl.isAnimating) _radarCtrl.stop();
       _radarCtrl.value = 0.35;
     } else if (!_radarCtrl.isAnimating) {
@@ -493,16 +560,17 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
     return Container(
       key: const ValueKey('waiting-hero'),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(AppGeometry.heroRadius),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            tk.clientSoft,
-            Color.alphaBlend(tk.clientAccent.withValues(alpha: tk.isDark ? 0.12 : 0.06), tk.card),
+            tk.accentSoft,
+            Color.alphaBlend(tk.accent.withValues(alpha: tk.isDark ? 0.12 : 0.06), tk.card),
           ],
         ),
-        border: Border.all(color: tk.clientAccent.withValues(alpha: 0.35)),
+        border: Border.all(color: tk.accent.withValues(alpha: 0.35)),
+        boxShadow: tk.elevation(2),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -513,7 +581,7 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
             behavior: HitTestBehavior.opaque,
             onTap: widget.onOpenMap,
             child: SizedBox(
-              height: 188,
+              height: 196,
               width: double.infinity,
               child: Stack(
                 fit: StackFit.expand,
@@ -564,7 +632,7 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
                         builder: (context, child) => CustomPaint(
                           painter: _RadarConcentricPainter(
                             progress: _radarCtrl.value,
-                            color: tk.clientAccent,
+                            color: tk.accent,
                             secondaryColor: tk.success,
                           ),
                           child: child,
@@ -578,44 +646,46 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
                               gradient: LinearGradient(
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
-                                colors: [tk.clientAccent, tk.clientAccent.withValues(alpha: 0.78)],
+                                colors: [tk.accent, tk.accent.withValues(alpha: 0.78)],
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: tk.clientAccent.withValues(alpha: 0.45),
-                                  blurRadius: 18,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                              border: Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2.5),
+                              boxShadow: tk.isDark
+                                  ? const []
+                                  : [
+                                      BoxShadow(
+                                        color: tk.accent.withValues(alpha: 0.45),
+                                        blurRadius: 18,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                              border: Border.all(color: tk.onAccent.withValues(alpha: 0.85), width: 2.5),
                             ),
                             child: Icon(
                               hasQuotes ? Icons.request_quote_rounded : Icons.home_work_rounded,
                               size: 32,
-                              color: AppTokens.onColor(tk.clientAccent),
+                              color: tk.onAccent,
                             ),
                           ),
                         ),
                       ),
                     ),
-                  // Badge superior esquerdo: alcance regional e especialistas verificados
+                  // Badge superior: alcance regional e especialistas verificados
                   Positioned(
-                    top: 12,
-                    left: 12,
-                    right: 12,
+                    top: AppSpace.s12,
+                    left: AppSpace.s12,
+                    right: AppSpace.s12,
                     child: Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
+                      spacing: AppSpace.s8,
+                      runSpacing: AppSpace.s8,
                       alignment: WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
                           key: const ValueKey('live-radar-specialists-badge'),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4),
                           decoration: BoxDecoration(
-                            color: tk.surface.withValues(alpha: 0.90),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: tk.clientAccent.withValues(alpha: 0.40)),
+                            color: tk.surface.withValues(alpha: 0.94),
+                            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+                            border: Border.all(color: tk.accent.withValues(alpha: 0.40)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -628,15 +698,12 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
                                   color: tk.success,
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              const SizedBox(width: AppSpace.s8),
                               Flexible(
                                 child: Text(
                                   '$notifiedCount especialistas verificados no alcance',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
+                                  style: AppType.caption.copyWith(
+                                    fontWeight: FontWeight.w700,
                                     color: tk.text,
                                   ),
                                 ),
@@ -645,26 +712,23 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
                           ),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4),
                           decoration: BoxDecoration(
-                            color: tk.surface.withValues(alpha: 0.90),
-                            borderRadius: BorderRadius.circular(999),
+                            color: tk.surface.withValues(alpha: 0.94),
+                            borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
                             border: Border.all(color: tk.border),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.map_rounded, size: 13, color: tk.clientAccent),
-                              const SizedBox(width: 4),
+                              Icon(Icons.map_rounded, size: 14, color: tk.accentInk),
+                              const SizedBox(width: AppSpace.s4),
                               Flexible(
                                 child: Text(
                                   'Ver mapa e rota',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w800,
-                                    color: tk.clientAccent,
+                                  style: AppType.caption.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: tk.accentInk,
                                   ),
                                 ),
                               ),
@@ -679,19 +743,19 @@ class _LiveSearchRadarHeaderState extends State<LiveSearchRadarHeader> with Sing
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            padding: const EdgeInsets.fromLTRB(AppSpace.s20, AppSpace.s16, AppSpace.s20, AppSpace.s20),
             child: Column(
               children: [
                 Text(
                   title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  style: AppType.headline.copyWith(color: tk.text),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: AppSpace.s8),
                 Text(
                   subtitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: tk.textMuted, height: 1.4),
+                  style: AppType.bodySm.copyWith(color: tk.textMuted),
                 ),
               ],
             ),
@@ -751,106 +815,141 @@ class OrderPublishStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final layout = context.layout;
     final capped = quotes.clamp(0, 3);
     final steps = [
       (
         label: '1. Pedido Publicado',
-        shortLabel: 'Publicado',
         icon: Icons.check_circle_outline_rounded,
         done: true,
         active: false,
       ),
       (
         label: '2. Especialistas Notificados',
-        shortLabel: 'Notificados',
         icon: Icons.campaign_rounded,
         done: true,
         active: quotes == 0,
       ),
       (
         label: '3. Aguardando Propostas ($capped/3)',
-        shortLabel: 'Propostas ($capped/3)',
         icon: Icons.request_quote_rounded,
         done: quotes > 0,
         active: true,
       ),
       (
         label: '4. Contratação Segura',
-        shortLabel: 'Contratação',
         icon: Icons.verified_user_outlined,
         done: false,
         active: false,
       ),
     ];
 
+    Widget iconBadge(IconData icon, {required bool done, required bool active}) {
+      return Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: done
+                ? [tk.accent, tk.accent.withValues(alpha: 0.8)]
+                : active
+                    ? [tk.accentSoft, tk.surface]
+                    : [tk.surface, tk.card],
+          ),
+          border: Border.all(
+            color: (done || active) ? tk.accent : tk.border,
+            width: 1.5,
+          ),
+        ),
+        child: Icon(
+          icon,
+          size: 18,
+          color: done ? tk.onAccent : (active ? tk.accentInk : tk.textMuted),
+        ),
+      );
+    }
+
     return AppCard(
       key: const ValueKey('waiting-steps'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (var i = 0; i < steps.length; i++) ...[
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: steps[i].done
-                            ? [tk.clientAccent, tk.clientAccent.withValues(alpha: 0.78)]
-                            : steps[i].active
-                                ? [tk.clientSoft, tk.surface]
-                                : [tk.surface, tk.card],
-                      ),
-                      border: Border.all(
-                        color: (steps[i].done || steps[i].active) ? tk.clientAccent : tk.border,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Icon(
-                      steps[i].icon,
-                      size: 18,
-                      color: steps[i].done
-                          ? AppTokens.onColor(tk.clientAccent)
-                          : (steps[i].active ? tk.clientAccent : tk.textMuted),
+      variant: AppCardVariant.outlined,
+      padding: const EdgeInsets.all(AppSpace.s16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontal = constraints.maxWidth >= 460 && !layout.isLargeText;
+          if (horizontal) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < steps.length; i++) ...[
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        iconBadge(steps[i].icon, done: steps[i].done, active: steps[i].active),
+                        const SizedBox(height: AppSpace.s8),
+                        Text(
+                          steps[i].label,
+                          textAlign: TextAlign.center,
+                          style: AppType.caption.copyWith(
+                            fontWeight: (steps[i].done || steps[i].active) ? FontWeight.w700 : FontWeight.w500,
+                            color: (steps[i].done || steps[i].active) ? tk.text : tk.textMuted,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    steps[i].label,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      height: 1.2,
-                      fontWeight: (steps[i].done || steps[i].active) ? FontWeight.w800 : FontWeight.w600,
-                      color: (steps[i].done || steps[i].active) ? tk.text : tk.textMuted,
+                  if (i < steps.length - 1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 17, left: AppSpace.s2, right: AppSpace.s2),
+                      child: SizedBox(
+                        width: 12,
+                        child: Divider(
+                          height: 2,
+                          thickness: 2,
+                          color: steps[i].done ? tk.accent : tk.border,
+                        ),
+                      ),
                     ),
-                  ),
                 ],
-              ),
-            ),
-            if (i < steps.length - 1)
-              Padding(
-                padding: const EdgeInsets.only(top: 17, left: 2, right: 2),
-                child: SizedBox(
-                  width: 12,
-                  child: Divider(
-                    height: 2,
-                    thickness: 2,
-                    color: steps[i].done ? tk.clientAccent : tk.border,
-                  ),
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < steps.length; i++) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    iconBadge(steps[i].icon, done: steps[i].done, active: steps[i].active),
+                    const SizedBox(width: AppSpace.s12),
+                    Expanded(
+                      child: Text(
+                        steps[i].label,
+                        style: AppType.bodySm.copyWith(
+                          fontWeight: (steps[i].done || steps[i].active) ? FontWeight.w600 : FontWeight.w400,
+                          color: (steps[i].done || steps[i].active) ? tk.text : tk.textMuted,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-          ],
-        ],
+                if (i < steps.length - 1)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 17, top: AppSpace.s4, bottom: AppSpace.s4),
+                    child: Container(
+                      width: 2,
+                      height: AppSpace.s12,
+                      color: steps[i].done ? tk.accent : tk.border,
+                    ),
+                  ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -873,45 +972,51 @@ class _OrderSummary extends StatelessWidget {
     );
     return AppCard(
       key: const ValueKey('waiting-summary'),
+      variant: AppCardVariant.outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               CategoryBrandEmblem(categoryName: job.category, size: 42, showCornerBadge: false),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpace.s12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(job.category, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5)),
-                    Text('${job.code} • publicado ${relativeTime(job.createdAt)}', style: TextStyle(color: tk.textMuted, fontSize: 12.5)),
+                    Text(job.category, style: AppType.titleSm.copyWith(color: tk.text)),
+                    Text(
+                      '${job.code} • publicado ${relativeTime(job.createdAt)}',
+                      style: AppType.caption.copyWith(color: tk.textMuted),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          const StatusChip('Aguardando Orçamento', icon: Icons.hourglass_top_rounded),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpace.s12),
+          const AppStatusChip(
+            'Aguardando Orçamento',
+            tone: AppTone.info,
+            icon: Icons.hourglass_top_rounded,
+          ),
+          const SizedBox(height: AppSpace.s12),
           Text(
             cleanHeadline,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, height: 1.3),
+            style: AppType.titleSm.copyWith(color: tk.text),
           ),
           if (job.description.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(job.description, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(height: 1.4)),
+            const SizedBox(height: AppSpace.s8),
+            Text(job.description, style: AppType.body.copyWith(color: tk.text)),
           ],
           if (job.photoPaths.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.s12),
             SizedBox(
               height: 68,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: job.photoPaths.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
                 itemBuilder: (ctx, i) => GestureDetector(
                   onTap: () => FullscreenSwipePhotoGallery.show(
                     ctx,
@@ -922,21 +1027,21 @@ class _OrderSummary extends StatelessWidget {
                     initialIndex: i,
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
                     child: SizedBox(
                       width: 68,
                       height: 68,
-                      child: SignedImage(path: job.photoPaths[i], fit: BoxFit.cover, radius: 12),
+                      child: SignedImage(path: job.photoPaths[i], fit: BoxFit.cover, radius: AppGeometry.iconTileRadius),
                     ),
                   ),
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpace.s12),
           Wrap(
-            spacing: 14,
-            runSpacing: 6,
+            spacing: AppSpace.s12,
+            runSpacing: AppSpace.s8,
             children: [
               if (job.scheduledFor != null) _Meta(icon: Icons.event_rounded, text: dateLong(job.scheduledFor!)),
               if ((job.addressSummary ?? '').isNotEmpty)
@@ -962,25 +1067,34 @@ class _Meta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = onTap != null ? context.tk.clientAccent : context.tk.textMuted;
+    final tk = context.tk;
+    final color = onTap != null ? tk.accentInk : tk.textMuted;
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 16, color: color),
-        const SizedBox(width: 5),
-        Flexible(child: Text(text, style: TextStyle(color: color, fontSize: 13, fontWeight: onTap != null ? FontWeight.w700 : FontWeight.w600))),
+        const SizedBox(width: AppSpace.s4),
+        Flexible(
+          child: Text(
+            text,
+            style: AppType.bodySm.copyWith(
+              color: color,
+              fontWeight: onTap != null ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ),
         if (onTap != null) ...[
-          const SizedBox(width: 4),
-          Icon(Icons.map_outlined, size: 14, color: color),
+          const SizedBox(width: AppSpace.s4),
+          Icon(Icons.map_outlined, size: 15, color: color),
         ],
       ],
     );
     if (onTap == null) return row;
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
+    return AppPressable(
+      borderRadius: BorderRadius.circular(AppSpace.s8),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+        padding: const EdgeInsets.symmetric(vertical: AppSpace.s4, horizontal: AppSpace.s4),
         child: row,
       ),
     );
@@ -998,100 +1112,121 @@ class _QuoteSlots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final layout = context.layout;
+    Widget slotTile(int i, {required bool wrapped}) {
+      final filled = i < received;
+      return Container(
+        constraints: const BoxConstraints(minHeight: 40),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+          color: filled ? tk.accentSoft : tk.surface,
+          border: Border.all(
+            color: filled ? tk.accent : tk.border,
+            width: 1.4,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: wrapped ? MainAxisSize.min : MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              filled ? Icons.check_circle_rounded : Icons.hourglass_empty_rounded,
+              size: 16,
+              color: filled ? tk.accentInk : tk.textMuted,
+            ),
+            const SizedBox(width: AppSpace.s4),
+            Flexible(
+              child: Text(
+                filled ? 'Proposta ${i + 1}' : 'Vaga ${i + 1}',
+                style: AppType.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: filled ? tk.accentInk : tk.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return AppCard(
       key: const ValueKey('waiting-slots'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      variant: AppCardVariant.outlined,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wrapSlots = layout.isLargeText || constraints.maxWidth < 340;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DarkGlassDuotoneBadge(
-                icon: received > 0 ? Icons.request_quote_rounded : Icons.radar_rounded,
-                secondaryIcon: Icons.verified_rounded,
-                accentColor: tk.clientAccent,
-                size: 42,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Orçamentos: $received de 3', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      received == 0
-                          ? 'Avisamos você assim que o primeiro chegar. Tempo médio: 5 a 15 min.'
-                          : 'Você pode esperar mais propostas ou contratar agora.',
-                      style: TextStyle(fontSize: 12.5, color: tk.textMuted, height: 1.3),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              for (var i = 0; i < 3; i++)
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
-                    child: Container(
-                      height: 36,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: i < received ? tk.clientAccent.withValues(alpha: 0.16) : tk.surface,
-                        border: Border.all(
-                          color: i < received ? tk.clientAccent : tk.border,
-                          width: 1.4,
+              Row(
+                children: [
+                  DarkGlassDuotoneBadge(
+                    icon: received > 0 ? Icons.request_quote_rounded : Icons.radar_rounded,
+                    secondaryIcon: Icons.verified_rounded,
+                    accentColor: tk.accentInk,
+                    size: 42,
+                  ),
+                  const SizedBox(width: AppSpace.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Orçamentos: $received de 3',
+                          style: AppType.tabular(AppType.titleSm).copyWith(color: tk.text),
                         ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            i < received ? Icons.check_circle_rounded : Icons.hourglass_empty_rounded,
-                            size: 15,
-                            color: i < received ? tk.clientAccent : tk.textMuted,
-                          ),
-                          const SizedBox(width: 5),
-                          Flexible(
-                            child: Text(
-                              i < received ? 'Proposta ${i + 1}' : 'Vaga ${i + 1}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w800,
-                                color: i < received ? tk.clientAccent : tk.textMuted,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                        const SizedBox(height: AppSpace.s2),
+                        Text(
+                          received == 0
+                              ? 'Avisamos você assim que o primeiro chegar. Tempo médio: 5 a 15 min.'
+                              : 'Você pode esperar mais propostas ou contratar agora.',
+                          style: AppType.bodySm.copyWith(color: tk.textMuted),
+                        ),
+                      ],
                     ),
                   ),
+                ],
+              ),
+              const SizedBox(height: AppSpace.s12),
+              if (wrapSlots)
+                Wrap(
+                  spacing: AppSpace.s8,
+                  runSpacing: AppSpace.s8,
+                  children: [for (var i = 0; i < 3; i++) slotTile(i, wrapped: true)],
+                )
+              else
+                Row(
+                  children: [
+                    for (var i = 0; i < 3; i++)
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: i < 2 ? AppSpace.s8 : 0),
+                          child: slotTile(i, wrapped: false),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _TrustPill(
-                icon: Icons.shield_outlined,
-                label: 'Pagamento Protegido em Custódia',
-                color: tk.security,
+              const SizedBox(height: AppSpace.s12),
+              Wrap(
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s8,
+                children: [
+                  _TrustPill(
+                    icon: Icons.shield_outlined,
+                    label: 'Pagamento Protegido em Custódia',
+                    color: tk.security,
+                  ),
+                  _TrustPill(
+                    icon: Icons.receipt_long_outlined,
+                    label: '0% de taxa sobre materiais',
+                    color: tk.successInk,
+                  ),
+                ],
               ),
-              _TrustPill(
-                icon: Icons.receipt_long_outlined,
-                label: '0% de taxa sobre materiais',
-                color: tk.success,
-              ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1108,23 +1243,21 @@ class _TrustPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4),
       decoration: BoxDecoration(
         color: tk.surface,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 13.5, color: color),
-          const SizedBox(width: 5),
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: AppSpace.s4),
           Flexible(
             child: Text(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: tk.textMuted),
+              style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: tk.textMuted),
             ),
           ),
         ],
@@ -1143,106 +1276,129 @@ class _QuoteCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
+    final layout = context.layout;
     final p = provider;
     return AppCard(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      variant: AppCardVariant.elevated,
+      margin: const EdgeInsets.only(bottom: AppSpace.item),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stack = layout.isLargeText || constraints.maxWidth < 320;
+
+          final priceBlock = Column(
+            crossAxisAlignment: stack ? CrossAxisAlignment.start : CrossAxisAlignment.end,
             children: [
-              UserAvatar(url: p?.avatarUrl, name: p?.fullName ?? 'Profissional', radius: 24, verified: true),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      p?.fullName ?? 'Profissional',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-                    ),
-                    if (p != null)
-                      Text(
-                        p.ratingCount > 0 ? '★ ${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} (${p.ratingCount}) • ${p.jobsDone} serviços' : 'Novo na plataforma',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: tk.textMuted, fontSize: 13),
-                      ),
-                  ],
+              AppPrice(value: quote.price, size: AppPriceSize.sm, color: tk.text),
+              if (quote.estimatedHours != null)
+                Text(
+                  '~${quote.estimatedHours!.toStringAsFixed(quote.estimatedHours! % 1 == 0 ? 0 : 1)}h estimadas',
+                  style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 112),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(brl(quote.price), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
-                    ),
-                    if (quote.estimatedHours != null)
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          '~${quote.estimatedHours!.toStringAsFixed(quote.estimatedHours! % 1 == 0 ? 0 : 1)}h estimadas',
-                          style: TextStyle(fontSize: 11, color: tk.textMuted, fontWeight: FontWeight.w600),
+            ],
+          );
+
+          final profileBtn = AppButton(
+            label: 'Ver perfil',
+            variant: AppButtonVariant.secondary,
+            compact: true,
+            onPressed: p == null
+                ? null
+                : () async {
+                    final profile = await ProfileService().fetchCurrent();
+                    if (profile == null || !context.mounted) return;
+                    await Navigator.of(context).push(
+                      AppRoute(
+                        builder: (_) => ProviderPublicProfileScreen(provider: p, profile: profile, hideCta: true),
+                      ),
+                    );
+                  },
+          );
+
+          final quoteBtn = AppButton(
+            label: 'Ver orçamento',
+            variant: AppButtonVariant.primary,
+            compact: true,
+            onPressed: () => Navigator.of(context).push(
+              AppRoute(builder: (_) => QuoteReceivedScreen(job: job, quote: quote, provider: p)),
+            ),
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppAvatar(url: p?.avatarUrl, name: p?.fullName ?? 'Profissional', radius: 24, verified: true),
+                  const SizedBox(width: AppSpace.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          p?.fullName ?? 'Profissional',
+                          style: AppType.titleSm.copyWith(color: tk.text),
                         ),
-                      ),
+                        if (p != null) ...[
+                          const SizedBox(height: AppSpace.s2),
+                          if (p.ratingCount > 0)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.star_rounded, size: 15, color: tk.star),
+                                const SizedBox(width: AppSpace.s4),
+                                Flexible(
+                                  child: Text(
+                                    '${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} (${p.ratingCount}) • ${p.jobsDone} serviços',
+                                    style: AppType.tabular(AppType.bodySm).copyWith(color: tk.textMuted),
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            Text(
+                              'Novo na plataforma',
+                              style: AppType.bodySm.copyWith(color: tk.textMuted),
+                            ),
+                        ],
+                        if (stack) ...[
+                          const SizedBox(height: AppSpace.s8),
+                          priceBlock,
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (!stack) ...[
+                    const SizedBox(width: AppSpace.s8),
+                    Flexible(child: priceBlock),
+                  ],
+                ],
+              ),
+              if (quote.message != null && quote.message!.isNotEmpty) ...[
+                const SizedBox(height: AppSpace.s12),
+                Text('"${quote.message}"', style: AppType.body.copyWith(color: tk.text)),
+              ],
+              const SizedBox(height: AppSpace.s12),
+              if (stack)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    quoteBtn,
+                    const SizedBox(height: AppSpace.s8),
+                    profileBtn,
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(child: profileBtn),
+                    const SizedBox(width: AppSpace.s12),
+                    Expanded(child: quoteBtn),
                   ],
                 ),
-              ),
             ],
-          ),
-          if (quote.message != null && quote.message!.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text('"${quote.message}"', style: TextStyle(height: 1.4, color: tk.text)),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: p == null
-                      ? null
-                      : () async {
-                          final profile = await ProfileService().fetchCurrent();
-                          if (profile == null || !context.mounted) return;
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => ProviderPublicProfileScreen(provider: p, profile: profile, hideCta: true),
-                          ));
-                        },
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                  ),
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('Ver perfil', maxLines: 1),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => QuoteReceivedScreen(job: job, quote: quote, provider: p)),
-                  ),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                  ),
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('Ver orçamento', maxLines: 1),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -1261,7 +1417,7 @@ class QuoteReceivedScreen extends StatefulWidget {
 }
 
 class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
-  final _jobs = JobService();
+  late final _jobs = JobService();
   bool _busy = false;
 
   Future<void> _accept() async {
@@ -1271,14 +1427,14 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
       // O stream do pedido leva a tela de pagamento; fecha esta.
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _reject() async {
-    final ok = await confirmDialog(
+    final ok = await AppDialog.confirm(
       context,
       title: 'Recusar orçamento?',
       message: 'O profissional será avisado. Você pode aceitar outro orçamento ou convidar mais profissionais.',
@@ -1291,7 +1447,7 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
       await _jobs.rejectQuote(widget.quote.id);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1299,58 +1455,112 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final layout = context.layout;
+    final margin = layout.margin;
     final p = widget.provider;
     final q = widget.quote;
-    return AppScaffold(
-      appBar: AppBar(title: Text('Orçamento recebido', style: TextStyle(color: context.tk.clientAccent))),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text('Orçamento de ${p?.fullName ?? 'profissional'}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 14),
-          Row(
+    final avatar = AppAvatar(url: p?.avatarUrl, name: p?.fullName ?? '?', radius: 32, verified: true);
+    final ratingBlock = (p != null && p.ratingCount > 0)
+        ? Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s4,
             children: [
-              UserAvatar(url: p?.avatarUrl, name: p?.fullName ?? '?', radius: 32, verified: true),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(p?.fullName ?? 'Profissional', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-                    Text(p?.title ?? '', style: TextStyle(color: context.tk.textMuted)),
-                    if (p != null && p.ratingCount > 0) Text('${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} ★'),
-                  ],
+              AppRating(value: p.ratingAvg, size: 16),
+              Text(
+                '${p.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} (${p.ratingCount})',
+                style: AppType.tabular(AppType.bodySm).copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: tk.textMuted,
                 ),
               ),
             ],
+          )
+        : null;
+    final avatarHero = p != null ? AppHero(tag: 'provider-avatar-${p.id}', child: avatar) : avatar;
+    return AppScaffold(
+      appBar: const AppAppBar(title: 'Orçamento recebido'),
+      body: ListView(
+        padding: EdgeInsets.symmetric(horizontal: margin, vertical: AppSpace.s16),
+        children: [
+          Semantics(
+            header: true,
+            child: Text(
+              'Orçamento de ${p?.fullName ?? 'profissional'}',
+              style: AppType.headline.copyWith(color: tk.text),
+            ),
           ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
-            decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(16)),
+          const SizedBox(height: AppSpace.s16),
+          AppCard(
+            variant: AppCardVariant.outlined,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    avatarHero,
+                    const SizedBox(width: AppSpace.s16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p?.fullName ?? 'Profissional',
+                            style: AppType.title.copyWith(color: tk.text),
+                          ),
+                          if ((p?.title ?? '').isNotEmpty)
+                            Text(
+                              p!.title,
+                              style: AppType.bodySm.copyWith(color: tk.textMuted),
+                            ),
+                          if (ratingBlock != null && !layout.isCompact && !layout.isLargeText) ...[
+                            const SizedBox(height: AppSpace.s4),
+                            ratingBlock,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (ratingBlock != null && (layout.isCompact || layout.isLargeText)) ...[
+                  const SizedBox(height: AppSpace.s12),
+                  ratingBlock,
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpace.s16),
+          AppCard(
+            variant: AppCardVariant.tonal,
+            padding: const EdgeInsets.symmetric(vertical: AppSpace.s24, horizontal: AppSpace.s16),
             child: Column(
               children: [
-                Text('Valor do orçamento', style: TextStyle(color: context.tk.textMuted)),
-                const SizedBox(height: 4),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(brl(q.price), style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w900)),
+                Text(
+                  'Valor do orçamento',
+                  style: AppType.bodySm.copyWith(color: tk.textMuted),
                 ),
-                if (q.estimatedHours != null)
-                  Text('Previsão: ${q.estimatedHours!.toStringAsFixed(q.estimatedHours! % 1 == 0 ? 0 : 1)} h de serviço',
-                      style: TextStyle(color: context.tk.textMuted)),
+                const SizedBox(height: AppSpace.s4),
+                AppPrice(value: q.price, size: AppPriceSize.xl, color: tk.text),
+                if (q.estimatedHours != null) ...[
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    'Previsão: ${q.estimatedHours!.toStringAsFixed(q.estimatedHours! % 1 == 0 ? 0 : 1)} h de serviço',
+                    style: AppType.tabular(AppType.bodySm).copyWith(color: tk.textMuted),
+                  ),
+                ],
               ],
             ),
           ),
           if (q.message != null && q.message!.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(14)),
-              child: Text('"${q.message}"', style: const TextStyle(height: 1.4)),
+            const SizedBox(height: AppSpace.s12),
+            AppCard(
+              variant: AppCardVariant.tonal,
+              child: Text('"${q.message}"', style: AppType.body.copyWith(color: tk.text)),
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           const InfoBanner(
             'O valor fica retido na Desperrengue e só é liberado ao profissional quando você informar o Código de Confirmação, ao final do serviço.',
             tone: BannerTone.security,
@@ -1358,14 +1568,16 @@ class _QuoteReceivedScreenState extends State<QuoteReceivedScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            PrimaryButton(label: 'Aceitar e pagar ${brl(q.price)}', loading: _busy, onPressed: _accept),
-            const SizedBox(height: 8),
-            TextButton(onPressed: _busy ? null : _reject, child: Text('Recusar orçamento', style: TextStyle(color: context.tk.textMuted))),
-          ],
+      bottomNavigationBar: AppBottomBar(
+        secondary: AppButton(
+          label: 'Recusar orçamento',
+          variant: AppButtonVariant.tertiary,
+          onPressed: _busy ? null : _reject,
+        ),
+        child: AppButton(
+          label: 'Aceitar e pagar ${brl(q.price)}',
+          loading: _busy,
+          onPressed: _accept,
         ),
       ),
     );
@@ -1385,7 +1597,7 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
-  final _jobs = JobService();
+  late final _jobs = JobService();
   bool _busy = false;
 
   /// Trava de saldo: confere ANTES (sem saldo, abre a recarga) e o servidor confere de novo
@@ -1404,16 +1616,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (!await showInsufficientFundsSheet(context, requiredCents: low.requiredCents, availableCents: low.availableCents)) return;
         await _jobs.payJob(widget.job.id, 'wallet', scheduledFor: widget.job.scheduledFor);
       }
-      if (mounted) showSnack(context, 'Pagamento aprovado! O valor está protegido em garantia.');
+      if (mounted) {
+        AppSnackbar.show(
+          context,
+          'Pagamento aprovado! O valor está protegido em garantia.',
+          kind: AppSnackKind.success,
+        );
+      }
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _cancel() async {
-    final ok = await confirmDialog(
+    final ok = await AppDialog.confirm(
       context,
       title: 'Cancelar o pedido?',
       message: 'Você ainda não pagou nada. O profissional será avisado.',
@@ -1424,64 +1642,84 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       await _jobs.cancelJob(widget.job.id);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     final job = widget.job;
     final price = job.agreedPrice ?? 0;
     return AppScaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+      appBar: AppAppBar(
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
           tooltip: 'Voltar',
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const BrandLogo(),
+        titleWidget: const BrandLogo(),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.fromLTRB(margin, AppSpace.s4, margin, AppSpace.s24),
         children: [
-          const StepperBar(total: 2, current: 2),
-          const SizedBox(height: 14),
-          const Text('Forma de pagamento', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: context.tk.surface, borderRadius: BorderRadius.circular(14)),
-            child: Row(
+          const AppStepper(total: 2, current: 2),
+          const SizedBox(height: AppSpace.s16),
+          Semantics(
+            header: true,
+            child: Text(
+              'Forma de pagamento',
+              style: AppType.headline.copyWith(color: tk.text),
+            ),
+          ),
+          const SizedBox(height: AppSpace.s12),
+          AppCard(
+            variant: AppCardVariant.tonal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(child: Text('Total a pagar:', style: TextStyle(fontSize: 16))),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(brl(price), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
-                  ),
+                AppInfoRow(
+                  label: 'Total a pagar',
+                  valueWidget: AppPrice(value: price, size: AppPriceSize.lg, color: tk.text),
                 ),
+                Divider(height: 1, color: tk.border),
+                const SizedBox(height: AppSpace.s8),
+                Text(job.title, style: AppType.bodySm.copyWith(color: tk.textMuted)),
+                if (job.scheduledFor != null) ...[
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    'Agendado para ${dateLong(job.scheduledFor!)}',
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
+                  ),
+                ],
               ],
             ),
           ),
-          const SizedBox(height: 6),
-          Text(job.title, style: TextStyle(color: context.tk.textMuted)),
-          if (job.scheduledFor != null)
-            Text('Agendado para ${dateLong(job.scheduledFor!)}', style: TextStyle(color: context.tk.textMuted)),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s16),
           WalletPayCard(priceCents: Money.fromReais(price)),
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           const InfoBanner(
             'Pague agora para reservar. O dinheiro só vai para o profissional quando o serviço estiver concluído e você confirmar com o código.',
             tone: BannerTone.info,
             icon: Icons.lock_outline_rounded,
           ),
-          const SizedBox(height: 10),
-          Center(child: LinkButton(label: 'Cancelar pedido', onPressed: _busy ? null : _cancel, color: context.tk.textMuted)),
+          const SizedBox(height: AppSpace.s12),
+          Center(
+            child: LinkButton(
+              label: 'Cancelar pedido',
+              onPressed: _busy ? null : _cancel,
+              color: tk.textMuted,
+            ),
+          ),
         ],
       ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(label: 'Confirmar e pagar ${brl(price)}', loading: _busy, onPressed: _pay),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Confirmar e pagar ${brl(price)}',
+          loading: _busy,
+          onPressed: _pay,
+        ),
       ),
     );
   }
@@ -1491,18 +1729,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
 /// Radar de matchmaking (emergência): aguarda o aceite em até 5 minutos.
 class EmergencyRadarScreen extends StatefulWidget {
-  const EmergencyRadarScreen({super.key, required this.job});
+  const EmergencyRadarScreen({
+    super.key,
+    required this.job,
+    this.invitesStreamOverride,
+    this.initialProvider,
+  });
 
   final Job job;
+  final Stream<List<JobInvite>>? invitesStreamOverride;
+  final ProviderCard? initialProvider;
 
   @override
   State<EmergencyRadarScreen> createState() => _EmergencyRadarScreenState();
 }
 
 class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
-  final _jobs = JobService();
+  late final _jobs = JobService();
+  late final Stream<List<JobInvite>> _invitesStream =
+      widget.invitesStreamOverride ?? _jobs.streamInvites(widget.job.id);
   Timer? _tick;
-  ProviderCard? _provider;
+  late ProviderCard? _provider = widget.initialProvider;
 
   @override
   void initState() {
@@ -1510,7 +1757,9 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
-    _loadProvider();
+    if (_provider == null && widget.invitesStreamOverride == null) {
+      unawaited(_loadProvider());
+    }
   }
 
   @override
@@ -1521,14 +1770,16 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
   }
 
   Future<void> _loadProvider() async {
-    final invites = await _jobs.invitesForJob(widget.job.id);
-    if (invites.isEmpty) return;
-    final p = await ProviderService().byId(invites.first.providerId);
-    if (mounted) setState(() => _provider = p);
+    try {
+      final invites = await _jobs.invitesForJob(widget.job.id);
+      if (invites.isEmpty) return;
+      final p = await ProviderService().byId(invites.first.providerId);
+      if (mounted) setState(() => _provider = p);
+    } catch (_) {}
   }
 
   Future<void> _cancel() async {
-    final ok = await confirmDialog(
+    final ok = await AppDialog.confirm(
       context,
       title: 'Cancelar emergência?',
       message: 'A reserva de garantia será estornada.',
@@ -1539,42 +1790,52 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
     try {
       await _jobs.cancelJob(widget.job.id);
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return StreamBuilder<List<JobInvite>>(
-      stream: _jobs.streamInvites(widget.job.id),
+      stream: _invitesStream,
       builder: (context, snap) {
         final live = (snap.data ?? const <JobInvite>[]).where((i) => i.isLive).toList();
         final remaining = live.isEmpty ? Duration.zero : live.first.remaining;
         return AppScaffold(
-          backgroundColor: context.tk.clientSoft,
-          appBar: AppBar(
-            backgroundColor: context.tk.clientSoft,
-            leading: IconButton(icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 30), tooltip: 'Minimizar', onPressed: () => Navigator.maybePop(context)),
-            title: const BrandLogo(),
+          backgroundColor: tk.accentSoft,
+          appBar: AppAppBar(
+            backgroundColor: tk.accentSoft,
+            leading: AppIconButton(
+              icon: Icons.keyboard_arrow_down_rounded,
+              size: 30,
+              tooltip: 'Minimizar',
+              onPressed: () => Navigator.maybePop(context),
+            ),
+            titleWidget: const BrandLogo(),
           ),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
             children: [
               Center(
                 child: PulseRadar(
-                  child: UserAvatar(url: _provider?.avatarUrl, name: _provider?.fullName ?? '?', radius: 44),
+                  child: AppAvatar(url: _provider?.avatarUrl, name: _provider?.fullName ?? '?', radius: 44),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.s8),
               Text(
                 'Notificando ${_provider?.fullName ?? 'o profissional'}...',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                style: AppType.headline.copyWith(color: tk.text),
               ),
-              const SizedBox(height: 6),
-              Text('O profissional está analisando a sua emergência. Por favor, aguarde.',
-                  textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpace.s8),
+              Text(
+                'O profissional está analisando a sua emergência. Por favor, aguarde.',
+                textAlign: TextAlign.center,
+                style: AppType.body.copyWith(color: tk.textMuted),
+              ),
+              const SizedBox(height: AppSpace.s16),
               Center(
                 child: CountdownRing(remaining: remaining, total: const Duration(minutes: 5), size: 110, icon: null),
               ),
@@ -1582,7 +1843,7 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
                 final triage = JobTriageStore.instance.resolveForJob(widget.job);
                 if (!triage.hasEmergencyContainment) return const SizedBox.shrink();
                 return Padding(
-                  padding: const EdgeInsets.only(top: 16),
+                  padding: const EdgeInsets.only(top: AppSpace.s16),
                   child: EmergencyContainmentBanner(
                     guide: triage.containmentGuide!,
                     onToggleStep: (step) {
@@ -1593,19 +1854,28 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
                   ),
                 );
               }),
-              const SizedBox(height: 14),
-              Text('Pode sair do app se quiser, nós avisaremos assim que ele responder.',
-                  textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.s16),
+              Text(
+                'Pode sair do app se quiser, nós avisaremos assim que ele responder.',
+                textAlign: TextAlign.center,
+                style: AppType.bodySm.copyWith(color: tk.textMuted),
+              ),
+              const SizedBox(height: AppSpace.s8),
               Center(
-                child: TextButton.icon(
+                child: AppButton(
                   onPressed: () => Navigator.maybePop(context),
-                  icon: const Icon(Icons.home_rounded),
-                  label: const Text('Minimizar e ir para o Início'),
+                  variant: AppButtonVariant.tertiary,
+                  expand: false,
+                  icon: Icons.home_rounded,
+                  label: 'Minimizar e ir para o Início',
                 ),
               ),
-              const SizedBox(height: 8),
-              SecondaryButton(label: 'Cancelar pedido', onPressed: _cancel),
+              const SizedBox(height: AppSpace.s8),
+              AppButton(
+                label: 'Cancelar pedido',
+                variant: AppButtonVariant.secondary,
+                onPressed: _cancel,
+              ),
             ],
           ),
         );
@@ -1614,49 +1884,55 @@ class _EmergencyRadarScreenState extends State<EmergencyRadarScreen> {
   }
 }
 
-class _MatchDialog extends StatelessWidget {
-  const _MatchDialog({required this.provider});
-
-  final ProviderCard provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+Future<void> _showMatchDialog(BuildContext context, ProviderCard provider) {
+  return AppDialog.show<void>(
+    context,
+    title: 'Temos um Match!',
+    content: Builder(
+      builder: (ctx) {
+        final tk = ctx.tk;
+        return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: IconButton(
-                icon: const Icon(Icons.close_rounded),
-                tooltip: 'Fechar',
-                onPressed: () => Navigator.pop(context),
-              ),
+            const AppStatusChip(
+              'Confirmado!',
+              tone: AppTone.success,
+              icon: Icons.celebration_rounded,
             ),
-            const Text('Temos um Match! 🎉', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900), textAlign: TextAlign.center),
-            const SizedBox(height: 8),
-            StatusChip('Confirmado!', color: context.tk.successInk, background: context.tk.warningSoft),
-            const SizedBox(height: 16),
-            UserAvatar(url: provider.avatarUrl, name: provider.fullName, radius: 40, verified: true),
-            const SizedBox(height: 8),
-            Text(provider.fullName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            Text(provider.title, style: TextStyle(color: context.tk.textMuted)),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpace.s16),
+            AppAvatar(url: provider.avatarUrl, name: provider.fullName, radius: 40, verified: true),
+            const SizedBox(height: AppSpace.s8),
+            Text(
+              provider.fullName,
+              textAlign: TextAlign.center,
+              style: AppType.title.copyWith(color: tk.text),
+            ),
+            if (provider.title.isNotEmpty)
+              Text(
+                provider.title,
+                textAlign: TextAlign.center,
+                style: AppType.bodySm.copyWith(color: tk.textMuted),
+              ),
+            const SizedBox(height: AppSpace.s12),
             Text(
               '${firstName(provider.fullName)} aceitou o seu pedido de emergência! Ele já está se preparando e a caminho do seu endereço.',
               textAlign: TextAlign.center,
-              style: const TextStyle(height: 1.4),
+              style: AppType.body.copyWith(color: tk.text),
             ),
-            const SizedBox(height: 18),
-            PrimaryButton(label: 'Acompanhar profissional', trailingArrow: true, onPressed: () => Navigator.pop(context)),
           ],
+        );
+      },
+    ),
+    actions: [
+      Builder(
+        builder: (ctx) => AppButton(
+          label: 'Acompanhar profissional',
+          trailingArrow: true,
+          onPressed: () => Navigator.pop(ctx),
         ),
       ),
-    );
-  }
+    ],
+  );
 }
 
 class _CanceledView extends StatelessWidget {
@@ -1668,16 +1944,17 @@ class _CanceledView extends StatelessWidget {
   Widget build(BuildContext context) {
     final refunded = job.paymentStatus == 'refunded';
     return AppScaffold(
-      appBar: AppBar(title: Text(job.code)),
-      body: EmptyView(
+      appBar: AppAppBar(title: job.code),
+      body: AppEmptyState(
         icon: Icons.cancel_outlined,
         title: 'Pedido cancelado',
-        subtitle: refunded
+        message: refunded
             ? 'A reserva foi estornada. Você pode fazer um novo pedido quando quiser.'
             : (job.isEmergency
-                  ? 'Ninguém aceitou a emergência a tempo. Tente outro profissional.'
-                  : 'Este pedido foi cancelado. Você pode fazer um novo pedido quando quiser.'),
-        action: PrimaryButton(label: 'Voltar ao início', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
+                ? 'Ninguém aceitou a emergência a tempo. Tente outro profissional.'
+                : 'Este pedido foi cancelado. Você pode fazer um novo pedido quando quiser.'),
+        actionLabel: 'Voltar ao início',
+        onAction: () => Navigator.of(context).popUntil((r) => r.isFirst),
       ),
     );
   }

@@ -1,13 +1,13 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/services/app_session.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/profile_service.dart';
-import '../../../core/ui/app_tokens.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
@@ -20,6 +20,43 @@ typedef StagedPhotoPicker = Future<PickedImage?> Function(BuildContext context);
 
 /// Uploader binário injetável para testes determinísticos da etapa 2 (confirmação em `Salvar foto`).
 typedef AvatarBinaryUploader = Future<String> Function(Uint8List bytes, String ext);
+
+/// Monta tokens escuros preservando o acento do modo ativo (cliente/profissional/marca)
+/// para superfícies escuras de visualização de foto (lightbox) mesmo no tema claro.
+AppTokens _viewerDarkTokens(BuildContext context) {
+  final current = context.tk;
+  if (current.accent == current.clientAccent) {
+    return AppTokens.dark.forAccent(
+      accent: AppTokens.dark.clientAccent,
+      accentInk: AppTokens.dark.clientAccentInk,
+      accentSoft: AppTokens.dark.clientSoft,
+    );
+  }
+  if (current.accent == current.providerAccent) {
+    return AppTokens.dark.forAccent(
+      accent: AppTokens.dark.providerAccent,
+      accentInk: AppTokens.dark.providerAccentInk,
+      accentSoft: AppTokens.dark.providerSoft,
+    );
+  }
+  return AppTokens.dark;
+}
+
+ThemeData _viewerDarkTheme(BuildContext context, AppTokens darkTk) {
+  final base = Theme.of(context);
+  return base.copyWith(
+    brightness: Brightness.dark,
+    scaffoldBackgroundColor: darkTk.surfaceInset,
+    colorScheme: base.colorScheme.copyWith(
+      brightness: Brightness.dark,
+      primary: darkTk.accent,
+      onPrimary: darkTk.onAccent,
+      surface: darkTk.background,
+      onSurface: darkTk.text,
+    ),
+    extensions: [darkTk],
+  );
+}
 
 Future<String> _persistStagedAvatar(
   PickedImage staged, {
@@ -65,18 +102,17 @@ Future<String?> pickPreviewAndSaveAvatar(
   if (picked == null || !context.mounted) return null;
 
   return Navigator.of(context).push<String>(
-    PageRouteBuilder<String>(
+    AppRoute<String>(
       opaque: false,
-      barrierColor: Colors.black.withValues(alpha: 0.92),
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (_, _, _) => ProfilePhotoPreviewAndSaveDialog(
+      fullscreenModal: true,
+      barrierColor: AppTokens.dark.surfaceInset.withValues(alpha: 0.92),
+      builder: (_) => ProfilePhotoPreviewAndSaveDialog(
         initialImage: picked,
         userName: userName,
         currentUrl: currentUrl,
         customPicker: customPicker,
         customUploader: customUploader,
       ),
-      transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
     ),
   );
 }
@@ -125,11 +161,11 @@ class _EditableAvatarState extends State<EditableAvatar> {
 
   Future<void> _open() async {
     final result = await Navigator.of(context).push<String>(
-      PageRouteBuilder<String>(
+      AppRoute<String>(
         opaque: false,
-        barrierColor: Colors.black,
-        transitionDuration: const Duration(milliseconds: 220),
-        pageBuilder: (_, _, _) => ProfilePhotoViewerScreen(
+        fullscreenModal: true,
+        barrierColor: AppTokens.dark.surfaceInset,
+        builder: (_) => ProfilePhotoViewerScreen(
           url: _url,
           name: widget.name,
           changer: widget.changer,
@@ -137,7 +173,6 @@ class _EditableAvatarState extends State<EditableAvatar> {
           customUploader: widget.customUploader,
           heroTag: _heroTag,
         ),
-        transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
       ),
     );
     if (result != null && mounted) {
@@ -150,6 +185,7 @@ class _EditableAvatarState extends State<EditableAvatar> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return Semantics(
       button: true,
       label: 'Foto de perfil. Toque para ver e alterar.',
@@ -159,9 +195,9 @@ class _EditableAvatarState extends State<EditableAvatar> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            Hero(
+            AppHero(
               tag: _heroTag,
-              child: UserAvatar(
+              child: AppAvatar(
                 url: _url,
                 name: widget.name,
                 radius: widget.radius,
@@ -172,16 +208,16 @@ class _EditableAvatarState extends State<EditableAvatar> {
               left: -2,
               bottom: -2,
               child: Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(AppSpace.s4),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: tk.accent,
                   shape: BoxShape.circle,
-                  border: Border.all(color: context.tk.background, width: 2),
+                  border: Border.all(color: tk.background, width: 2),
                 ),
                 child: Icon(
                   Icons.photo_camera_rounded,
                   size: widget.radius * 0.36,
-                  color: Theme.of(context).colorScheme.onPrimary,
+                  color: tk.onAccent,
                 ),
               ),
             ),
@@ -227,7 +263,7 @@ class _ProfilePhotoPreviewAndSaveDialogState extends State<ProfilePhotoPreviewAn
         setState(() => _staged = next);
       }
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
@@ -240,12 +276,12 @@ class _ProfilePhotoPreviewAndSaveDialogState extends State<ProfilePhotoPreviewAn
         customUploader: widget.customUploader,
       );
       if (!mounted) return;
-      showSnack(context, 'Foto de perfil salva com sucesso!');
+      AppSnackbar.show(context, 'Foto de perfil salva com sucesso!', kind: AppSnackKind.success);
       Navigator.of(context).pop(url);
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        showSnack(context, friendlyError(e), error: true);
+        AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
       }
     }
   }
@@ -257,17 +293,21 @@ class _ProfilePhotoPreviewAndSaveDialogState extends State<ProfilePhotoPreviewAn
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: !_saving,
-      child: Scaffold(
-        backgroundColor: Colors.black.withValues(alpha: 0.94),
-        body: _ProfilePhotoPreviewStageView(
-          staged: _staged,
-          userName: widget.userName,
-          saving: _saving,
-          onSave: _save,
-          onPickAnother: _pickAnother,
-          onCancel: _cancel,
+    final darkTk = _viewerDarkTokens(context);
+    return Theme(
+      data: _viewerDarkTheme(context, darkTk),
+      child: PopScope(
+        canPop: !_saving,
+        child: Scaffold(
+          backgroundColor: darkTk.surfaceInset.withValues(alpha: 0.96),
+          body: _ProfilePhotoPreviewStageView(
+            staged: _staged,
+            userName: widget.userName,
+            saving: _saving,
+            onSave: _save,
+            onPickAnother: _pickAnother,
+            onCancel: _cancel,
+          ),
         ),
       ),
     );
@@ -319,10 +359,10 @@ class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
             _url = url;
             _changedTo = url;
           });
-          showSnack(context, 'Foto atualizada!');
+          AppSnackbar.show(context, 'Foto atualizada!', kind: AppSnackKind.success);
         }
       } catch (e) {
-        if (mounted) showSnack(context, friendlyError(e), error: true);
+        if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
       } finally {
         if (mounted) setState(() => _busy = false);
       }
@@ -339,7 +379,7 @@ class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
         setState(() => _stagedImage = picked);
       }
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -354,7 +394,7 @@ class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
         setState(() => _stagedImage = next);
       }
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
@@ -370,12 +410,12 @@ class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
       if (!mounted) return;
       _url = url;
       _changedTo = url;
-      showSnack(context, 'Foto de perfil salva com sucesso!');
+      AppSnackbar.show(context, 'Foto de perfil salva com sucesso!', kind: AppSnackKind.success);
       Navigator.of(context).pop(url);
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
-        showSnack(context, friendlyError(e), error: true);
+        AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
       }
     }
   }
@@ -390,188 +430,169 @@ class _ProfilePhotoViewerScreenState extends State<ProfilePhotoViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final darkTk = _viewerDarkTokens(context);
     final staged = _stagedImage;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !_busy) _close();
-      },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: staged != null
-            ? _ProfilePhotoPreviewStageView(
-                staged: staged,
-                userName: widget.name,
-                saving: _busy,
-                onSave: _saveStaged,
-                onPickAnother: _pickAnotherInPreview,
-                onCancel: _cancelStaged,
-              )
-            : Stack(
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      onTap: _close,
-                      behavior: HitTestBehavior.opaque,
-                      child: Center(
-                        child: InteractiveViewer(
-                          minScale: 1,
-                          maxScale: 5,
-                          child: _hasPhoto
-                              ? Hero(
-                                  tag: widget.heroTag ?? 'avatar',
-                                  child: Image.network(
-                                    _url!,
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (_, _, _) => const Icon(
-                                      Icons.broken_image_outlined,
-                                      color: Colors.white54,
-                                      size: 64,
+    return Theme(
+      data: _viewerDarkTheme(context, darkTk),
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && !_busy) _close();
+        },
+        child: Scaffold(
+          backgroundColor: darkTk.surfaceInset,
+          body: staged != null
+              ? _ProfilePhotoPreviewStageView(
+                  staged: staged,
+                  userName: widget.name,
+                  saving: _busy,
+                  onSave: _saveStaged,
+                  onPickAnother: _pickAnotherInPreview,
+                  onCancel: _cancelStaged,
+                )
+              : Stack(
+                  children: [
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: _close,
+                        behavior: HitTestBehavior.opaque,
+                        child: Center(
+                          child: InteractiveViewer(
+                            minScale: 1,
+                            maxScale: 5,
+                            child: _hasPhoto
+                                ? AppHero(
+                                    tag: widget.heroTag ?? 'avatar',
+                                    child: Image.network(
+                                      _url!,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, _, _) => Icon(
+                                        Icons.broken_image_outlined,
+                                        color: darkTk.textMuted,
+                                        size: 64,
+                                      ),
+                                      loadingBuilder: (_, child, p) => p == null ? child : const AppLoading(),
                                     ),
-                                    loadingBuilder: (_, child, p) => p == null
-                                        ? child
-                                        : const Center(
-                                            child: CircularProgressIndicator(color: Colors.white),
-                                          ),
-                                  ),
-                                )
-                              : Container(
-                                  key: const ValueKey('avatar-placeholder'),
-                                  width: 220,
-                                  height: 220,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: accent.withValues(alpha: 0.22),
-                                  ),
-                                  child: Text(
-                                    initials(widget.name),
-                                    style: TextStyle(
-                                      color: accent,
-                                      fontSize: 80,
-                                      fontWeight: FontWeight.w800,
+                                  )
+                                : Container(
+                                    key: const ValueKey('avatar-placeholder'),
+                                    width: 220,
+                                    height: 220,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: darkTk.accentSoft,
+                                    ),
+                                    child: Text(
+                                      initials(widget.name),
+                                      style: AppType.displayL.apply(fontSizeFactor: 2.0).copyWith(color: darkTk.accentInk),
                                     ),
                                   ),
-                                ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SafeArea(
-                    child: Align(
-                      alignment: Alignment.topLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: IconButton(
-                          tooltip: 'Fechar',
-                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
-                          onPressed: _close,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.92),
-                            Colors.transparent,
-                          ],
-                        ),
-                      ),
-                      child: SafeArea(
-                        top: false,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 36, 24, 20),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _hasPhoto
-                                    ? 'Deseja alterar esta foto?'
-                                    : 'Você ainda não tem foto de perfil.',
-                                key: const ValueKey('photo-question'),
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Uma boa foto passa confiança para quem vai receber você em casa.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.white70, height: 1.35),
-                              ),
-                              const SizedBox(height: 16),
-                              LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final textScale = MediaQuery.textScalerOf(context).scale(1.0);
-                                  final stackButtons = constraints.maxWidth < 340 || textScale > 1.25;
-                                  final closeBtn = OutlinedButton(
-                                    key: const ValueKey('photo-close'),
-                                    onPressed: _busy ? null : _close,
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.white,
-                                      side: const BorderSide(color: Colors.white38),
-                                    ),
-                                    child: const Text('Agora não', textAlign: TextAlign.center),
-                                  );
-                                  final changeBtn = FilledButton.icon(
-                                    key: const ValueKey('photo-change'),
-                                    onPressed: _busy ? null : _change,
-                                    icon: _busy
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Icon(Icons.photo_camera_rounded),
-                                    label: Text(
-                                      _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  );
-                                  if (stackButtons) {
-                                    return Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                                      children: [
-                                        changeBtn,
-                                        const SizedBox(height: 10),
-                                        closeBtn,
-                                      ],
-                                    );
-                                  }
-                                  return Row(
-                                    children: [
-                                      Expanded(child: closeBtn),
-                                      const SizedBox(width: 12),
-                                      Expanded(flex: 2, child: changeBtn),
-                                    ],
-                                  );
-                                },
-                              ),
-                            ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                    SafeArea(
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpace.s8),
+                          child: AppIconButton(
+                            tooltip: 'Fechar',
+                            icon: Icons.close_rounded,
+                            size: 28,
+                            color: darkTk.text,
+                            onPressed: _close,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              darkTk.surfaceInset.withValues(alpha: 0.94),
+                              darkTk.surfaceInset.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
+                        child: SafeArea(
+                          top: false,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(AppSpace.s24, AppSpace.s32, AppSpace.s24, AppSpace.s20),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _hasPhoto
+                                      ? 'Deseja alterar esta foto?'
+                                      : 'Você ainda não tem foto de perfil.',
+                                  key: const ValueKey('photo-question'),
+                                  textAlign: TextAlign.center,
+                                  style: AppType.title.copyWith(color: darkTk.text),
+                                ),
+                                const SizedBox(height: AppSpace.s4),
+                                Text(
+                                  'Uma boa foto passa confiança para quem vai receber você em casa.',
+                                  textAlign: TextAlign.center,
+                                  style: AppType.bodySm.copyWith(color: darkTk.textMuted),
+                                ),
+                                const SizedBox(height: AppSpace.s16),
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final textScale = MediaQuery.textScalerOf(context).scale(1.0);
+                                    final stackButtons = constraints.maxWidth < 340 || textScale > 1.25;
+                                    final closeBtn = AppButton(
+                                      key: const ValueKey('photo-close'),
+                                      label: 'Agora não',
+                                      variant: AppButtonVariant.secondary,
+                                      compact: true,
+                                      onPressed: _busy ? null : _close,
+                                    );
+                                    final changeBtn = AppButton(
+                                      key: const ValueKey('photo-change'),
+                                      label: _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
+                                      icon: Icons.photo_camera_rounded,
+                                      loading: _busy,
+                                      compact: true,
+                                      onPressed: _busy ? null : _change,
+                                    );
+                                    if (stackButtons) {
+                                      return Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                                        children: [
+                                          changeBtn,
+                                          const SizedBox(height: AppSpace.s12),
+                                          closeBtn,
+                                        ],
+                                      );
+                                    }
+                                    return Row(
+                                      children: [
+                                        Expanded(child: closeBtn),
+                                        const SizedBox(width: AppSpace.s12),
+                                        Expanded(flex: 2, child: changeBtn),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -597,7 +618,7 @@ class _ProfilePhotoPreviewStageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
     final textScale = MediaQuery.textScalerOf(context).scale(1.0);
 
     return SafeArea(
@@ -615,66 +636,47 @@ class _ProfilePhotoPreviewStageView extends StatelessWidget {
             children: [
               // Barra superior discreta com botão fechar/cancelar
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                padding: const EdgeInsets.fromLTRB(AppSpace.s12, AppSpace.s8, AppSpace.s12, AppSpace.s4),
                 child: Row(
                   children: [
-                    IconButton(
+                    AppIconButton(
                       tooltip: 'Cancelar',
                       onPressed: saving ? null : onCancel,
-                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 26),
+                      icon: Icons.close_rounded,
+                      size: 26,
+                      color: tk.text,
                     ),
-                    const Spacer(),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: accent.withValues(alpha: 0.55)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.auto_awesome_rounded, size: 15, color: accent),
-                            const SizedBox(width: 6),
-                            const Flexible(
-                              child: Text(
-                                'Nova foto selecionada',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12.5,
-                                ),
-                              ),
-                            ),
-                          ],
+                    const SizedBox(width: AppSpace.s8),
+                    const Expanded(
+                      child: Center(
+                        child: AppStatusChip(
+                          'Nova foto selecionada',
+                          tone: AppTone.accent,
+                          icon: Icons.auto_awesome_rounded,
                         ),
                       ),
                     ),
-                    const Spacer(),
-                    const SizedBox(width: 40),
+                    const SizedBox(width: AppGeometry.minTarget),
                   ],
                 ),
               ),
               Expanded(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s20, vertical: AppSpace.s8),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const SizedBox(height: 6),
+                      const SizedBox(height: AppSpace.s8),
                       Container(
                         width: maxCircle,
                         height: maxCircle,
-                        padding: const EdgeInsets.all(4),
+                        padding: const EdgeInsets.all(AppSpace.s4),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          border: Border.all(color: accent, width: 3),
+                          border: Border.all(color: tk.accent, width: 3),
                           boxShadow: [
                             BoxShadow(
-                              color: accent.withValues(alpha: 0.32),
+                              color: tk.accent.withValues(alpha: 0.32),
                               blurRadius: 24,
                               spreadRadius: 2,
                             ),
@@ -694,102 +696,58 @@ class _ProfilePhotoPreviewStageView extends StatelessWidget {
                               fit: BoxFit.cover,
                               gaplessPlayback: true,
                               errorBuilder: (_, _, _) => Container(
-                                color: accent.withValues(alpha: 0.22),
+                                color: tk.accentSoft,
                                 alignment: Alignment.center,
                                 child: Text(
                                   initials(userName.isEmpty ? 'U' : userName),
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: maxCircle * 0.34,
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                  style: AppType.displayL.copyWith(color: tk.accentInk),
                                 ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 18),
-                      const Text(
+                      const SizedBox(height: AppSpace.s20),
+                      Text(
                         'Gostou da sua nova foto?',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                        ),
+                        style: AppType.headline.copyWith(color: tk.text),
                       ),
-                      const SizedBox(height: 6),
-                      const Text(
+                      const SizedBox(height: AppSpace.s8),
+                      Text(
                         'Confira como ela aparecerá no seu perfil antes de salvar.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13.5,
-                          height: 1.35,
-                        ),
+                        style: AppType.bodySm.copyWith(color: tk.textMuted),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: AppSpace.s20),
                       LayoutBuilder(
                         builder: (context, barConstraints) {
                           final isCompact = barConstraints.maxWidth < 380 || textScale > 1.2;
 
-                          final saveBtn = FilledButton.icon(
+                          final saveBtn = AppButton(
                             key: const Key('btn-save-profile-photo'),
+                            label: saving ? 'Salvando...' : 'Salvar foto',
+                            icon: Icons.check_circle_rounded,
+                            loading: saving,
+                            compact: true,
                             onPressed: saving ? null : onSave,
-                            style: FilledButton.styleFrom(
-                              minimumSize: const Size(0, 48),
-                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                            ),
-                            icon: saving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(Icons.check_circle_rounded, size: 20),
-                            label: Text(
-                              saving ? 'Salvando...' : 'Salvar foto',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 15,
-                              ),
-                            ),
                           );
 
-                          final pickAnotherBtn = OutlinedButton.icon(
+                          final pickAnotherBtn = AppButton(
                             key: const Key('btn-pick-another-photo'),
+                            label: 'Escolher outra foto',
+                            icon: Icons.photo_library_outlined,
+                            variant: AppButtonVariant.secondary,
+                            compact: true,
                             onPressed: saving ? null : onPickAnother,
-                            style: OutlinedButton.styleFrom(
-                              minimumSize: const Size(0, 46),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              foregroundColor: Colors.white,
-                              side: const BorderSide(color: Colors.white38),
-                            ),
-                            icon: const Icon(Icons.photo_library_outlined, size: 18),
-                            label: const Text(
-                              'Escolher outra foto',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
                           );
 
-                          final cancelBtn = TextButton(
+                          final cancelBtn = AppButton(
                             key: const Key('btn-cancel-profile-photo'),
+                            label: 'Cancelar',
+                            variant: AppButtonVariant.tertiary,
+                            compact: true,
                             onPressed: saving ? null : onCancel,
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size(0, 42),
-                              foregroundColor: Colors.white70,
-                            ),
-                            child: const Text(
-                              'Cancelar',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
                           );
 
                           if (isCompact) {
@@ -798,9 +756,9 @@ class _ProfilePhotoPreviewStageView extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 saveBtn,
-                                const SizedBox(height: 10),
+                                const SizedBox(height: AppSpace.s12),
                                 pickAnotherBtn,
-                                const SizedBox(height: 6),
+                                const SizedBox(height: AppSpace.s8),
                                 cancelBtn,
                               ],
                             );
@@ -813,11 +771,11 @@ class _ProfilePhotoPreviewStageView extends StatelessWidget {
                               Row(
                                 children: [
                                   Expanded(child: pickAnotherBtn),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: AppSpace.s12),
                                   Expanded(child: saveBtn),
                                 ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpace.s8),
                               cancelBtn,
                             ],
                           );

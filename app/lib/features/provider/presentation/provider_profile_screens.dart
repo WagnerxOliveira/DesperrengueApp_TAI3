@@ -1,4 +1,3 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -12,6 +11,8 @@ import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/provider_service.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -20,7 +21,6 @@ import '../../shared/presentation/profile_photo_viewer.dart';
 import '../../shared/presentation/review_widgets.dart';
 import 'dossie_servico_profissional_screen.dart';
 import 'provider_portfolio_widgets.dart';
-import '../../../core/ui/app_tokens.dart';
 
 /// Editar Perfil (protótipo P02): foto, título, bio, especialidades, preços.
 /// Em [setupMode] vira o 1º passo do cadastro inicial (botão "Continuar").
@@ -60,6 +60,7 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
   String _name = '';
   bool _loading = true;
   bool _saving = false;
+  String? _loadError;
   Timer? _saveTimer;
   String? _draftKey;
 
@@ -153,10 +154,12 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
       await _applyDraft();
     } catch (e) {
       if (mounted) {
-        setState(() => _loading = false);
-        if (widget.customPhotoPicker == null && widget.customAvatarUploader == null) {
-          showSnack(context, friendlyError(e), error: true);
-        }
+        setState(() {
+          _loading = false;
+          if (widget.customPhotoPicker == null && widget.customAvatarUploader == null) {
+            _loadError = friendlyError(e);
+          }
+        });
       }
     }
   }
@@ -174,17 +177,17 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
         setState(() => _avatarUrl = url);
       }
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   Future<void> _save() async {
     if (_specialties.isEmpty) {
-      showSnack(context, 'Escolha ao menos uma especialidade.', error: true);
+      AppSnackbar.show(context, 'Escolha ao menos uma especialidade.', kind: AppSnackKind.error);
       return;
     }
     if (_bio.text.trim().length < 20) {
-      showSnack(context, 'Conte um pouco sobre você (mín. 20 caracteres).', error: true);
+      AppSnackbar.show(context, 'Conte um pouco sobre você (mín. 20 caracteres).', kind: AppSnackKind.error);
       return;
     }
     setState(() => _saving = true);
@@ -212,11 +215,11 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
       if (widget.setupMode) {
         widget.onDone?.call();
       } else {
-        showSnack(context, 'Perfil atualizado!');
+        AppSnackbar.show(context, 'Perfil atualizado!', kind: AppSnackKind.success);
         Navigator.pop(context);
       }
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -224,179 +227,212 @@ class _EditProviderProfileScreenState extends State<EditProviderProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(
-        title: Text(widget.setupMode ? 'Seu perfil profissional' : 'Editar perfil'),
+      appBar: AppAppBar(
+        title: widget.setupMode ? 'Seu perfil profissional' : 'Editar perfil',
         automaticallyImplyLeading: !widget.setupMode,
       ),
-      body: _loading
-          ? const LoadingView()
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-              children: [
-                if (widget.setupMode) ...[
-                  const StepperBar(total: 3, current: 1),
-                  const SizedBox(height: 16),
-                  const Text('Mostre quem você é', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 6),
-                  Text('Clientes escolhem quem tem foto, boa descrição e especialidades claras.',
-                      style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-                  const SizedBox(height: 18),
+      body: AppSkeletonSwitcher(
+        loading: _loading,
+        skeleton: const AppSkeletonList(count: 5),
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
+          children: [
+            if (_loadError != null) ...[
+              InfoBanner(_loadError!, tone: BannerTone.warning),
+              const SizedBox(height: AppSpace.s12),
+            ],
+            if (widget.setupMode) ...[
+              const AppStepper(total: 3, current: 1),
+              const SizedBox(height: AppSpace.s16),
+              Text('Mostre quem você é', style: AppType.display.copyWith(color: tk.text)),
+              const SizedBox(height: AppSpace.s8),
+              Text(
+                'Clientes escolhem quem tem foto, boa descrição e especialidades claras.',
+                style: AppType.body.copyWith(color: tk.textMuted),
+              ),
+              const SizedBox(height: AppSpace.s20),
+            ],
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: _changePhoto,
+                    child: Stack(
+                      children: [
+                        AppAvatar(url: _avatarUrl, name: _name.isEmpty ? '?' : _name, radius: 62),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: AppIconButton(
+                            icon: Icons.photo_camera_rounded,
+                            tooltip: _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
+                            filled: true,
+                            size: 20,
+                            onPressed: _changePhoto,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppSpace.s12),
+                  AppButton(
+                    key: const Key('edit-provider-change-photo-btn'),
+                    variant: AppButtonVariant.secondary,
+                    compact: true,
+                    expand: false,
+                    onPressed: _changePhoto,
+                    icon: _hasPhoto ? Icons.photo_camera_rounded : Icons.add_a_photo_rounded,
+                    label: _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
+                  ),
                 ],
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      GestureDetector(
-                        onTap: _changePhoto,
-                        child: Stack(
-                          children: [
-                            UserAvatar(url: _avatarUrl, name: _name.isEmpty ? '?' : _name, radius: 62),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Material(
-                                color: accent,
-                                shape: const CircleBorder(),
-                                child: InkWell(
-                                  customBorder: const CircleBorder(),
-                                  onTap: _changePhoto,
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(10),
-                                    child: Icon(Icons.photo_camera_rounded, color: Colors.white, size: 20),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        key: const Key('edit-provider-change-photo-btn'),
-                        onPressed: _changePhoto,
-                        style: OutlinedButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          minimumSize: const Size(0, 38),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        ),
-                        icon: Icon(
-                          _hasPhoto ? Icons.photo_camera_rounded : Icons.add_a_photo_rounded,
-                          size: 18,
-                        ),
-                        label: Text(
-                          _hasPhoto ? 'Alterar foto' : 'Adicionar foto',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 22),
-                const Text('Título profissional', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 8),
-                TextField(controller: _headline, maxLength: 60, decoration: const InputDecoration(hintText: 'Ex: Eletricista residencial', counterText: '')),
-                const SizedBox(height: 16),
-                const Text('Cidade principal de atendimento', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 8),
-                TextField(
-                  key: const ValueKey('provider-base-city-input'),
-                  controller: _city,
-                  maxLength: 80,
-                  decoration: const InputDecoration(
-                    hintText: 'Ex: Poços de Caldas - MG',
-                    prefixIcon: Icon(Icons.location_city_rounded),
-                    counterText: '',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    for (final suggestedCity in const <String>[
-                      'Poços de Caldas - MG',
-                      'Pouso Alegre - MG',
-                      'Varginha - MG',
-                    ])
-                      ActionChip(
-                        label: Text(suggestedCity, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                        onPressed: () {
-                          setState(() => _city.text = suggestedCity);
-                          _scheduleDraft();
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Text('Sobre mim', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _bio,
-                  maxLines: 5,
-                  maxLength: 500,
-                  decoration: const InputDecoration(hintText: 'Descreva sua experiência em até 500 caracteres...'),
-                ),
-                const SizedBox(height: 8),
-                const Text('Minhas especialidades', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final c in kCategories)
-                      FilterChip(
-                        label: Text('${_specialties.contains(c.name) ? '✓' : '+'} ${c.name}'),
-                        selected: _specialties.contains(c.name),
-                        showCheckmark: false,
-                        selectedColor: accent,
-                        labelStyle: TextStyle(color: _specialties.contains(c.name) ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
-                        onSelected: (v) {
-                          setState(() => v ? _specialties.add(c.name) : _specialties.remove(c.name));
-                          _scheduleDraft();
-                        },
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _visit,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Taxa de visita (R\$)', prefixText: 'R\$ '),
-                      ),
+              ),
+            ),
+            const SizedBox(height: AppSpace.s24),
+            Text('Título profissional', style: AppType.titleSm.copyWith(color: tk.text)),
+            const SizedBox(height: AppSpace.s8),
+            AppTextField(
+              controller: _headline,
+              maxLength: 60,
+              hint: 'Ex: Eletricista residencial',
+            ),
+            const SizedBox(height: AppSpace.s16),
+            Text('Cidade principal de atendimento', style: AppType.titleSm.copyWith(color: tk.text)),
+            const SizedBox(height: AppSpace.s8),
+            TextField(
+              key: const ValueKey('provider-base-city-input'),
+              controller: _city,
+              maxLength: 80,
+              decoration: const InputDecoration(
+                hintText: 'Ex: Poços de Caldas - MG',
+                prefixIcon: Icon(Icons.location_city_rounded),
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: AppSpace.s8),
+            Wrap(
+              spacing: AppSpace.s8,
+              runSpacing: AppSpace.s8,
+              children: [
+                for (final suggestedCity in const <String>[
+                  'Poços de Caldas - MG',
+                  'Pouso Alegre - MG',
+                  'Varginha - MG',
+                ])
+                  ActionChip(
+                    label: Text(
+                      suggestedCity,
+                      style: AppType.caption.copyWith(fontWeight: FontWeight.w700, color: tk.text),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _hourly,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(labelText: 'Valor/hora (opcional)', prefixText: 'R\$ '),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text('Raio de atendimento: ${_radius.round()} km', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                Slider(
-                    value: _radius,
-                    min: 1,
-                    max: 100,
-                    divisions: 99,
-                    label: '${_radius.round()} km',
-                    onChanged: (v) {
-                      setState(() => _radius = v);
+                    onPressed: () {
+                      setState(() => _city.text = suggestedCity);
                       _scheduleDraft();
-                    }),
+                    },
+                  ),
               ],
             ),
-      bottomNavigationBar: BottomBar(
-        child: PrimaryButton(
+            const SizedBox(height: AppSpace.s16),
+            Text('Sobre mim', style: AppType.titleSm.copyWith(color: tk.text)),
+            const SizedBox(height: AppSpace.s8),
+            AppTextField(
+              controller: _bio,
+              maxLines: 5,
+              maxLength: 500,
+              hint: 'Descreva sua experiência em até 500 caracteres...',
+            ),
+            const SizedBox(height: AppSpace.s12),
+            Text('Minhas especialidades', style: AppType.titleSm.copyWith(color: tk.text)),
+            const SizedBox(height: AppSpace.s12),
+            Wrap(
+              spacing: AppSpace.s8,
+              runSpacing: AppSpace.s8,
+              children: [
+                for (final c in kCategories)
+                  FilterChip(
+                    avatar: Icon(
+                      _specialties.contains(c.name) ? Icons.check_rounded : Icons.add_rounded,
+                      size: 16,
+                      color: _specialties.contains(c.name) ? tk.onAccent : tk.accentInk,
+                    ),
+                    label: Text(c.name),
+                    selected: _specialties.contains(c.name),
+                    showCheckmark: false,
+                    selectedColor: tk.accent,
+                    labelStyle: AppType.bodySm.copyWith(
+                      color: _specialties.contains(c.name) ? tk.onAccent : tk.text,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    onSelected: (v) {
+                      setState(() => v ? _specialties.add(c.name) : _specialties.remove(c.name));
+                      _scheduleDraft();
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpace.s20),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final floatingStyle = AppType.caption.copyWith(color: tk.textMuted).apply(fontSizeFactor: 1 / 0.75);
+                final visitField = TextField(
+                  controller: _visit,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Taxa de visita (R\$)',
+                    floatingLabelStyle: floatingStyle,
+                    prefixText: 'R\$ ',
+                  ),
+                );
+                final hourlyField = TextField(
+                  controller: _hourly,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'Valor/hora (opcional)',
+                    floatingLabelStyle: floatingStyle,
+                    prefixText: 'R\$ ',
+                  ),
+                );
+                if (context.layout.isLargeText || constraints.maxWidth < 320) {
+                  return Column(
+                    children: [
+                      visitField,
+                      const SizedBox(height: AppSpace.s12),
+                      hourlyField,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: visitField),
+                    const SizedBox(width: AppSpace.s12),
+                    Expanded(child: hourlyField),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: AppSpace.s16),
+            Text(
+              'Raio de atendimento: ${_radius.round()} km',
+              style: AppType.tabular(AppType.titleSm).copyWith(color: tk.text),
+            ),
+            Slider(
+              value: _radius,
+              min: 1,
+              max: 100,
+              divisions: 99,
+              label: '${_radius.round()} km',
+              onChanged: (v) {
+                setState(() => _radius = v);
+                _scheduleDraft();
+              },
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
           label: widget.setupMode ? 'Continuar' : 'Salvar alterações',
           trailingArrow: widget.setupMode,
           loading: _saving,
@@ -444,119 +480,135 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       await _providers.addPortfolio(path);
       _reload();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
   }
 
   Future<void> _delete(PortfolioItem item) async {
-    final ok = await confirmDialog(context, title: 'Excluir foto?', message: 'Ela deixará de aparecer no seu perfil.', confirmLabel: 'Excluir', destructive: true);
+    final ok = await AppDialog.confirm(
+      context,
+      title: 'Excluir foto?',
+      message: 'Ela deixará de aparecer no seu perfil.',
+      confirmLabel: 'Excluir',
+      destructive: true,
+    );
     if (!ok) return;
     try {
       await _providers.deletePortfolio(item.id);
       _reload();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Meu Portfólio'), automaticallyImplyLeading: !widget.setupMode),
+      appBar: AppAppBar(title: 'Meu Portfólio', automaticallyImplyLeading: !widget.setupMode),
       body: FutureBuilder<List<PortfolioItem>>(
         future: _future,
         builder: (context, snap) {
           final items = snap.data ?? const [];
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
             children: [
               if (widget.setupMode) ...[
-                const StepperBar(total: 3, current: 2),
-                const SizedBox(height: 16),
+                const AppStepper(total: 3, current: 2),
+                const SizedBox(height: AppSpace.s16),
               ],
               const ProviderSmartPortfolioSection(isOwner: true),
-              const SizedBox(height: 22),
-              const Text(
-                'Galeria de Fotos Complementares',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
-              ),
-              const SizedBox(height: 4),
-              Text('Mostre a qualidade do seu trabalho para atrair mais clientes.', style: TextStyle(color: context.tk.textMuted, fontSize: 14, height: 1.4)),
-              const SizedBox(height: 12),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                children: [
-                  InkWell(
-                    onTap: _uploading ? null : _add,
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: context.tk.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: context.tk.border, width: 1.5),
-                      ),
-                      child: Center(
-                        child: _uploading
-                            ? const CircularProgressIndicator()
-                            : Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.add_photo_alternate_outlined, size: 36, color: context.tk.providerAccent),
-                                  SizedBox(height: 6),
-                                  Text('Adicionar', style: TextStyle(fontWeight: FontWeight.w800, color: context.tk.providerAccent)),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ),
-                  for (var idx = 0; idx < items.length; idx++)
-                    Stack(
-                      fit: StackFit.expand,
+              const SizedBox(height: AppSpace.section),
+              AppSection(
+                title: 'Galeria de Fotos Complementares',
+                subtitle: 'Mostre a qualidade do seu trabalho para atrair mais clientes.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: AppSpace.s12,
+                      crossAxisSpacing: AppSpace.s12,
                       children: [
-                        GestureDetector(
-                          onTap: () => PortfolioFullScreenPhotoViewer.open(
-                            context,
-                            photos: items.map((e) => e.imagePath).toList(),
-                            initialIndex: idx,
-                            serviceTitle: items[idx].caption ?? 'Galeria do Meu Portfólio',
-                            usePublicBucket: true,
-                          ),
-                          child: PublicImage(path: items[idx].imagePath, radius: 16),
-                        ),
-                        Positioned(
-                          right: 8,
-                          top: 8,
-                          child: Material(
-                            color: context.tk.card,
-                            shape: const CircleBorder(),
-                            child: InkWell(
-                              customBorder: const CircleBorder(),
-                              onTap: () => _delete(items[idx]),
-                              child: Padding(padding: EdgeInsets.all(8), child: Icon(Icons.delete_outline_rounded, size: 20, color: context.tk.danger)),
+                        AppPressable(
+                          onTap: _uploading ? null : _add,
+                          borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: tk.surface,
+                              borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                              border: Border.all(color: tk.border, width: 1.5),
+                            ),
+                            child: Center(
+                              child: _uploading
+                                  ? const AppLoading()
+                                  : Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.add_photo_alternate_outlined, size: 36, color: tk.accentInk),
+                                        const SizedBox(height: AppSpace.s8),
+                                        Text('Adicionar', style: AppType.bodyStrong.copyWith(color: tk.accentInk)),
+                                      ],
+                                    ),
                             ),
                           ),
                         ),
+                        for (var idx = 0; idx < items.length; idx++)
+                          Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              AppPressable(
+                                borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                                onTap: () => PortfolioFullScreenPhotoViewer.open(
+                                  context,
+                                  photos: items.map((e) => e.imagePath).toList(),
+                                  initialIndex: idx,
+                                  serviceTitle: items[idx].caption ?? 'Galeria do Meu Portfólio',
+                                  usePublicBucket: true,
+                                ),
+                                child: PublicImage(path: items[idx].imagePath, radius: AppGeometry.itemRadius),
+                              ),
+                              Positioned(
+                                right: AppSpace.s4,
+                                top: AppSpace.s4,
+                                child: Material(
+                                  color: tk.card,
+                                  shape: const CircleBorder(),
+                                  child: AppIconButton(
+                                    tooltip: 'Excluir foto',
+                                    icon: Icons.delete_outline_rounded,
+                                    size: 20,
+                                    color: tk.dangerInk,
+                                    onPressed: () => _delete(items[idx]),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
-                ],
-              ),
-              if (items.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 18),
-                  child: InfoBanner('Fotos de antes e depois aumentam muito a confiança. Você também pode adicionar depois.', tone: BannerTone.info),
+                    if (items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: AppSpace.s16),
+                        child: InfoBanner(
+                          'Fotos de antes e depois aumentam muito a confiança. Você também pode adicionar depois.',
+                          tone: BannerTone.info,
+                        ),
+                      ),
+                  ],
                 ),
+              ),
             ],
           );
         },
       ),
       bottomNavigationBar: widget.setupMode
-          ? BottomBar(child: PrimaryButton(label: 'Continuar', trailingArrow: true, onPressed: widget.onDone))
+          ? AppBottomBar(child: AppButton(label: 'Continuar', trailingArrow: true, onPressed: widget.onDone))
           : null,
     );
   }
@@ -574,38 +626,40 @@ class _CertificatesScreenState extends State<CertificatesScreen> {
   final _providers = ProviderService();
   late Future<List<Certificate>> _future = _providers.myCertificates();
 
-  void _reload() => setState(() { _future = _providers.myCertificates(); });
+  void _reload() => setState(() {
+        _future = _providers.myCertificates();
+      });
 
   Future<void> _add() async {
     final title = TextEditingController();
     final issuer = TextEditingController();
     final year = TextEditingController();
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Adicionar registro ou certificado', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 14),
-            TextField(controller: title, decoration: const InputDecoration(labelText: 'Título (ex: Técnico em Eletrotécnica)')),
-            const SizedBox(height: 10),
-            TextField(controller: issuer, decoration: const InputDecoration(labelText: 'Emissor (ex: SENAI, CREA-MG)')),
-            const SizedBox(height: 10),
-            TextField(
-              controller: year,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Ano de emissão (opcional)'),
-            ),
-            const SizedBox(height: 16),
-            PrimaryButton(label: 'Salvar no cofre', onPressed: () => Navigator.pop(ctx, true)),
-          ],
-        ),
+    final saved = await AppSheet.show<bool>(
+      context,
+      title: 'Adicionar registro ou certificado',
+      builder: (ctx) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AppTextField(controller: title, label: 'Título (ex: Técnico em Eletrotécnica)'),
+          const SizedBox(height: AppSpace.s12),
+          AppTextField(controller: issuer, label: 'Emissor (ex: SENAI, CREA-MG)'),
+          const SizedBox(height: AppSpace.s12),
+          AppTextField(
+            controller: year,
+            keyboardType: TextInputType.number,
+            label: 'Ano de emissão (opcional)',
+          ),
+        ],
       ),
+      actions: [
+        Builder(
+          builder: (ctx) => AppButton(
+            label: 'Salvar no cofre',
+            onPressed: () => Navigator.pop(ctx, true),
+          ),
+        ),
+      ],
     );
     if (saved == true && title.text.trim().isNotEmpty) {
       try {
@@ -617,7 +671,7 @@ class _CertificatesScreenState extends State<CertificatesScreen> {
         );
         _reload();
       } catch (e) {
-        if (mounted) showSnack(context, friendlyError(e), error: true);
+        if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
       }
     }
     title.dispose();
@@ -627,43 +681,62 @@ class _CertificatesScreenState extends State<CertificatesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Meus Certificados')),
+      appBar: const AppAppBar(title: 'Meus Certificados'),
       body: FutureBuilder<List<Certificate>>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
+          if (snap.connectionState != ConnectionState.done) return const AppSkeletonList(count: 3);
           final items = snap.data ?? const [];
           return ListView(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.symmetric(horizontal: margin, vertical: AppSpace.s20),
             children: [
-              Center(child: CircleAvatar(radius: 34, backgroundColor: context.tk.providerSoft, child: Icon(Icons.verified_user_rounded, size: 34, color: Color(0xFF0B3A6B)))),
-              const SizedBox(height: 12),
-              const Text('Certificações', textAlign: TextAlign.center, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 6),
-              Text('Comprovar suas qualificações ajuda a conquistar a confiança dos clientes.', textAlign: TextAlign.center, style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-              const SizedBox(height: 18),
+              Center(
+                child: CircleAvatar(
+                  radius: 34,
+                  backgroundColor: tk.providerSoft,
+                  child: Icon(Icons.verified_user_rounded, size: 34, color: tk.accentInk),
+                ),
+              ),
+              const SizedBox(height: AppSpace.s12),
+              Text('Certificações', textAlign: TextAlign.center, style: AppType.headline.copyWith(color: tk.text)),
+              const SizedBox(height: AppSpace.s8),
+              Text(
+                'Comprovar suas qualificações ajuda a conquistar a confiança dos clientes.',
+                textAlign: TextAlign.center,
+                style: AppType.body.copyWith(color: tk.textMuted),
+              ),
+              const SizedBox(height: AppSpace.s20),
               for (final c in items)
                 AppCard(
-                  margin: const EdgeInsets.only(bottom: 10),
+                  margin: const EdgeInsets.only(bottom: AppSpace.s12),
                   child: Row(
                     children: [
-                      CircleAvatar(backgroundColor: context.tk.surface, child: Icon(Icons.workspace_premium_rounded, color: context.tk.providerAccent)),
-                      const SizedBox(width: 12),
+                      CircleAvatar(
+                        backgroundColor: tk.surface,
+                        child: Icon(Icons.workspace_premium_rounded, color: tk.accentInk),
+                      ),
+                      const SizedBox(width: AppSpace.s12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(c.title, style: const TextStyle(fontWeight: FontWeight.w900)),
-                            Text([c.issuer, if (c.issuedAt != null) 'Emitido em ${c.issuedAt!.year}'].whereType<String>().join(' • '),
-                                style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
-                            const SizedBox(height: 6),
-                            StatusChip('Em análise', color: context.tk.warningInk, icon: Icons.schedule_rounded),
+                            Text(c.title, style: AppType.bodyStrong.copyWith(color: tk.text)),
+                            Text(
+                              [c.issuer, if (c.issuedAt != null) 'Emitido em ${c.issuedAt!.year}'].whereType<String>().join(' • '),
+                              style: AppType.bodySm.copyWith(color: tk.textMuted),
+                            ),
+                            const SizedBox(height: AppSpace.s8),
+                            const AppStatusChip('Em análise', tone: AppTone.warning, icon: Icons.schedule_rounded),
                           ],
                         ),
                       ),
-                      IconButton(
-                        icon: Icon(Icons.delete_outline_rounded, color: context.tk.textMuted),
+                      AppIconButton(
+                        tooltip: 'Excluir certificado',
+                        icon: Icons.delete_outline_rounded,
+                        color: tk.textMuted,
                         onPressed: () async {
                           await _providers.deleteCertificate(c.id);
                           _reload();
@@ -673,11 +746,34 @@ class _CertificatesScreenState extends State<CertificatesScreen> {
                   ),
                 ),
               if (items.isEmpty)
-                Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: Text('Nenhum certificado ainda.', style: TextStyle(color: context.tk.textMuted)))),
-              const SizedBox(height: 8),
-              SecondaryButton(label: '+ Adicionar registro ou certificado', onPressed: _add),
-              const SizedBox(height: 12),
-              Center(child: Text('🔒 Seus dados são protegidos e visíveis só para você e a equipe.', style: TextStyle(fontSize: 12, color: context.tk.textMuted), textAlign: TextAlign.center)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpace.s16),
+                  child: Center(
+                    child: Text('Nenhum certificado ainda.', style: AppType.bodySm.copyWith(color: tk.textMuted)),
+                  ),
+                ),
+              const SizedBox(height: AppSpace.s8),
+              AppButton(
+                label: 'Adicionar registro ou certificado',
+                variant: AppButtonVariant.secondary,
+                icon: Icons.add_rounded,
+                onPressed: _add,
+              ),
+              const SizedBox(height: AppSpace.s16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.lock_outline_rounded, size: 15, color: tk.textMuted),
+                  const SizedBox(width: AppSpace.s8),
+                  Flexible(
+                    child: Text(
+                      'Seus dados são protegidos e visíveis só para você e a equipe.',
+                      style: AppType.caption.copyWith(color: tk.textMuted),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
             ],
           );
         },
@@ -716,53 +812,58 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
   void _openDetails(OwnReview r) {
     final jobId = r.jobId;
     if (jobId == null) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => DossieServicoProfissionalScreen(jobId: jobId)));
+    Navigator.of(context).push(AppRoute<void>(builder: (_) => DossieServicoProfissionalScreen(jobId: jobId)));
   }
 
   Future<void> _reply(OwnReview r) async {
     final ctl = TextEditingController();
-    final text = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).viewInsets.bottom + 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Responder avaliação', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 6),
-            Text('Sua resposta é pública e só pode ser enviada uma vez. Seja cordial e objetivo.',
-                style: TextStyle(color: context.tk.textMuted, height: 1.4)),
-            const SizedBox(height: 12),
-            TextField(controller: ctl, maxLines: 4, maxLength: 500, autofocus: true, decoration: const InputDecoration(hintText: 'Escreva sua resposta...')),
-            const SizedBox(height: 8),
-            PrimaryButton(label: 'Publicar resposta', onPressed: () => Navigator.pop(ctx, ctl.text.trim())),
-          ],
-        ),
+    final text = await AppSheet.show<String>(
+      context,
+      title: 'Responder avaliação',
+      subtitle: 'Sua resposta é pública e só pode ser enviada uma vez. Seja cordial e objetivo.',
+      builder: (ctx) => AppTextField(
+        controller: ctl,
+        maxLines: 4,
+        maxLength: 500,
+        autofocus: !AppMotion.reduced(ctx),
+        hint: 'Escreva sua resposta...',
       ),
+      actions: [
+        Builder(
+          builder: (ctx) => AppButton(
+            label: 'Publicar resposta',
+            onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
+          ),
+        ),
+      ],
     );
     ctl.dispose();
     if (text == null || text.length < 3) return;
     try {
       await _providers.replyToReview(r.id, text);
-      if (mounted) showSnack(context, 'Resposta publicada!');
+      if (mounted) AppSnackbar.show(context, 'Resposta publicada!', kind: AppSnackKind.success);
       _reload();
     } catch (e) {
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
+    final margin = context.layout.margin;
     return AppScaffold(
-      appBar: AppBar(title: const Text('Minhas avaliações')),
+      appBar: const AppAppBar(title: 'Minhas avaliações'),
       body: FutureBuilder<({ProviderCard? card, List<OwnReview> reviews})>(
         future: _future,
         builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) return const LoadingView();
-          if (snap.hasError) return ErrorView(message: 'Não foi possível carregar suas avaliações.', onRetry: _reload);
+          if (snap.connectionState != ConnectionState.done) return const AppSkeletonList(count: 4);
+          if (snap.hasError) {
+            return AppErrorState(
+              message: 'Não foi possível carregar suas avaliações.',
+              onRetry: _reload,
+            );
+          }
           final card = snap.data!.card;
           final reviews = snap.data!.reviews;
           final counts = <String, int>{};
@@ -782,33 +883,41 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
           final avg = card?.ratingAvg ?? 0;
           final count = card?.ratingCount ?? 0;
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+            padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
             children: [
               AppCard(
+                variant: AppCardVariant.elevated,
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Column(
                       children: [
-                        Text(count > 0 ? avg.toStringAsFixed(2).replaceAll('.', ',') : '—', style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900)),
-                        RatingStars(value: avg, size: 16),
-                        const SizedBox(height: 2),
-                        Text('$count avaliações', style: TextStyle(color: context.tk.textMuted, fontSize: 12)),
+                        Text(
+                          count > 0 ? avg.toStringAsFixed(2).replaceAll('.', ',') : '—',
+                          style: AppType.figureXl.copyWith(color: tk.text),
+                        ),
+                        AppRating(value: avg, size: 16),
+                        const SizedBox(height: AppSpace.s4),
+                        Text(
+                          '$count avaliações',
+                          style: AppType.tabular(AppType.caption).copyWith(color: tk.textMuted),
+                        ),
                       ],
                     ),
-                    const SizedBox(width: 18),
+                    const SizedBox(width: AppSpace.s16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Nota de ranqueamento', style: TextStyle(fontWeight: FontWeight.w900)),
+                          Text('Nota de ranqueamento', style: AppType.titleSm.copyWith(color: tk.text)),
                           Text(
                             card?.rankScore == null ? '—' : card!.rankScore!.toStringAsFixed(2).replaceAll('.', ','),
-                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: context.tk.providerAccent),
+                            style: AppType.figure.copyWith(color: tk.accentInk),
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: AppSpace.s4),
                           Text(
                             'Define sua posição na busca. Considera a média e o volume de avaliações: quanto mais serviços bem avaliados, mais você sobe.',
-                            style: TextStyle(color: context.tk.textMuted, fontSize: 12, height: 1.35),
+                            style: AppType.caption.copyWith(color: tk.textMuted),
                           ),
                         ],
                       ),
@@ -816,33 +925,45 @@ class _MyReviewsScreenState extends State<MyReviewsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpace.s12),
               const InfoBanner(
                 'As avaliações são cegas: a nota de um serviço só aparece aqui quando você e o cliente avaliarem, ou 48 horas depois da primeira avaliação.',
                 tone: BannerTone.security,
                 icon: Icons.visibility_off_rounded,
               ),
-              const SectionTitle('Meus selos'),
-              BadgeWall(
-                earned: card?.badges ?? const [],
-                tagCounts: counts,
-                fiveStarCount: fiveStarStreak,
-                showProgress: true,
+              const SizedBox(height: AppSpace.section),
+              AppSection(
+                title: 'Meus selos',
+                child: BadgeWall(
+                  earned: card?.badges ?? const [],
+                  tagCounts: counts,
+                  fiveStarCount: fiveStarStreak,
+                  showProgress: true,
+                ),
               ),
-              const SectionTitle('Avaliações recebidas'),
-              if (reviews.isEmpty)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text('Você ainda não recebeu avaliações reveladas.', style: TextStyle(color: context.tk.textMuted)),
-                )
-              else
-                for (final r in reviews)
-                  ReviewCard(
-                    // O card só recebe a projeção pública; o job_id fica aqui no closure do dono.
-                    review: r.toPublic(),
-                    onReply: r.hasReply ? null : () => _reply(r),
-                    onOpenDetails: r.jobId == null ? null : () => _openDetails(r),
-                  ),
+              const SizedBox(height: AppSpace.section),
+              AppSection(
+                title: 'Avaliações recebidas',
+                child: reviews.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: AppSpace.s16),
+                        child: Text(
+                          'Você ainda não recebeu avaliações reveladas.',
+                          style: AppType.bodySm.copyWith(color: tk.textMuted),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (final r in reviews)
+                            ReviewCard(
+                              // O card só recebe a projeção pública; o job_id fica aqui no closure do dono.
+                              review: r.toPublic(),
+                              onReply: r.hasReply ? null : () => _reply(r),
+                              onOpenDetails: r.jobId == null ? null : () => _openDetails(r),
+                            ),
+                        ],
+                      ),
+              ),
             ],
           );
         },

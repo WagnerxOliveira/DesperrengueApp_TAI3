@@ -1,0 +1,10 @@
+# Configuração de testes do app (dona: QA Galeria, v2.28.0).
+#
+# Goldens (`@Tags(['golden'])`) NÃO rodam no `flutter test` padrão: são gerados e
+# comparados só no CI Linux (renderização de texto difere entre SOs).
+#
+#   Gerar/atualizar (Linux):  flutter test --update-goldens --tags golden --run-skipped test/ui_gallery/golden_gallery_test.dart
+#   Comparar (Linux):         flutter test --tags golden --run-skipped test/ui_gallery/golden_gallery_test.dart
+tags:
+  golden:
+    skip: "Goldens só no CI Linux: use --tags golden --run-skipped"

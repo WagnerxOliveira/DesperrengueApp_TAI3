@@ -1,11 +1,11 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import 'verificacao_step4_registro.dart';
-import '../../../core/ui/light_island.dart';
 
 class VerificacaoStep3SelfieScreen extends StatefulWidget {
   final XFile frenteDocumento;
@@ -24,7 +24,6 @@ class VerificacaoStep3SelfieScreen extends StatefulWidget {
 
 class _VerificacaoStep3SelfieScreenState
     extends State<VerificacaoStep3SelfieScreen> {
-  final Color _primaryBlue = const Color(0xFF003366);
   XFile? _imagemSelecionada;
   Uint8List? _previewBytes;
   final ImagePicker _picker = ImagePicker();
@@ -49,30 +48,27 @@ class _VerificacaoStep3SelfieScreenState
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Erro ao aceder à câmara frontal.'),
-          backgroundColor: Colors.redAccent,
-        ),
+      AppSnackbar.show(
+        context,
+        'Erro ao aceder à câmara frontal.',
+        kind: AppSnackKind.error,
       );
     }
   }
 
   void _avancarParaEtapa4() {
     if (_imagemSelecionada == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, tire uma selfie para avançar.'),
-          backgroundColor: Colors.orange,
-        ),
+      AppSnackbar.show(
+        context,
+        'Por favor, tire uma selfie para avançar.',
+        kind: AppSnackKind.warning,
       );
       return;
     }
 
-    // Navegação para a Etapa 4 (Comentado até criarmos o ficheiro)
     Navigator.push(
       context,
-      MaterialPageRoute(
+      AppRoute<void>(
         builder: (context) => VerificacaoStep4RegistroScreen(
           frenteDocumento: widget.frenteDocumento,
           versoDocumento: widget.versoDocumento,
@@ -81,225 +77,139 @@ class _VerificacaoStep3SelfieScreenState
       ),
     );
 
-    // Feedback visual temporário
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Selfie guardada! Indo para a Etapa 4...'),
-        backgroundColor: Colors.green,
-      ),
+    AppSnackbar.show(
+      context,
+      'Selfie guardada! Indo para a Etapa 4...',
+      kind: AppSnackKind.success,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return LightIsland(child: AppScaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black87),
+    final tk = context.tk;
+    final layout = context.layout;
+
+    return AppScaffold(
+      backgroundColor: tk.background,
+      appBar: AppAppBar(
+        title: 'Desperrengue',
+        leading: AppIconButton(
+          icon: Icons.arrow_back_ios_new_rounded,
+          tooltip: 'Voltar',
+          size: 20,
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Desperrengue',
-          style: TextStyle(color: _primaryBlue, fontWeight: FontWeight.bold),
+      ),
+      bottomNavigationBar: AppBottomBar(
+        child: AppButton(
+          label: 'Avançar',
+          trailingArrow: true,
+          onPressed: _avancarParaEtapa4,
         ),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            layout.margin,
+            AppSpace.s16,
+            layout.margin,
+            AppSpace.s24,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 16),
-
-              const Text(
+              Text(
                 'Etapa 3 de 5: Auto-retrato (Selfie)',
-                style: TextStyle(fontSize: 18, color: Colors.black87),
+                style: AppType.title.copyWith(color: tk.text),
               ),
-              const SizedBox(height: 8),
-              // Barra de Progresso (Etapa 3 preenchida)
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _primaryBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _primaryBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _primaryBlue,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade300),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
+              const SizedBox(height: AppSpace.s12),
+              const AppStepper(total: 5, current: 3),
+              const SizedBox(height: AppSpace.s24),
+              AppCard(
+                variant: AppCardVariant.elevated,
+                padding: const EdgeInsets.all(AppSpace.cardLarge),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
+                    Text(
                       '3. AUTO-RETRATO\n(SELFIE)',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        height: 1.1,
-                      ),
+                      style: AppType.headline.copyWith(color: tk.text),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
+                    const SizedBox(height: AppSpace.s8),
+                    Text(
                       'Tire uma foto nítida do seu rosto, sem óculos, chapéu ou máscara.',
-                      style: TextStyle(fontSize: 14, color: Colors.black87),
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
                     ),
-                    const SizedBox(height: 24),
-
-                    Container(
-                      height: 180,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.grey.shade300,
-                          style: BorderStyle.solid,
-                        ),
+                    const SizedBox(height: AppSpace.s20),
+                    AppPressable(
+                      onTap: _capturarSelfie,
+                      borderRadius: BorderRadius.circular(
+                        AppGeometry.fieldRadius,
                       ),
-                      child: _imagemSelecionada != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(
-                                _previewBytes!,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                                cacheWidth: 1080,
+                      semanticLabel: 'Capturar selfie',
+                      child: Container(
+                        height: 184,
+                        decoration: BoxDecoration(
+                          color: tk.isDark ? tk.surface : tk.surfaceInset,
+                          borderRadius: BorderRadius.circular(
+                            AppGeometry.fieldRadius,
+                          ),
+                          border: Border.all(
+                            color: _imagemSelecionada != null
+                                ? tk.successInk
+                                : tk.border,
+                          ),
+                        ),
+                        child: _imagemSelecionada != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(
+                                  AppGeometry.fieldRadius,
+                                ),
+                                child: Image.memory(
+                                  _previewBytes!,
+                                  fit: BoxFit.cover,
+                                  gaplessPlayback: true,
+                                  cacheWidth: 1080,
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.all(AppSpace.s16),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.face_retouching_natural_rounded,
+                                      size: 56,
+                                      color: tk.textMuted,
+                                    ),
+                                    const SizedBox(height: AppSpace.s12),
+                                    Text(
+                                      'Toque p/ tirar a Selfie',
+                                      textAlign: TextAlign.center,
+                                      style: AppType.body.copyWith(
+                                        color: tk.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            )
-                          : Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.face_retouching_natural_rounded,
-                                  size: 64,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'Toque p/ tirar a Selfie',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
+                      ),
                     ),
-                    const SizedBox(height: 24),
-
-                    ElevatedButton.icon(
+                    const SizedBox(height: AppSpace.s20),
+                    AppButton(
+                      label: 'Tirar Foto',
+                      icon: Icons.camera_alt_rounded,
+                      variant: AppButtonVariant.secondary,
+                      compact: true,
                       onPressed: _capturarSelfie,
-                      icon: const Icon(
-                        Icons.camera_alt_rounded,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        'Tirar Foto',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2C56D1),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
                     ),
                   ],
                 ),
               ),
-
-              const Spacer(),
-
-              ElevatedButton(
-                onPressed: _avancarParaEtapa4,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'Avançar',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
-    ));
+    );
   }
 }

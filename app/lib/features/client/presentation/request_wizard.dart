@@ -1,22 +1,23 @@
-import '../../../core/ui/app_scaffold.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import '../../../core/models/marketplace_models.dart';
 import '../../../core/models/smart_triage_models.dart';
-import '../../../core/services/smart_triage_service.dart';
-import '../../../core/state/smart_triage_controller.dart';
-import '../../shared/presentation/smart_triage_widgets.dart';
+import '../../../core/models/structured_service_address.dart';
 import '../../../core/models/user_profile.dart';
+import '../../../core/models/wallet_models.dart';
 import '../../../core/services/geocoding_service.dart';
 import '../../../core/services/job_service.dart';
 import '../../../core/services/media_service.dart';
 import '../../../core/services/provider_service.dart';
 import '../../../core/services/scheduling_service.dart';
+import '../../../core/services/smart_triage_service.dart';
 import '../../../core/services/speech_service.dart';
 import '../../../core/services/text_refine_service.dart';
-import '../../../core/models/structured_service_address.dart';
+import '../../../core/state/smart_triage_controller.dart';
+import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
@@ -24,14 +25,13 @@ import '../../../core/utils/format.dart';
 import '../../../core/utils/order_utils.dart';
 import '../../../core/utils/provider_filters.dart';
 import '../../shared/presentation/live_location_map.dart';
-import 'client_job_screen.dart';
+import '../../shared/presentation/smart_triage_widgets.dart';
 import 'address_form.dart';
+import 'client_job_screen.dart';
 import 'client_setup_screen.dart';
-import '../../../core/models/wallet_models.dart';
 import 'payment_widgets.dart';
 import 'published_overlay.dart';
 import 'voice_dictation.dart';
-import '../../../core/ui/app_tokens.dart';
 
 /// Assistente de pedido (protótipos 6, 7, 8 e emergência b2/c).
 ///
@@ -329,7 +329,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     final raw = _description.text.trim();
     if (raw.length < 4 && _images.isEmpty && _category == null) {
       if (!silentIfEmpty) {
-        showSnack(context, 'Descreva ou fale o que aconteceu para a IA diagnosticar.', error: true);
+        AppSnackbar.show(context, 'Descreva ou fale o que aconteceu para a IA diagnosticar.', kind: AppSnackKind.error);
       }
       return;
     }
@@ -399,11 +399,11 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
 
   Future<void> _submit() async {
     if (_provider?.id == widget.profile.id) {
-      showSnack(context, 'Você não pode solicitar um serviço a si mesmo.', error: true);
+      AppSnackbar.show(context, 'Você não pode solicitar um serviço a si mesmo.', kind: AppSnackKind.error);
       return;
     }
     if (_currentAddress.isEmpty) {
-      showSnack(context, 'Informe o endereço do atendimento.', error: true);
+      AppSnackbar.show(context, 'Informe o endereço do atendimento.', kind: AppSnackKind.error);
       return;
     }
     // Emergência = reserva a taxa de visita na hora: trava de saldo ANTES de criar o pedido.
@@ -431,7 +431,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       final annotatedLines = <String>[
         for (var i = 0; i < _images.length; i++)
           if (_images[i].hasContextAnnotation)
-            '📷 Foto ${i + 1}: ${_images[i].combinedSummary}',
+            'Foto ${i + 1}: ${_images[i].combinedSummary}',
       ];
       final fullDescription = annotatedLines.isEmpty
           ? text
@@ -491,7 +491,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       nav.popUntil((r) => r.isFirst);
       if (_emergency) {
         // Emergência: o radar de 5 minutos precisa ficar na frente (resposta imediata do profissional).
-        nav.push(MaterialPageRoute(builder: (_) => ClientJobScreen(jobId: jobId!)));
+        nav.push(AppRoute(builder: (_) => ClientJobScreen(jobId: jobId!)));
       } else {
         // Volta IMEDIATAMENTE ao Painel do Cliente e celebra por cima dele (overlay circular).
         // O contexto do Navigator continua válido depois que o wizard saiu da árvore.
@@ -511,7 +511,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           await _jobs.cancelJob(jobId);
         } catch (_) {}
       }
-      if (mounted) showSnack(context, friendlyError(e), error: true);
+      if (mounted) AppSnackbar.show(context, friendlyError(e), kind: AppSnackKind.error);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -519,7 +519,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
 
   Future<void> _editAddress() async {
     final result = await Navigator.of(context).push<AddressData>(
-      MaterialPageRoute(builder: (_) => EditAddressScreen(currentLine: widget.profile.addressLine)),
+      AppRoute(builder: (_) => EditAddressScreen(currentLine: widget.profile.addressLine)),
     );
     if (result != null && mounted) {
       setState(() {
@@ -534,7 +534,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   Future<void> _openMap() async {
     final line = _currentAddress;
     if (line.isEmpty) {
-      showSnack(context, 'Informe o endereço do atendimento para ver no mapa.', error: true);
+      AppSnackbar.show(context, 'Informe o endereço do atendimento para ver no mapa.', kind: AppSnackKind.error);
       return;
     }
     final lat = _pinLat ?? (_override != null ? _override!.latitude : widget.profile.latitude);
@@ -594,15 +594,19 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
 
   void _next() {
     if (_step == 0 && !_step0Valid) {
-      showSnack(
+      AppSnackbar.show(
         context,
         _images.isEmpty ? 'Anexe ao menos 1 foto para o profissional avaliar.' : 'Descreva o problema (mín. 10 caracteres).',
-        error: true,
+        kind: AppSnackKind.error,
       );
       return;
     }
     if (_step == 1 && !_step1Valid) {
-      showSnack(context, _emergency ? 'Confirme que está ciente das condições.' : 'Escolha data e horário.', error: true);
+      AppSnackbar.show(
+        context,
+        _emergency ? 'Confirme que está ciente das condições.' : 'Escolha data e horário.',
+        kind: AppSnackKind.error,
+      );
       return;
     }
     if (_triage == null && _description.text.trim().isNotEmpty) {
@@ -615,6 +619,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final margin = context.layout.margin;
     final titles = ['1 de 3: O que precisa ser feito?', '2 de 3: Quando será o serviço?', '3 de 3: Revisão'];
     return PopScope(
       canPop: _step == 0,
@@ -622,34 +627,44 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         if (!didPop) setState(() => _step--);
       },
       child: AppScaffold(
-        appBar: AppBar(
-          leading: IconButton(
+        appBar: AppAppBar(
+          leading: AppIconButton(
             tooltip: 'Voltar',
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
+            icon: Icons.arrow_back_ios_new_rounded,
             onPressed: () => _step == 0 ? Navigator.pop(context) : setState(() => _step--),
           ),
-          title: Text(titles[_step], style: const TextStyle(fontSize: 16)),
+          title: titles[_step],
         ),
         body: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          padding: EdgeInsets.fromLTRB(margin, AppSpace.s8, margin, AppSpace.s24),
           children: [
-            StepperBar(total: 3, current: _step + 1),
-            const SizedBox(height: 16),
+            AppStepper(total: 3, current: _step + 1),
+            const SizedBox(height: AppSpace.s16),
             if (_provider != null) _ProviderMini(provider: _provider!) else const _PublicRequestHeader(),
-            const SizedBox(height: 16),
-            if (_step == 0) _buildDescribe(),
-            if (_step == 1) _buildWhen(),
-            if (_step == 2) _buildReview(),
+            const SizedBox(height: AppSpace.s16),
+            AnimatedSwitcher(
+              duration: AppMotion.d(context, AppMotion.fadeShort),
+              switchInCurve: AppMotion.fadeCurve,
+              switchOutCurve: AppMotion.fadeCurve,
+              child: KeyedSubtree(
+                key: ValueKey('wizard-step-$_step'),
+                child: switch (_step) {
+                  0 => _buildDescribe(),
+                  1 => _buildWhen(),
+                  _ => _buildReview(),
+                },
+              ),
+            ),
           ],
         ),
-        bottomNavigationBar: BottomBar(
+        bottomNavigationBar: AppBottomBar(
           child: _step < 2
-              ? PrimaryButton(
+              ? AppButton(
                   label: _step == 0 ? 'Avançar para Data e Hora' : (_emergency ? 'Estou ciente, avançar' : 'Avançar para o Resumo'),
                   trailingArrow: true,
                   onPressed: _next,
                 )
-              : PrimaryButton(
+              : AppButton(
                   label: _emergency
                       ? 'Pagar e solicitar urgência'
                       : (_provider != null ? 'Enviar pedido de orçamento' : 'Publicar pedido'),
@@ -663,6 +678,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   }
 
   Widget _buildDescribe() {
+    final tk = context.tk;
     // A categoria já foi escolhida na tela anterior ("Do que você precisa hoje?"): não repetimos
     // a seleção. O seletor só reaparece como último recurso (entrada sem categoria definida).
     final needsChooser = widget.category == null && (_provider == null || _provider!.specialties.length > 1);
@@ -670,50 +686,68 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (needsChooser) ...[
-          const Text('Categoria', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          const SizedBox(height: 8),
+          Text('Categoria', style: AppType.titleSm.copyWith(color: tk.text)),
+          const SizedBox(height: AppSpace.s8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s8,
             children: [
               for (final c in (_provider != null && _provider!.specialties.isNotEmpty
                   ? kCategories.where((c) => _provider!.matchesCategory(c.name))
                   : kCategories))
                 ChoiceChip(
                   label: Text(c.name),
-                  avatar: Icon(categoryIcon(c.name), size: 16, color: _category == c.name ? Theme.of(context).colorScheme.onPrimary : context.tk.text),
+                  avatar: Icon(
+                    categoryIcon(c.name),
+                    size: 18,
+                    color: _category == c.name ? tk.onAccent : tk.accentInk,
+                  ),
                   selected: _category == c.name,
                   showCheckmark: false,
-                  labelStyle: TextStyle(color: _category == c.name ? Theme.of(context).colorScheme.onPrimary : context.tk.text, fontWeight: FontWeight.w700),
+                  backgroundColor: tk.surface,
+                  selectedColor: tk.accent,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.standard,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
+                  labelPadding: const EdgeInsets.symmetric(vertical: AppSpace.s2),
+                  labelStyle: AppType.bodySm.copyWith(
+                    color: _category == c.name ? tk.onAccent : tk.text,
+                    fontWeight: FontWeight.w600,
+                  ),
                   onSelected: (_) => setState(() => _category = c.name),
                 ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: AppSpace.s20),
         ] else if (_category != null) ...[
           _CategoryBanner(name: _category!),
-          const SizedBox(height: 18),
+          const SizedBox(height: AppSpace.s20),
         ],
-        Text.rich(TextSpan(children: [
-          TextSpan(text: 'O que precisa ser feito? ', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          TextSpan(text: '(Obrigatório)', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
-        ])),
-        const SizedBox(height: 4),
-        Text('Descreva com detalhes digitando ou fale o que aconteceu — você escolhe.',
-            style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
-        const SizedBox(height: 8),
-        TextField(
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: 'O que precisa ser feito? ', style: AppType.titleSm.copyWith(color: tk.text)),
+              TextSpan(text: '(Obrigatório)', style: AppType.bodySm.copyWith(color: tk.textMuted)),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpace.s4),
+        Text(
+          'Descreva com detalhes digitando ou fale o que aconteceu — você escolhe.',
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
+        ),
+        const SizedBox(height: AppSpace.s8),
+        AppTextField(
           key: const ValueKey('description-field'),
           controller: _description,
           maxLines: 6,
+          minLines: 4,
           maxLength: 500,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            hintText: 'Ex: Meu disjuntor do chuveiro está desarmando toda vez que ligo na temperatura quente...',
-          ),
+          hint: 'Ex: Meu disjuntor do chuveiro está desarmando toda vez que ligo na temperatura quente...',
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpace.s8),
         VoiceDictationPanel(
           textController: _description,
           maxLength: 500,
@@ -728,16 +762,22 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
             }
           },
         ),
-        const SizedBox(height: 16),
-        Text.rich(TextSpan(children: [
-          const TextSpan(text: 'Anexar fotos (até 4) ', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          TextSpan(text: '(Obrigatório) ', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
-          TextSpan(text: '(${_images.length}/4)', style: TextStyle(color: context.tk.textMuted, fontSize: 13)),
-        ])),
-        const SizedBox(height: 4),
-        Text('Fotos ajudam o profissional a avaliar o problema e a enviar um orçamento justo.',
-            style: TextStyle(color: context.tk.textMuted, fontSize: 12.5)),
-        const SizedBox(height: 10),
+        const SizedBox(height: AppSpace.s20),
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(text: 'Anexar fotos (até 4) ', style: AppType.titleSm.copyWith(color: tk.text)),
+              TextSpan(text: '(Obrigatório) ', style: AppType.bodySm.copyWith(color: tk.textMuted)),
+              TextSpan(text: '(${_images.length}/4)', style: AppType.tabular(AppType.bodySm).copyWith(color: tk.textMuted)),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppSpace.s4),
+        Text(
+          'Fotos ajudam o profissional a avaliar o problema e a enviar um orçamento justo.',
+          style: AppType.bodySm.copyWith(color: tk.textMuted),
+        ),
+        const SizedBox(height: AppSpace.s12),
         MediaPickerRow(
           images: _images,
           onAdd: _addImage,
@@ -745,21 +785,21 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           onRemove: (i) => setState(() => _images.removeAt(i)),
         ),
         if (_images.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpace.s8),
           Row(
             children: [
-              Icon(Icons.touch_app_rounded, size: 14, color: context.tk.clientAccent),
-              const SizedBox(width: 4),
+              Icon(Icons.touch_app_rounded, size: 16, color: tk.accentInk),
+              const SizedBox(width: AppSpace.s4),
               Expanded(
                 child: Text(
                   'Toque em uma foto anexada para adicionar ou editar a descrição breve ou sugestão.',
-                  style: TextStyle(color: context.tk.textMuted, fontSize: 11.5, fontWeight: FontWeight.w600),
+                  style: AppType.bodySm.copyWith(color: tk.textMuted, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpace.s16),
         SmartTriageTriggerBar(
           hasResult: _triage != null,
           analyzing: _analyzingTriage,
@@ -767,13 +807,13 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         ),
         if (_triage != null) ...[
           if (_triage!.hasEmergencyContainment) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.s16),
             EmergencyContainmentBanner(
               guide: _triage!.containmentGuide!,
               onToggleStep: _toggleContainmentStep,
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: AppSpace.s16),
           SmartTriageCard(
             result: _triage!,
             selectedCategory: _category,
@@ -786,167 +826,230 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   }
 
   Widget _buildWhen() {
+    final tk = context.tk;
     final canEmergency = _provider != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Quando deseja o atendimento?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-        const SizedBox(height: 12),
-        SegmentedButton<bool>(
-          showSelectedIcon: false,
+        Text('Quando deseja o atendimento?', style: AppType.title.copyWith(color: tk.text)),
+        const SizedBox(height: AppSpace.s12),
+        AppSegmented<bool>(
           segments: const [
-            ButtonSegment(value: true, label: Text('⚡ Para Agora')),
-            ButtonSegment(value: false, label: Text('📅 Agendar')),
+            AppSegment(value: true, label: 'Para Agora', icon: Icons.bolt_rounded),
+            AppSegment(value: false, label: 'Agendar', icon: Icons.calendar_month_rounded),
           ],
-          selected: {_emergency},
-          onSelectionChanged: (s) {
-            if (s.first && !canEmergency) {
-              showSnack(context, 'Para emergências, escolha antes um profissional no perfil dele.', error: true);
+          selected: _emergency,
+          onChanged: (isUrgent) {
+            if (isUrgent && !canEmergency) {
+              AppSnackbar.show(
+                context,
+                'Para emergências, escolha antes um profissional no perfil dele.',
+                kind: AppSnackKind.error,
+              );
               return;
             }
-            setState(() => _emergency = s.first);
+            setState(() => _emergency = isUrgent);
           },
-          style: SegmentedButton.styleFrom(
-            selectedBackgroundColor: context.tk.clientAccent,
-            selectedForegroundColor: Colors.white,
-          ),
         ),
-        const SizedBox(height: 16),
-        if (_emergency) ...[
-          AppCard(
-            color: context.tk.warningSoft,
-            borderColor: context.tk.warning.withValues(alpha: 0.5),
-            radius: 20,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        const SizedBox(height: AppSpace.s16),
+        AnimatedSwitcher(
+          duration: AppMotion.d(context, AppMotion.fadeShort),
+          switchInCurve: AppMotion.fadeCurve,
+          switchOutCurve: AppMotion.fadeCurve,
+          child: _emergency
+              ? Column(
+                  key: const ValueKey('when-emergency'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.bolt_rounded, color: context.tk.clientAccent),
-                    SizedBox(width: 8),
-                    Text('Serviço de Emergência', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17)),
+                    AppCard(
+                      variant: AppCardVariant.tonal,
+                      color: tk.warningSoft,
+                      borderColor: tk.warning.withValues(alpha: 0.5),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.bolt_rounded, color: tk.accentInk),
+                              const SizedBox(width: AppSpace.s8),
+                              Expanded(
+                                child: Text('Serviço de Emergência', style: AppType.titleSm.copyWith(color: tk.text)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: AppSpace.s8),
+                          Text(
+                            "O modo 'Para Agora' é exclusivo para situações críticas que exigem atenção imediata. "
+                            'Seu pedido será enviado com prioridade máxima e o profissional terá 5 minutos para avaliar a gravidade pelas fotos e descrição.',
+                            style: AppType.bodySm.copyWith(color: tk.text),
+                          ),
+                          const SizedBox(height: AppSpace.s12),
+                          _Bullet(Icons.check_circle_rounded, 'Se aprovado: o profissional se desloca de imediato.', tk.accentInk),
+                          _Bullet(Icons.check_circle_rounded, 'Se recusado ou sem resposta: a reserva é estornada na hora.', tk.accentInk),
+                          _Bullet(Icons.warning_amber_rounded, 'Atenção: taxas de urgência podem ser combinadas no local.', tk.dangerInk),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: AppSpace.s8),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: _ackEmergency,
+                      onChanged: (v) => setState(() => _ackEmergency = v ?? false),
+                      title: Text(
+                        'Estou ciente das condições do atendimento de emergência.',
+                        style: AppType.bodySm.copyWith(color: tk.text),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  key: const ValueKey('when-scheduled'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Escolha o dia', style: AppType.titleSm.copyWith(color: tk.text)),
+                        ),
+                        AppButton(
+                          label: 'Calendário',
+                          icon: Icons.calendar_month_rounded,
+                          variant: AppButtonVariant.tertiary,
+                          expand: false,
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final first = DateTime(now.year, now.month, now.day);
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _date.isBefore(first) ? first : _date,
+                              firstDate: first,
+                              lastDate: first.add(const Duration(days: 90)),
+                            );
+                            if (picked != null && mounted) {
+                              setState(() {
+                                _date = picked;
+                                _hour = null;
+                              });
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpace.s8),
+                    _DateStripPicker(
+                      selected: _date,
+                      days: 90,
+                      onSelected: (d) => setState(() {
+                        _date = d;
+                        _hour = null;
+                      }),
+                    ),
+                    const SizedBox(height: AppSpace.s16),
+                    Text(
+                      'Horários para ${weekdayName(_date)}, ${_date.day} de ${monthName(_date.month)}',
+                      style: AppType.titleSm.copyWith(color: tk.text),
+                    ),
+                    const SizedBox(height: AppSpace.s12),
+                    Wrap(
+                      spacing: AppSpace.s8,
+                      runSpacing: AppSpace.s8,
+                      children: [
+                        for (final h in _hours)
+                          Builder(
+                            builder: (context) {
+                              final disabled = _slotBusy(h) || _slotPast(h);
+                              final selected = _hour == h;
+                              return ChoiceChip(
+                                label: Text(
+                                  '${two(h)}:00',
+                                  style: AppType.tabular(AppType.bodySm).copyWith(
+                                    decoration: disabled ? TextDecoration.lineThrough : null,
+                                    color: disabled ? tk.textMuted : (selected ? tk.onAccent : tk.text),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                selected: selected,
+                                showCheckmark: false,
+                                backgroundColor: tk.surface,
+                                selectedColor: tk.accent,
+                                materialTapTargetSize: MaterialTapTargetSize.padded,
+                                visualDensity: VisualDensity.standard,
+                                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
+                                labelPadding: const EdgeInsets.symmetric(vertical: AppSpace.s2),
+                                onSelected: disabled ? null : (_) => setState(() => _hour = h),
+                              );
+                            },
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  "O modo 'Para Agora' é exclusivo para situações críticas que exigem atenção imediata. "
-                  'Seu pedido será enviado com prioridade máxima e o profissional terá 5 minutos para avaliar a gravidade pelas fotos e descrição.',
-                  style: TextStyle(height: 1.4),
-                ),
-                const SizedBox(height: 10),
-                _Bullet(Icons.check_circle_rounded, 'Se aprovado: o profissional se desloca de imediato.', context.tk.clientAccent),
-                _Bullet(Icons.check_circle_rounded, 'Se recusado ou sem resposta: a reserva é estornada na hora.', context.tk.clientAccent),
-                _Bullet(Icons.warning_amber_rounded, 'Atenção: taxas de urgência podem ser combinadas no local.', context.tk.danger),
-              ],
-            ),
-          ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            controlAffinity: ListTileControlAffinity.leading,
-            value: _ackEmergency,
-            onChanged: (v) => setState(() => _ackEmergency = v ?? false),
-            title: const Text('Estou ciente das condições do atendimento de emergência.'),
-          ),
-        ] else ...[
-          const Text('Escolha o dia', style: TextStyle(fontWeight: FontWeight.w800)),
-          CalendarDatePicker(
-            initialDate: _date,
-            firstDate: DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
-            lastDate: DateTime.now().add(const Duration(days: 90)),
-            onDateChanged: (d) => setState(() {
-              _date = d;
-              _hour = null;
-            }),
-          ),
-          const SizedBox(height: 4),
-          Text('Horários para ${weekdayName(_date)}, ${_date.day} de ${monthName(_date.month)}',
-              style: const TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final h in _hours)
-                Builder(builder: (context) {
-                  final disabled = _slotBusy(h) || _slotPast(h);
-                  final selected = _hour == h;
-                  return ChoiceChip(
-                    label: Text('${two(h)}:00', style: TextStyle(
-                      decoration: disabled ? TextDecoration.lineThrough : null,
-                      color: disabled ? context.tk.textMuted : (selected ? Theme.of(context).colorScheme.onPrimary : context.tk.text),
-                      fontWeight: FontWeight.w700,
-                    )),
-                    selected: selected,
-                    showCheckmark: false,
-                    onSelected: disabled ? null : (_) => setState(() => _hour = h),
-                  );
-                }),
-            ],
-          ),
-        ],
+        ),
       ],
     );
   }
 
   Widget _buildReview() {
+    final tk = context.tk;
     final p = _provider;
     final hasAddress = _currentAddress.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Resumo do Pedido (Aguardando Publicação)', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, height: 1.2)),
-        const SizedBox(height: 12),
+        Text('Resumo do Pedido (Aguardando Publicação)', style: AppType.headline.copyWith(color: tk.text)),
+        const SizedBox(height: AppSpace.s12),
         AppCard(
+          variant: AppCardVariant.elevated,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(categoryIcon(_category ?? ''), color: context.tk.clientAccent),
-                  const SizedBox(width: 8),
-                  Text(_category ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  Icon(categoryIcon(_category ?? ''), color: tk.accentInk),
+                  const SizedBox(width: AppSpace.s8),
+                  Expanded(
+                    child: Text(_category ?? '', style: AppType.titleSm.copyWith(color: tk.text)),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              Text(_description.text.trim(), style: const TextStyle(height: 1.4)),
-              const SizedBox(height: 10),
+              const SizedBox(height: AppSpace.s8),
+              Text(_description.text.trim(), style: AppType.body.copyWith(color: tk.text)),
+              const SizedBox(height: AppSpace.s12),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s8,
                 children: [
                   for (final img in _images)
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
                       child: Image.memory(img.bytes, width: 56, height: 56, fit: BoxFit.cover),
                     ),
                 ],
               ),
               if (_images.any((i) => i.hasContextAnnotation)) ...[
-                const SizedBox(height: 10),
-                Container(
+                const SizedBox(height: AppSpace.s12),
+                AppCard(
                   key: const ValueKey('review-photo-annotations'),
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: context.tk.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: context.tk.border),
-                  ),
+                  variant: AppCardVariant.tonal,
+                  borderColor: tk.border,
+                  padding: const EdgeInsets.all(AppSpace.s12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (var i = 0; i < _images.length; i++)
                         if (_images[i].hasContextAnnotation)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
+                            padding: const EdgeInsets.only(bottom: AppSpace.s4),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(Icons.photo_camera_outlined, size: 15, color: context.tk.clientAccent),
-                                const SizedBox(width: 6),
+                                Icon(Icons.photo_camera_outlined, size: 16, color: tk.accentInk),
+                                const SizedBox(width: AppSpace.s8 - 2),
                                 Expanded(
                                   child: Text(
                                     'Foto ${i + 1}: ${_images[i].combinedSummary}',
-                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.3),
+                                    style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600, color: tk.text),
                                   ),
                                 ),
                               ],
@@ -959,32 +1062,34 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpace.s12),
         if (_emergency)
-          StatusChip('🚨 EMERGÊNCIA: PARA AGORA ⚡', color: context.tk.danger, background: context.tk.dangerSoft)
+          const AppStatusChip('EMERGÊNCIA: PARA AGORA', tone: AppTone.danger, icon: Icons.bolt_rounded)
         else
           AppCard(
-            color: context.tk.surface,
+            variant: AppCardVariant.tonal,
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.calendar_month_rounded, color: context.tk.clientAccent),
-                const SizedBox(width: 10),
+                Icon(Icons.calendar_month_rounded, color: tk.accentInk),
+                const SizedBox(width: AppSpace.s12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Data e horário solicitados', style: TextStyle(fontWeight: FontWeight.w800)),
-                      Text(_scheduled == null ? '' : dateLong(_scheduled!)),
-                      const SizedBox(height: 6),
+                      Text('Data e horário solicitados', style: AppType.bodyStrong.copyWith(color: tk.text)),
+                      const SizedBox(height: AppSpace.s2),
+                      Text(_scheduled == null ? '' : dateLong(_scheduled!), style: AppType.bodySm.copyWith(color: tk.text)),
+                      const SizedBox(height: AppSpace.s8),
                       // O pedido ainda NÃO foi publicado: nada está "agendado" até um profissional aceitar.
-                      StatusChip('AGUARDANDO PUBLICAÇÃO', color: context.tk.warningInk, icon: Icons.hourglass_top_rounded),
+                      const AppStatusChip('AGUARDANDO PUBLICAÇÃO', tone: AppTone.warning, icon: Icons.hourglass_top_rounded),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpace.s12),
         if (_emergency)
           InfoBanner(
             '${p?.fullName ?? 'O profissional'} terá 5 minutos para aceitar. Se recusar ou não responder, a reserva é estornada.',
@@ -998,61 +1103,66 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                 : 'Até 3 profissionais da região poderão enviar orçamentos. Você compara e escolhe.',
             counter: _openRequests == null ? null : orderPositionMessage(_openRequests!),
           ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            const Expanded(child: Text('Localização', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-            TextButton.icon(onPressed: _editAddress, icon: const Icon(Icons.edit_rounded, size: 16), label: const Text('Editar')),
-          ],
-        ),
-        AppCard(
-          key: const ValueKey('location-card'),
-          onTap: hasAddress ? _openMap : null,
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: context.tk.clientSoft,
-                child: Icon(Icons.place_rounded, color: context.tk.clientAccent),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      hasAddress ? _currentAddress : 'Nenhum endereço cadastrado. Toque em Editar.',
-                      style: TextStyle(height: 1.35, color: hasAddress ? context.tk.text : context.tk.danger),
-                    ),
-                    if (hasAddress) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Toque para ver no mapa em tempo real',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: context.tk.clientAccent,
-                        ),
-                      ),
-                    ],
-                  ],
+        const SizedBox(height: AppSpace.s20),
+        AppSection(
+          title: 'Localização',
+          action: AppButton(
+            label: 'Editar',
+            icon: Icons.edit_rounded,
+            variant: AppButtonVariant.tertiary,
+            expand: false,
+            compact: true,
+            onPressed: _editAddress,
+          ),
+          child: AppCard(
+            key: const ValueKey('location-card'),
+            variant: AppCardVariant.elevated,
+            onTap: hasAddress ? _openMap : null,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: tk.accentSoft,
+                  child: Icon(Icons.place_rounded, color: tk.accentInk),
                 ),
-              ),
-              if (hasAddress) ...[
-                const SizedBox(width: 8),
-                Icon(Icons.map_rounded, color: context.tk.clientAccent),
+                const SizedBox(width: AppSpace.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hasAddress ? _currentAddress : 'Nenhum endereço cadastrado. Toque em Editar.',
+                        style: AppType.bodySm.copyWith(color: hasAddress ? tk.text : tk.dangerInk),
+                      ),
+                      if (hasAddress) ...[
+                        const SizedBox(height: AppSpace.s4),
+                        Text(
+                          'Toque para ver no mapa em tempo real',
+                          style: AppType.bodySm.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: tk.accentInk,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (hasAddress) ...[
+                  const SizedBox(width: AppSpace.s8),
+                  Icon(Icons.map_rounded, color: tk.accentInk),
+                ],
               ],
-            ],
+            ),
           ),
         ),
         if (_triage != null) ...[
           if (_triage!.hasEmergencyContainment) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.s16),
             EmergencyContainmentBanner(
               guide: _triage!.containmentGuide!,
               onToggleStep: _toggleContainmentStep,
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.s16),
           SmartTriageCard(
             result: _triage!,
             selectedCategory: _category,
@@ -1061,33 +1171,34 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           ),
         ],
         if (_emergency && p != null) ...[
-          const SizedBox(height: 18),
-          const Text('Resumo financeiro', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 8),
-          AppCard(
-            color: context.tk.surface,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(child: Text('Reserva de garantia (taxa de visita)')),
-                    Text(brl(p.visitFee), style: const TextStyle(fontWeight: FontWeight.w900)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Valor bloqueado para garantir a ida do profissional. Reembolsável se ele recusar ou não responder. '
-                  'O orçamento final é combinado no local.',
-                  style: TextStyle(fontSize: 12.5, color: context.tk.textMuted, height: 1.35),
-                ),
-              ],
+          const SizedBox(height: AppSpace.s20),
+          AppSection(
+            title: 'Resumo financeiro',
+            child: AppCard(
+              variant: AppCardVariant.tonal,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AppInfoRow(
+                    label: 'Reserva de garantia (taxa de visita)',
+                    valueWidget: AppPrice(value: p.visitFee, size: AppPriceSize.sm),
+                    strong: true,
+                  ),
+                  const SizedBox(height: AppSpace.s4),
+                  Text(
+                    'Valor bloqueado para garantir a ida do profissional. Reembolsável se ele recusar ou não responder. '
+                    'O orçamento final é combinado no local.',
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 14),
-          const Text('Forma de pagamento', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          const SizedBox(height: 8),
-          WalletPayCard(priceCents: Money.fromReais(p.visitFee)),
+          const SizedBox(height: AppSpace.s16),
+          AppSection(
+            title: 'Forma de pagamento',
+            child: WalletPayCard(priceCents: Money.fromReais(p.visitFee)),
+          ),
         ],
       ],
     );
@@ -1103,16 +1214,16 @@ class _Bullet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 8),
-        Expanded(child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600, height: 1.3))),
-      ],
-    ),
-  );
+        padding: const EdgeInsets.only(top: AppSpace.s4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: AppSpace.s8),
+            Expanded(child: Text(text, style: AppType.bodySm.copyWith(fontWeight: FontWeight.w600, color: context.tk.text))),
+          ],
+        ),
+      );
 }
 
 class _ProviderMini extends StatelessWidget {
@@ -1122,24 +1233,123 @@ class _ProviderMini extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tk = context.tk;
     return AppCard(
-      color: context.tk.surface,
+      variant: AppCardVariant.tonal,
       child: Row(
         children: [
-          UserAvatar(url: provider.avatarUrl, name: provider.fullName, radius: 24, verified: true),
-          const SizedBox(width: 12),
+          AppAvatar(url: provider.avatarUrl, name: provider.fullName, radius: 24, verified: true),
+          const SizedBox(width: AppSpace.s12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(provider.fullName, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                Text(provider.title, style: TextStyle(color: context.tk.textMuted)),
+                Text(provider.fullName, style: AppType.titleSm.copyWith(color: tk.text)),
+                Text(provider.title, style: AppType.bodySm.copyWith(color: tk.textMuted)),
               ],
             ),
           ),
-          if (provider.ratingCount > 0)
-            Text('${provider.ratingAvg.toStringAsFixed(1).replaceAll('.', ',')} ★', style: const TextStyle(fontWeight: FontWeight.w800)),
+          if (provider.ratingCount > 0) ...[
+            const SizedBox(width: AppSpace.s8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  provider.ratingAvg.toStringAsFixed(1).replaceAll('.', ','),
+                  style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.text),
+                ),
+                const SizedBox(width: AppSpace.s4),
+                Icon(Icons.star_rounded, size: 16, color: tk.star),
+              ],
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _DateStripPicker extends StatelessWidget {
+  const _DateStripPicker({
+    required this.selected,
+    required this.days,
+    required this.onSelected,
+  });
+
+  final DateTime selected;
+  final int days;
+  final ValueChanged<DateTime> onSelected;
+
+  static String _shortWeekday(DateTime d) {
+    final full = weekdayName(d);
+    return full.length <= 3 ? full : full.substring(0, 3);
+  }
+
+  static String _shortMonth(DateTime d) {
+    final full = monthName(d.month);
+    return full.length <= 3 ? full : full.substring(0, 3);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final stripHeight = MediaQuery.textScalerOf(context).scale(84).clamp(84.0, 118.0);
+    return SizedBox(
+      height: stripHeight,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: days,
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpace.s8),
+        itemBuilder: (context, i) {
+          final d = today.add(Duration(days: i));
+          final isSelected = d.year == selected.year && d.month == selected.month && d.day == selected.day;
+          final fg = isSelected ? tk.onAccent : tk.text;
+          final muted = isSelected ? tk.onAccent.withValues(alpha: 0.85) : tk.textMuted;
+          return Semantics(
+            button: true,
+            selected: isSelected,
+            label: '${weekdayName(d)}, ${d.day} de ${monthName(d.month)}',
+            child: AppPressable(
+              onTap: () => onSelected(d),
+              borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+              isButton: false,
+              child: AnimatedContainer(
+                duration: AppMotion.d(context, AppMotion.fadeShort),
+                curve: AppMotion.fadeCurve,
+                constraints: const BoxConstraints(minWidth: 64, minHeight: AppGeometry.minTarget),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s8),
+                decoration: BoxDecoration(
+                  color: isSelected ? tk.accent : tk.card,
+                  borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                  border: Border.all(
+                    color: isSelected ? tk.accent : tk.border,
+                    width: isSelected ? 1.5 : 1.0,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      i == 0 ? 'Hoje' : _shortWeekday(d),
+                      style: AppType.caption.copyWith(fontWeight: FontWeight.w600, color: muted),
+                    ),
+                    const SizedBox(height: AppSpace.s2),
+                    Text(
+                      two(d.day),
+                      style: AppType.tabular(AppType.title).copyWith(color: fg),
+                    ),
+                    Text(
+                      _shortMonth(d),
+                      style: AppType.caption.copyWith(color: muted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1149,12 +1359,37 @@ class _PublicRequestHeader extends StatelessWidget {
   const _PublicRequestHeader();
 
   @override
-  Widget build(BuildContext context) => const InfoBanner(
-    'Seu pedido ficará visível apenas para profissionais verificados da região que atendem esta especialidade. Você recebe até 3 orçamentos e escolhe o melhor.',
-    title: 'Pedido para profissionais da área',
-    icon: Icons.groups_rounded,
-    tone: BannerTone.promo,
-  );
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return AppCard(
+      variant: AppCardVariant.tonal,
+      color: tk.accentSoft,
+      borderColor: tk.accent.withValues(alpha: 0.35),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.groups_rounded, color: tk.accentInk, size: 22),
+          const SizedBox(width: AppSpace.s12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pedido para profissionais da área',
+                  style: AppType.bodyStrong.copyWith(color: tk.text),
+                ),
+                const SizedBox(height: AppSpace.s2),
+                Text(
+                  'Seu pedido ficará visível apenas para profissionais verificados da região que atendem esta especialidade. Você recebe até 3 orçamentos e escolhe o melhor.',
+                  style: AppType.bodySm.copyWith(color: tk.text),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Confirmação compacta da categoria já escolhida na tela anterior.
@@ -1166,20 +1401,18 @@ class _CategoryBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    return Container(
+    return AppCard(
       key: const ValueKey('category-banner'),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: tk.clientSoft,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: tk.clientAccent.withValues(alpha: 0.45)),
-      ),
+      variant: AppCardVariant.tonal,
+      color: tk.accentSoft,
+      borderColor: tk.accent.withValues(alpha: 0.4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
       child: Text.rich(
         TextSpan(
           children: [
-            TextSpan(text: 'Categoria selecionada: ', style: TextStyle(color: tk.textMuted, fontWeight: FontWeight.w600)),
-            WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(categoryIcon(name), size: 20, color: tk.clientAccent)),
-            TextSpan(text: ' $name', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+            TextSpan(text: 'Categoria selecionada: ', style: AppType.bodySm.copyWith(color: tk.textMuted, fontWeight: FontWeight.w600)),
+            WidgetSpan(alignment: PlaceholderAlignment.middle, child: Icon(categoryIcon(name), size: 20, color: tk.accentInk)),
+            TextSpan(text: ' $name', style: AppType.titleSm.copyWith(color: tk.text)),
           ],
         ),
       ),
@@ -1205,20 +1438,18 @@ class _QuoteInfoCard extends StatelessWidget {
       children: [
         InfoBanner(text, title: title),
         if (counter != null) ...[
-          const SizedBox(height: 8),
-          Container(
+          const SizedBox(height: AppSpace.s8),
+          AppCard(
             key: const ValueKey('order-position'),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: tk.clientSoft,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: tk.clientAccent.withValues(alpha: 0.6)),
-            ),
+            variant: AppCardVariant.tonal,
+            color: tk.accentSoft,
+            borderColor: tk.accent.withValues(alpha: 0.5),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpace.s16, vertical: AppSpace.s12),
             child: Row(
               children: [
-                Icon(Icons.format_list_numbered_rounded, color: tk.clientAccent),
-                const SizedBox(width: 10),
-                Expanded(child: Text(counter!, style: const TextStyle(fontWeight: FontWeight.w900, height: 1.3))),
+                Icon(Icons.format_list_numbered_rounded, color: tk.accentInk),
+                const SizedBox(width: AppSpace.s12),
+                Expanded(child: Text(counter!, style: AppType.bodyStrong.copyWith(color: tk.text))),
               ],
             ),
           ),

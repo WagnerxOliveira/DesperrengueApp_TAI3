@@ -1,0 +1,19 @@
+{
+  "core/models/smart_triage_models.dart": {"colorLiteral":16},
+  "core/security/geo_privacy_policy_engine.dart": {"glyphInText":4},
+  "core/services/accurate_geo_routing_service.dart": {"fontSize":3,"glyphInText":1},
+  "core/services/app_version_and_update_service.dart": {"fontSize":4,"circularProgress":2,"ellipsis":4},
+  "core/services/desperrengue_official_pdf_service.dart": {"fontSize":15,"showModalBottomSheet":2,"unembeddedWeight":3},
+  "core/ui/image_picking.dart": {"glyphInText":1},
+  "core/ui/typography/cinema_type_scale.dart": {"fontSize":14},
+  "features/auth/presentation/desperrengue_welcome_cinema_screen.dart": {"colorLiteral":56},
+  "features/auth/presentation/widgets/cinema_card_parts.dart": {"colorLiteral":2},
+  "features/auth/presentation/widgets/cinema_story_cards_a.dart": {"colorLiteral":47},
+  "features/auth/presentation/widgets/cinema_story_cards_b.dart": {"colorLiteral":28},
+  "features/auth/presentation/widgets/story_nav_circle_button.dart": {"colorLiteral":4},
+  "features/client/presentation/detalhe_servico_cliente_screen.dart": {"glyphInText":2},
+  "features/client/presentation/insufficient_funds_sheet.dart": {"glyphInText":1},
+  "features/shared/presentation/achievement_widgets.dart": {"colorLiteral":3},
+  "features/shared/presentation/review_widgets.dart": {"glyphInText":1},
+  "~fim": {}
+}
