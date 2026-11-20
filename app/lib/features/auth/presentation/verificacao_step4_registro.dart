@@ -195,6 +195,9 @@ class _VerificacaoStep4RegistroScreenState
                         ),
                         labelText: 'Selecione o tipo (ex: CREA, CFT, CNPJ)',
                         labelStyle: AppType.body.copyWith(color: tk.textMuted),
+                        floatingLabelStyle: AppType.caption
+                            .copyWith(color: tk.textMuted)
+                            .apply(fontSizeFactor: 1 / 0.75),
                         filled: true,
                         fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
                         border: OutlineInputBorder(

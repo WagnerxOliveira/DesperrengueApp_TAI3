@@ -10,7 +10,6 @@ import '../../../core/services/criminal_background_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
-import '../../../core/ui/widgets.dart';
 
 /// Assinatura injetável para seleção de arquivo/foto da certidão em testes de widget.
 typedef CriminalCertificateFilePicker =
@@ -463,7 +462,10 @@ class _CriminalBackgroundCheckStepState
                   child: InputDecorator(
                     decoration: InputDecoration(
                       labelText: 'Data de Emissão da Certidão',
-                      labelStyle: AppType.bodySm.copyWith(color: tk.textMuted),
+                      labelStyle: AppType.body.copyWith(color: tk.textMuted),
+                      floatingLabelStyle: AppType.caption
+                          .copyWith(color: tk.textMuted)
+                          .apply(fontSizeFactor: 1 / 0.75),
                       prefixIcon: Icon(
                         Icons.event_available_rounded,
                         color: tk.textMuted,
@@ -544,13 +546,33 @@ class _CriminalBackgroundCheckStepState
         // PASSO 3 — RESULTADO DA VALIDAÇÃO FORENSE
         if (_errorMessage != null) ...[
           const SizedBox(height: AppSpace.s16),
-          KeyedSubtree(
+          AppCard(
             key: const ValueKey('criminal-check-rejected-card'),
-            child: InfoBanner(
-              _errorMessage!,
-              title: 'Atenção na validação da certidão',
-              tone: BannerTone.danger,
-              icon: Icons.gpp_maybe_rounded,
+            variant: AppCardVariant.tonal,
+            color: tk.dangerSoft,
+            borderColor: tk.danger.withValues(alpha: 0.4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.gpp_maybe_rounded, color: tk.dangerInk, size: 22),
+                const SizedBox(width: AppSpace.s12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Atenção na validação da certidão',
+                        style: AppType.bodyStrong.copyWith(color: tk.dangerInk),
+                      ),
+                      const SizedBox(height: AppSpace.s2),
+                      Text(
+                        _errorMessage!,
+                        style: AppType.bodySm.copyWith(color: tk.dangerInk),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -699,17 +721,49 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            InfoBanner(
-              valid
-                  ? 'Sua identidade biométrica e sua Certidão Negativa da Polícia Federal estão ativas e valem para os modos Cliente e Profissional sem duplicar envios.'
-                  : 'A validação de segurança do Desperrengue é renovada a cada 6 meses para garantir proteção total dentro das residências.',
-              title: valid
-                  ? 'Ciclo Semestral de Segurança Ativo'
-                  : 'Revalidação Semestral Necessária',
-              tone: valid ? BannerTone.success : BannerTone.warning,
-              icon: valid
-                  ? Icons.verified_user_rounded
-                  : Icons.event_repeat_rounded,
+            AppCard(
+              variant: AppCardVariant.tonal,
+              color: valid ? tk.successSoft : tk.warningSoft,
+              borderColor: (valid ? tk.success : tk.warning).withValues(
+                alpha: 0.45,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    valid
+                        ? Icons.verified_user_rounded
+                        : Icons.event_repeat_rounded,
+                    color: valid ? tk.successInk : tk.warningInk,
+                    size: 22,
+                  ),
+                  const SizedBox(width: AppSpace.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          valid
+                              ? 'Ciclo Semestral de Segurança Ativo'
+                              : 'Revalidação Semestral Necessária',
+                          style: AppType.bodyStrong.copyWith(
+                            color: valid ? tk.successInk : tk.warningInk,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.s2),
+                        Text(
+                          valid
+                              ? 'Sua identidade biométrica e sua Certidão Negativa da Polícia Federal estão ativas e valem para os modos Cliente e Profissional sem duplicar envios.'
+                              : 'A validação de segurança do Desperrengue é renovada a cada 6 meses para garantir proteção total dentro das residências.',
+                          style: AppType.bodySm.copyWith(
+                            color: valid ? tk.successInk : tk.warningInk,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const SizedBox(height: AppSpace.s16),
             AppCard(

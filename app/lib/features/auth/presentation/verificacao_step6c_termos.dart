@@ -101,7 +101,6 @@ class _VerificacaoStep6cTermosScreenState
                     Text(
                       canonicalHex,
                       style: AppType.tabular(AppType.caption).copyWith(
-                        fontFamily: 'monospace',
                         color: tk.textMuted,
                       ),
                     ),
@@ -110,7 +109,6 @@ class _VerificacaoStep6cTermosScreenState
                       Text(
                         'Selo Específico (${isClient ? "Cliente" : "Profissional"}): $modeHex',
                         style: AppType.tabular(AppType.caption).copyWith(
-                          fontFamily: 'monospace',
                           color: tk.textMuted,
                         ),
                       ),
