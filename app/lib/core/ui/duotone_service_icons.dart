@@ -68,22 +68,22 @@ extension ServiceMetaIconKindX on ServiceMetaIconKind {
 
   Color resolveColor(AppTokens tk) => switch (this) {
         ServiceMetaIconKind.serviceId => tk.info,
-        ServiceMetaIconKind.category => tk.clientAccent,
+        ServiceMetaIconKind.category => tk.clientAccentInk,
         ServiceMetaIconKind.createdAt => tk.info,
-        ServiceMetaIconKind.scheduledFor => tk.clientAccent,
-        ServiceMetaIconKind.startedAt => tk.success,
-        ServiceMetaIconKind.finishedAt => tk.success,
+        ServiceMetaIconKind.scheduledFor => tk.clientAccentInk,
+        ServiceMetaIconKind.startedAt => tk.successInk,
+        ServiceMetaIconKind.finishedAt => tk.successInk,
         ServiceMetaIconKind.quotes => tk.info,
-        ServiceMetaIconKind.location => tk.clientAccent,
+        ServiceMetaIconKind.location => tk.clientAccentInk,
         ServiceMetaIconKind.requestDescription => tk.brand,
-        ServiceMetaIconKind.photos => tk.clientAccent,
-        ServiceMetaIconKind.provider => tk.providerAccent,
-        ServiceMetaIconKind.paymentAmount => tk.success,
+        ServiceMetaIconKind.photos => tk.clientAccentInk,
+        ServiceMetaIconKind.provider => tk.providerAccentInk,
+        ServiceMetaIconKind.paymentAmount => tk.successInk,
         ServiceMetaIconKind.paymentStatus => tk.security,
-        ServiceMetaIconKind.canceled => tk.danger,
+        ServiceMetaIconKind.canceled => tk.dangerInk,
         ServiceMetaIconKind.security => tk.security,
         ServiceMetaIconKind.routeEta => tk.info,
-        ServiceMetaIconKind.traffic => tk.warning,
+        ServiceMetaIconKind.traffic => tk.warningInk,
       };
 }
 
@@ -158,7 +158,7 @@ class DarkGlassDuotoneBadge extends StatelessWidget {
     final resolvedKind = kind;
     final effectiveIcon = icon ?? resolvedKind?.primaryIcon ?? Icons.circle_rounded;
     final effectiveSecondary = secondaryIcon ?? (showSecondaryBadge ? resolvedKind?.secondaryIcon : null);
-    final primary = accentColor ?? resolvedKind?.resolveColor(tk) ?? tk.clientAccent;
+    final primary = accentColor ?? resolvedKind?.resolveColor(tk) ?? tk.clientAccentInk;
     final secondary = secondaryColor ?? primary;
 
     final startAlpha = tk.isDark ? 0.16 : 0.14;

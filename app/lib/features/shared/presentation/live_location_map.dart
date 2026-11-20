@@ -646,7 +646,7 @@ class _LiveLocationMapSheetState extends State<LiveLocationMapSheet> {
                       style: AppType.tabular(AppType.bodyStrong).copyWith(color: tk.text),
                     ),
                   ),
-                  if (me != null) Icon(Icons.fiber_manual_record_rounded, size: 12, color: tk.success),
+                  if (me != null) Icon(Icons.fiber_manual_record_rounded, size: 12, color: tk.successInk),
                 ],
               ),
               const SizedBox(height: AppSpace.s4),

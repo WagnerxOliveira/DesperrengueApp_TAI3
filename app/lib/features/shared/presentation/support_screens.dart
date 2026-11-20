@@ -121,6 +121,19 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
             ),
           ),
           const SizedBox(height: AppSpace.s12),
+          Text.rich(TextSpan(children: [
+            TextSpan(text: 'Descreva o ocorrido ', style: AppType.titleSm.copyWith(color: tk.text)),
+            TextSpan(text: '*', style: AppType.titleSm.copyWith(color: tk.dangerInk)),
+          ])),
+          const SizedBox(height: AppSpace.s8),
+          AppTextField(
+            controller: _desc,
+            minLines: 3,
+            maxLines: 5,
+            maxLength: 2000,
+            hint: 'Conte o que houve em detalhes para que possamos ajudar você...',
+          ),
+          const SizedBox(height: AppSpace.s16),
           Text('Enviar fotos (recomendado)', style: AppType.titleSm.copyWith(color: tk.text)),
           const SizedBox(height: AppSpace.s8),
           MediaPickerRow(
@@ -130,19 +143,6 @@ class _ReportProblemScreenState extends State<ReportProblemScreen> {
               if (img != null && mounted) setState(() => _images.add(img));
             },
             onRemove: (i) => setState(() => _images.removeAt(i)),
-          ),
-          const SizedBox(height: AppSpace.s16),
-          Text.rich(TextSpan(children: [
-            TextSpan(text: 'Descreva o ocorrido ', style: AppType.titleSm.copyWith(color: tk.text)),
-            TextSpan(text: '*', style: AppType.titleSm.copyWith(color: tk.dangerInk)),
-          ])),
-          const SizedBox(height: AppSpace.s8),
-          AppTextField(
-            controller: _desc,
-            minLines: 4,
-            maxLines: 5,
-            maxLength: 2000,
-            hint: 'Conte o que houve em detalhes para que possamos ajudar você...',
           ),
         ],
       ),

@@ -468,7 +468,6 @@ class ForensicCheckInOutCard extends StatelessWidget {
                         Text(
                           p.integrityHash.substring(0, 14),
                           style: AppType.tabular(AppType.caption).copyWith(
-                            fontFamily: 'monospace',
                             fontWeight: FontWeight.w600,
                             color: tk.textMuted,
                           ),
@@ -1838,22 +1837,25 @@ class _PropertyPassportWizardScreenState
           const SizedBox(height: AppSpace.s16),
           AppTextField(
             controller: _nicknameCtrl,
-            label: 'Identificação do Imóvel',
-            hint: 'Ex.: Residência Principal, Apartamento Centro',
+            label: 'Imóvel',
+            hint: 'Casa ou apê',
+            helper: 'Identificação (ex.: Residência Principal, Apto Centro)',
             prefixIcon: Icons.home_work_outlined,
           ),
           const SizedBox(height: AppSpace.s12),
           AppTextField(
             controller: _ownerCtrl,
-            label: 'Nome do Proprietário / Locatário Responsável',
-            hint: 'Seu nome completo',
+            label: 'Responsável',
+            hint: 'Seu nome',
+            helper: 'Proprietário ou locatário responsável',
             prefixIcon: Icons.person_outline_rounded,
           ),
           const SizedBox(height: AppSpace.s12),
           AppTextField(
             controller: _addressCtrl,
-            label: 'Endereço Completo do Imóvel',
-            hint: 'Rua, número, bairro e cidade',
+            label: 'Endereço',
+            hint: 'Rua e número',
+            helper: 'Rua, número, bairro e cidade do imóvel',
             prefixIcon: Icons.place_outlined,
           ),
           const SizedBox(height: AppSpace.s16),
@@ -2270,7 +2272,6 @@ class _PropertyPassportWizardScreenState
                   Text(
                     'Hash Forense SHA-256: ${latestEntry.forensicHash}',
                     style: AppType.tabular(AppType.caption).copyWith(
-                      fontFamily: 'monospace',
                       fontWeight: FontWeight.w600,
                       color: tk.textMuted,
                     ),
@@ -2653,7 +2654,6 @@ class _ForensicFrameTile extends StatelessWidget {
             textAlign: TextAlign.center,
             maxLines: 2,
             style: AppType.tabular(AppType.caption).copyWith(
-              fontFamily: 'monospace',
               color: tk.textMuted,
             ),
           ),

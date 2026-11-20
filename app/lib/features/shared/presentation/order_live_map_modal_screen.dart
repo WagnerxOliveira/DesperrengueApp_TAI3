@@ -771,6 +771,7 @@ class _InteractiveLocationPreviewCardState
             children: [
               DarkGlassDuotoneBadge.kind(
                 ServiceMetaIconKind.location,
+                accentColor: tk.clientAccentInk,
                 size: 36,
               ),
               const SizedBox(width: AppSpace.s12),
@@ -1697,7 +1698,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
               top: false,
               child: _wrapImmersiveOverlay(
                 Container(
-                  width: AppGeometry.minTarget,
+                  width: AppGeometry.minTarget + 2,
                   decoration: BoxDecoration(
                     color: darkTk.background.withValues(alpha: 0.88),
                     borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
@@ -1819,6 +1820,7 @@ class _OrderLiveMapModalScreenState extends State<OrderLiveMapModalScreen>
                         children: [
                           DarkGlassDuotoneBadge.kind(
                             ServiceMetaIconKind.location,
+                            accentColor: tk.clientAccentInk,
                             size: 36,
                           ),
                           const SizedBox(width: AppSpace.s12 - 2),
