@@ -11,6 +11,8 @@ import android.database.MatrixCursor
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.location.Address
+import android.location.Geocoder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -41,6 +43,7 @@ private const val PUBLIC_APK_FILE_NAME = "desperrengue.apk"
 private const val FOUNDER_APK_FILE_NAME = "desperrengue-founder-ceo.apk"
 private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
 private const val DOCUMENT_PICKER_CHANNEL = "br.com.desperrengue.app/document_picker"
+private const val NATIVE_GEOCODER_CHANNEL = "br.com.desperrengue.app/native_geocoder"
 private const val REQUEST_CODE_PICK_DOCUMENT_DOWNLOADS = 29031
 private const val MAX_DOCUMENT_BYTES = 15 * 1024 * 1024
 
@@ -54,6 +57,7 @@ class MainActivity : FlutterActivity() {
     private var bypassExpiresAtEpochMs: Long = 0L
     private var otaChannel: MethodChannel? = null
     private var documentPickerChannel: MethodChannel? = null
+    private var nativeGeocoderChannel: MethodChannel? = null
     private var pendingDocumentPickerResult: MethodChannel.Result? = null
 
     @Volatile
@@ -350,6 +354,109 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        val geoChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            NATIVE_GEOCODER_CHANNEL
+        )
+        nativeGeocoderChannel = geoChannel
+        geoChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "reverseGeocode" -> {
+                    val lat = call.argument<Double>("lat")
+                    val lng = call.argument<Double>("lng")
+                    if (lat == null || lng == null || lat.isNaN() || lng.isNaN()) {
+                        result.success(null)
+                        return@setMethodCallHandler
+                    }
+                    reverseGeocodeWithAndroidGeocoder(lat, lng, result)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun reverseGeocodeWithAndroidGeocoder(
+        lat: Double,
+        lng: Double,
+        result: MethodChannel.Result
+    ) {
+        if (!Geocoder.isPresent()) {
+            result.success(null)
+            return
+        }
+        val geocoder = Geocoder(applicationContext, Locale("pt", "BR"))
+
+        fun pickBestAddressMap(addresses: List<Address>?): Map<String, Any?>? {
+            if (addresses.isNullOrEmpty()) return null
+            // Prioriza o resultado mais completo (com rua + bairro/cidade + UF)
+            val ranked = addresses.sortedByDescending { addr ->
+                var score = 0
+                if (!addr.thoroughfare.isNullOrBlank()) score += 40
+                if (!addr.subThoroughfare.isNullOrBlank()) score += 12
+                if (!addr.subLocality.isNullOrBlank()) score += 16
+                if (!addr.subAdminArea.isNullOrBlank() || !addr.locality.isNullOrBlank()) score += 20
+                if (!addr.adminArea.isNullOrBlank()) score += 10
+                if (!addr.postalCode.isNullOrBlank()) score += 10
+                score
+            }
+            val best = ranked.firstOrNull() ?: return null
+            val street = best.thoroughfare?.trim().orEmpty()
+            val number = best.subThoroughfare?.trim().orEmpty()
+            val neighborhood = best.subLocality?.trim().orEmpty()
+            // No Brasil o Android Geocoder frequentemente preenche a cidade em subAdminArea
+            // (ex.: "Poços de Caldas") quando locality vem vazio ou com distrito.
+            val city = (best.subAdminArea?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: best.locality?.trim()).orEmpty()
+            val state = best.adminArea?.trim().orEmpty()
+            val postalCode = best.postalCode?.trim().orEmpty()
+            if (street.isEmpty() && city.isEmpty()) return null
+            return mapOf(
+                "street" to street,
+                "number" to number,
+                "neighborhood" to neighborhood,
+                "city" to city,
+                "state" to state,
+                "postalCode" to postalCode,
+                "latitude" to (if (best.hasLatitude()) best.latitude else lat),
+                "longitude" to (if (best.hasLongitude()) best.longitude else lng),
+                "source" to "android_geocoder"
+            )
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                geocoder.getFromLocation(
+                    lat,
+                    lng,
+                    5,
+                    object : Geocoder.GeocodeListener {
+                        override fun onGeocode(addresses: MutableList<Address>) {
+                            val mapped = pickBestAddressMap(addresses)
+                            mainHandler.post { result.success(mapped) }
+                        }
+
+                        override fun onError(errorMessage: String?) {
+                            mainHandler.post { result.success(null) }
+                        }
+                    }
+                )
+            } catch (_: Exception) {
+                mainHandler.post { result.success(null) }
+            }
+            return
+        }
+
+        @Suppress("DEPRECATION")
+        documentExecutor.execute {
+            try {
+                val addresses = geocoder.getFromLocation(lat, lng, 5)
+                val mapped = pickBestAddressMap(addresses)
+                mainHandler.post { result.success(mapped) }
+            } catch (_: Exception) {
+                mainHandler.post { result.success(null) }
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -369,10 +476,14 @@ class MainActivity : FlutterActivity() {
                 Intent.EXTRA_MIME_TYPES,
                 arrayOf("application/pdf", "image/jpeg", "image/png", "image/webp")
             )
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+            // Não restringe com EXTRA_LOCAL_ONLY para permitir navegar em qualquer pasta
+            // do celular (Downloads, Documentos, Armazenamento Interno, SD, Drive, WhatsApp).
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val downloadsUri = Uri.parse(
-                    "content://com.android.externalstorage.documents/document/primary%3ADownload%2F"
+                val downloadsUri = DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents",
+                    "primary:Download"
                 )
                 putExtra(DocumentsContract.EXTRA_INITIAL_URI, downloadsUri)
             }
@@ -559,6 +670,8 @@ class MainActivity : FlutterActivity() {
         otaChannel = null
         documentPickerChannel?.setMethodCallHandler(null)
         documentPickerChannel = null
+        nativeGeocoderChannel?.setMethodCallHandler(null)
+        nativeGeocoderChannel = null
         pendingDocumentPickerResult = null
         otaExecutor.shutdownNow()
         documentExecutor.shutdownNow()

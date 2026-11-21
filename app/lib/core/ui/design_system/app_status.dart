@@ -50,8 +50,14 @@ class AppStatusChip extends StatelessWidget {
     final bg = background ?? (color != null ? color!.withValues(alpha: 0.12) : toneBg);
     final chip = Container(
       key: ValueKey('$label|${bg.toARGB32()}|${fg.toARGB32()}'),
-      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s4 + 1),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(AppGeometry.pillRadius)),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12 - 2, vertical: AppSpace.s4 + 1),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
+        border: Border.all(
+          color: fg.withValues(alpha: tk.isDark ? 0.22 : 0.14),
+        ),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -83,14 +83,23 @@ class AppButton extends StatelessWidget {
     final size = Size(expand ? double.infinity : 0, height);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppGeometry.buttonRadius));
 
+    final disabledBg = tk.isDark ? tk.raised : tk.surfaceInset;
+    final disabledFg = tk.textMuted.withValues(alpha: tk.isDark ? 0.72 : 0.75);
     final Widget button = switch (variant) {
       AppButtonVariant.primary => FilledButton(
           onPressed: press,
           style: FilledButton.styleFrom(
             minimumSize: size,
             shape: shape,
-            disabledBackgroundColor: loading ? tk.accent : null,
-            disabledForegroundColor: loading ? tk.onAccent : null,
+            disabledBackgroundColor: loading ? tk.accent : disabledBg,
+            disabledForegroundColor: loading ? tk.onAccent : disabledFg,
+          ).copyWith(
+            side: WidgetStateProperty.resolveWith<BorderSide?>((s) {
+              if (!loading && s.contains(WidgetState.disabled)) {
+                return BorderSide(color: tk.border, width: 1);
+              }
+              return null;
+            }),
           ),
           child: child,
         ),

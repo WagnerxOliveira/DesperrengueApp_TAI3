@@ -178,7 +178,7 @@ void main() {
             findsOneWidget,
           );
           expect(
-            find.textContaining('Certidão Negativa Validada · Vigência Semestral (6 meses)'),
+            find.textContaining('Certidão validada por 6 meses'),
             findsOneWidget,
           );
 

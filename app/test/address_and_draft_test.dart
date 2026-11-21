@@ -119,13 +119,13 @@ void main() {
       expect(called, isFalse);
     });
 
-    test('GPS: Nominatim + refinamento pelo CEP; número fica vazio', () async {
+    test('GPS: Nominatim + refinamento pelo CEP da mesma rua; número fica vazio', () async {
       const json = {'content-type': 'application/json; charset=utf-8'};
       final client = MockClient((req) async {
         if (req.url.host == 'nominatim.openstreetmap.org') {
           expect(req.headers['User-Agent'], contains('DesperrengueApp'));
           return http.Response(
-            '{"address":{"road":"Rua do OSM","suburb":"Bairro OSM","city":"Poços de Caldas","ISO3166-2-lvl4":"BR-MG","postcode":"37701-377"}}',
+            '{"address":{"road":"R. Pref. Chagas","suburb":"Centro","city":"Poços de Caldas","ISO3166-2-lvl4":"BR-MG","postcode":"37701-377"}}',
             200,
             headers: json,
           );
@@ -137,7 +137,7 @@ void main() {
         );
       });
       final a = (await AddressLookup(client).byCoordinates(-21.78, -46.56))!;
-      expect(a.street, 'Rua Prefeito Chagas'); // nomenclatura dos Correios
+      expect(a.street, 'Rua Prefeito Chagas'); // nomenclatura oficial dos Correios
       expect(a.neighborhood, 'Centro');
       expect(a.cep, '37701377');
       expect(a.number, isEmpty);

@@ -1,10 +1,13 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
+
+import 'ocr_text_geometry.dart';
 
 /// Resultado bruto da leitura OCR/QR on-device em plataformas móveis (Android/iOS).
 class PlatformDocumentOcrOutput {
@@ -15,6 +18,8 @@ class PlatformDocumentOcrOutput {
     required this.frontRotationDegrees,
     required this.backRotationDegrees,
     required this.availableOnPlatform,
+    this.frontLines = const <OcrTextLineBox>[],
+    this.backLines = const <OcrTextLineBox>[],
   });
 
   final String frontText;
@@ -23,12 +28,24 @@ class PlatformDocumentOcrOutput {
   final int frontRotationDegrees;
   final int backRotationDegrees;
   final bool availableOnPlatform;
+  final List<OcrTextLineBox> frontLines;
+  final List<OcrTextLineBox> backLines;
 }
 
-/// Executa OCR real on-device com Google ML Kit (`TextRecognitionScript.latin`)
-/// na Frente e no Verso recortados — testando automaticamente `0°`, `90°` e `270°`
-/// se o texto inicial vier vazio ou curto — além de escanear QR Code SERPRO/VIO
-/// no Verso com `BarcodeScanner`. Todos os arquivos temporários são apagados em `finally`.
+typedef _OcrPassOutput = ({
+  String text,
+  List<OcrTextLineBox> lines,
+  int rotation,
+});
+
+/// Executa OCR espacial real on-device com Google ML Kit (`TextRecognitionScript.latin`)
+/// na Frente e no Verso recortados:
+///  * Preserva todas as `TextLine` com suas coordenadas 2D (`OcrTextLineBox`) para
+///    pareamento geométrico exato de campos tabulares (CNH Clássica & CNH 2022).
+///  * Aplica `bakeOrientation` e, quando a 1ª passada não capturar datas ou CPF
+///    nítidos, executa 2ª passada com realce de contraste (suprimindo o fundo
+///    guilloché verde da CNH) e testes de rotação `90°`, `270°` e `180°`.
+///  * Escaneia QR Code SERPRO/VIO no Verso com `BarcodeScanner`.
 Future<PlatformDocumentOcrOutput> extractDocumentOcrOnDevice({
   required Uint8List frontImageBytes,
   required Uint8List backImageBytes,
@@ -41,6 +58,8 @@ Future<PlatformDocumentOcrOutput> extractDocumentOcrOnDevice({
       frontRotationDegrees: 0,
       backRotationDegrees: 0,
       availableOnPlatform: false,
+      frontLines: <OcrTextLineBox>[],
+      backLines: <OcrTextLineBox>[],
     );
   }
 
@@ -59,20 +78,20 @@ Future<PlatformDocumentOcrOutput> extractDocumentOcrOnDevice({
     final Directory tempDir = await getTemporaryDirectory();
     final int batchId = DateTime.now().microsecondsSinceEpoch;
 
-    final ({String text, int rotation}) frontRead =
-        await _recognizeTextMultiOrientation(
+    final _OcrPassOutput frontRead = await _recognizeTextSpatialMultiPass(
       recognizer: textRecognizer,
       imageBytes: frontImageBytes,
       tempDir: tempDir,
       prefix: 'dsp_ocr_front_$batchId',
+      expectDatesAndCpf: true,
     );
 
-    final ({String text, int rotation}) backRead =
-        await _recognizeTextMultiOrientation(
+    final _OcrPassOutput backRead = await _recognizeTextSpatialMultiPass(
       recognizer: textRecognizer,
       imageBytes: backImageBytes,
       tempDir: tempDir,
       prefix: 'dsp_ocr_back_$batchId',
+      expectDatesAndCpf: false,
     );
 
     final List<String> qrPayloads = await _scanQrCodesSafe(
@@ -89,6 +108,8 @@ Future<PlatformDocumentOcrOutput> extractDocumentOcrOnDevice({
       frontRotationDegrees: frontRead.rotation,
       backRotationDegrees: backRead.rotation,
       availableOnPlatform: true,
+      frontLines: frontRead.lines,
+      backLines: backRead.lines,
     );
   } finally {
     try {
@@ -100,55 +121,179 @@ Future<PlatformDocumentOcrOutput> extractDocumentOcrOnDevice({
   }
 }
 
-Future<({String text, int rotation})> _recognizeTextMultiOrientation({
+Future<_OcrPassOutput> _recognizeTextSpatialMultiPass({
   required TextRecognizer recognizer,
   required Uint8List imageBytes,
   required Directory tempDir,
   required String prefix,
+  required bool expectDatesAndCpf,
 }) async {
   if (imageBytes.isEmpty) {
-    return (text: '', rotation: 0);
+    return (text: '', lines: const <OcrTextLineBox>[], rotation: 0);
   }
 
-  String bestText = await _processSingleBytesForText(
+  final img.Image? rawDecoded = img.decodeImage(imageBytes);
+  final img.Image? baked =
+      rawDecoded != null ? img.bakeOrientation(rawDecoded) : null;
+  final double baseW = (baked?.width ?? 1000).toDouble();
+  final double baseH = (baked?.height ?? 1000).toDouble();
+
+  final Uint8List pass0Bytes = baked != null &&
+          rawDecoded!.exif.imageIfd.hasOrientation &&
+          rawDecoded.exif.imageIfd.orientation != 1
+      ? Uint8List.fromList(img.encodeJpg(baked, quality: 94))
+      : imageBytes;
+
+  _OcrPassOutput best = await _processSingleBytesSpatial(
     recognizer: recognizer,
-    bytes: imageBytes,
+    bytes: pass0Bytes,
+    imageWidth: baseW,
+    imageHeight: baseH,
+    rotation: 0,
     tempDir: tempDir,
     fileName: '${prefix}_0.jpg',
   );
-  int bestRotation = 0;
+  int bestScore = _ocrQualityScore(best.text, expectDatesAndCpf);
 
-  // Se texto vier vazio ou curto (< 28 caracteres úteis), testa 90° e 270°
-  if (_meaningfulCharCount(bestText) < 28) {
-    final img.Image? decoded = img.decodeImage(imageBytes);
-    if (decoded != null) {
-      for (final int angle in const <int>[90, 270, 180]) {
-        final img.Image rotated = img.copyRotate(decoded, angle: angle);
-        final Uint8List rotatedBytes =
-            Uint8List.fromList(img.encodeJpg(rotated, quality: 92));
-        final String candidate = await _processSingleBytesForText(
-          recognizer: recognizer,
-          bytes: rotatedBytes,
-          tempDir: tempDir,
-          fileName: '${prefix}_$angle.jpg',
-        );
-        if (_meaningfulCharCount(candidate) > _meaningfulCharCount(bestText)) {
-          bestText = candidate;
-          bestRotation = angle;
-          if (_meaningfulCharCount(bestText) >= 48) {
-            break;
-          }
+  // Passada 2 (realce de contraste anti-guilloché): útil quando o fundo verde
+  // da CNH física mascara barras '/' ou dígitos da data de nascimento.
+  if (baked != null &&
+      expectDatesAndCpf &&
+      (!_hasDateLikePattern(best.text) || bestScore < 95)) {
+    final img.Image enhanced = _enhanceDocumentInkContrast(baked);
+    final Uint8List enhancedBytes =
+        Uint8List.fromList(img.encodeJpg(enhanced, quality: 95));
+    final _OcrPassOutput enhancedPass = await _processSingleBytesSpatial(
+      recognizer: recognizer,
+      bytes: enhancedBytes,
+      imageWidth: enhanced.width.toDouble(),
+      imageHeight: enhanced.height.toDouble(),
+      rotation: 0,
+      tempDir: tempDir,
+      fileName: '${prefix}_0_enh.jpg',
+    );
+    final int enhancedScore =
+        _ocrQualityScore(enhancedPass.text, expectDatesAndCpf);
+    if (enhancedScore > bestScore) {
+      best = enhancedPass;
+      bestScore = enhancedScore;
+    } else if (_hasDateLikePattern(enhancedPass.text) &&
+        !_hasDateLikePattern(best.text)) {
+      // Preserva linhas extras enriquecidas caso a versão de alto contraste tenha
+      // resgatado datas que a versão original perdeu.
+      best = (
+        text: '${best.text}\n${enhancedPass.text}'.trim(),
+        lines: <OcrTextLineBox>[...best.lines, ...enhancedPass.lines],
+        rotation: best.rotation,
+      );
+      bestScore = _ocrQualityScore(best.text, expectDatesAndCpf);
+    }
+  }
+
+  // Passada 3 (multi-orientação): dispara se texto veio curto OU se faltam
+  // dígitos/datas na frente (foto enviada de pé em 90°/270° ou de ponta-cabeça).
+  final bool needsRotationRetry = _meaningfulCharCount(best.text) < 36 ||
+      (expectDatesAndCpf && !_hasDateLikePattern(best.text));
+
+  if (baked != null && needsRotationRetry) {
+    for (final int angle in const <int>[90, 270, 180]) {
+      final img.Image rotated = img.copyRotate(baked, angle: angle);
+      final Uint8List rotatedBytes =
+          Uint8List.fromList(img.encodeJpg(rotated, quality: 94));
+      final _OcrPassOutput candidate = await _processSingleBytesSpatial(
+        recognizer: recognizer,
+        bytes: rotatedBytes,
+        imageWidth: rotated.width.toDouble(),
+        imageHeight: rotated.height.toDouble(),
+        rotation: angle,
+        tempDir: tempDir,
+        fileName: '${prefix}_$angle.jpg',
+      );
+      final int candidateScore =
+          _ocrQualityScore(candidate.text, expectDatesAndCpf);
+      if (candidateScore > bestScore) {
+        best = candidate;
+        bestScore = candidateScore;
+        if (bestScore >= 110 &&
+            (!expectDatesAndCpf || _hasDateLikePattern(best.text))) {
+          break;
         }
       }
     }
   }
 
-  return (text: bestText.trim(), rotation: bestRotation);
+  return (
+    text: best.text.trim(),
+    lines: best.lines,
+    rotation: best.rotation,
+  );
 }
 
-Future<String> _processSingleBytesForText({
+/// Realça tinta preta de campos impressos sobre o fundo verde/amarelo guilloché
+/// de CNHs e RGs brasileiros usando extração de canal vermelho/luminância +
+/// estiramento linear de contraste (percentis 3%..97%).
+img.Image _enhanceDocumentInkContrast(img.Image source) {
+  final img.Image work = source.clone();
+  final int w = work.width;
+  final int h = work.height;
+  final List<int> hist = List<int>.filled(256, 0);
+
+  // Na CNH (fundo verde-claro + tinta preta), o canal vermelho escurece o
+  // verde de fundo menos que a tinta preta, mas a luminância ponderada com
+  // peso extra em G/R neutraliza o padrão guilloché e preserva traços finos.
+  final int step = math.max(1, (w * h) ~/ 24000);
+  int samples = 0;
+  for (int i = 0; i < w * h; i += step) {
+    final int x = i % w;
+    final int y = i ~/ w;
+    final p = work.getPixel(x, y);
+    final int lum = ((0.35 * p.r) + (0.50 * p.g) + (0.15 * p.b))
+        .round()
+        .clamp(0, 255);
+    hist[lum]++;
+    samples++;
+  }
+
+  int lo = 0;
+  int hi = 255;
+  final int loTarget = (samples * 0.03).round();
+  final int hiTarget = (samples * 0.97).round();
+  int acc = 0;
+  for (int v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= loTarget) {
+      lo = v;
+      break;
+    }
+  }
+  acc = 0;
+  for (int v = 0; v < 256; v++) {
+    acc += hist[v];
+    if (acc >= hiTarget) {
+      hi = v;
+      break;
+    }
+  }
+
+  final int span = math.max(24, hi - lo);
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      final p = work.getPixel(x, y);
+      final double lum = (0.35 * p.r) + (0.50 * p.g) + (0.15 * p.b);
+      final int stretched =
+          (((lum - lo) * 255.0) / span).round().clamp(0, 255);
+      work.setPixelRgb(x, y, stretched, stretched, stretched);
+    }
+  }
+  return work;
+}
+
+Future<_OcrPassOutput> _processSingleBytesSpatial({
   required TextRecognizer recognizer,
   required Uint8List bytes,
+  required double imageWidth,
+  required double imageHeight,
+  required int rotation,
   required Directory tempDir,
   required String fileName,
 }) async {
@@ -157,9 +302,34 @@ Future<String> _processSingleBytesForText({
     await tempFile.writeAsBytes(bytes, flush: true);
     final InputImage inputImage = InputImage.fromFilePath(tempFile.path);
     final RecognizedText recognized = await recognizer.processImage(inputImage);
-    return recognized.text;
+
+    final List<OcrTextLineBox> lines = <OcrTextLineBox>[];
+    for (final TextBlock block in recognized.blocks) {
+      for (final TextLine line in block.lines) {
+        final String clean = line.text.trim();
+        if (clean.isEmpty) continue;
+        final box = line.boundingBox;
+        lines.add(
+          OcrTextLineBox(
+            text: clean,
+            left: box.left,
+            top: box.top,
+            right: box.right,
+            bottom: box.bottom,
+            imageWidth: imageWidth,
+            imageHeight: imageHeight,
+          ),
+        );
+      }
+    }
+
+    return (
+      text: recognized.text,
+      lines: lines,
+      rotation: rotation,
+    );
   } catch (_) {
-    return '';
+    return (text: '', lines: const <OcrTextLineBox>[], rotation: rotation);
   } finally {
     try {
       if (await tempFile.exists()) {
@@ -203,3 +373,24 @@ Future<List<String>> _scanQrCodesSafe({
 
 int _meaningfulCharCount(String text) =>
     text.replaceAll(RegExp(r'[^A-Za-zÀ-ÿ0-9]'), '').length;
+
+bool _hasDateLikePattern(String text) =>
+    RegExp(r'\b\d{2}[/.\-\s]\d{2}[/.\-\s](?:19|20)\d{2}\b').hasMatch(text);
+
+int _ocrQualityScore(String text, bool expectDatesAndCpf) {
+  int score = math.min(70, _meaningfulCharCount(text) ~/ 2);
+  if (expectDatesAndCpf) {
+    if (RegExp(r'\d{3}\.?\d{3}\.?\d{3}[\-\s]?\d{2}').hasMatch(text)) {
+      score += 30;
+    }
+    final dateMatches =
+        RegExp(r'\b\d{2}[/.\-\s]\d{2}[/.\-\s](?:19|20)\d{2}\b')
+            .allMatches(text)
+            .length;
+    score += math.min(35, dateMatches * 15);
+    final upper = text.toUpperCase();
+    if (upper.contains('NASCIMENTO') || upper.contains('NASC')) score += 10;
+    if (upper.contains('NOME')) score += 8;
+  }
+  return score;
+}

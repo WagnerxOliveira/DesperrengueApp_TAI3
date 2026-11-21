@@ -159,11 +159,11 @@ class _AppTextFieldState extends State<AppTextField> with SingleTickerProviderSt
     final tk = context.tk;
     final reduced = AppMotion.reduced(context);
     final hasError = widget.errorText != null && widget.errorText!.isNotEmpty;
-    final fill = tk.isDark ? tk.surface : tk.surfaceInset;
+    final fill = tk.surfaceInset;
     final borderColor = hasError
         ? tk.dangerInk
         : (_focused ? tk.accentInk : tk.border);
-    final borderWidth = (_focused || hasError) ? 2.0 : 1.0;
+    final borderWidth = (_focused || hasError) ? 1.75 : 1.0;
     final labelColor = hasError ? tk.dangerInk : (_focused ? tk.accentInk : tk.textMuted);
     final textColor = widget.enabled ? tk.text : tk.textMuted;
     final radius = BorderRadius.circular(AppGeometry.fieldRadius);
@@ -177,10 +177,10 @@ class _AppTextFieldState extends State<AppTextField> with SingleTickerProviderSt
     final trailing = <Widget>[
       if (widget.success && !hasError)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
+          padding: const EdgeInsets.only(left: AppSpace.s4, right: AppSpace.s12),
           child: Semantics(
             label: 'Válido',
-            child: Icon(Icons.check_circle_rounded, size: 22, color: tk.successInk),
+            child: Icon(Icons.check_circle_rounded, size: 18, color: tk.successInk),
           ),
         ),
       if (widget.suffix != null) widget.suffix!,

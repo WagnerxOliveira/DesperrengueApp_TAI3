@@ -7,6 +7,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'document_ocr_and_liveness_service.dart';
 import 'document_real_ocr_engine_stub.dart'
     if (dart.library.io) 'document_real_ocr_engine_mobile.dart' as platform_ocr;
+import 'ocr_text_geometry.dart';
+
+export 'ocr_text_geometry.dart';
 
 /// Resultado bruto retornado pela leitura óptica (ML Kit on-device, override de teste ou Edge).
 class RawDocumentOcrExtraction {
@@ -17,6 +20,8 @@ class RawDocumentOcrExtraction {
     required this.frontRotationDegrees,
     required this.backRotationDegrees,
     required this.sourceEngine,
+    this.frontLines = const <OcrTextLineBox>[],
+    this.backLines = const <OcrTextLineBox>[],
   });
 
   final String frontText;
@@ -25,6 +30,8 @@ class RawDocumentOcrExtraction {
   final int frontRotationDegrees;
   final int backRotationDegrees;
   final String sourceEngine;
+  final List<OcrTextLineBox> frontLines;
+  final List<OcrTextLineBox> backLines;
 
   bool get hasAnyText =>
       frontText.trim().isNotEmpty ||
@@ -35,7 +42,7 @@ class RawDocumentOcrExtraction {
 /// Dados estruturados extraídos de forma honesta e determinística de documentos
 /// oficiais brasileiros (CNH clássica, CNH 2022+, CIN, RG e Comprovante CPF).
 ///
-/// Nenhum campo civil (nome, CPF) é inventado quando não lido do documento real.
+/// Nenhum campo civil (nome, CPF, data de nascimento) é inventado quando não lido do documento real.
 class ParsedBrazilianDocumentOcr {
   const ParsedBrazilianDocumentOcr({
     required this.detectedDocumentType,
@@ -55,6 +62,7 @@ class ParsedBrazilianDocumentOcr {
     required this.estimatedConfidence,
     required this.rawFrontText,
     required this.rawBackText,
+    this.birthDateConfidence = 0.0,
     this.sourceEngine = 'mlkit_on_device',
     this.detectedRotationDegrees = 0,
   });
@@ -64,6 +72,7 @@ class ParsedBrazilianDocumentOcr {
   final String? cpfDigits;
   final String? documentNumber;
   final DateTime? birthDate;
+  final double birthDateConfidence;
   final String? issuingAuthority;
   final String? renach;
   final String? cnhSecurityCode11;
@@ -85,6 +94,14 @@ class ParsedBrazilianDocumentOcr {
       DocumentOcrAndLivenessService.isValidCivilFullName(fullName!) &&
       cpfDigits != null &&
       DocumentOcrAndLivenessService.isValidCpfMod11(cpfDigits!);
+
+  /// `true` quando todos os campos críticos (incluindo Data de Nascimento confiável
+  /// em CNH/CIN/RG) foram lidos sem necessidade de escalonamento para Vision AI em nuvem.
+  bool get hasHighConfidenceCoreFields {
+    if (!hasRequiredIdentityFields) return false;
+    if (detectedDocumentType == OfficialDocumentType.cpf) return true;
+    return birthDate != null && birthDateConfidence >= 0.85;
+  }
 
   /// Verifica se os códigos de segurança (MRZ/QR/RENACH/Cód. Segurança) estão íntegros.
   /// Se linhas completas de MRZ foram detectadas com dígito verificador adulterado, retorna `false`.
@@ -208,6 +225,8 @@ class BrazilianDocumentOcrParser {
     required String backText,
     OfficialDocumentType? expectedDocumentType,
     List<String> qrPayloads = const <String>[],
+    List<OcrTextLineBox> frontLines = const <OcrTextLineBox>[],
+    List<OcrTextLineBox> backLines = const <OcrTextLineBox>[],
     String sourceEngine = 'mlkit_on_device',
     int detectedRotationDegrees = 0,
   }) {
@@ -276,11 +295,19 @@ class BrazilianDocumentOcrParser {
       mrzLines: mrzLines,
     );
 
-    // 7. Data de Nascimento (rótulo NASCIMENTO -> MRZ TD1 linha 2 -> heurística segura)
-    final DateTime? birthDate = _extractBirthDate(
+    // 7. Data de Nascimento (5 camadas: MRZ/QR -> Âncora Espacial 2D -> Reparo OCR -> Rótulo -> Cronologia CNH)
+    final ({DateTime? date, double confidence}) birthResult =
+        _extractBirthDateWithConfidence(
+      frontRaw: frontText,
       combinedRaw: combined,
       mrzLines: mrzLines,
+      qrPayloads: qrPayloads,
+      frontLines: frontLines,
+      backLines: backLines,
+      docType: detectedType,
     );
+    final DateTime? birthDate = birthResult.date;
+    final double birthDateConfidence = birthResult.confidence;
 
     // 8. Órgão Emissor / UF
     final String? issuingAuthority = _extractIssuingAuthority(
@@ -308,6 +335,7 @@ class BrazilianDocumentOcrParser {
       cpfDigits: cpfDigits,
       documentNumber: docNumber,
       birthDate: birthDate,
+      birthDateConfidence: birthDateConfidence,
       issuingAuthority: issuingAuthority,
       renach: renach,
       cnhSecurityCode11: cnhSecCode,
@@ -733,18 +761,29 @@ class BrazilianDocumentOcrParser {
     return true;
   }
 
-  static DateTime? _extractBirthDate({
+  /// Extração cirúrgica de Data de Nascimento em 5 prioridades com score de confiança:
+  ///  1. MRZ ICAO 9303 TD1 (linha 2 com dígito verificador) ou payload estruturado de QR Code;
+  ///  2. Âncora Espacial 2D (`frontLines` / `backLines` com `OcrTextLineBox`) — resolve o layout
+  ///     tabular da CNH Clássica (`CPF` à esquerda, `DATA NASCIMENTO` à direita) e CNH 2022
+  ///     (Campo `3 DATA, LOCAL E UF DE NASCIMENTO`) sem confundir com Emissão/Validade/1ª Hab.;
+  ///  3. Reparo conservador de confusão óptica OCR (`O↔0`, `I/l↔1`, `S↔5`, `B↔8`, `Z↔2`, espaços);
+  ///  4. Rótulo textual com janela tolerante (excluindo rótulos de validade/emissão/1ª hab.);
+  ///  5. Desambiguação cronológica forense da CNH ($D_{\text{nasc}} \le D_{\text{1hab}} - 17.5\text{a} < D_{\text{val}}$).
+  static ({DateTime? date, double confidence}) _extractBirthDateWithConfidence({
+    required String frontRaw,
     required String combinedRaw,
     required List<String> mrzLines,
+    required List<String> qrPayloads,
+    required List<OcrTextLineBox> frontLines,
+    required List<OcrTextLineBox> backLines,
+    required OfficialDocumentType docType,
   }) {
     final int currentYear = DateTime.now().year;
+    final int minAgeYears = docType == OfficialDocumentType.cnh ? 17 : 10;
 
-    DateTime? parseBrDate(String rawD, String rawM, String rawY) {
-      final int? d = int.tryParse(rawD);
-      final int? m = int.tryParse(rawM);
-      final int? y = int.tryParse(rawY);
+    DateTime? parsePlausibleBirthDate(int? d, int? m, int? y) {
       if (d == null || m == null || y == null) return null;
-      if (y < 1915 || y > currentYear - 10) return null;
+      if (y < 1915 || y > currentYear - minAgeYears) return null;
       if (m < 1 || m > 12 || d < 1 || d > 31) return null;
       try {
         final DateTime dt = DateTime.utc(y, m, d);
@@ -753,58 +792,347 @@ class BrazilianDocumentOcrParser {
       return null;
     }
 
-    // 1. Mesmo linha ou próxima linha após rótulo NASCIMENTO / DATA NASC / 3 DATA
-    final RegExp labeledDate = RegExp(
-      r'(?:DATA\s*(?:DE\s*)?NASCIMENTO|NASCIMENTO|DATA\s*NASC\.?|3\s*DATA[^\n]{0,25})[^\d]{0,24}(\d{2})[/.\-](\d{2})[/.\-](\d{4})',
-      caseSensitive: false,
-    );
-    final RegExpMatch? lm = labeledDate.firstMatch(combinedRaw);
-    if (lm != null) {
-      final DateTime? dt = parseBrDate(lm.group(1)!, lm.group(2)!, lm.group(3)!);
-      if (dt != null) return dt;
+    // Repara confusão clássica de OCR dentro de tokens numéricos de data.
+    String repairDateDigits(String raw) {
+      final StringBuffer out = StringBuffer();
+      for (int i = 0; i < raw.length; i++) {
+        final String ch = raw[i];
+        out.write(switch (ch) {
+          'O' || 'o' || 'Q' || 'D' => '0',
+          'I' || 'l' || '|' || '!' => '1',
+          'Z' || 'z' => '2',
+          'S' || 's' => '5',
+          'B' => '8',
+          'g' || 'q' => '9',
+          _ => ch,
+        });
+      }
+      return out.toString();
     }
 
-    // 2. MRZ TD1 linha 2 (YYMMDD nas posições 0..6)
+    List<DateTime> extractAllValidDatesInText(
+      String text, {
+      required bool restrictToBirthAge,
+    }) {
+      final List<DateTime> found = <DateTime>[];
+      final RegExp sepRe = RegExp(
+        r'(?<![0-9A-Za-z])([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{4})(?![0-9A-Za-z])',
+      );
+      for (final m in sepRe.allMatches(text)) {
+        final int? d = int.tryParse(repairDateDigits(m.group(1)!));
+        final int? mo = int.tryParse(repairDateDigits(m.group(2)!));
+        final int? y = int.tryParse(repairDateDigits(m.group(3)!));
+        if (d == null || mo == null || y == null) continue;
+        if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+        if (y < 1915 || y > currentYear + 20) continue;
+        if (restrictToBirthAge && y > currentYear - minAgeYears) continue;
+        try {
+          final dt = DateTime.utc(y, mo, d);
+          if (dt.year == y && dt.month == mo && dt.day == d && !found.contains(dt)) {
+            found.add(dt);
+          }
+        } catch (_) {}
+      }
+
+      // Fallback para barras fundidas ao fundo guilloché (8 dígitos colados: DDMMAAAA)
+      if (found.isEmpty) {
+        final RegExp compactRe = RegExp(r'(?<!\d)(\d{2})(\d{2})((?:19|20)\d{2})(?!\d)');
+        for (final m in compactRe.allMatches(text)) {
+          final int? d = int.tryParse(m.group(1)!);
+          final int? mo = int.tryParse(m.group(2)!);
+          final int? y = int.tryParse(m.group(3)!);
+          final DateTime? dt = restrictToBirthAge
+              ? parsePlausibleBirthDate(d, mo, y)
+              : (d != null && mo != null && y != null && mo >= 1 && mo <= 12 && d >= 1 && d <= 31
+                  ? DateTime.utc(y, mo, d)
+                  : null);
+          if (dt != null && !found.contains(dt)) {
+            found.add(dt);
+          }
+        }
+      }
+      return found;
+    }
+
+    bool isBirthAnchorLabel(String upperAscii) {
+      if (upperAscii.contains('DATA NASCIMENTO') ||
+          upperAscii.contains('DATA DE NASCIMENTO') ||
+          upperAscii.contains('DATA NASC') ||
+          upperAscii.contains('DT NASC') ||
+          upperAscii.contains('DT. NASC')) {
+        return true;
+      }
+      // CNH 2022 Padrão Viena: Campo "3 DATA, LOCAL E UF DE NASCIMENTO"
+      if (RegExp(r'\b3\s*\.?\s*DATA\b').hasMatch(upperAscii) ||
+          (upperAscii.contains('NASCIMENTO') && !upperAscii.contains('MUNICIPIO DE NASCIMENTO'))) {
+        return true;
+      }
+      return false;
+    }
+
+    bool isNonBirthDateLabel(String upperAscii) {
+      return upperAscii.contains('VALIDADE') ||
+          upperAscii.contains('4B') ||
+          upperAscii.contains('EMISSAO') ||
+          upperAscii.contains('4A') ||
+          upperAscii.contains('EXPEDICAO') ||
+          upperAscii.contains('VENCIMENTO') ||
+          upperAscii.contains('1A HAB') ||
+          upperAscii.contains('1ª HAB') ||
+          upperAscii.contains('PRIMEIRA HAB') ||
+          upperAscii.contains('PRIMEIRA');
+    }
+
+    // -------------------------------------------------------------------------
+    // PRIORIDADE 1: MRZ TD1 linha 2 com check digit validado / QR estruturado
+    // -------------------------------------------------------------------------
     if (mrzLines.length == 3 && mrzLines[1].length >= 7) {
       final String yymmdd = mrzLines[1].substring(0, 6);
-      if (RegExp(r'^\d{6}$').hasMatch(yymmdd)) {
+      final int? checkDigit = int.tryParse(mrzLines[1][6]);
+      if (RegExp(r'^\d{6}$').hasMatch(yymmdd) &&
+          checkDigit != null &&
+          DocumentOcrAndLivenessService.computeIcaoMrzCheckDigit(yymmdd) == checkDigit) {
         final int yy = int.parse(yymmdd.substring(0, 2));
         final int mm = int.parse(yymmdd.substring(2, 4));
         final int dd = int.parse(yymmdd.substring(4, 6));
         final int pivot = currentYear % 100;
-        final int fullYear = (yy <= pivot - 10) ? (2000 + yy) : (1900 + yy);
-        final DateTime? dt = parseBrDate(
-          dd.toString().padLeft(2, '0'),
-          mm.toString().padLeft(2, '0'),
-          fullYear.toString(),
-        );
-        if (dt != null) return dt;
-      }
-    }
-
-    // 3. Heurística segura: datas DD/MM/AAAA que não estejam em linhas de validade/emissão
-    final RegExp dateRe = RegExp(r'\b(\d{2})[/.\-](\d{2})[/.\-](\d{4})\b');
-    DateTime? earliestPlausible;
-    for (final rawLine in combinedRaw.split(RegExp(r'[\r\n]+'))) {
-      final String up = _toAsciiUpper(rawLine);
-      if (up.contains('VALIDADE') ||
-          up.contains('EMISSAO') ||
-          up.contains('EXPEDICAO') ||
-          up.contains('VENCIMENTO') ||
-          up.contains('1A HAB') ||
-          up.contains('PRIMEIRA')) {
-        continue;
-      }
-      for (final m in dateRe.allMatches(rawLine)) {
-        final DateTime? dt = parseBrDate(m.group(1)!, m.group(2)!, m.group(3)!);
-        if (dt != null &&
-            (earliestPlausible == null || dt.isBefore(earliestPlausible))) {
-          earliestPlausible = dt;
+        final int fullYear = (yy <= pivot - minAgeYears) ? (2000 + yy) : (1900 + yy);
+        final DateTime? dt = parsePlausibleBirthDate(dd, mm, fullYear);
+        if (dt != null) {
+          return (date: dt, confidence: 0.99);
         }
       }
     }
 
-    return earliestPlausible;
+    // Verifica QR payloads com data de nascimento explícita (ex.: query/JSON)
+    for (final qr in qrPayloads) {
+      final m = RegExp(
+        r'(?:birth|nascimento|dtNasc|dataNascimento)[^0-9]{0,12}(\d{4}-\d{2}-\d{2}|\d{2}/\d{2}/\d{4})',
+        caseSensitive: false,
+      ).firstMatch(qr);
+      if (m != null) {
+        final raw = m.group(1)!;
+        if (raw.contains('-')) {
+          final p = raw.split('-');
+          final dt = parsePlausibleBirthDate(
+            int.tryParse(p[2]),
+            int.tryParse(p[1]),
+            int.tryParse(p[0]),
+          );
+          if (dt != null) return (date: dt, confidence: 0.99);
+        } else {
+          final p = raw.split('/');
+          final dt = parsePlausibleBirthDate(
+            int.tryParse(p[0]),
+            int.tryParse(p[1]),
+            int.tryParse(p[2]),
+          );
+          if (dt != null) return (date: dt, confidence: 0.99);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // PRIORIDADE 2: ÂNCORA ESPACIAL 2D (BoundingBox do Google ML Kit)
+    // -------------------------------------------------------------------------
+    final List<OcrTextLineBox> allGeoLines = <OcrTextLineBox>[
+      ...frontLines,
+      ...backLines,
+    ];
+    if (allGeoLines.isNotEmpty) {
+      final List<OcrTextLineBox> birthAnchors = <OcrTextLineBox>[];
+      final List<OcrTextLineBox> nonBirthAnchors = <OcrTextLineBox>[];
+
+      for (final line in allGeoLines) {
+        final String up = _toAsciiUpper(line.text);
+        if (isBirthAnchorLabel(up)) {
+          // Se a própria linha da âncora já contém a data (ex.: "DATA NASCIMENTO 03/01/1995")
+          final inlineDates = extractAllValidDatesInText(
+            line.text,
+            restrictToBirthAge: true,
+          );
+          if (inlineDates.isNotEmpty) {
+            return (date: inlineDates.first, confidence: 0.97);
+          }
+          birthAnchors.add(line);
+        } else if (isNonBirthDateLabel(up)) {
+          nonBirthAnchors.add(line);
+        }
+      }
+
+      DateTime? bestSpatialDate;
+      double bestSpatialScore = double.infinity;
+
+      for (final anchor in birthAnchors) {
+        final double anchorH = math.max(anchor.normHeight, 0.018);
+        for (final cand in allGeoLines) {
+          if (identical(cand, anchor)) continue;
+          final String candUp = _toAsciiUpper(cand.text);
+          if (isNonBirthDateLabel(candUp)) continue;
+
+          final dates = extractAllValidDatesInText(
+            cand.text,
+            restrictToBirthAge: true,
+          );
+          if (dates.isEmpty) continue;
+
+          // Zona A: diretamente ABAIXO da âncora (padrão CNH Clássica e CNH 2022)
+          final double dyBelow = cand.normTop - anchor.normBottom;
+          final bool inBelowBand =
+              dyBelow >= -0.45 * anchorH && dyBelow <= 3.2 * anchorH;
+          final bool xAlignedBelow =
+              cand.normCenterX >= anchor.normLeft - 0.14 &&
+              cand.normCenterX <= anchor.normRight + 0.22;
+
+          // Zona B: à DIREITA na mesma linha horizontal
+          final double dySameLine = (cand.normCenterY - anchor.normCenterY).abs();
+          final bool inRightBand =
+              dySameLine <= 0.90 * anchorH &&
+              cand.normLeft >= anchor.normRight - 0.03 &&
+              cand.normLeft <= anchor.normRight + 0.35;
+
+          if (!((inBelowBand && xAlignedBelow) || inRightBand)) continue;
+
+          final double dx = (cand.normCenterX - anchor.normCenterX).abs();
+          final double dy = inBelowBand
+              ? math.max(0.0, dyBelow)
+              : dySameLine;
+          final double distToBirth = (dx * 0.85) + (dy * 1.4);
+
+          // Proteção anti-contaminação: garante que a data não pertença a um
+          // rótulo vizinho (ex.: VALIDADE ou 1ª HABILITAÇÃO mais próximo acima).
+          bool closerToNonBirth = false;
+          for (final bad in nonBirthAnchors) {
+            final double badDy = cand.normTop - bad.normBottom;
+            final double badDx = (cand.normCenterX - bad.normCenterX).abs();
+            if (badDy >= -0.35 * anchorH && badDy <= 2.4 * anchorH) {
+              final double distToBad = (badDx * 0.85) + (math.max(0.0, badDy) * 1.4);
+              if (distToBad < distToBirth * 0.92) {
+                closerToNonBirth = true;
+                break;
+              }
+            }
+          }
+          if (closerToNonBirth) continue;
+
+          if (distToBirth < bestSpatialScore) {
+            bestSpatialScore = distToBirth;
+            bestSpatialDate = dates.first;
+          }
+        }
+      }
+
+      if (bestSpatialDate != null) {
+        return (date: bestSpatialDate, confidence: 0.96);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // PRIORIDADE 3 & 4: Rótulo Textual com Reparo OCR + Janela Tolerante
+    // -------------------------------------------------------------------------
+    final List<String> lines = (frontRaw.trim().isNotEmpty ? frontRaw : combinedRaw)
+        .split(RegExp(r'[\r\n]+'))
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList(growable: false);
+
+    for (int i = 0; i < lines.length; i++) {
+      final String up = _toAsciiUpper(lines[i]);
+      if (!isBirthAnchorLabel(up)) continue;
+
+      // Mesma linha do rótulo
+      final sameLineDates = extractAllValidDatesInText(
+        lines[i],
+        restrictToBirthAge: true,
+      );
+      if (sameLineDates.isNotEmpty) {
+        return (date: sameLineDates.first, confidence: 0.94);
+      }
+
+      // Até 3 linhas adiante (no ML Kit linearizado, CPF ou RG pode aparecer
+      // entre o rótulo "DATA NASCIMENTO" e o valor da data!)
+      for (int offset = 1; offset <= 3 && (i + offset) < lines.length; offset++) {
+        final String nextLine = lines[i + offset];
+        final String nextUp = _toAsciiUpper(nextLine);
+        if (isNonBirthDateLabel(nextUp)) break;
+        final nextDates = extractAllValidDatesInText(
+          nextLine,
+          restrictToBirthAge: true,
+        );
+        if (nextDates.isNotEmpty) {
+          return (date: nextDates.first, confidence: offset == 1 ? 0.93 : 0.89);
+        }
+      }
+    }
+
+    // Regex direta no texto combinado (compatibilidade com formatos corridos)
+    final RegExp labeledDate = RegExp(
+      r'(?:DATA\s*(?:DE\s*)?NASCIMENTO|NASCIMENTO|DATA\s*NASC\.?|3\s*\.?\s*DATA[^\n]{0,30})[^\d]{0,32}([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{4})',
+      caseSensitive: false,
+    );
+    final RegExpMatch? lm = labeledDate.firstMatch(combinedRaw);
+    if (lm != null) {
+      final DateTime? dt = parsePlausibleBirthDate(
+        int.tryParse(repairDateDigits(lm.group(1)!)),
+        int.tryParse(repairDateDigits(lm.group(2)!)),
+        int.tryParse(repairDateDigits(lm.group(3)!)),
+      );
+      if (dt != null) {
+        return (date: dt, confidence: 0.92);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // PRIORIDADE 5: Desambiguação Cronológica Forense da CNH
+    // -------------------------------------------------------------------------
+    final List<DateTime> allDatesOnDoc = <DateTime>[];
+    final List<DateTime> nonBadLineBirthCandidates = <DateTime>[];
+
+    for (final rawLine in combinedRaw.split(RegExp(r'[\r\n]+'))) {
+      final String up = _toAsciiUpper(rawLine);
+      final lineAll = extractAllValidDatesInText(rawLine, restrictToBirthAge: false);
+      for (final d in lineAll) {
+        if (!allDatesOnDoc.contains(d)) allDatesOnDoc.add(d);
+      }
+      if (isNonBirthDateLabel(up)) continue;
+      final lineBirths = extractAllValidDatesInText(rawLine, restrictToBirthAge: true);
+      for (final d in lineBirths) {
+        if (!nonBadLineBirthCandidates.contains(d)) {
+          nonBadLineBirthCandidates.add(d);
+        }
+      }
+    }
+
+    if (nonBadLineBirthCandidates.isEmpty) {
+      return (date: null, confidence: 0.0);
+    }
+
+    nonBadLineBirthCandidates.sort();
+    allDatesOnDoc.sort();
+    final DateTime earliest = nonBadLineBirthCandidates.first;
+
+    // Se é uma CNH com múltiplas datas (ex.: Nascimento + 1ª Hab. + Emissão + Validade),
+    // a data mais antiga separada por >= 17,5 anos da próxima data mais antiga (1ª Hab.)
+    // tem altíssima certeza matemática de ser a Data de Nascimento!
+    if (docType == OfficialDocumentType.cnh && allDatesOnDoc.length >= 2) {
+      final DateTime? secondDate = allDatesOnDoc
+          .where((d) => d.isAfter(earliest))
+          .firstOrNull;
+      if (secondDate != null) {
+        final int gapDays = secondDate.difference(earliest).inDays;
+        if (gapDays >= 6380) {
+          // >= ~17.5 anos entre Nascimento e 1ª Habilitação/Emissão
+          return (date: earliest, confidence: 0.90);
+        }
+        // Ambiguidade (ex.: só leu 1ª Hab. e Emissão, sem ler o Nascimento!) ->
+        // confiança baixa para obrigar o escalonamento ao Vision AI em nuvem!
+        return (date: earliest, confidence: 0.55);
+      }
+    }
+
+    // Documento não-CNH ou apenas 1 data isolada sem rótulo explícito:
+    // confiança moderada (0.72) para escalonar ao Vision AI se online, mas nunca inventar 1990!
+    return (date: earliest, confidence: 0.72);
   }
 
   static String? _extractIssuingAuthority({
@@ -898,14 +1226,17 @@ class DocumentRealOcrEngine {
       backRotationDegrees: onDevice.backRotationDegrees,
       sourceEngine:
           onDevice.availableOnPlatform ? 'mlkit_on_device' : 'unavailable',
+      frontLines: onDevice.frontLines,
+      backLines: onDevice.backLines,
     );
   }
 
   /// Extrai e interpreta os campos reais do documento (Frente + Verso).
-  /// Se o motor on-device não conseguir ler (ex.: navegador Web) e houver reforço
+  /// Se o motor on-device não conseguir ler todos os campos críticos com alta
+  /// confiança (incluindo Data de Nascimento na CNH/CIN/RG) e houver reforço
   /// online autenticado (`kyc-argon-vision-gate`), consulta a Edge Function e
   /// preenche exclusivamente com os campos extraídos reais retornados pelo servidor.
-  /// **NUNCA fabrica dados sintéticos.**
+  /// **NUNCA fabrica dados sintéticos (jamais inventa 01/01/1990).**
   static Future<ParsedBrazilianDocumentOcr> extractAndParse({
     required Uint8List frontImageBytes,
     required Uint8List backImageBytes,
@@ -913,6 +1244,8 @@ class DocumentRealOcrEngine {
     String? rawOcrFrontTextOverride,
     String? rawOcrBackTextOverride,
     List<String>? qrPayloadsOverride,
+    List<OcrTextLineBox>? frontLinesOverride,
+    List<OcrTextLineBox>? backLinesOverride,
     Future<Map<String, dynamic>> Function(Map<String, dynamic> payload)?
         edgeVisionGateInvoker,
     String? typedFullNameHint,
@@ -927,27 +1260,32 @@ class DocumentRealOcrEngine {
       qrPayloadsOverride: qrPayloadsOverride,
     );
 
-    ParsedBrazilianDocumentOcr parsed = BrazilianDocumentOcrParser.parse(
+    final ParsedBrazilianDocumentOcr parsed = BrazilianDocumentOcrParser.parse(
       frontText: raw.frontText,
       backText: raw.backText,
       expectedDocumentType: expectedDocumentType,
       qrPayloads: raw.qrPayloads,
+      frontLines: frontLinesOverride ?? raw.frontLines,
+      backLines: backLinesOverride ?? raw.backLines,
       sourceEngine: raw.sourceEngine,
       detectedRotationDegrees: raw.frontRotationDegrees,
     );
 
-    if (parsed.hasRequiredIdentityFields) {
+    if (parsed.hasHighConfidenceCoreFields) {
       return parsed;
     }
 
-    // Se o OCR local veio incompleto (ex.: Web ou foto desafiadora), tenta reforço online
+    // Se o OCR local veio incompleto OU sem Data de Nascimento de alta confiança,
+    // aciona o reforço Vision AI (`kyc-argon-vision-gate`) para precisão bancária.
     final Future<Map<String, dynamic>> Function(Map<String, dynamic>)? invoker =
         edgeVisionGateInvoker ??
             (allowSupabaseEdgeFallback ? _defaultSupabaseEdgeInvoker() : null);
 
-    if (invoker != null &&
-        rawOcrFrontTextOverride == null &&
-        rawOcrBackTextOverride == null) {
+    final bool canUseEdge = invoker != null &&
+        (edgeVisionGateInvoker != null ||
+            (rawOcrFrontTextOverride == null && rawOcrBackTextOverride == null));
+
+    if (canUseEdge) {
       try {
         final Map<String, dynamic> payload = <String, dynamic>{
           'mode': 'kyc_document',
@@ -1032,10 +1370,17 @@ class DocumentRealOcrEngine {
     if (finalName == null || finalCpf == null) return null;
 
     DateTime? parsedBirth = existing.birthDate;
-    if (edgeBirthIso.isNotEmpty) {
-      final DateTime? iso = DateTime.tryParse(edgeBirthIso);
-      if (iso != null) {
+    double birthConf = existing.birthDateConfidence;
+    final String effectiveBirthIso = edgeBirthIso.isNotEmpty
+        ? edgeBirthIso
+        : ((resp['dossier'] is Map ? (resp['dossier'] as Map)['birth_date_iso'] : null) ?? '')
+            .toString()
+            .trim();
+    if (effectiveBirthIso.isNotEmpty) {
+      final DateTime? iso = DateTime.tryParse(effectiveBirthIso);
+      if (iso != null && iso.year >= 1915 && iso.year <= DateTime.now().year - 10) {
         parsedBirth = DateTime.utc(iso.year, iso.month, iso.day);
+        birthConf = 0.98;
       }
     }
 
@@ -1049,6 +1394,7 @@ class DocumentRealOcrEngine {
       cpfDigits: finalCpf,
       documentNumber: edgeDocNum.isNotEmpty ? edgeDocNum : existing.documentNumber,
       birthDate: parsedBirth,
+      birthDateConfidence: birthConf,
       issuingAuthority:
           edgeIssuer.isNotEmpty ? edgeIssuer : existing.issuingAuthority,
       renach: existing.renach,

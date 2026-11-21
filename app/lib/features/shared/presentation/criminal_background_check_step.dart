@@ -247,9 +247,9 @@ class _CriminalBackgroundCheckStepState
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             AppCard(
-              variant: AppCardVariant.tonal,
-              color: tk.infoSoft.withValues(alpha: tk.isDark ? 0.45 : 0.65),
-              borderColor: tk.info.withValues(alpha: 0.35),
+              variant: AppCardVariant.outlined,
+              color: tk.card,
+              borderColor: tk.accentInk.withValues(alpha: tk.isDark ? 0.35 : 0.28),
               padding: EdgeInsets.zero,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -271,11 +271,13 @@ class _CriminalBackgroundCheckStepState
                   AppListTile(
                     key: const ValueKey('sheet-pick-criminal-downloads'),
                     leadingIcon: Icons.folder_open_rounded,
-                    title: 'Selecionar PDF ou Arquivo (Pasta Downloads)',
-                    subtitle: 'Acessa a pasta Downloads para o PDF baixado da PF.',
-                    padding: const EdgeInsets.symmetric(
+                    title: 'Escolher PDF ou arquivo do celular',
+                    subtitle: isCompactSheet
+                        ? 'Abre em Downloads; navegue por qualquer pasta.'
+                        : 'Abre em Downloads, mas você pode navegar por qualquer pasta do aparelho.',
+                    padding: EdgeInsets.symmetric(
                       horizontal: AppSpace.s12,
-                      vertical: AppSpace.s8,
+                      vertical: isCompactSheet ? AppSpace.s4 : AppSpace.s8,
                     ),
                     trailing: isCompactSheet
                         ? null
@@ -291,30 +293,29 @@ class _CriminalBackgroundCheckStepState
                 ],
               ),
             ),
-            const SizedBox(height: AppSpace.s8),
+            const SizedBox(height: AppSpace.s4),
             AppListTile(
               key: const ValueKey('sheet-pick-criminal-gallery'),
               leadingIcon: Icons.photo_library_outlined,
-              title: 'Escolher Foto da Galeria',
+              title: 'Escolher foto da galeria',
               subtitle: 'Imagem salva no seu aparelho.',
-              padding: const EdgeInsets.symmetric(
+              padding: EdgeInsets.symmetric(
                 horizontal: AppSpace.s12,
-                vertical: AppSpace.s8,
+                vertical: isCompactSheet ? AppSpace.s4 : AppSpace.s8,
               ),
               showChevron: true,
               onTap: () => Navigator.of(
                 sheetCtx,
               ).pop(_CertificateUploadSource.gallery),
             ),
-            const SizedBox(height: AppSpace.s4),
             AppListTile(
               key: const ValueKey('sheet-pick-criminal-camera'),
               leadingIcon: Icons.photo_camera_outlined,
-              title: 'Fotografar Certidão com a Câmera',
+              title: 'Fotografar certidão com a câmera',
               subtitle: 'Foto de página inteira bem iluminada.',
-              padding: const EdgeInsets.symmetric(
+              padding: EdgeInsets.symmetric(
                 horizontal: AppSpace.s12,
-                vertical: AppSpace.s8,
+                vertical: isCompactSheet ? AppSpace.s4 : AppSpace.s8,
               ),
               showChevron: true,
               onTap: () => Navigator.of(
@@ -584,12 +585,12 @@ class _CriminalBackgroundCheckStepState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Enviar PDF ou Foto da Certidão',
+                  'Enviar PDF ou foto da certidão',
                   style: AppType.titleSm.copyWith(color: tk.text),
                 ),
                 const SizedBox(height: AppSpace.s4),
                 Text(
-                  'Selecione o PDF na pasta Downloads, escolha uma foto da galeria ou fotografe com a câmera.',
+                  'Escolha um arquivo salvo no celular, uma foto da galeria ou fotografe com a câmera.',
                   style: AppType.bodySm.copyWith(color: tk.textMuted),
                 ),
               ],
@@ -819,8 +820,8 @@ class _CriminalBackgroundCheckStepState
 
         // PASSO 1 GUIADO — EMISSÃO OFICIAL GRATUITA EM 1 MINUTO
         KycPorcelainSectionCard(
-          title: '1. Emissão Oficial Gratuita em 1 Minuto',
-          subtitle: 'Emitida na hora pelo portal oficial gov.br.',
+          title: '1. Emitir grátis no gov.br',
+          subtitle: 'Emissão oficial gratuita em cerca de 1 minuto pelo portal da Polícia Federal.',
           icon: Icons.account_balance_rounded,
           statusChipLabel: 'Grátis',
           statusTone: AppTone.info,
@@ -842,12 +843,12 @@ class _CriminalBackgroundCheckStepState
               const _CriminalGuideStepRow(
                 stepNumber: '3',
                 text:
-                    'Baixe o PDF oficial na pasta Downloads ou tire uma foto nítida para enviar no Passo 2.',
+                    'Salve o PDF no celular ou tire uma foto nítida para enviar no passo abaixo.',
               ),
               const SizedBox(height: AppSpace.s16),
               AppButton(
                 key: const ValueKey('btn-open-pf-portal'),
-                label: 'Emitir Certidão Grátis na Polícia Federal (gov.br)',
+                label: 'Emitir certidão no gov.br',
                 icon: Icons.open_in_new_rounded,
                 variant: AppButtonVariant.secondary,
                 compact: true,
@@ -860,13 +861,13 @@ class _CriminalBackgroundCheckStepState
 
         // PASSO 2 — ENVIO UNIFICADO DO ARQUIVO E AUTOPREENCHIMENTO
         KycPorcelainSectionCard(
-          title: '2. Envio da Certidão e Conferência de Autenticidade',
+          title: '2. Enviar certidão',
           subtitle:
               'Envie o PDF oficial ou uma foto nítida da certidão emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
           icon: Icons.upload_file_rounded,
           statusChipLabel: approved
               ? 'Validada'
-              : (hasFile ? 'Anexada' : 'Aguardando envio'),
+              : (hasFile ? 'Anexada' : 'Aguardando'),
           statusTone: approved
               ? AppTone.success
               : (hasFile ? AppTone.info : AppTone.neutral),
@@ -1116,47 +1117,63 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
 
     return AppCard(
       key: const ValueKey('criminal-check-approved-card'),
-      variant: AppCardVariant.tonal,
-      color: tk.successSoft,
-      borderColor: tk.success,
+      variant: AppCardVariant.elevated,
+      color: tk.card,
+      borderColor: tk.success.withValues(alpha: tk.isDark ? 0.45 : 0.35),
+      radius: 22,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.verified_user_rounded,
-                color: tk.successInk,
-                size: 26,
-              ),
-              const SizedBox(width: AppSpace.s12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Certidão Negativa Validada · Vigência Semestral (6 meses)',
-                      style: AppType.bodyStrong.copyWith(color: tk.successInk),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              spacing: AppSpace.s8,
+              runSpacing: AppSpace.s8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: tk.successSoft,
+                    borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+                    border: Border.all(
+                      color: tk.success.withValues(alpha: tk.isDark ? 0.35 : 0.22),
                     ),
-                    const SizedBox(height: AppSpace.s4),
-                    Text(
-                      'Situação: NADA CONSTA confirmado junto à Polícia Federal. '
-                      'Válida até ${_formatDateBr(expiresAt)} para Cliente e Profissional.',
-                      style: AppType.tabular(AppType.bodySm).copyWith(
-                        color: tk.successInk,
-                      ),
-                    ),
-                  ],
+                  ),
+                  child: Icon(
+                    Icons.verified_user_rounded,
+                    color: tk.successInk,
+                    size: 20,
+                  ),
                 ),
-              ),
-            ],
+                const AppStatusChip(
+                  'Nada Consta',
+                  tone: AppTone.success,
+                  icon: Icons.verified_rounded,
+                ),
+              ],
+            ),
           ),
-          Divider(height: AppSpace.s24, color: tk.success.withValues(alpha: 0.3)),
+          const SizedBox(height: AppSpace.s12),
+          Text(
+            'Certidão validada por 6 meses',
+            style: AppType.title.copyWith(color: tk.text),
+          ),
+          const SizedBox(height: AppSpace.s4),
+          Text(
+            'Situação confirmada junto à Polícia Federal. Válida até ${_formatDateBr(expiresAt)} para Cliente e Profissional.',
+            style: AppType.tabular(AppType.bodySm).copyWith(
+              color: tk.textMuted,
+            ),
+          ),
+          Divider(height: AppSpace.s24, color: tk.border),
           AppInfoRow(
-            label: 'Titular Conferido',
+            label: 'Titular conferido',
             value: holderName.isEmpty ? 'Titular Verificado' : holderName,
             strong: true,
+            stacked: true,
           ),
           AppInfoRow(
             label: 'Protocolo PF',
@@ -1164,19 +1181,20 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
                 ? result.protocolMasked
                 : result.protocolNumber,
             strong: true,
+            stacked: true,
           ),
           AppInfoRow(
-            label: 'Emissão / Validade',
-            value:
-                '${_formatDateBr(result.issuedDate)} · Válida por 6 meses (${_formatDateBr(expiresAt)})',
+            label: 'Emissão e validade',
+            value: 'Emitida em ${_formatDateBr(result.issuedDate)} · Válida até ${_formatDateBr(expiresAt)}',
             strong: true,
+            stacked: true,
           ),
-          AppInfoRow(
-            label: 'Selo SHA-256',
-            value: result.fileSha256Hex.length >= 16
-                ? '${result.fileSha256Hex.substring(0, 16)}...'
-                : result.fileSha256Hex,
-            strong: true,
+          const SizedBox(height: AppSpace.s8),
+          Text(
+            'Comprovante digital: ${result.fileSha256Hex.length >= 16 ? '${result.fileSha256Hex.substring(0, 16)}...' : result.fileSha256Hex}',
+            style: AppType.tabular(AppType.bodySm).copyWith(
+              color: tk.textMuted,
+            ),
           ),
         ],
       ),

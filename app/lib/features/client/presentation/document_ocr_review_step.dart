@@ -113,13 +113,13 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
             ),
             const SizedBox(height: AppSpace.s16),
 
-            // 3. Cartão Porcelain principal com dados transcritos (OCR)
+            // 3. Cartão editorial principal com dados do documento
             KeyedSubtree(
               key: const ValueKey('ocr-transcribed-card'),
               child: KycPorcelainSectionCard(
-                title: 'Dados Transcritos Automaticamente do Documento (OCR)',
+                title: 'Dados do documento',
                 subtitle:
-                    'Autenticidade física e facial confirmada. Pronto para seguir.',
+                    'Autenticidade física e facial confirmada. Confira se tudo corresponde ao seu documento.',
                 icon: Icons.fact_check_rounded,
                 statusChipLabel: 'Conferido',
                 statusTone: AppTone.success,
@@ -127,34 +127,33 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     AppInfoRow(
-                      label: 'Nome Civil Confirmado',
+                      label: 'Nome civil confirmado',
                       value: ocr.extractedFullName,
                       strong: true,
+                      stacked: true,
                     ),
                     if (widget.typedName.trim().isNotEmpty)
                       AppInfoRow(
                         label: 'Nome no cadastro',
+                        stacked: true,
                         valueWidget: Text(
                           '${widget.typedName.trim()} (${namePct.toStringAsFixed(0)}% compatível)',
-                          textAlign:
-                              isLargeText ? TextAlign.start : TextAlign.end,
                           style: AppType.tabular(AppType.bodyStrong)
                               .copyWith(color: tk.text),
                         ),
                       ),
                     AppInfoRow(
-                      label: 'CPF do Titular',
-                      valueWidget: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        alignment: isLargeText
-                            ? WrapAlignment.start
-                            : WrapAlignment.end,
-                        spacing: AppSpace.s4,
+                      label: 'CPF do titular',
+                      stacked: true,
+                      valueWidget: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Text(
-                            '$displayedCpf (Confirmado)',
-                            style: AppType.tabular(AppType.bodyStrong)
-                                .copyWith(color: tk.text),
+                          Expanded(
+                            child: Text(
+                              '$displayedCpf · Confirmado',
+                              style: AppType.tabular(AppType.bodyStrong)
+                                  .copyWith(color: tk.text),
+                            ),
                           ),
                           AppIconButton(
                             key: const ValueKey('toggle-cpf-reveal'),
@@ -172,7 +171,8 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                       ),
                     ),
                     AppInfoRow(
-                      label: 'Tipo e Nº do Documento',
+                      label: 'Documento',
+                      stacked: isLargeText,
                       valueWidget: Text(
                         '${ocr.documentType.code} · Nº ${ocr.extractedDocumentNumber}',
                         textAlign:
@@ -182,7 +182,8 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                       ),
                     ),
                     AppInfoRow(
-                      label: 'Data de Nascimento',
+                      label: 'Data de nascimento',
+                      stacked: isLargeText,
                       valueWidget: Text(
                         ocr.extractedBirthDateFormatted,
                         textAlign:
@@ -192,40 +193,35 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                       ),
                     ),
                     AppInfoRow(
-                      label: 'Órgão Emissor',
+                      label: 'Órgão emissor',
                       value: safeIssuer,
                       strong: true,
+                      stacked: isLargeText,
                     ),
-                    const Divider(height: AppSpace.s24),
-                    Wrap(
-                      spacing: AppSpace.s8,
-                      runSpacing: AppSpace.s8,
+                    Divider(height: AppSpace.s24, color: tk.border),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        AppStatusChip(
-                          'Identidade Protegida (${facePct.toStringAsFixed(0)}%)',
-                          tone: AppTone.success,
-                          icon: Icons.verified_user_outlined,
+                        Icon(
+                          Icons.verified_user_outlined,
+                          size: 18,
+                          color: tk.successInk,
                         ),
-                        const AppStatusChip(
-                          'Foto Nítida',
-                          tone: AppTone.success,
-                          icon: Icons.high_quality_outlined,
-                        ),
-                        const AppStatusChip(
-                          'Frente e Verso',
-                          tone: AppTone.success,
-                          icon: Icons.credit_card_outlined,
-                        ),
-                        AppStatusChip(
-                          'Titularidade Conferida (${namePct.toStringAsFixed(0)}%)',
-                          tone: AppTone.success,
-                          icon: Icons.shield_outlined,
+                        const SizedBox(width: AppSpace.s8),
+                        Expanded(
+                          child: Text(
+                            'Foto nítida · Frente e verso · Identidade protegida (${facePct.toStringAsFixed(0)}%)',
+                            style: AppType.bodySm.copyWith(
+                              color: tk.textMuted,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppSpace.s12),
+                    const SizedBox(height: AppSpace.s8),
                     Text(
-                      'Protocolo de segurança: $safeSeal',
+                      'Registro de verificação: $safeSeal',
                       style: AppType.tabular(AppType.bodySm)
                           .copyWith(color: tk.textMuted),
                     ),

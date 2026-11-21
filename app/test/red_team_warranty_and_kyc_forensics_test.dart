@@ -509,9 +509,10 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('client-setup-step0-continue')));
       await tester.pumpAndSettle();
 
-      // Verifica Passo 2 ("Onde você precisa do serviço?" + botão "Continuar para Validação Facial e Documentos")
+      // Verifica Passo 2 ("Onde você precisa do serviço?" + CTA enxuto "Continuar")
       expect(find.text('Onde você precisa do serviço?'), findsOneWidget);
-      expect(find.text('Continuar para Validação Facial e Documentos'), findsOneWidget);
+      expect(find.byKey(const ValueKey('client-setup-step1-continue')), findsOneWidget);
+      expect(find.text('Continuar'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -961,9 +962,9 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('capture-doc-back')));
       await tester.pumpAndSettle();
 
-      // Verifica que o Card "Dados Transcritos Automaticamente do Documento (OCR)" está visível na tela!
+      // Verifica que o Card "Dados do documento" está visível na tela!
       expect(find.byKey(const ValueKey('ocr-transcribed-card')), findsOneWidget);
-      expect(find.text('Dados Transcritos Automaticamente do Documento (OCR)'), findsOneWidget);
+      expect(find.text('Dados do documento'), findsOneWidget);
       expect(find.text('WAGNER OLIVEIRA CLAUDIANO'), findsOneWidget);
       expect(find.textContaining('***.787.236-**'), findsOneWidget);
       expect(find.textContaining('119.787.236-10'), findsNothing);

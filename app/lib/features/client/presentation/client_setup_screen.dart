@@ -1029,13 +1029,13 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               ),
             1 => AppButton(
                 key: const ValueKey('client-setup-step1-continue'),
-                label: 'Continuar para Validação Facial e Documentos',
+                label: 'Continuar',
                 trailingArrow: true,
                 onPressed: _validateStep1AndAdvance,
               ),
             2 => AppButton(
                 key: const ValueKey('client-setup-step2-continue'),
-                label: 'Continuar para Fotos do Documento',
+                label: 'Continuar',
                 trailingArrow: true,
                 onPressed: (_livenessResult != null && _livenessResult!.passed)
                     ? () => _setStep(3)
@@ -1043,7 +1043,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               ),
             3 => AppButton(
                 key: const ValueKey('client-setup-step3-read-ocr'),
-                label: 'Ler e Conferir Dados do Documento',
+                label: 'Ler documento',
                 trailingArrow: true,
                 loading: _analyzingOcr,
                 onPressed: (hasBothDocSides && !_analyzingOcr)
@@ -1059,21 +1059,21 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
             4 => _isLegacyFourStepTestMode
                 ? AppButton(
                     key: const ValueKey('client-setup-step3-submit'),
-                    label: 'Concluir Validação e Entrar no Aplicativo',
+                    label: 'Concluir e entrar',
                     loading: _saving,
                     onPressed: (hasValidOcr && !_saving) ? _finish : null,
                   )
                 : AppButton(
                     key: const ValueKey('client-setup-step3-continue'),
-                    label: 'Confirmar e Avançar para Antecedentes',
+                    label: 'Confirmar dados',
                     trailingArrow: true,
                     onPressed: hasValidOcr ? () => _setStep(5) : null,
                   ),
             _ => AppButton(
                 key: const ValueKey('client-setup-step4-submit'),
                 label: widget.isSixMonthRenewal
-                    ? 'Concluir Renovação por Mais 6 Meses'
-                    : 'Concluir Validação e Entrar no Aplicativo',
+                    ? 'Concluir renovação'
+                    : 'Concluir e entrar',
                 loading: _saving,
                 onPressed: (effectiveCriminal != null &&
                         effectiveCriminal.passed &&
@@ -1129,14 +1129,14 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 isDisplayTitle: true,
                 leadingEmblem: AppAvatar(
                   name: widget.profile.firstName,
-                  radius: 28,
+                  radius: 22,
                 ),
                 title: 'Bem-vindo, ${widget.profile.firstName}!',
                 subtitle: isProviderTarget
                     ? 'Configure sua conta profissional com validação unificada (válida por 6 meses também no modo Cliente).'
                     : 'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
               ),
-              const SizedBox(height: AppSpace.s12),
+              const SizedBox(height: AppSpace.s8),
               const Wrap(
                 spacing: AppSpace.s8,
                 runSpacing: AppSpace.s8,
@@ -1158,7 +1158,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
             ],
           ),
         ),
-        const SizedBox(height: AppSpace.s16),
+        const SizedBox(height: AppSpace.s12),
 
         // 2. Cartão Porcelain "Seus dados pessoais" com contador vivo
         KycPorcelainSectionCard(
@@ -1175,7 +1175,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 'Como podemos te chamar?',
                 style: AppType.bodyStrong.copyWith(color: tk.text),
               ),
-              const SizedBox(height: AppSpace.s8),
+              const SizedBox(height: AppSpace.s4),
               AppTextField(
                 key: const ValueKey('client-setup-name'),
                 controller: _name,
@@ -1376,7 +1376,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               : 'Endereço oculto até você aprovar o orçamento',
           trustBadgeIcon: Icons.lock_outline_rounded,
         ),
-        const SizedBox(height: AppSpace.s40),
+        SizedBox(
+          height: context.layout.width >= 520 ? AppSpace.s40 : AppSpace.s24,
+        ),
         AddressForm(
           initial: _address.isEmpty ? null : _address,
           onChanged: (a) {

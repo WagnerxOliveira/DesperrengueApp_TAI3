@@ -77,6 +77,9 @@ class AppCard extends StatelessWidget {
           AppCardVariant.outlined => tk.card,
         };
     final showBorder = variant != AppCardVariant.tonal || borderColor != null;
+    final defaultBorder = tk.isDark
+        ? Colors.white.withValues(alpha: variant == AppCardVariant.hero ? 0.11 : 0.08)
+        : tk.border;
     final shadows = switch (variant) {
       AppCardVariant.elevated => tk.elevation(1),
       AppCardVariant.hero => tk.elevation(2),
@@ -86,7 +89,7 @@ class AppCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: borderRadius,
-        border: showBorder ? Border.all(color: borderColor ?? tk.border) : null,
+        border: showBorder ? Border.all(color: borderColor ?? defaultBorder) : null,
         boxShadow: shadows,
       ),
       child: Padding(
@@ -268,6 +271,7 @@ class AppInfoRow extends StatelessWidget {
     this.valueWidget,
     this.icon,
     this.strong = false,
+    this.stacked = false,
   }) : assert(value != null || valueWidget != null, 'Informe value ou valueWidget');
 
   final String label;
@@ -278,34 +282,67 @@ class AppInfoRow extends StatelessWidget {
   /// Valor em destaque (peso 600).
   final bool strong;
 
+  /// Força layout editorial empilhado (rótulo acima, valor em 100% da largura abaixo).
+  final bool stacked;
+
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final stack = context.layout.isLargeText;
+    final forceStack = stacked || context.layout.isLargeText;
     final labelW = Row(
-      mainAxisSize: stack ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisSize: forceStack ? MainAxisSize.max : MainAxisSize.min,
       children: [
-        if (icon != null) ...[Icon(icon, size: 18, color: tk.textMuted), const SizedBox(width: AppSpace.s8)],
-        Flexible(child: Text(label, style: AppType.bodySm.copyWith(color: tk.textMuted))),
+        if (icon != null) ...[Icon(icon, size: 17, color: tk.textMuted), const SizedBox(width: AppSpace.s8)],
+        Flexible(
+          child: Text(
+            label,
+            style: AppType.bodySm.copyWith(
+              color: tk.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
       ],
     );
-    final valueW = valueWidget ??
-        Text(
-          value!,
-          textAlign: stack ? TextAlign.start : TextAlign.end,
-          style: (strong ? AppType.bodyStrong : AppType.body).copyWith(color: tk.text),
-        );
     return Semantics(
       container: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpace.s8),
         child: LayoutBuilder(
           builder: (context, c) {
-            final column = stack || c.maxWidth < 240;
+            final isLongValue = (value?.length ?? 0) > 22;
+            final column = forceStack || c.maxWidth < 290 || (c.maxWidth < 360 && isLongValue);
+            final effectiveValueW = valueWidget ??
+                Text(
+                  value!,
+                  textAlign: column ? TextAlign.start : TextAlign.end,
+                  style: (strong ? AppType.bodyStrong : AppType.body).copyWith(color: tk.text),
+                );
             if (column) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [labelW, const SizedBox(height: AppSpace.s4), valueW],
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      if (icon != null) ...[
+                        Icon(icon, size: 16, color: tk.textMuted),
+                        const SizedBox(width: AppSpace.s8),
+                      ],
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: AppType.bodySm.copyWith(
+                            color: tk.textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpace.s4),
+                  effectiveValueW,
+                ],
               );
             }
             return Row(
@@ -315,7 +352,7 @@ class AppInfoRow extends StatelessWidget {
                 const SizedBox(width: AppSpace.s16),
                 Flexible(
                   flex: 6,
-                  child: Align(alignment: Alignment.centerRight, child: valueW),
+                  child: Align(alignment: Alignment.centerRight, child: effectiveValueW),
                 ),
               ],
             );

@@ -1840,7 +1840,14 @@ class DocumentOcrAndLivenessService {
     final String effectiveDocNum = (parsed.documentNumber ?? '').trim().isNotEmpty
         ? parsed.documentNumber!.trim()
         : formatCpf(parsed.cpfDigits!);
-    final DateTime effectiveBirth = parsed.birthDate ?? DateTime.utc(1990, 1, 1);
+    // JAMAIS inventar 01/01/1990 em CNH, CIN ou RG!
+    if (parsed.birthDate == null &&
+        parsed.detectedDocumentType != OfficialDocumentType.cpf) {
+      throw StateError(
+        'ERR_OCR_BIRTHDATE_UNREADABLE: Não conseguimos ler com precisão sua data de nascimento no documento. Apoie a frente do documento em local bem iluminado, sem reflexos, e fotografe novamente.',
+      );
+    }
+    final DateTime effectiveBirth = parsed.birthDate ?? DateTime.utc(1900, 1, 1);
     final String effectiveIssuer = (parsed.issuingAuthority ?? '').trim().isNotEmpty
         ? parsed.issuingAuthority!.trim()
         : documentType.defaultIssuer;

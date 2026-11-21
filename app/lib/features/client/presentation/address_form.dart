@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/models/address_data.dart';
 import '../../../core/models/geocode_models.dart';
 import '../../../core/models/scheduling_models.dart';
 import '../../../core/services/address_lookup.dart';
 import '../../../core/services/precise_geocoder.dart';
+import '../../../core/services/precise_location_acquisition_service.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../shared/presentation/service_map_widgets.dart';
 import 'widgets/kyc_onboarding_chrome.dart';
@@ -105,7 +108,10 @@ class _AddressFormState extends State<AddressForm> {
   final _streetFocus = FocusNode();
   double? _lat;
   double? _lng;
+  double? _gpsAccuracyMeters;
+  LocationFixQuality? _gpsQuality;
   bool _loadingGps = false;
+  String _gpsProgressLabel = 'Refinando sinal de GPS...';
 
   /// O cliente confirmou o ponto exato no mapa (ou veio do GPS).
   bool _pinConfirmed = false;
@@ -266,52 +272,82 @@ class _AddressFormState extends State<AddressForm> {
   }
 
   Future<void> _useGps() async {
-    setState(() => _loadingGps = true);
+    setState(() {
+      _loadingGps = true;
+      _gpsProgressLabel = 'Refinando sinal de GPS...';
+    });
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted) {
+      final fix = await PreciseLocationAcquisitionService.acquire(
+        onProgress: (msg) {
+          if (mounted && _loadingGps) {
+            setState(() => _gpsProgressLabel = msg);
+          }
+        },
+      );
+      if (!mounted) return;
+
+      switch (fix.status) {
+        case LocationAcquisitionStatus.serviceDisabled:
           AppSnackbar.show(
             context,
             'Ative a localização (GPS) do aparelho e tente de novo.',
             kind: AppSnackKind.error,
           );
-        }
-        return;
-      }
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        if (mounted) {
+          return;
+        case LocationAcquisitionStatus.permissionDenied:
+        case LocationAcquisitionStatus.permissionDeniedForever:
           AppSnackbar.show(
             context,
-            'Permissão de localização negada. Digite o CEP para continuar.',
+            'Permissão de localização negada. Digite o CEP ou libere nas configurações.',
             kind: AppSnackKind.error,
           );
-        }
-        return;
+          return;
+        case LocationAcquisitionStatus.reducedAccuracyOnly:
+          AppSnackbar.show(
+            context,
+            'Seu aparelho liberou apenas localização aproximada. Ative "Localização precisa" nas permissões para evitar erro de rua.',
+            kind: AppSnackKind.error,
+          );
+          await Geolocator.openAppSettings();
+          return;
+        case LocationAcquisitionStatus.unavailable:
+          AppSnackbar.show(
+            context,
+            'Não foi possível obter a localização precisa agora. Digite o CEP.',
+            kind: AppSnackKind.error,
+          );
+          return;
+        case LocationAcquisitionStatus.ok:
+          break;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
-      final found = await _lookup.byCoordinates(pos.latitude, pos.longitude);
+
+      final lat = fix.latitude!;
+      final lng = fix.longitude!;
+      final acc = fix.accuracyMeters;
+      final quality = fix.quality ?? LocationFixQuality.moderate;
+
+      if (mounted) {
+        setState(() => _gpsProgressLabel = 'Identificando rua e bairro...');
+      }
+
+      final found = await _lookup.byCoordinates(lat, lng);
       if (!mounted) return;
       if (found == null) {
-        _lat = pos.latitude;
-        _lng = pos.longitude;
+        setState(() {
+          _lat = lat;
+          _lng = lng;
+          _gpsAccuracyMeters = acc;
+          _gpsQuality = quality;
+        });
         _emit();
         AppSnackbar.show(
           context,
-          'Localização capturada, mas não achamos o endereço. Digite o CEP.',
+          'Localização capturada, mas não achamos o endereço. Digite o CEP ou ajuste o pino no mapa.',
           kind: AppSnackKind.error,
         );
         return;
       }
+
       final cleanCep = AddressLookup.onlyDigits(found.cep);
       _lastCep = cleanCep; // evita nova consulta ao preencher o CEP abaixo
       _applying = true;
@@ -321,19 +357,33 @@ class _AddressFormState extends State<AddressForm> {
         _applying = false;
       }
       _apply(found, useCoords: false);
-      // O GPS do aparelho é o ponto mais fiel que existe: vale como pino confirmado.
-      _lat = pos.latitude;
-      _lng = pos.longitude;
-      _pinConfirmed = true;
-      _gpsPin = true;
+
+      // Só confirma automaticamente o pino se o fix GNSS não for degradado (<= 65 m).
+      final bool isReliablePin = quality != LocationFixQuality.coarse;
+      _lat = lat;
+      _lng = lng;
+      _gpsAccuracyMeters = acc;
+      _gpsQuality = quality;
+      _pinConfirmed = isReliablePin;
+      _gpsPin = isReliablePin;
       _emit();
       setState(() => _auto = _Auto.done);
-      AppSnackbar.show(
-        context,
-        'Endereço preenchido! Confira e informe o número.',
-        kind: AppSnackKind.success,
-      );
-      _numberFocus.requestFocus();
+
+      if (isReliablePin) {
+        AppSnackbar.show(
+          context,
+          'Endereço preenchido! Confira no mapa e informe o número.',
+          kind: AppSnackKind.success,
+        );
+        _numberFocus.requestFocus();
+      } else {
+        final meters = acc != null ? '±${acc.round()} m' : 'baixa precisão';
+        AppSnackbar.show(
+          context,
+          'Sinal de GPS aproximado ($meters). Toque em "Ajustar no mapa" para confirmar sua rua exata.',
+          kind: AppSnackKind.info,
+        );
+      }
     } catch (_) {
       if (mounted) {
         AppSnackbar.show(
@@ -363,9 +413,10 @@ class _AddressFormState extends State<AddressForm> {
         .join(' - ');
   }
 
-  /// Abre o mapa com o pino no endereço digitado para o cliente ajustar na porta da casa.
-  Future<void> _confirmPin() async {
-    if (!_canPlacePin) {
+  /// Abre o mapa com o pino no endereço digitado (ou na coordenada GPS capturada)
+  /// para o cliente ajustar exatamente na porta da casa.
+  Future<void> _confirmPin({bool allowFromGpsOnly = false}) async {
+    if (!_canPlacePin && !(allowFromGpsOnly && _lat != null && _lng != null)) {
       AppSnackbar.show(
         context,
         'Preencha rua, número e cidade para marcar o ponto no mapa.',
@@ -458,6 +509,8 @@ class _AddressFormState extends State<AddressForm> {
         setState(() {
           _lat = lat;
           _lng = lng;
+          _gpsAccuracyMeters = null;
+          _gpsQuality = LocationFixQuality.precise;
           _pinConfirmed = true;
           _gpsPin = false;
         });
@@ -466,19 +519,140 @@ class _AddressFormState extends State<AddressForm> {
     );
   }
 
+  Widget _buildInlineMiniMapPreview(BuildContext context) {
+    if (_lat == null || _lng == null) return const SizedBox.shrink();
+    final tk = context.tk;
+    final point = LatLng(_lat!, _lng!);
+    final acc = _gpsAccuracyMeters;
+    final bool isCoarse = _gpsQuality == LocationFixQuality.coarse;
+    final String badgeText;
+    final AppTone badgeTone;
+    if (isCoarse && acc != null) {
+      badgeText = 'Sinal aproximado · ±${acc.round()} m';
+      badgeTone = AppTone.warning;
+    } else if (_gpsPin && acc != null) {
+      badgeText = 'GPS preciso · ±${acc.round()} m';
+      badgeTone = AppTone.success;
+    } else {
+      badgeText = 'Ponto confirmado';
+      badgeTone = AppTone.success;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpace.s12),
+      child: AppCard(
+        key: const ValueKey('inline-gps-mini-map'),
+        variant: AppCardVariant.outlined,
+        radius: 18,
+        padding: EdgeInsets.zero,
+        borderColor: (isCoarse ? tk.warning : tk.success)
+            .withValues(alpha: tk.isDark ? 0.45 : 0.35),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(17),
+          child: SizedBox(
+            height: 164,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                IgnorePointer(
+                  child: FlutterMap(
+                    key: ValueKey('mini-map-${_lat!.toStringAsFixed(5)}-${_lng!.toStringAsFixed(5)}'),
+                    options: MapOptions(
+                      initialCenter: point,
+                      initialZoom: isCoarse ? 15.5 : 17.2,
+                      interactionOptions: const InteractionOptions(
+                        flags: InteractiveFlag.none,
+                      ),
+                    ),
+                    children: [
+                      buildTileLayer(context),
+                      if (acc != null && acc > 3 && acc <= 300)
+                        CircleLayer(
+                          circles: [
+                            CircleMarker(
+                              point: point,
+                              radius: acc,
+                              useRadiusInMeter: true,
+                              color: (isCoarse ? tk.warning : tk.accent)
+                                  .withValues(alpha: 0.16),
+                              borderColor: (isCoarse ? tk.warning : tk.accent)
+                                  .withValues(alpha: 0.65),
+                              borderStrokeWidth: 1.5,
+                            ),
+                          ],
+                        ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: point,
+                            width: 44,
+                            height: 44,
+                            child: Icon(
+                              Icons.location_on_rounded,
+                              size: 38,
+                              color: isCoarse ? tk.warning : tk.accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  top: AppSpace.s8,
+                  left: AppSpace.s8,
+                  right: AppSpace.s8,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: AppStatusChip(
+                          badgeText,
+                          tone: badgeTone,
+                          icon: isCoarse
+                              ? Icons.gps_not_fixed_rounded
+                              : Icons.gps_fixed_rounded,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  bottom: AppSpace.s8,
+                  left: AppSpace.s8,
+                  child: AppButton(
+                    key: const ValueKey('btn-mini-map-adjust'),
+                    label: 'Ajustar no mapa',
+                    icon: Icons.edit_location_alt_outlined,
+                    variant: AppButtonVariant.secondary,
+                    compact: true,
+                    expand: false,
+                    onPressed: _locatingPin
+                        ? null
+                        : () => _confirmPin(allowFromGpsOnly: true),
+                  ),
+                ),
+                const MapAttribution(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildGpsHeroCard(BuildContext context) {
     final tk = context.tk;
     return AppCard(
-      variant: AppCardVariant.tonal,
-      radius: 22,
-      borderColor: tk.accent.withValues(alpha: 0.45),
+      variant: AppCardVariant.elevated,
+      radius: 20,
+      borderColor: tk.accentInk.withValues(alpha: tk.isDark ? 0.30 : 0.22),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpace.s16,
         vertical: AppSpace.s12,
       ),
       onTap: _loadingGps ? null : _useGps,
       semanticLabel: _loadingGps
-          ? 'Buscando seu endereço pelo GPS'
+          ? _gpsProgressLabel
           : 'Usar minha localização atual',
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
@@ -486,18 +660,18 @@ class _AddressFormState extends State<AddressForm> {
           children: [
             ExcludeSemantics(
               child: Container(
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: tk.accentSoft,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: tk.accentInk.withValues(alpha: tk.isDark ? 0.24 : 0.14),
+                    color: tk.accentInk.withValues(alpha: tk.isDark ? 0.26 : 0.16),
                   ),
                 ),
                 child: Icon(
                   Icons.my_location_rounded,
-                  size: 22,
+                  size: 21,
                   color: tk.accentInk,
                 ),
               ),
@@ -510,7 +684,7 @@ class _AddressFormState extends State<AddressForm> {
                 children: [
                   Text(
                     _loadingGps
-                        ? 'Buscando seu endereço...'
+                        ? _gpsProgressLabel
                         : 'Usar minha localização atual',
                     style: AppType.bodyStrong.copyWith(color: tk.text),
                   ),
@@ -531,7 +705,7 @@ class _AddressFormState extends State<AddressForm> {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: tk.card,
+                    color: tk.surface,
                     shape: BoxShape.circle,
                     border: Border.all(color: tk.border),
                   ),
@@ -764,13 +938,13 @@ class _AddressFormState extends State<AddressForm> {
     final String statusChipLabel;
     final AppTone statusTone;
     if (_pinConfirmed) {
-      statusChipLabel = 'Endereço pronto';
+      statusChipLabel = 'Pronto';
       statusTone = AppTone.success;
     } else if (_canPlacePin) {
-      statusChipLabel = 'Endereço pronto';
+      statusChipLabel = 'Pronto';
       statusTone = AppTone.success;
     } else {
-      statusChipLabel = 'Preenchimento rápido';
+      statusChipLabel = 'Rápido';
       statusTone = AppTone.accent;
     }
 
@@ -778,6 +952,7 @@ class _AddressFormState extends State<AddressForm> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildGpsHeroCard(context),
+        _buildInlineMiniMapPreview(context),
         const SizedBox(height: AppSpace.s16),
         _buildDivider(context),
         const SizedBox(height: AppSpace.s16),

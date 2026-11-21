@@ -70,7 +70,8 @@ export const SYSTEM_INSTRUCTION_HARDENED = [
   "1. Identifique a rotação canônica (0, 90, 180, 270) necessária para deixar o documento na horizontal.",
   "2. Avalie nitidez, presença das 4 bordas, reflexo de flash sobre CPF/Foto/QR Code, sinais de replay de tela (Moiré/subpixels RGB) e colagem 3x4.",
   "3. Extraia as caixas 2D [ymin, xmin, ymax, xmax] na escala 0..1000 para Foto 3x4 (face_portrait_box_2d), QR Code VIO (qr_code_vio_box_2d), Assinatura (signature_box_2d) e MRZ (mrz_box_2d).",
-  "4. Extraia os dados civis da Frente e do Verso, valide consistência cruzada e retorne exatamente 3 fatores em shap_top_3_explainability_factors (LGPD Art. 20) e orientação humana educada sem jargões técnicos.",
+  "4. Extraia os dados civis da Frente e do Verso com precisão bancária. ATENÇÃO CRÍTICA PARA DATA DE NASCIMENTO (birth_date_iso em YYYY-MM-DD): na CNH Clássica leia exclusivamente o campo 'DATA NASCIMENTO' (ao lado de CPF) e na CNH 2022+ leia exclusivamente o Campo '3 DATA, LOCAL E UF DE NASCIMENTO'. JAMAIS confunda com '4a DATA EMISSÃO', '4b VALIDADE' ou '1ª HABILITAÇÃO', e JAMAIS invente datas como 1990-01-01; se estiver ilegível, retorne null e is_readable=false.",
+  "5. Valide consistência cruzada entre Frente e Verso e retorne exatamente 3 fatores em shap_top_3_explainability_factors (LGPD Art. 20) e orientação humana educada sem jargões técnicos.",
 ].join(" ");
 
 export const CRIMINAL_RECORD_SYSTEM_INSTRUCTION_HARDENED = [

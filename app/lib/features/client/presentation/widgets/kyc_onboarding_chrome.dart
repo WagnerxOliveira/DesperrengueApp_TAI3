@@ -23,7 +23,7 @@ class KycAmbientBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final auraColor = isProviderMode ? tk.providerAccent : tk.accent;
-    final peakAlpha = tk.isDark ? 0.14 : 0.07;
+    final peakAlpha = tk.isDark ? 0.08 : 0.05;
 
     return ColoredBox(
       color: tk.background,
@@ -36,14 +36,14 @@ class KycAmbientBackdrop extends StatelessWidget {
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: RadialGradient(
-                        center: const Alignment(0, -1.05),
-                        radius: 1.15,
+                        center: const Alignment(0, -1.10),
+                        radius: 1.05,
                         colors: [
                           auraColor.withValues(alpha: peakAlpha),
-                          auraColor.withValues(alpha: peakAlpha * 0.35),
+                          auraColor.withValues(alpha: peakAlpha * 0.30),
                           auraColor.withValues(alpha: 0),
                         ],
-                        stops: const [0.0, 0.45, 1.0],
+                        stops: const [0.0, 0.42, 1.0],
                       ),
                     ),
                   ),
@@ -223,7 +223,7 @@ class _ProgressSegment extends StatelessWidget {
     return ClipRRect(
       borderRadius: radius,
       child: Container(
-        height: 6,
+        height: 4.5,
         color: trackColor,
         alignment: Alignment.centerLeft,
         child: reduced
@@ -354,31 +354,32 @@ class KycTrustMicroBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final (bg, fg) = tone.resolve(tk);
+    final subtleBg = tk.isDark ? tk.surface : bg;
+    final subtleBorder = fg.withValues(alpha: tk.isDark ? 0.28 : 0.20);
+    final labelColor = tk.isDark ? tk.text : fg;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: bg,
+        color: subtleBg,
         borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
-        border: Border.all(
-          color: fg.withValues(alpha: tk.isDark ? 0.26 : 0.16),
-        ),
+        border: Border.all(color: subtleBorder),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpace.s12,
-          vertical: AppSpace.s4 + 2,
+          vertical: AppSpace.s8 - 2,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(icon, size: 15, color: fg),
-            const SizedBox(width: AppSpace.s8 - 2),
+            const SizedBox(width: AppSpace.s8),
             Flexible(
               child: Text(
                 text,
                 style: AppType.bodySm.copyWith(
-                  color: fg,
+                  color: labelColor,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -416,7 +417,30 @@ class KycPorcelainSectionCard extends StatelessWidget {
     final layout = context.layout;
     final chipLabel = statusChipLabel?.trim() ?? '';
     final hasChip = chipLabel.isNotEmpty;
-    final stackHeader = layout.isCompact || layout.isLargeText;
+    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
+
+    final leadingIcon = icon == null
+        ? null
+        : ExcludeSemantics(
+            child: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: tk.accentSoft,
+                borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+                border: Border.all(
+                  color: tk.accentInk.withValues(alpha: tk.isDark ? 0.24 : 0.14),
+                ),
+              ),
+              child: Icon(icon, size: 19, color: tk.accentInk),
+            ),
+          );
+
+    final statusChip = hasChip
+        ? AppStatusChip(chipLabel, tone: statusTone)
+        : null;
+
+    final hasTopBar = leadingIcon != null || statusChip != null;
 
     final titleBlock = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,7 +453,7 @@ class KycPorcelainSectionCard extends StatelessWidget {
             style: AppType.titleSm.copyWith(color: tk.text),
           ),
         ),
-        if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+        if (hasSubtitle) ...[
           const SizedBox(height: AppSpace.s2),
           Text(
             subtitle!,
@@ -439,73 +463,90 @@ class KycPorcelainSectionCard extends StatelessWidget {
       ],
     );
 
-    final leadingIcon = icon == null
-        ? null
-        : ExcludeSemantics(
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: tk.accentSoft,
-                borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final effectiveWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : layout.width;
+        final singleRowHeader = effectiveWidth >= 480 && !layout.isLargeText;
+        final cardPadding = singleRowHeader
+            ? const EdgeInsets.all(AppSpace.cardLarge)
+            : EdgeInsets.symmetric(
+                horizontal:
+                    effectiveWidth < 390 ? AppSpace.card : AppSpace.cardLarge,
+                vertical: AppSpace.s12,
+              );
+
+        return AppCard(
+          variant: AppCardVariant.elevated,
+          radius: 22,
+          padding: cardPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (singleRowHeader)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (leadingIcon != null) ...[
+                      leadingIcon,
+                      const SizedBox(width: AppSpace.s12),
+                    ],
+                    Expanded(child: titleBlock),
+                    if (statusChip != null) ...[
+                      const SizedBox(width: AppSpace.s12),
+                      Flexible(fit: FlexFit.loose, child: statusChip),
+                    ],
+                  ],
+                )
+              else ...[
+                if (hasTopBar) ...[
+                  if (layout.isCompact || layout.isLargeText)
+                    SizedBox(
+                      width: double.infinity,
+                      child: Wrap(
+                        spacing: AppSpace.s8,
+                        runSpacing: AppSpace.s8,
+                        alignment: WrapAlignment.spaceBetween,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          ?leadingIcon,
+                          ?statusChip,
+                        ],
+                      ),
+                    )
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        ?leadingIcon,
+                        const Spacer(),
+                        if (statusChip != null)
+                          Flexible(fit: FlexFit.loose, child: statusChip),
+                      ],
+                    ),
+                  const SizedBox(height: AppSpace.s8),
+                ],
+                // Em cartões estreitos (< 480dp), título e subtítulo ocupam SEMPRE
+                // 100% da largura interna (elimina quebra no meio da palavra).
+                titleBlock,
+              ],
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: singleRowHeader ? AppSpace.s16 : AppSpace.s12,
+                ),
+                child: Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: tk.border.withValues(alpha: tk.isDark ? 0.70 : 0.85),
+                ),
               ),
-              child: Icon(icon, size: 20, color: tk.accentInk),
-            ),
-          );
-
-    final statusChip = hasChip
-        ? AppStatusChip(chipLabel, tone: statusTone)
-        : null;
-
-    return AppCard(
-      variant: AppCardVariant.elevated,
-      radius: 24,
-      padding: const EdgeInsets.all(AppSpace.cardLarge),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (stackHeader) ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (leadingIcon != null) ...[
-                  leadingIcon,
-                  const SizedBox(width: AppSpace.s12),
-                ],
-                Expanded(child: titleBlock),
-              ],
-            ),
-            if (statusChip != null) ...[
-              const SizedBox(height: AppSpace.s8),
-              statusChip,
+              child,
             ],
-          ] else
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (leadingIcon != null) ...[
-                  leadingIcon,
-                  const SizedBox(width: AppSpace.s12),
-                ],
-                Expanded(child: titleBlock),
-                if (statusChip != null) ...[
-                  const SizedBox(width: AppSpace.s12),
-                  Flexible(fit: FlexFit.loose, child: statusChip),
-                ],
-              ],
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpace.s16),
-            child: Divider(
-              height: 1,
-              thickness: 1,
-              color: tk.border.withValues(alpha: tk.isDark ? 0.75 : 0.85),
-            ),
           ),
-          child,
-        ],
-      ),
+        );
+      },
     );
   }
 }

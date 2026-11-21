@@ -176,6 +176,11 @@ class KycHumanFeedbackTranslator {
       return 'A parte de leitura do verso do documento não ficou totalmente visível. Fotografe o verso completo sobre uma mesa bem iluminada, sem cortar as bordas.';
     }
 
+    if (upper.contains('ERR_OCR_BIRTHDATE_UNREADABLE') ||
+        upper.contains('DATA DE NASCIMENTO NO DOCUMENTO')) {
+      return 'Não conseguimos ler com precisão sua data de nascimento no documento. Aproxime a frente do documento em um local bem iluminado, sem reflexo sobre as datas, e fotografe novamente.';
+    }
+
     if (upper.contains('ERR_OCR_INVALID_CPF') ||
         upper.contains('ERR_INVALID_TYPED_CPF_MOD11') ||
         upper.contains('DÍGITO VERIFICADOR DO CPF INVÁLIDO')) {

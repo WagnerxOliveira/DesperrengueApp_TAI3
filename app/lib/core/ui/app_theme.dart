@@ -98,14 +98,11 @@ class AppTheme {
 
   static ThemeData _build(Color lightAccent, Brightness brightness, UserMode? mode) {
     final base = brightness == Brightness.dark ? AppTokens.dark : AppTokens.light;
-    // No escuro o acento vem do token (dessaturado), nunca da constante.
-    final accent = !base.isDark
-        ? lightAccent
-        : switch (mode) {
-            UserMode.client => base.clientAccent,
-            UserMode.provider => base.providerAccent,
-            null => base.brand,
-          };
+    final accent = switch (mode) {
+      UserMode.client => base.clientAccent,
+      UserMode.provider => base.providerAccent,
+      null => base.isDark ? base.brand : lightAccent,
+    };
     // Tinta de TEXTO do acento (>= 4,5:1): no claro, versão escurecida.
     final accentInk = !base.isDark
         ? switch (mode) {

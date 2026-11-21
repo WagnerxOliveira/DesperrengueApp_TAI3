@@ -11,6 +11,7 @@ import '../models/scheduling_models.dart';
 import '../utils/geo.dart';
 import '../utils/tag_normalizer.dart' show normalizeTag;
 import 'geocoding_service.dart';
+import 'native_reverse_geocoder.dart';
 
 /// Endereço completo obtido por geocodificação reversa (coordenadas -> rua, número, bairro, cidade, UF e CEP).
 class ReversedAddress {
@@ -356,6 +357,46 @@ class PreciseGeocoder implements AddressGeocoder {
     }
 
     final fallbackParts = fallbackLine == null ? null : parseAddressLine(fallbackLine);
+
+    // 1. No mobile (produção sem mock HTTP), tenta primeiro o Geocoder nativo do OS
+    //    (Google Maps no Android / Apple Maps no iOS — gratuito e ultra-preciso no Brasil).
+    NativeReversedPlacemark? nativeHit;
+    if (_useCache) {
+      nativeHit = await NativeReverseGeocoder.reverseGeocode(lat, lng);
+    }
+
+    if (nativeHit != null && (nativeHit.street.isNotEmpty || nativeHit.city.isNotEmpty)) {
+      final nativeUf = ufCodeFromStateName(nativeHit.state);
+      var nativeNum = nativeHit.number.trim();
+      if (nativeNum.isEmpty) {
+        if (fallbackParts != null &&
+            fallbackParts.number.isNotEmpty &&
+            fallbackParts.street.isNotEmpty &&
+            normalizeTag(nativeHit.street) == normalizeTag(fallbackParts.street)) {
+          nativeNum = fallbackParts.number;
+        } else {
+          nativeNum = 'S/N';
+        }
+      }
+      final resolvedNative = ReversedAddress(
+        street: nativeHit.street.isNotEmpty ? nativeHit.street : (fallbackParts?.street ?? ''),
+        number: nativeNum,
+        neighborhood: nativeHit.neighborhood.isNotEmpty
+            ? nativeHit.neighborhood
+            : (fallbackParts?.hood ?? ''),
+        city: nativeHit.city.isNotEmpty ? nativeHit.city : (fallbackParts?.city ?? ''),
+        uf: nativeUf.isNotEmpty ? nativeUf : (fallbackParts?.uf ?? ''),
+        cep: _digits(nativeHit.postalCode),
+        lat: lat,
+        lng: lng,
+      );
+      if (_useCache) {
+        _putReverseLru(revKey, resolvedNative);
+        unawaited(_persistReverseCache());
+      }
+      return resolvedNative;
+    }
+
     final nominatimUri = Uri.https('nominatim.openstreetmap.org', '/reverse', {
       'format': 'jsonv2',
       'lat': '$lat',

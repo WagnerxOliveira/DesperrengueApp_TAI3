@@ -158,8 +158,14 @@ class AppTokens extends ThemeExtension<AppTokens> {
     };
   }
 
-  /// Superfície na elevação [dp]: clara = [card]; escura = [card] + camada tonal.
-  Color surfaceAt(int dp) => isDark ? tonal(card, dp) : card;
+  /// Superfície na elevação [dp]: clara = [card]; escura = degraus arquitetônicos
+  /// neutros Obsidian Atelier (sem acinzentado leitoso).
+  Color surfaceAt(int dp) {
+    if (!isDark) return card;
+    if (dp <= 0) return surface;
+    if (dp == 1) return card;
+    return raised;
+  }
 
   /// Variante dos tokens para um acento específico (cliente/profissional).
   /// [onAccent] é recalculado (contraste máximo).
@@ -206,39 +212,40 @@ class AppTokens extends ThemeExtension<AppTokens> {
       );
 
   // ---------------------------------------------------------------- valores
+  // Claro: "Alabaster Porcelain" — branco porcelana quente, divisórias sutis e alto contraste.
   static const AppTokens light = AppTokens(
     brightness: Brightness.light,
-    background: Color(0xFFFFFFFF),
-    surface: Color(0xFFF4F6FA),
+    background: Color(0xFFFAFBFD),
+    surface: Color(0xFFF2F4F8),
     card: Color(0xFFFFFFFF),
     raised: Color(0xFFFFFFFF),
     text: Color(0xFF111827),
-    textMuted: Color(0xFF5E6673), // ≥ 4,5:1 também sobre `surface` (o #6B7280 antigo dava 4,47)
-    border: Color(0xFFE5E7EB),
+    textMuted: Color(0xFF58606E), // >= 5.7:1 sobre `surface` e `background`
+    border: Color(0xFFE6EAF0),
     brand: Color(0xFF003366),
     providerAccent: Color(0xFF1B3A78),
-    clientAccent: Color(0xFFF26B0F),
-    success: Color(0xFF157A4B),
-    successSoft: Color(0xFFE3F6EC),
-    successInk: Color(0xFF0B5B3A),
+    clientAccent: Color(0xFFEF6514),
+    success: Color(0xFF127E50),
+    successSoft: Color(0xFFECFDF5),
+    successInk: Color(0xFF0E6440),
     warning: Color(0xFFB87B00),
-    warningSoft: Color(0xFFFDEFC0),
+    warningSoft: Color(0xFFFEF6DC),
     warningInk: Color(0xFF7A4A0A),
     danger: Color(0xFFC0262D),
-    dangerSoft: Color(0xFFFADADD),
+    dangerSoft: Color(0xFFFDE8EA),
     info: Color(0xFF1D6FE0),
-    infoSoft: Color(0xFFDCEBFA),
-    security: Color(0xFF2A7F86),
-    securitySoft: Color(0xFFD6EFEF),
-    providerSoft: Color(0xFFE6EEFB),
-    clientSoft: Color(0xFFFDE8D8),
+    infoSoft: Color(0xFFE6F0FC),
+    security: Color(0xFF1D7A82),
+    securitySoft: Color(0xFFE1F4F4),
+    providerSoft: Color(0xFFE8F0FC),
+    clientSoft: Color(0xFFFFEFE6),
     star: Color(0xFF9E6500),
-    shadow: Color(0x0D000000),
+    shadow: Color(0x0A0F172A),
     accent: Color(0xFF003366),
     accentInk: Color(0xFF003366),
     onAccent: Color(0xFFFFFFFF),
-    accentSoft: Color(0xFFDCEBFA),
-    clientAccentInk: Color(0xFFB34700),
+    accentSoft: Color(0xFFE6F0FC),
+    clientAccentInk: Color(0xFFA83E06),
     providerAccentInk: Color(0xFF1B3A78),
     dangerInk: Color(0xFFA11D23),
     surfaceInset: Color(0xFFEEF1F6),
@@ -247,53 +254,53 @@ class AppTokens extends ThemeExtension<AppTokens> {
     skeletonHighlight: Color(0xFFF6F8FB),
   );
 
-  /// Escuro: superfícies por elevação tonal; acentos dessaturados.
+  /// Escuro: "Obsidian Atelier" — neutros arquitetônicos profundos + bordas hairline.
   static final AppTokens dark = _buildDark();
 
   static AppTokens _buildDark() {
-    // Paleta "grafite azulado": base fria e profunda (#0E1218), camadas que sobem de forma
-    // sutil e bordas de 1 px visíveis — dá hierarquia sem sombra. Os acentos são vibrantes porém
-    // quentes/limpos (laranja âmbar e azul céu), com contraste >= 4,5:1 sobre o fundo.
-    const base = Color(0xFF0E1218);
+    // Paleta "Obsidian Atelier": base obsidiana profunda (#090A0D), superfícies neutras
+    // sem azul-cinza lavado, acento âmbar-coral refinado e tintas translúcidas limpas
+    // (eliminando tons marrom-lama e blocos verde-musgo chapados). Contraste WCAG AA+/AAA.
+    const base = Color(0xFF090A0D);
     return AppTokens(
       brightness: Brightness.dark,
       background: base,
-      surface: const Color(0xFF141A22),
-      card: const Color(0xFF1A212B),
-      raised: const Color(0xFF232C39),
-      text: const Color(0xFFEAEFF6), // não é branco puro: menos halation
-      textMuted: const Color(0xFFA3AEC0),
-      border: const Color(0xFF2B3646),
-      brand: const Color(0xFF84B6F7),
-      providerAccent: const Color(0xFF8AB8FF),
-      clientAccent: const Color(0xFFFF8F52),
-      success: const Color(0xFF3CCB8C),
-      successSoft: const Color(0xFF12322A),
-      successInk: const Color(0xFF86E3BC),
-      warning: const Color(0xFFEFCB6B),
-      warningSoft: const Color(0xFF362D14),
-      warningInk: const Color(0xFFF1D089),
-      danger: const Color(0xFFFF7A80),
-      dangerSoft: const Color(0xFF38191E),
-      info: const Color(0xFF63A5FA),
-      infoSoft: const Color(0xFF15263C),
-      security: const Color(0xFF52B7C0),
-      securitySoft: const Color(0xFF123231),
-      providerSoft: const Color(0xFF192741),
-      clientSoft: const Color(0xFF2F2018),
+      surface: const Color(0xFF111318),
+      card: const Color(0xFF161920),
+      raised: const Color(0xFF1D212B),
+      text: const Color(0xFFF5F7FA), // branco porcelana suave (zero halation)
+      textMuted: const Color(0xFF9AA3B2),
+      border: const Color(0xFF262B36),
+      brand: const Color(0xFF7DB2FF),
+      providerAccent: const Color(0xFF78ACFF),
+      clientAccent: const Color(0xFFFF7A38),
+      success: const Color(0xFF22C58B),
+      successSoft: const Color(0xFF0F241D),
+      successInk: const Color(0xFF5CE0AE),
+      warning: const Color(0xFFF5B942),
+      warningSoft: const Color(0xFF261F10),
+      warningInk: const Color(0xFFF7CA6B),
+      danger: const Color(0xFFF87171),
+      dangerSoft: const Color(0xFF2A1418),
+      info: const Color(0xFF60A5FA),
+      infoSoft: const Color(0xFF121E30),
+      security: const Color(0xFF38BDC8),
+      securitySoft: const Color(0xFF102428),
+      providerSoft: const Color(0xFF131E33),
+      clientSoft: const Color(0xFF241914),
       star: const Color(0xFFF4C650),
       shadow: const Color(0x00000000),
-      accent: const Color(0xFF84B6F7),
-      accentInk: const Color(0xFF84B6F7),
+      accent: const Color(0xFF7DB2FF),
+      accentInk: const Color(0xFF7DB2FF),
       onAccent: const Color(0xFF111827),
-      accentSoft: const Color(0xFF15263C),
-      clientAccentInk: const Color(0xFFFF8F52),
-      providerAccentInk: const Color(0xFF8AB8FF),
-      dangerInk: const Color(0xFFFFA3A7),
-      surfaceInset: const Color(0xFF0A0E13),
-      scrim: const Color(0xB3000000),
-      skeletonBase: const Color(0xFF1F2733),
-      skeletonHighlight: const Color(0xFF2B3646),
+      accentSoft: const Color(0xFF121E30),
+      clientAccentInk: const Color(0xFFFF945C),
+      providerAccentInk: const Color(0xFF85B6FF),
+      dangerInk: const Color(0xFFFCA5A5),
+      surfaceInset: const Color(0xFF0D0F14),
+      scrim: const Color(0xB8000000),
+      skeletonBase: const Color(0xFF202531),
+      skeletonHighlight: const Color(0xFF2C3344),
     );
   }
   /// Elevação tonal (Material 3): sobrepõe branco à superfície com opacidade
