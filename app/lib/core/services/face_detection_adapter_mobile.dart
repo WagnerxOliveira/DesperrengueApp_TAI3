@@ -309,23 +309,40 @@ class MobileFaceDetectionAdapter implements FaceDetectionAdapter {
 
     _isProcessing = true;
     final int nowMs = DateTime.now().millisecondsSinceEpoch;
+    String? bakedTempPath;
     try {
       final File file = File(filePath);
       if (!await file.exists()) return null;
 
       final Uint8List fileBytes = await file.readAsBytes();
-      final img.Image? decoded = img.decodeImage(fileBytes);
-      if (decoded == null || decoded.width <= 0 || decoded.height <= 0) {
+      final img.Image? rawDecoded = img.decodeImage(fileBytes);
+      if (rawDecoded == null || rawDecoded.width <= 0 || rawDecoded.height <= 0) {
         return null;
       }
 
-      // InputImage.fromFilePath já aplica EXIF orientation no Android/iOS!
-      final InputImage inputImage = InputImage.fromFilePath(filePath);
+      // Aplica bakeOrientation ANTES do ML Kit para garantir 100% de consistência
+      // entre TODOS os fabricantes Android (Samsung, Xiaomi, Motorola, Pixel, Oppo)
+      // e iOS (iPhone/iPad), independentemente de quirks no parser EXIF do OEM.
+      final bool hasNonDefaultExif = rawDecoded.exif.imageIfd.hasOrientation &&
+          rawDecoded.exif.imageIfd.orientation != 1;
+      final img.Image baked = img.bakeOrientation(rawDecoded);
+
+      String effectivePath = filePath;
+      if (hasNonDefaultExif) {
+        bakedTempPath = '${filePath}_baked.jpg';
+        await File(bakedTempPath).writeAsBytes(
+          img.encodeJpg(baked, quality: 90),
+          flush: true,
+        );
+        effectivePath = bakedTempPath;
+      }
+
+      final InputImage inputImage = InputImage.fromFilePath(effectivePath);
       final List<Face> faces = await detector.processImage(inputImage);
       _consecutiveNativeErrors = 0;
 
-      // Reduz imagem para ROI de métricas (espelhada se frontal, igual ao preview).
-      img.Image compact = img.copyResize(decoded, width: 96);
+      // Reduz imagem já orientada para ROI de métricas (espelhada se frontal, igual ao preview).
+      img.Image compact = img.copyResize(baked, width: 96);
       if (isFrontCamera) {
         compact = img.flipHorizontal(compact);
       }
@@ -350,8 +367,8 @@ class MobileFaceDetectionAdapter implements FaceDetectionAdapter {
 
       return _buildObservationFromFaces(
         faces: faces,
-        imageWidth: decoded.width,
-        imageHeight: decoded.height,
+        imageWidth: baked.width,
+        imageHeight: baked.height,
         rotation: InputImageRotation.rotation0deg,
         isFrontCamera: isFrontCamera,
         uprightRgb: compact,
@@ -378,6 +395,12 @@ class MobileFaceDetectionAdapter implements FaceDetectionAdapter {
       return null;
     } finally {
       _isProcessing = false;
+      if (bakedTempPath != null) {
+        try {
+          final bakedFile = File(bakedTempPath);
+          if (await bakedFile.exists()) await bakedFile.delete();
+        } catch (_) {}
+      }
       if (deleteAfterAnalysis) {
         try {
           final f = File(filePath);

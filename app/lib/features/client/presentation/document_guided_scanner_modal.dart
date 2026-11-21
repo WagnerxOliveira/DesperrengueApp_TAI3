@@ -10,6 +10,7 @@ import 'package:image/image.dart' as img;
 import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 
 import '../../../core/models/user_profile.dart';
+import '../../../core/services/camera_operation_queue.dart';
 import '../../../core/services/document_frame_alignment_engine.dart';
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/services/live_camera_frame_bridge.dart';
@@ -67,6 +68,7 @@ class DocumentGuidedScannerModal extends StatefulWidget {
 }
 
 class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal> {
+  final CameraOperationQueue _cameraQueue = CameraOperationQueue();
   CameraController? _controller;
   List<CameraDescription> _cameras = const <CameraDescription>[];
   int _selectedCameraIndex = 0;
@@ -410,12 +412,10 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         if ((rawBytes == null || rawBytes.isEmpty) &&
             ctrl != null &&
             ctrl.value.isInitialized) {
-          if (!kIsWeb && ctrl.value.isStreamingImages) {
-            try {
-              await ctrl.stopImageStream();
-            } catch (_) {}
-          }
-          final xfile = await ctrl.takePicture();
+          final xfile = await _cameraQueue.capturePhotoAfterStreamStop(
+            ctrl,
+            stopStreamIfActive: !kIsWeb,
+          );
           rawBytes = await xfile.readAsBytes();
         }
       }

@@ -398,6 +398,71 @@ class DocumentOcrAndLivenessService {
     return _evaluateDecodedOvalFrame(positionalFrame);
   }
 
+  /// Redimensiona preservando rigorosamente a proporção (aspect ratio), evitando
+  /// distorção de fotos retrato em paisagem.
+  static img.Image _resizePreservingAspect(
+    img.Image source, {
+    required int maxSide,
+  }) {
+    final int longest = math.max(source.width, source.height);
+    if (longest <= maxSide || source.width <= 0 || source.height <= 0) {
+      return source;
+    }
+    if (source.width >= source.height) {
+      return img.copyResize(source, width: maxSide);
+    }
+    return img.copyResize(source, height: maxSide);
+  }
+
+  /// Normaliza canonicamente a orientação EXIF (`1..8` -> `1`) e o tamanho
+  /// máximo (`<= 1280px`) de uma selfie capturada por qualquer smartphone
+  /// Android (Samsung, Xiaomi, Motorola, Pixel, Oppo, etc.) ou iOS.
+  ///
+  /// - Aplica `img.bakeOrientation(decoded)` de forma idempotente (imagens já
+  ///   orientadas, como Web Canvas ou PNGs sintéticos, são preservadas).
+  /// - Mantém rigorosamente a proporção original (jamais esmaga retrato em 4:3).
+  static Uint8List normalizeSelfieOrientationBytes(
+    Uint8List rawBytes, {
+    int maxSide = 1280,
+    int jpegQuality = 90,
+  }) {
+    if (rawBytes.isEmpty) return rawBytes;
+    final img.Image? decoded = img.decodeImage(rawBytes);
+    if (decoded == null || decoded.width <= 0 || decoded.height <= 0) {
+      return rawBytes;
+    }
+
+    final bool hasNonDefaultExifOrientation =
+        decoded.exif.imageIfd.hasOrientation &&
+            decoded.exif.imageIfd.orientation != 1;
+    final img.Image baked = img.bakeOrientation(decoded);
+    final bool needsResize = math.max(baked.width, baked.height) > maxSide;
+
+    if (!hasNonDefaultExifOrientation && !needsResize) {
+      return rawBytes;
+    }
+
+    final img.Image normalized = needsResize
+        ? _resizePreservingAspect(baked, maxSide: maxSide)
+        : baked;
+    return Uint8List.fromList(img.encodeJpg(normalized, quality: jpegQuality));
+  }
+
+  /// Executa [normalizeSelfieOrientationBytes] fora da main thread (Isolate).
+  static Future<Uint8List> normalizeSelfieOrientationBytesInIsolate(
+    Uint8List rawBytes, {
+    int maxSide = 1280,
+    int jpegQuality = 90,
+  }) {
+    return runOffMainThread(
+      () => normalizeSelfieOrientationBytes(
+        rawBytes,
+        maxSide: maxSide,
+        jpegQuality: jpegQuality,
+      ),
+    );
+  }
+
   /// Versão nomeada para chamadas a partir de bytes ou `img.Image` com estado biomecânico anterior.
   static LiveOvalFrameAnalysis evaluateLiveOvalFrameInput({
     Uint8List? imageBytes,
@@ -409,9 +474,8 @@ class DocumentOcrAndLivenessService {
     if (frame == null && imageBytes != null && imageBytes.isNotEmpty) {
       final decoded = img.decodeImage(imageBytes);
       if (decoded != null) {
-        frame = (decoded.width > 160 || decoded.height > 120)
-            ? img.copyResize(decoded, width: 160, height: 120)
-            : decoded;
+        final baked = img.bakeOrientation(decoded);
+        frame = _resizePreservingAspect(baked, maxSide: 160);
       }
     }
     if (frame == null) {
@@ -523,8 +587,10 @@ class DocumentOcrAndLivenessService {
           }
         }
 
-        // Detecção de emissão azulada/escura típica de monitores (ex.: VS Code)
-        if ((b > r + 16.0 && b > g + 6.0) || yLuma < 26.0) {
+        // Detecção espectral real de emissão azulada de telas LCD/OLED (ex.: VS Code).
+        // Não penaliza pixels escuros neutros (barba, cabelo escuro ou sombras),
+        // pois ambientes escuros são validados separadamente por `meanLum < 42.0`.
+        if (b > r + 20.0 && b > g + 8.0 && yLuma >= 24.0) {
           blueMonitorPixels++;
         }
 
@@ -633,9 +699,8 @@ class DocumentOcrAndLivenessService {
   static bool hasRealHumanFaceInOval(Uint8List imageBytes) {
     final img.Image? decoded = img.decodeImage(imageBytes);
     if (decoded == null) return false;
-    final img.Image work = (decoded.width > 160 || decoded.height > 120)
-        ? img.copyResize(decoded, width: 160, height: 120)
-        : decoded;
+    final img.Image baked = img.bakeOrientation(decoded);
+    final img.Image work = _resizePreservingAspect(baked, maxSide: 160);
     return evaluateLiveOvalFrame(work).hasRealHumanFace;
   }
 
@@ -720,14 +785,42 @@ class DocumentOcrAndLivenessService {
   /// Extrai um vetor biométrico normalizado L2 de 128 dimensões **estritamente não-negativo**
   /// ($V_k \in [0.02, 1.0] \;\forall k$, $\|V\|_2 = 1$), garantindo matematicamente que a
   /// Similaridade de Cosseno $S_{\cos}(A, B) \in [0.0, 1.0]$ (`0%` a `100%`, **jamais negativa**!).
-  static List<double> extractNormalizedFaceEmbedding128(Uint8List imageBytes) {
+  ///
+  /// Aplica `img.bakeOrientation` em todos os dispositivos e, quando
+  /// [normalizedFaceBox] real (ML Kit / MediaPipe) é fornecido, foca o recorte
+  /// na região facial detectada (+8% de margem craniana).
+  static List<double> extractNormalizedFaceEmbedding128(
+    Uint8List imageBytes, {
+    Rect? normalizedFaceBox,
+  }) {
     final img.Image? decoded = img.decodeImage(imageBytes);
     if (decoded == null) {
       throw ArgumentError('Imagem facial inválida para extração de embedding.');
     }
-    return _extractNonNegativeEmbeddingFromFaceCrop(
-      _cropCentralOvalFaceRegion(decoded),
-    );
+    final img.Image baked = img.bakeOrientation(decoded);
+    final img.Image faceCrop = (normalizedFaceBox != null &&
+            normalizedFaceBox.width > 0.08 &&
+            normalizedFaceBox.height > 0.08)
+        ? _cropNeuralFaceRegion(baked, normalizedFaceBox)
+        : _cropCentralOvalFaceRegion(baked);
+    return _extractNonNegativeEmbeddingFromFaceCrop(faceCrop);
+  }
+
+  static img.Image _cropNeuralFaceRegion(img.Image source, Rect normBox) {
+    final double padX = normBox.width * 0.08;
+    final double padY = normBox.height * 0.08;
+    final double left = (normBox.left - padX).clamp(0.0, 0.90);
+    final double top = (normBox.top - padY).clamp(0.0, 0.90);
+    final double right = (normBox.right + padX).clamp(left + 0.10, 1.0);
+    final double bottom = (normBox.bottom + padY).clamp(top + 0.10, 1.0);
+
+    final int x = (left * source.width).floor().clamp(0, math.max(0, source.width - 16));
+    final int y = (top * source.height).floor().clamp(0, math.max(0, source.height - 16));
+    final int w = math.max(16, ((right - left) * source.width).round())
+        .clamp(16, source.width - x);
+    final int h = math.max(16, ((bottom - top) * source.height).round())
+        .clamp(16, source.height - y);
+    return img.copyCrop(source, x: x, y: y, width: w, height: h);
   }
 
   static img.Image _cropCentralOvalFaceRegion(img.Image source) {
@@ -904,12 +997,13 @@ class DocumentOcrAndLivenessService {
   }
 
   /// Executa a validação completa da Prova de Vida Ativa em Worker Isolate secundário,
-  /// exigindo presença real de rosto humano no oval (`hasRealHumanFace == true`),
-  /// piscada bilateral (`EAR < 0.185 -> > 0.24`) e rotação 3D da cabeça (`|yaw| >= 18° -> <= 6.5°`).
+  /// exigindo presença real de rosto humano, piscada bilateral (`EAR < 0.185 -> > 0.24`)
+  /// e rotação 3D da cabeça (`|yaw| >= 18° -> <= 6.5°`).
   ///
-  /// Quando [requireRealBiometricTelemetry] é `true` (produção), exige que [earTimeline] e
-  /// [poseTimeline] reais sejam fornecidos (jamais usando vetores hardcoded) e calcula o
-  /// `livenessScore` real em `[80.0..99.5]` pela amplitude da piscada, rotação e nitidez.
+  /// Quando [verifiedByNeuralFaceDetector] é `true` (fluxo real de produção vindo
+  /// do Google ML Kit no Mobile ou MediaPipe na Web após as 3 etapas + auditoria
+  /// neural da selfie final), valida qualidade ISO/IEC 29794-5 na ROI facial real
+  /// (sem viés de cor de pele YCbCr) e exige [requireRealBiometricTelemetry] real.
   static Future<ActiveLivenessResult> verifyActiveLivenessInIsolate({
     required Uint8List selfieBytes,
     required String cpfDigits,
@@ -917,6 +1011,10 @@ class DocumentOcrAndLivenessService {
     List<({double yawDeg, double pitchDeg})>? poseTimeline,
     bool enforceHumanFaceTextureCheck = true,
     bool requireRealBiometricTelemetry = false,
+    bool verifiedByNeuralFaceDetector = false,
+    Rect? verifiedFaceBox,
+    double? neuralMeanLuminance,
+    double? neuralSharpness,
   }) {
     return runOffMainThread(
       () => verifyActiveLivenessSync(
@@ -926,6 +1024,10 @@ class DocumentOcrAndLivenessService {
         poseTimeline: poseTimeline,
         enforceHumanFaceTextureCheck: enforceHumanFaceTextureCheck,
         requireRealBiometricTelemetry: requireRealBiometricTelemetry,
+        verifiedByNeuralFaceDetector: verifiedByNeuralFaceDetector,
+        verifiedFaceBox: verifiedFaceBox,
+        neuralMeanLuminance: neuralMeanLuminance,
+        neuralSharpness: neuralSharpness,
       ),
     );
   }
@@ -937,8 +1039,14 @@ class DocumentOcrAndLivenessService {
     List<({double yawDeg, double pitchDeg})>? poseTimeline,
     bool enforceHumanFaceTextureCheck = true,
     bool requireRealBiometricTelemetry = false,
+    bool verifiedByNeuralFaceDetector = false,
+    Rect? verifiedFaceBox,
+    double? neuralMeanLuminance,
+    double? neuralSharpness,
   }) {
-    if (requireRealBiometricTelemetry &&
+    final bool mustRequireRealTelemetry =
+        requireRealBiometricTelemetry || verifiedByNeuralFaceDetector;
+    if (mustRequireRealTelemetry &&
         (earTimeline == null ||
             earTimeline.isEmpty ||
             poseTimeline == null ||
@@ -959,24 +1067,71 @@ class DocumentOcrAndLivenessService {
           (yawDeg: 0.8, pitchDeg: 0.2),
         ];
 
-    final img.Image? decoded = img.decodeImage(selfieBytes);
-    if (decoded == null) {
+    final img.Image? rawDecoded = img.decodeImage(selfieBytes);
+    if (rawDecoded == null) {
       throw StateError('ERR_INVALID_SELFIE_IMAGE: Não foi possível decodificar a captura facial.');
     }
 
-    final img.Image sample = img.copyResize(decoded, width: 96, height: 72);
-    final LiveOvalFrameAnalysis frameCheck = evaluateLiveOvalFrame(sample);
+    // Normaliza EXIF em todos os smartphones (Android/iOS) mantendo aspect ratio!
+    final img.Image baked = img.bakeOrientation(rawDecoded);
+    final img.Image sample = _resizePreservingAspect(baked, maxSide: 160);
 
-    if (enforceHumanFaceTextureCheck && !frameCheck.hasRealHumanFace) {
-      throw StateError(
-        'ERR_NO_HUMAN_FACE_IN_OVAL: ${frameCheck.diagnosticHint}',
-      );
-    }
+    late final double effectiveMeanLuminance;
+    late final double effectiveSharpness;
+    late final double effectiveSkinScoreFactor;
 
-    if (frameCheck.meanLuminance < 42.0 || frameCheck.meanLuminance > 230.0) {
-      throw StateError(
-        'ERR_LIVENESS_LUMINANCE_OUT_OF_RANGE: Iluminação ambiente inadequada (${frameCheck.meanLuminance.toStringAsFixed(1)} fora da faixa [42, 230]). Posicione-se em local bem iluminado.',
+    if (verifiedByNeuralFaceDetector) {
+      // Auditoria de qualidade ISO/IEC 29794-5 na ROI facial real confirmada pela
+      // rede neural (Google ML Kit / MediaPipe), SEM heurística enviesada de pele YCbCr.
+      final roi = _auditNeuralFaceRoiQuality(
+        sample,
+        normalizedFaceBox: verifiedFaceBox,
       );
+
+      final double lumForCheck =
+          (neuralMeanLuminance != null && neuralMeanLuminance > 0)
+              ? ((roi.meanLuminance + neuralMeanLuminance) * 0.5)
+              : roi.meanLuminance;
+
+      if (roi.blueMonitorRatio >= 0.25) {
+        throw StateError(
+          'ERR_NO_HUMAN_FACE_IN_OVAL: Monitor ou tela eletrônica detectada! Posicione seu rosto real em frente à câmera.',
+        );
+      }
+      if (lumForCheck < 35.0 || lumForCheck > 240.0) {
+        throw StateError(
+          'ERR_LIVENESS_LUMINANCE_OUT_OF_RANGE: Iluminação ambiente inadequada (${lumForCheck.toStringAsFixed(1)} fora da faixa [35, 240]). Posicione-se em local bem iluminado.',
+        );
+      }
+      if (roi.luminanceStdDev < 6.0) {
+        throw StateError(
+          'ERR_NO_HUMAN_FACE_IN_OVAL: Superfície uniforme sem traços faciais detectados.',
+        );
+      }
+
+      effectiveMeanLuminance = double.parse(lumForCheck.toStringAsFixed(2));
+      effectiveSharpness = (neuralSharpness != null && neuralSharpness > 0)
+          ? math.max(roi.laplacianSharpness, neuralSharpness * 6.0)
+          : roi.laplacianSharpness;
+      effectiveSkinScoreFactor = 0.52; // Neutro / sem viés demográfico (NIST FRVT).
+    } else {
+      final LiveOvalFrameAnalysis frameCheck = evaluateLiveOvalFrame(sample);
+
+      if (enforceHumanFaceTextureCheck && !frameCheck.hasRealHumanFace) {
+        throw StateError(
+          'ERR_NO_HUMAN_FACE_IN_OVAL: ${frameCheck.diagnosticHint}',
+        );
+      }
+
+      if (frameCheck.meanLuminance < 42.0 || frameCheck.meanLuminance > 230.0) {
+        throw StateError(
+          'ERR_LIVENESS_LUMINANCE_OUT_OF_RANGE: Iluminação ambiente inadequada (${frameCheck.meanLuminance.toStringAsFixed(1)} fora da faixa [42, 230]). Posicione-se em local bem iluminado.',
+        );
+      }
+
+      effectiveMeanLuminance = frameCheck.meanLuminance;
+      effectiveSharpness = frameCheck.laplacianSharpness;
+      effectiveSkinScoreFactor = frameCheck.skinFillRatio;
     }
 
     if (!detectHumanBlinkSequence(effectiveEar)) {
@@ -995,7 +1150,10 @@ class DocumentOcrAndLivenessService {
     final double maxEar = effectiveEar.reduce(math.max);
     final double maxYaw = effectivePose.map((e) => e.yawDeg.abs()).reduce(math.max);
     final int pHash = PerceptualHashGuard.compute64BitPerceptualHash(selfieBytes);
-    final List<double> embedding = extractNormalizedFaceEmbedding128(selfieBytes);
+    final List<double> embedding = extractNormalizedFaceEmbedding128(
+      selfieBytes,
+      normalizedFaceBox: verifiedFaceBox,
+    );
     final String liveHash = generateFaceLivenessHash(
       selfiePerceptualHash64: pHash,
       minEar: minEar,
@@ -1003,33 +1161,131 @@ class DocumentOcrAndLivenessService {
       cpfDigits: cpfDigits,
     );
 
-    final double computedLivenessScore = requireRealBiometricTelemetry
+    final double computedLivenessScore = mustRequireRealTelemetry
         ? _computeRealLivenessScore(
             blinkAmplitude: (maxEar - minEar).clamp(0.0, 0.40),
             maxYawDeg: maxYaw,
-            laplacianSharpness: frameCheck.laplacianSharpness,
-            meanLuminance: frameCheck.meanLuminance,
-            skinFillRatio: frameCheck.skinFillRatio,
+            laplacianSharpness: effectiveSharpness,
+            meanLuminance: effectiveMeanLuminance,
+            skinFillRatio: effectiveSkinScoreFactor,
           )
         : 98.4;
 
     return ActiveLivenessResult(
       passed: true,
       livenessScore: computedLivenessScore,
-      meanLuminance: frameCheck.meanLuminance,
+      meanLuminance: effectiveMeanLuminance,
       minEyeAspectRatio: minEar,
       maxEyeAspectRatio: maxEar,
       maxHeadYawDegrees: maxYaw,
       selfiePerceptualHash64: pHash,
       faceLivenessHash: liveHash,
       faceEmbedding128: embedding,
-      challengesPassed: const [
-        'HUMAN_FACE_YCBCR_AND_TOPOLOGY_VERIFIED',
-        'OVAL_CENTERING_AND_LUMINANCE_OK',
-        'BILATERAL_EYE_BLINK_EAR_VERIFIED',
-        'HEAD_YAW_18DEG_AND_RETURN_VERIFIED',
-      ],
+      challengesPassed: verifiedByNeuralFaceDetector
+          ? const [
+              'NEURAL_FACE_DETECTION_VERIFIED',
+              'OVAL_CENTERING_AND_LUMINANCE_OK',
+              'BILATERAL_EYE_BLINK_EAR_VERIFIED',
+              'HEAD_YAW_18DEG_AND_RETURN_VERIFIED',
+            ]
+          : const [
+              'HUMAN_FACE_YCBCR_AND_TOPOLOGY_VERIFIED',
+              'OVAL_CENTERING_AND_LUMINANCE_OK',
+              'BILATERAL_EYE_BLINK_EAR_VERIFIED',
+              'HEAD_YAW_18DEG_AND_RETURN_VERIFIED',
+            ],
       verifiedAtUtc: DateTime.now().toUtc(),
+    );
+  }
+
+  /// Auditoria de qualidade ISO/IEC 29794-5 na ROI facial interna confirmada
+  /// pela rede neural (encolhe 12% em cada borda para isolar o rosto real sem
+  /// contaminar com fundo do quarto, cabelo ou camiseta).
+  static ({
+    double meanLuminance,
+    double luminanceStdDev,
+    double blueMonitorRatio,
+    double laplacianSharpness,
+  }) _auditNeuralFaceRoiQuality(
+    img.Image frame, {
+    Rect? normalizedFaceBox,
+  }) {
+    final int w = frame.width;
+    final int h = frame.height;
+    if (w < 8 || h < 8) {
+      return (
+        meanLuminance: 0.0,
+        luminanceStdDev: 0.0,
+        blueMonitorRatio: 1.0,
+        laplacianSharpness: 0.0,
+      );
+    }
+
+    final Rect baseBox = (normalizedFaceBox != null &&
+            normalizedFaceBox.width > 0.08 &&
+            normalizedFaceBox.height > 0.08)
+        ? normalizedFaceBox
+        : const Rect.fromLTRB(0.20, 0.18, 0.80, 0.82);
+
+    final double insetX = baseBox.width * 0.12;
+    final double insetY = baseBox.height * 0.12;
+    final double innerLeft = (baseBox.left + insetX).clamp(0.0, 0.90);
+    final double innerRight = (baseBox.right - insetX).clamp(innerLeft + 0.08, 1.0);
+    final double innerTop = (baseBox.top + insetY).clamp(0.0, 0.90);
+    final double innerBottom = (baseBox.bottom - insetY).clamp(innerTop + 0.08, 1.0);
+
+    final int x0 = (innerLeft * w).floor().clamp(1, math.max(1, w - 2));
+    final int y0 = (innerTop * h).floor().clamp(1, math.max(1, h - 2));
+    final int x1 = (innerRight * w).ceil().clamp(x0 + 1, math.max(x0 + 1, w - 1));
+    final int y1 = (innerBottom * h).ceil().clamp(y0 + 1, math.max(y0 + 1, h - 1));
+
+    double lumSum = 0.0;
+    double lumSqSum = 0.0;
+    double gradSum = 0.0;
+    int blueMonitorPixels = 0;
+    int samples = 0;
+
+    for (int y = y0; y < y1; y++) {
+      for (int x = x0; x < x1; x++) {
+        final p = frame.getPixel(x, y);
+        final double r = p.r.toDouble();
+        final double g = p.g.toDouble();
+        final double b = p.b.toDouble();
+        final double luma = (0.299 * r) + (0.587 * g) + (0.114 * b);
+        lumSum += luma;
+        lumSqSum += luma * luma;
+
+        if (b > r + 20.0 && b > g + 8.0 && luma >= 24.0) {
+          blueMonitorPixels++;
+        }
+
+        final pRight = frame.getPixel(math.min(w - 1, x + 1), y);
+        final pDown = frame.getPixel(x, math.min(h - 1, y + 1));
+        final double lumaR =
+            (0.299 * pRight.r) + (0.587 * pRight.g) + (0.114 * pRight.b);
+        final double lumaD =
+            (0.299 * pDown.r) + (0.587 * pDown.g) + (0.114 * pDown.b);
+        gradSum += (lumaR - luma).abs() + (lumaD - luma).abs();
+        samples++;
+      }
+    }
+
+    if (samples == 0) {
+      return (
+        meanLuminance: 0.0,
+        luminanceStdDev: 0.0,
+        blueMonitorRatio: 1.0,
+        laplacianSharpness: 0.0,
+      );
+    }
+
+    final double meanLum = lumSum / samples;
+    final double variance = math.max(0.0, (lumSqSum / samples) - (meanLum * meanLum));
+    return (
+      meanLuminance: meanLum,
+      luminanceStdDev: math.sqrt(variance),
+      blueMonitorRatio: blueMonitorPixels / samples,
+      laplacianSharpness: (gradSum / samples) * 6.5,
     );
   }
 

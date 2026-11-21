@@ -123,6 +123,18 @@ class KycHumanFeedbackTranslator {
       return 'Percebemos que o mesmo lado do documento foi fotografado duas vezes. Agora vire o documento e fotografe o outro lado.';
     }
 
+    if (upper.contains('ERR_SELFIE_CAPTURE_MOVED')) {
+      return 'A foto mexeu bem na hora da captura. Segure o aparelho firme olhando para a câmera e tente novamente.';
+    }
+
+    if (upper.contains('ERR_MULTIPLE_FACES_IN_SELFIE')) {
+      return 'Apenas você deve aparecer na foto. Procure um local sem outras pessoas ao fundo e tente novamente.';
+    }
+
+    if (upper.contains('ERR_CAMERA_CAPTURE_TIMEOUT')) {
+      return 'A câmera demorou para responder neste aparelho. Toque em "Tentar novamente" para concluir sua confirmação.';
+    }
+
     if (upper.contains('ERR_NO_HUMAN_FACE_IN_OVAL') ||
         upper.contains('NENHUM ROSTO HUMANO') ||
         upper.contains('BLUE_MONITOR') ||

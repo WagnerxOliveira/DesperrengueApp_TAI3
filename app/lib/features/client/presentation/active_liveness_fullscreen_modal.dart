@@ -7,8 +7,10 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, Uint8List, defaultTargetPlatform, immutable, kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 
 import '../../../core/services/active_liveness_engine.dart';
+import '../../../core/services/camera_operation_queue.dart';
 import '../../../core/services/document_ocr_and_liveness_service.dart';
 import '../../../core/services/face_detection_adapter.dart';
 import '../../../core/services/live_camera_frame_bridge.dart';
@@ -154,6 +156,7 @@ class _ActiveLivenessFullscreenModalState
 
   late final ActiveLivenessStateMachine _engine;
   late ActiveLivenessSnapshot _snapshot;
+  final CameraOperationQueue _cameraQueue = CameraOperationQueue();
 
   FaceDetectionAdapter? _adapter;
   CameraController? _cameraController;
@@ -165,8 +168,9 @@ class _ActiveLivenessFullscreenModalState
   Timer? _stillPollTimer;
   int _lastProcessedFrameMs = 0;
 
-  // Telemetria real do stream para evitar congelamento silencioso e projetar
-  // o bounding box do sensor exatamente no viewport visível (coverScale).
+  // Telemetria real do stream para evitar congelamento silencioso, projetar o
+  // bounding box do sensor no viewport visível (coverScale) e manter Golden
+  // Frame frontal em memória durante a Etapa 3B (resiliência cross-OEM).
   int _framesDeliveredByCamera = 0;
   int _observationsProcessed = 0;
   bool _streamRetryAttempted = false;
@@ -174,6 +178,9 @@ class _ActiveLivenessFullscreenModalState
   bool _stillCaptureBusy = false;
   double? _cameraPreviewAspect;
   double? _viewportAspect;
+  LiveFaceObservation? _lastValidNeuralObservation;
+  img.Image? _goldenFrontImage;
+  String? _capturingStatusMessage;
 
   bool _initializing = false;
   bool _capturing = false;
@@ -231,19 +238,24 @@ class _ActiveLivenessFullscreenModalState
     _framesDeliveredByCamera = 0;
     _observationsProcessed = 0;
     _streamRetryAttempted = false;
+    _lastValidNeuralObservation = null;
+    _goldenFrontImage = null;
+    _capturingStatusMessage = null;
 
     final controller = _cameraController;
     _cameraController = null;
     if (controller != null) {
-      if (_streaming) {
-        _streaming = false;
+      await _cameraQueue.enqueue<void>(() async {
+        if (_streaming) {
+          _streaming = false;
+          try {
+            await controller.stopImageStream();
+          } catch (_) {}
+        }
         try {
-          await controller.stopImageStream();
+          await controller.dispose();
         } catch (_) {}
-      }
-      try {
-        await controller.dispose();
-      } catch (_) {}
+      });
     }
 
     final adapter = _adapter;
@@ -392,31 +404,47 @@ class _ActiveLivenessFullscreenModalState
     _observationsProcessed = 0;
     final int sensorOrientation = _frontCamera?.sensorOrientation ?? 0;
 
-    await controller.startImageStream((CameraImage image) {
-      if (_capturing || _closed || !mounted || _stillFallbackActive) return;
-      _framesDeliveredByCamera += 1;
-      final int now = DateTime.now().millisecondsSinceEpoch;
-      if (now - _lastProcessedFrameMs < _frameThrottle.inMilliseconds) {
-        return;
-      }
-      _lastProcessedFrameMs = now;
-      final DeviceOrientation deviceOrientation =
-          controller.value.deviceOrientation;
-      unawaited(
-        adapter
-            .analyzeCameraImage(
-              image,
-              sensorOrientation: sensorOrientation,
-              isFrontCamera: true,
-              deviceOrientation: deviceOrientation,
-            )
-            .then((obs) {
-          if (obs != null && mounted && !_closed) {
-            _observationsProcessed += 1;
-            _onObservation(obs);
-          }
-        }),
-      );
+    await _cameraQueue.enqueue<void>(() async {
+      await controller.startImageStream((CameraImage image) {
+        if (_capturing || _closed || !mounted || _stillFallbackActive) return;
+        _framesDeliveredByCamera += 1;
+        final int now = DateTime.now().millisecondsSinceEpoch;
+        if (now - _lastProcessedFrameMs < _frameThrottle.inMilliseconds) {
+          return;
+        }
+        _lastProcessedFrameMs = now;
+        final DeviceOrientation deviceOrientation =
+            controller.value.deviceOrientation;
+        unawaited(
+          adapter
+              .analyzeCameraImage(
+                image,
+                sensorOrientation: sensorOrientation,
+                isFrontCamera: true,
+                deviceOrientation: deviceOrientation,
+              )
+              .then((obs) {
+            if (obs != null && mounted && !_closed) {
+              _observationsProcessed += 1;
+              if (obs.faceCount == 1 &&
+                  obs.unavailableReason == null &&
+                  _snapshot.stage == LivenessStage.returnToCenter &&
+                  obs.headEulerAngleY.abs() <= 8.5) {
+                final img.Image? upright = convertCameraImageToUprightRgbNamed(
+                  image: image,
+                  sensorOrientation: sensorOrientation,
+                  isFrontCamera: true,
+                  targetMaxDimension: 480,
+                );
+                if (upright != null) {
+                  _goldenFrontImage = upright;
+                }
+              }
+              _onObservation(obs);
+            }
+          }),
+        );
+      });
     });
 
     _armStreamWatchdog();
@@ -569,9 +597,16 @@ class _ActiveLivenessFullscreenModalState
       effectiveObservation = observation.copyWithNormalizedBox(projected);
     }
 
+    if (observation.faceCount == 1 && observation.unavailableReason == null) {
+      _lastValidNeuralObservation = observation;
+    }
+
     final LivenessContourState previousContour = _snapshot.contourState;
     final ActiveLivenessSnapshot next =
         _engine.processObservation(effectiveObservation);
+    if (next.sessionWasReset) {
+      _goldenFrontImage = null;
+    }
     final bool stageChanged = next.stage != _snapshot.stage;
     final bool snappedToGreen =
         previousContour == LivenessContourState.invalidRed &&
@@ -593,6 +628,7 @@ class _ActiveLivenessFullscreenModalState
     if (_capturing || _closed || !mounted) return;
     setState(() {
       _capturing = true;
+      _capturingStatusMessage = 'Confirmando sua captura...';
     });
 
     _webPollTimer?.cancel();
@@ -603,17 +639,27 @@ class _ActiveLivenessFullscreenModalState
     _stillPollTimer = null;
 
     try {
-      final Uint8List selfieBytes = await _acquireSelfieBytes();
+      final ({
+        Uint8List selfieBytes,
+        bool verifiedByNeuralFaceDetector,
+        Rect? verifiedFaceBox,
+        double? neuralMeanLuminance,
+        double? neuralSharpness,
+      }) acquired = await _acquireSelfieAndAuditNeurally();
       if (!mounted || _closed) return;
 
       final ActiveLivenessResult rawResult =
           await DocumentOcrAndLivenessService.verifyActiveLivenessInIsolate(
-        selfieBytes: selfieBytes,
+        selfieBytes: acquired.selfieBytes,
         cpfDigits: widget.cpfDigits,
         earTimeline: completedSnapshot.realEarTimeline,
         poseTimeline: completedSnapshot.realPoseTimeline,
         enforceHumanFaceTextureCheck: widget.enforceHumanFaceTextureCheck,
         requireRealBiometricTelemetry: true,
+        verifiedByNeuralFaceDetector: acquired.verifiedByNeuralFaceDetector,
+        verifiedFaceBox: acquired.verifiedFaceBox,
+        neuralMeanLuminance: acquired.neuralMeanLuminance,
+        neuralSharpness: acquired.neuralSharpness,
       );
 
       if (!mounted || _closed) return;
@@ -644,7 +690,7 @@ class _ActiveLivenessFullscreenModalState
 
       Navigator.of(context).pop(
         ActiveLivenessModalOutput(
-          selfieBytes: selfieBytes,
+          selfieBytes: acquired.selfieBytes,
           livenessResult: finalResult,
           chosenDirection: completedSnapshot.chosenDirection,
           computedLivenessScore: realLivenessScore,
@@ -655,15 +701,36 @@ class _ActiveLivenessFullscreenModalState
       final String friendly = KycHumanFeedbackTranslator.translateError(e);
       setState(() {
         _capturing = false;
+        _capturingStatusMessage = null;
+        _goldenFrontImage = null;
+        _lastValidNeuralObservation = null;
         _snapshot = _engine.reset();
         _blockingError = friendly;
       });
     }
   }
 
-  Future<Uint8List> _acquireSelfieBytes() async {
+  /// Captura a selfie canônica (EXIF normalizado em pé) e executa auditoria
+  /// neural pós-captura real (Google ML Kit no Mobile / MediaPipe na Web),
+  /// com fila serializada `CameraOperationQueue` (180 ms grace delay + 4 s
+  /// timeout), auto-retry silencioso (2×) se o usuário mexer no clique e
+  /// Golden-Frame fallback se `takePicture()` sofrer timeout de driver OEM.
+  Future<({
+    Uint8List selfieBytes,
+    bool verifiedByNeuralFaceDetector,
+    Rect? verifiedFaceBox,
+    double? neuralMeanLuminance,
+    double? neuralSharpness,
+  })> _acquireSelfieAndAuditNeurally() async {
     if (widget.testCaptureOverride != null) {
-      return widget.testCaptureOverride!();
+      final Uint8List testBytes = await widget.testCaptureOverride!();
+      return (
+        selfieBytes: testBytes,
+        verifiedByNeuralFaceDetector: false,
+        verifiedFaceBox: null,
+        neuralMeanLuminance: null,
+        neuralSharpness: null,
+      );
     }
 
     final controller = _cameraController;
@@ -677,22 +744,138 @@ class _ActiveLivenessFullscreenModalState
         height: 480,
         mirrorHorizontal: true,
       );
+      final Uint8List rawBytes;
       if (webBytes != null && webBytes.isNotEmpty) {
-        return webBytes;
+        rawBytes = webBytes;
+      } else {
+        final XFile shot = await _cameraQueue.capturePhotoAfterStreamStop(
+          controller,
+          stopStreamIfActive: false,
+        );
+        rawBytes = await DocumentOcrAndLivenessService
+            .normalizeSelfieOrientationBytesInIsolate(
+          await shot.readAsBytes(),
+        );
       }
-      final XFile shot = await controller.takePicture();
-      return shot.readAsBytes();
+      final LiveFaceObservation? lastObs = _lastValidNeuralObservation;
+      return (
+        selfieBytes: rawBytes,
+        verifiedByNeuralFaceDetector: lastObs != null,
+        verifiedFaceBox: lastObs?.normalizedBox,
+        neuralMeanLuminance: lastObs?.meanLuminance,
+        neuralSharpness: lastObs?.sharpness,
+      );
     }
 
-    if (_streaming) {
-      _streaming = false;
+    // Mobile (Android multi-fabricante + iOS AVFoundation):
+    // Para o stream de forma serializada com 180ms grace delay antes do 1º clique.
+    final bool wasStreaming = _streaming || controller.value.isStreamingImages;
+    _streaming = false;
+
+    const int maxAttempts = 2;
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (_closed || !mounted) {
+        throw StateError('Verificação cancelada.');
+      }
+      if (attempt > 1) {
+        if (mounted) {
+          setState(() {
+            _capturingStatusMessage = 'Segure firme, confirmando sua foto...';
+          });
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 280));
+      }
+
+      XFile? shot;
       try {
-        await controller.stopImageStream();
-      } catch (_) {}
+        shot = await _cameraQueue.capturePhotoAfterStreamStop(
+          controller,
+          stopStreamIfActive: attempt == 1 && wasStreaming,
+        );
+      } on TimeoutException {
+        final golden = _buildGoldenFrameFallbackIfAvailable();
+        if (golden != null) return golden;
+        rethrow;
+      } on CameraException {
+        final golden = _buildGoldenFrameFallbackIfAvailable();
+        if (golden != null) return golden;
+        rethrow;
+      }
+
+      final Uint8List rawBytes = await shot.readAsBytes();
+      final Uint8List canonicalBytes = await DocumentOcrAndLivenessService
+          .normalizeSelfieOrientationBytesInIsolate(rawBytes);
+
+      final adapter = _adapter;
+      if (adapter != null && adapter.isInitialized) {
+        final LiveFaceObservation? auditObs = await adapter.analyzeImageFilePath(
+          shot.path,
+          isFrontCamera: true,
+          deleteAfterAnalysis: true,
+        );
+        if (auditObs != null &&
+            auditObs.unavailableReason == null &&
+            auditObs.faceCount == 1) {
+          return (
+            selfieBytes: canonicalBytes,
+            verifiedByNeuralFaceDetector: true,
+            verifiedFaceBox: auditObs.normalizedBox,
+            neuralMeanLuminance: auditObs.meanLuminance,
+            neuralSharpness: auditObs.sharpness,
+          );
+        }
+        if (auditObs != null && auditObs.faceCount >= 2) {
+          throw StateError(
+            'ERR_MULTIPLE_FACES_IN_SELFIE: Mais de um rosto detectado na foto capturada.',
+          );
+        }
+        // faceCount == 0 ou quadro tremido: tenta 2ª captura silenciosa antes de falhar.
+        continue;
+      }
+
+      // Adaptador indisponível após takePicture: usa última observação neural válida.
+      final LiveFaceObservation? lastObs = _lastValidNeuralObservation;
+      if (lastObs != null) {
+        return (
+          selfieBytes: canonicalBytes,
+          verifiedByNeuralFaceDetector: true,
+          verifiedFaceBox: lastObs.normalizedBox,
+          neuralMeanLuminance: lastObs.meanLuminance,
+          neuralSharpness: lastObs.sharpness,
+        );
+      }
     }
 
-    final XFile file = await controller.takePicture();
-    return file.readAsBytes();
+    // Se ambas as capturas de obturador saíram sem rosto (usuário mexeu muito):
+    // jamais acusar falsamente "fotos ou telas" — orienta de forma humana exata.
+    throw StateError(
+      'ERR_SELFIE_CAPTURE_MOVED: Não foi possível capturar o rosto parado no disparo.',
+    );
+  }
+
+  /// Fallback resiliente cross-OEM (ex.: drivers `takePicture()` com deadlock ou
+  /// timeout em alguns aparelhos Android): reaproveita o Golden Frame frontal
+  /// salvo em memória durante a Etapa 3B já validado pelo próprio ML Kit real.
+  ({
+    Uint8List selfieBytes,
+    bool verifiedByNeuralFaceDetector,
+    Rect? verifiedFaceBox,
+    double? neuralMeanLuminance,
+    double? neuralSharpness,
+  })? _buildGoldenFrameFallbackIfAvailable() {
+    final img.Image? goldenRgb = _goldenFrontImage;
+    final LiveFaceObservation? lastObs = _lastValidNeuralObservation;
+    if (goldenRgb == null || lastObs == null) return null;
+    final Uint8List jpegBytes = Uint8List.fromList(
+      img.encodeJpg(goldenRgb, quality: 92),
+    );
+    return (
+      selfieBytes: jpegBytes,
+      verifiedByNeuralFaceDetector: true,
+      verifiedFaceBox: lastObs.normalizedBox,
+      neuralMeanLuminance: lastObs.meanLuminance,
+      neuralSharpness: lastObs.sharpness,
+    );
   }
 
   void _handleClose() {
@@ -1007,7 +1190,7 @@ class _ActiveLivenessFullscreenModalState
       iconData = Icons.videocam_rounded;
       iconColor = darkTk.textMuted;
     } else if (_capturing) {
-      message = 'Confirmando sua captura...';
+      message = _capturingStatusMessage ?? 'Confirmando sua captura...';
       iconData = Icons.verified_user_rounded;
       iconColor = darkTk.success;
     } else {
