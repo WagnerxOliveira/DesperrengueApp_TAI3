@@ -15,6 +15,7 @@ import '../../../core/services/scheduling_service.dart';
 import '../../../core/services/smart_triage_service.dart';
 import '../../../core/services/speech_service.dart';
 import '../../../core/services/text_refine_service.dart';
+import '../../../core/utils/structured_voice_brief.dart';
 import '../../../core/state/smart_triage_controller.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/design_system/design_system.dart';
@@ -217,6 +218,7 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
   /// Resultado da Triagem Inteligente Multimodal + Contenção de Emergência em 60s.
   SmartTriageResult? _triage;
   bool _analyzingTriage = false;
+  bool _structuringTypedText = false;
 
   static const _hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
@@ -740,19 +742,83 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
         AppTextField(
           key: const ValueKey('description-field'),
           controller: _description,
-          maxLines: 6,
+          maxLines: 8,
           minLines: 4,
-          maxLength: 500,
+          maxLength: 900,
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() {}),
           hint: 'Ex: Meu disjuntor do chuveiro está desarmando toda vez que ligo na temperatura quente...',
         ),
+        if (_description.text.trim().length >= 15 &&
+            StructuredVoiceBrief.tryParseStructuredText(_description.text) == null) ...[
+          const SizedBox(height: AppSpace.s4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: AppButton(
+              key: const ValueKey('btn-structure-typed-text'),
+              label: _structuringTypedText
+                  ? 'Estruturando relato...'
+                  : 'Estruturar relato digitado',
+              icon: Icons.auto_awesome_outlined,
+              variant: AppButtonVariant.tertiary,
+              compact: true,
+              expand: false,
+              loading: _structuringTypedText,
+              onPressed: _structuringTypedText
+                  ? null
+                  : () async {
+                      final raw = _description.text.trim();
+                      if (raw.length < 15) return;
+                      setState(() => _structuringTypedText = true);
+                      try {
+                        final refiner = widget.textRefiner ??
+                            StructuredVoiceRefiner(
+                              categoryProvider: () => _category,
+                              photoNotesProvider: () => [
+                                for (final img in _images)
+                                  if (img.hasContextAnnotation) img.combinedSummary,
+                              ],
+                              maxLength: 900,
+                            );
+                        final structured = await refiner.refine(raw);
+                        if (!mounted) return;
+                        if (structured.trim().isNotEmpty && _description.text.trim() == raw) {
+                          _description.value = TextEditingValue(
+                            text: structured,
+                            selection: TextSelection.collapsed(offset: structured.length),
+                          );
+                        }
+                        if (_description.text.trim().length >= 6) {
+                          _runSmartTriage(silentIfEmpty: true);
+                        }
+                      } finally {
+                        if (mounted) setState(() => _structuringTypedText = false);
+                      }
+                    },
+            ),
+          ),
+        ],
         const SizedBox(height: AppSpace.s8),
         VoiceDictationPanel(
           textController: _description,
-          maxLength: 500,
+          maxLength: 900,
           engine: widget.speechEngine,
           refiner: widget.textRefiner,
+          enableStructuredBrief: widget.textRefiner == null,
+          category: _category,
+          photoNotes: [
+            for (final img in _images)
+              if (img.hasContextAnnotation) img.combinedSummary,
+          ],
+          onStructuredBriefReady: (brief) {
+            if (!mounted) return;
+            final suggested = brief.suggestedCategory;
+            if (_category == null &&
+                suggested != null &&
+                kCategories.any((c) => c.name == suggested)) {
+              setState(() => _category = suggested);
+            }
+          },
           onChanged: () {
             if (mounted) setState(() {});
           },
@@ -1014,7 +1080,10 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
                 ],
               ),
               const SizedBox(height: AppSpace.s8),
-              Text(_description.text.trim(), style: AppType.body.copyWith(color: tk.text)),
+              StructuredClientBriefView(
+                description: _description.text.trim(),
+                compactMode: true,
+              ),
               const SizedBox(height: AppSpace.s12),
               Wrap(
                 spacing: AppSpace.s8,

@@ -7,6 +7,7 @@ import '../../../core/services/speech_service.dart';
 import '../../../core/services/text_refine_service.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/utils/smart_transcript_formatter.dart';
+import '../../../core/utils/structured_voice_brief.dart';
 
 enum VoiceState { idle, starting, listening, unavailable }
 
@@ -46,7 +47,28 @@ class VoiceDictationController extends ChangeNotifier {
   String _base = '';
   String _lastRendered = '';
   String _lastSpoken = '';
+  String? _rawPreStructured;
+  String? _structuredVersion;
+  bool _showingOriginal = false;
   int _refineToken = 0;
+
+  /// `true` quando há versão estruturada e o cliente pode alternar para ver a fala original.
+  bool get hasOriginalToggle =>
+      _rawPreStructured != null &&
+      _structuredVersion != null &&
+      _rawPreStructured != _structuredVersion;
+
+  bool get showingOriginal => _showingOriginal;
+
+  /// Alterna entre a versão estruturada para o profissional e o texto original falado.
+  void toggleOriginalVsStructured() {
+    if (!hasOriginalToggle) return;
+    _showingOriginal = !_showingOriginal;
+    final selected = _showingOriginal ? _rawPreStructured! : _structuredVersion!;
+    _lastSpoken = selected;
+    _write(SmartTranscriptFormatter.append(_base, selected));
+    _notify();
+  }
 
   /// O slot corrente já recebeu um resultado FINAL (o trecho está "fechado").
   bool _slotFinal = false;
@@ -75,6 +97,9 @@ class VoiceDictationController extends ChangeNotifier {
     }
     _refineToken++; // invalida qualquer revisão em andamento
     refining = false;
+    _rawPreStructured = null;
+    _structuredVersion = null;
+    _showingOriginal = false;
     _base = text.text;
     _lastRendered = text.text;
     _sessions.clear();
@@ -220,6 +245,11 @@ class VoiceDictationController extends ChangeNotifier {
     refining = false;
     final untouched = text.text == _lastRendered; // o cliente não mexeu enquanto revisávamos
     if (untouched && refined.trim().isNotEmpty && refined != spoken) {
+      if (StructuredVoiceBrief.tryParseStructuredText(refined) != null) {
+        _rawPreStructured = spoken;
+        _structuredVersion = refined;
+        _showingOriginal = false;
+      }
       _lastSpoken = refined;
       _write(SmartTranscriptFormatter.append(_base, refined));
     }
@@ -249,6 +279,10 @@ class VoiceDictationPanel extends StatefulWidget {
     this.maxLength = 500,
     this.engine,
     this.refiner,
+    this.enableStructuredBrief = false,
+    this.category,
+    this.photoNotes = const [],
+    this.onStructuredBriefReady,
     this.onChanged,
     this.onSpeechCompleted,
   });
@@ -259,8 +293,15 @@ class VoiceDictationPanel extends StatefulWidget {
   /// Injetável nos testes (padrão: [PlatformSpeechEngine]).
   final SpeechEngine? engine;
 
-  /// Injetável nos testes (padrão: [LanguageToolRefiner]).
+  /// Injetável nos testes (padrão: [LanguageToolRefiner] ou [StructuredVoiceRefiner]).
   final TextRefiner? refiner;
+
+  /// Quando `true` (e [refiner] não for sobrescrito), estrutura automaticamente o áudio
+  /// via [StructuredVoiceRefiner] (IA gratuita + fallback local semântico).
+  final bool enableStructuredBrief;
+  final String? category;
+  final List<String> photoNotes;
+  final ValueChanged<StructuredVoiceBrief>? onStructuredBriefReady;
 
   /// Avisa o formulário quando o texto muda por voz (para revalidar o botão "Avançar").
   final VoidCallback? onChanged;
@@ -277,7 +318,15 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
     engine: widget.engine ?? PlatformSpeechEngine(),
     text: widget.textController,
     maxLength: widget.maxLength,
-    refiner: widget.refiner ?? LanguageToolRefiner(),
+    refiner: widget.refiner ??
+        (widget.enableStructuredBrief
+            ? StructuredVoiceRefiner(
+                categoryProvider: () => widget.category,
+                photoNotesProvider: () => widget.photoNotes,
+                maxLength: widget.maxLength,
+                onBriefReady: widget.onStructuredBriefReady,
+              )
+            : LanguageToolRefiner()),
   );
   late final AnimationController _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
   bool _wasListening = false;
@@ -413,6 +462,58 @@ class _VoiceDictationPanelState extends State<VoiceDictationPanel> with SingleTi
                     style: AppType.bodyStrong.copyWith(color: accentInk),
                   ),
           ),
+          if (_voice.hasOriginalToggle) ...[
+            const SizedBox(height: AppSpace.s8),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpace.s12,
+                vertical: AppSpace.s4 + 2,
+              ),
+              decoration: BoxDecoration(
+                color: tk.surface,
+                borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+                border: Border.all(color: tk.border),
+              ),
+              child: Wrap(
+                spacing: AppSpace.s8,
+                runSpacing: AppSpace.s4,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 15,
+                        color: tk.successInk,
+                      ),
+                      const SizedBox(width: AppSpace.s4 + 2),
+                      Text(
+                        _voice.showingOriginal
+                            ? 'Exibindo fala original'
+                            : 'Relato estruturado para o profissional',
+                        style: AppType.bodySm.copyWith(
+                          color: tk.text,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  AppButton(
+                    key: const ValueKey('voice-toggle-structured'),
+                    label: _voice.showingOriginal
+                        ? 'Usar versão estruturada'
+                        : 'Ver fala original',
+                    variant: AppButtonVariant.tertiary,
+                    compact: true,
+                    expand: false,
+                    onPressed: _voice.toggleOriginalVsStructured,
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (_voice.message != null) ...[
             const SizedBox(height: AppSpace.s8),
             Text(_voice.message!, style: AppType.bodySm.copyWith(color: tk.dangerInk)),

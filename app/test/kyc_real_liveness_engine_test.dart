@@ -135,31 +135,31 @@ void main() {
         forcedDirection: LivenessTurnDirection.right,
       );
 
-      // Muito distante: largura 0.24 / 0.66 = 36.4% (< 42%)
+      // Muito distante: largura 0.22 / 0.72 = 30.6% (< 35%)
       final tooFar = engine.processObservation(
         _validFrame(
           tsMs: 1000,
-          box: const Rect.fromLTWH(0.38, 0.32, 0.24, 0.30),
+          box: const Rect.fromLTWH(0.39, 0.34, 0.22, 0.28),
         ),
       );
       expect(tooFar.contourState, LivenessContourState.invalidRed);
       expect(tooFar.instruction, 'Aproxime um pouco o rosto');
 
-      // Muito próximo: largura 0.64 / 0.66 = 97.0% (> 94%)
+      // Muito próximo: largura 0.80 / 0.72 = 111.1% (> 106%)
       final tooClose = engine.processObservation(
         _validFrame(
           tsMs: 1100,
-          box: const Rect.fromLTWH(0.18, 0.12, 0.64, 0.70),
+          box: const Rect.fromLTWH(0.10, 0.12, 0.80, 0.72),
         ),
       );
       expect(tooClose.contourState, LivenessContourState.invalidRed);
       expect(tooClose.instruction, 'Afaste um pouco o rosto');
 
-      // Fora do centro (±15%): center.dx = 0.70 (dx = +0.20 > 0.15) -> mover para esquerda
+      // Fora do centro (±18%): center.dx = 0.72 (dx = +0.22 > 0.18) -> mover para esquerda
       final offCenter = engine.processObservation(
         _validFrame(
           tsMs: 1200,
-          box: const Rect.fromLTWH(0.50, 0.22, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.52, 0.25, 0.40, 0.50),
         ),
       );
       expect(offCenter.contourState, LivenessContourState.invalidRed);
@@ -169,20 +169,23 @@ void main() {
       );
     });
 
-    test('fornece instruções direcionais naturais alinhadas ao espelho (esquerda, direita, cima, baixo) e respeita calibração ergonômica', () {
+    test('fornece instruções direcionais naturais alinhadas ao espelho (esquerda, direita, cima, baixo) e respeita calibração ergonômica v2.34', () {
       final engine = ActiveLivenessStateMachine(
         forcedDirection: LivenessTurnDirection.right,
       );
-      expect(engine.config.ovalCenterY, 0.47);
-      expect(engine.config.maxCenterOffset, 0.15);
-      expect(engine.config.minFaceWidthToOvalRatio, 0.42);
-      expect(engine.config.maxFaceWidthToOvalRatio, 0.94);
+      expect(engine.config.ovalWidthFraction, 0.72);
+      expect(engine.config.ovalCenterY, 0.50);
+      expect(engine.config.maxCenterOffset, 0.18);
+      expect(engine.config.maxCenterOffsetY, 0.20);
+      expect(engine.config.minFaceWidthToOvalRatio, 0.35);
+      expect(engine.config.maxFaceWidthToOvalRatio, 1.06);
+      expect(engine.config.activeChallengeCenterOffset, 0.26);
 
-      // 1. Rosto à esquerda na tela (center.dx = 0.30 => dx = -0.20 < -0.15) -> mover para a direita
+      // 1. Rosto à esquerda na tela (center.dx = 0.28 => dx = -0.22 < -0.18) -> mover para a direita
       final shiftRight = engine.processObservation(
         _validFrame(
           tsMs: 1000,
-          box: const Rect.fromLTWH(0.10, 0.22, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.08, 0.25, 0.40, 0.50),
         ),
       );
       expect(shiftRight.contourState, LivenessContourState.invalidRed);
@@ -197,11 +200,11 @@ void main() {
         isFalse,
       );
 
-      // 2. Rosto à direita na tela (center.dx = 0.70 => dx = +0.20 > +0.15) -> mover para a esquerda
+      // 2. Rosto à direita na tela (center.dx = 0.72 => dx = +0.22 > +0.18) -> mover para a esquerda
       final shiftLeft = engine.processObservation(
         _validFrame(
           tsMs: 1100,
-          box: const Rect.fromLTWH(0.50, 0.22, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.52, 0.25, 0.40, 0.50),
         ),
       );
       expect(shiftLeft.contourState, LivenessContourState.invalidRed);
@@ -210,7 +213,7 @@ void main() {
         'Centralize movendo o rosto um pouco para a esquerda',
       );
 
-      // 3. Rosto alto demais na moldura (center.dy = 0.27 => dy = -0.20 < -0.15) -> abaixar
+      // 3. Rosto alto demais na moldura (center.dy = 0.27 => dy = -0.23 < -0.20) -> abaixar
       final moveDown = engine.processObservation(
         _validFrame(
           tsMs: 1200,
@@ -220,33 +223,87 @@ void main() {
       expect(moveDown.contourState, LivenessContourState.invalidRed);
       expect(moveDown.instruction, 'Abaixe um pouco o rosto na moldura');
 
-      // 4. Rosto baixo demais na moldura (center.dy = 0.67 => dy = +0.20 > +0.15) -> levantar
+      // 4. Rosto baixo demais na moldura (center.dy = 0.73 => dy = +0.23 > +0.20) -> levantar
       final moveUp = engine.processObservation(
         _validFrame(
           tsMs: 1300,
-          box: const Rect.fromLTWH(0.30, 0.42, 0.40, 0.50),
+          box: const Rect.fromLTWH(0.30, 0.48, 0.40, 0.50),
         ),
       );
       expect(moveUp.contourState, LivenessContourState.invalidRed);
       expect(moveUp.instruction, 'Levante um pouco o rosto na moldura');
 
-      // 5. Dentro da tolerância ergonômica (dx = 0.14 <= 0.15, width ratio = 0.30/0.66 = 0.455 >= 0.42) -> válido
+      // 5. Encaixe natural com ML Kit (cabeça inteira centralizada coloca boundingBox
+      //    queixo-sobrancelha em center.dy = 0.53 e largura 42% do oval) -> válido!
       final ergonomicValid = engine.processObservation(
         _validFrame(
           tsMs: 1400,
-          box: const Rect.fromLTWH(0.49, 0.22, 0.30, 0.50),
+          box: const Rect.fromLTWH(0.49, 0.28, 0.30, 0.50),
         ),
       );
       expect(ergonomicValid.contourState, LivenessContourState.validGreen);
 
-      // 6. Encaixe cheio natural no oval (86% da largura do oval, centerY = 0.47) -> válido!
+      // 6. Encaixe cheio natural no oval (95% da largura do oval, centerY = 0.50) -> válido!
       final naturalFullOval = engine.processObservation(
         _validFrame(
           tsMs: 1500,
-          box: const Rect.fromLTRB(0.216, 0.22, 0.784, 0.72),
+          box: const Rect.fromLTRB(0.158, 0.25, 0.842, 0.75),
         ),
       );
       expect(naturalFullOval.contourState, LivenessContourState.validGreen);
+    });
+
+    test('permite deslocamento horizontal natural durante o giro de cabeça (Etapa 3A) sem brigar com o usuário', () {
+      final engine = ActiveLivenessStateMachine(
+        forcedDirection: LivenessTurnDirection.right,
+      );
+      int ts = 1000;
+      // Etapa 1: centralizar (4 quadros)
+      for (int i = 0; i < 4; i++) {
+        ts += 90;
+        engine.processObservation(_validFrame(tsMs: ts));
+      }
+      // Etapa 2: piscada completa (2 quadros abertos -> 2 fechados -> 2 reabertos)
+      for (int i = 0; i < 2; i++) {
+        ts += 90;
+        engine.processObservation(_validFrame(tsMs: ts, leftEye: 0.88, rightEye: 0.90));
+      }
+      for (int i = 0; i < 2; i++) {
+        ts += 90;
+        engine.processObservation(_validFrame(tsMs: ts, leftEye: 0.12, rightEye: 0.14));
+      }
+      ts += 90;
+      engine.processObservation(_validFrame(tsMs: ts, leftEye: 0.88, rightEye: 0.90));
+      ts += 90;
+      final turnStageSnap = engine.processObservation(
+        _validFrame(tsMs: ts, leftEye: 0.88, rightEye: 0.90),
+      );
+      expect(turnStageSnap.stage, LivenessStage.turnHead);
+
+      // Durante Etapa 3A, ao virar o rosto 22° para a direita, o centro do box
+      // desloca naturalmente para dx = +0.21 (acima de 0.18 da Etapa 1, mas <= 0.26).
+      // Deve permanecer VERDE e progredir o giro sem pedir "Centralize"!
+      ts += 90;
+      final shiftedTurn = engine.processObservation(
+        _validFrame(
+          tsMs: ts,
+          yaw: 22.0,
+          box: const Rect.fromLTWH(0.51, 0.25, 0.40, 0.50), // center.dx = 0.71 => dx = +0.21
+        ),
+      );
+      expect(shiftedTurn.contourState, LivenessContourState.validGreen);
+      expect(shiftedTurn.instruction, isNot(contains('Centralize')));
+      expect(shiftedTurn.instruction, contains('Ótimo'));
+
+      // Verifica mapeamento contínuo EAR compatível com detectHumanBlinkSequence
+      expect(
+        ActiveLivenessStateMachine.eyeOpenProbabilityToEar(0.28),
+        lessThan(0.185),
+      );
+      expect(
+        ActiveLivenessStateMachine.eyeOpenProbabilityToEar(0.48),
+        greaterThan(0.24),
+      );
     });
 
     test('rejeita monitor/tela azulada, baixa iluminação, pouca nitidez e foto estática parada', () {

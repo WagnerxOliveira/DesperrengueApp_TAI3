@@ -21,6 +21,7 @@ import '../../../core/ui/image_picking.dart';
 import '../../../core/ui/media_widgets.dart';
 import '../../../core/ui/widgets.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/structured_voice_brief.dart';
 import '../../../services/forensic_photo_service.dart';
 import '../../shared/presentation/achievement_widgets.dart';
 import '../../shared/presentation/chat_screen.dart';
@@ -220,6 +221,10 @@ class _ServiceExecutionScreenState extends State<ServiceExecutionScreen> {
                     ),
                   ],
                 ),
+                if (StructuredVoiceBrief.tryParseStructuredText(job.description) != null) ...[
+                  const SizedBox(height: AppSpace.s12),
+                  StructuredClientBriefView(description: job.description),
+                ],
                 const SizedBox(height: AppSpace.s12),
                 ProviderLocationBuilder(
                   jobId: job.id,

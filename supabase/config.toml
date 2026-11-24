@@ -467,3 +467,9 @@ entrypoint = "./functions/ceo-treasury-authority/index.ts"
 verify_jwt = false
 import_map = "./functions/asaas-webhook-guard/deno.json"
 entrypoint = "./functions/asaas-webhook-guard/index.ts"
+
+[functions.voice-triage-structurer]
+# Estruturador gratuito multi-provedor (Groq / Gemini / OpenRouter + fallback local) para briefing tecnico a partir de audio/texto.
+verify_jwt = false
+import_map = "./functions/voice-triage-structurer/deno.json"
+entrypoint = "./functions/voice-triage-structurer/index.ts"

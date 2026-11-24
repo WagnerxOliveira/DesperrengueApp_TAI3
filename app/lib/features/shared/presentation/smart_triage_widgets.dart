@@ -4,6 +4,232 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/models/smart_triage_models.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/media_widgets.dart';
+import '../../../core/utils/structured_voice_brief.dart';
+
+/// Cartão de leitura rápida para o profissional (e revisão do cliente) quando a
+/// descrição foi estruturada em briefing (`RESUMO`, `LOCAL E EQUIPAMENTO`,
+/// `SINTOMAS`, `HISTÓRICO`, `OBSERVAÇÕES`, `URGÊNCIA / HORÁRIO`).
+///
+/// Para textos livres legados sem cabeçalhos, exibe `Text(description)` comum.
+class StructuredClientBriefView extends StatelessWidget {
+  const StructuredClientBriefView({
+    super.key,
+    required this.description,
+    this.compactMode = false,
+  });
+
+  final String description;
+  final bool compactMode;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final brief = StructuredVoiceBrief.tryParseStructuredText(description);
+    if (brief == null) {
+      return Text(description, style: AppType.body.copyWith(color: tk.text));
+    }
+
+    final hasCritical = brief.safetyRisk == 'critical';
+    final hasAttention = brief.safetyRisk == 'attention';
+
+    return Column(
+      key: const ValueKey('structured-client-brief-view'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Wrap(
+          spacing: AppSpace.s8,
+          runSpacing: AppSpace.s4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.assignment_outlined,
+                  size: 17,
+                  color: compactMode ? tk.accentInk : tk.providerAccentInk,
+                ),
+                const SizedBox(width: AppSpace.s4 + 2),
+                Text(
+                  'Relato estruturado',
+                  style: AppType.bodySm.copyWith(
+                    color: compactMode ? tk.accentInk : tk.providerAccentInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            if (hasCritical)
+              const AppStatusChip(
+                'Risco crítico',
+                tone: AppTone.danger,
+                icon: Icons.warning_amber_rounded,
+              )
+            else if (hasAttention)
+              const AppStatusChip(
+                'Requer atenção técnica',
+                tone: AppTone.warning,
+                icon: Icons.bolt_rounded,
+              ),
+          ],
+        ),
+        const SizedBox(height: AppSpace.s8),
+        Text(
+          brief.problemSummary,
+          style: AppType.bodyStrong.copyWith(color: tk.text),
+        ),
+        if (brief.locationAndEquipment != null) ...[
+          const SizedBox(height: AppSpace.s8),
+          _BriefRow(
+            icon: Icons.home_repair_service_outlined,
+            label: 'Local e equipamento',
+            value: brief.locationAndEquipment!,
+          ),
+        ],
+        if (brief.observedSymptoms.isNotEmpty) ...[
+          const SizedBox(height: AppSpace.s8),
+          _BriefRow(
+            icon: Icons.fact_check_outlined,
+            label: 'Sintomas relatados',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final sym in brief.observedSymptoms)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpace.s2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '• ',
+                          style: AppType.bodySm.copyWith(
+                            color: tk.accentInk,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            sym,
+                            style: AppType.bodySm.copyWith(color: tk.text),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (brief.timelineAndContext != null) ...[
+          const SizedBox(height: AppSpace.s8),
+          _BriefRow(
+            icon: Icons.history_rounded,
+            label: 'Quando começou / gatilho',
+            value: brief.timelineAndContext!,
+          ),
+        ],
+        if (brief.clientActionsOrNotes != null) ...[
+          const SizedBox(height: AppSpace.s8),
+          _BriefRow(
+            icon: Icons.build_circle_outlined,
+            label: 'Já feito / observações',
+            value: brief.clientActionsOrNotes!,
+          ),
+        ],
+        if (brief.urgencyAndAvailability != null) ...[
+          const SizedBox(height: AppSpace.s8),
+          _BriefRow(
+            icon: Icons.schedule_rounded,
+            label: 'Urgência / disponibilidade',
+            value: brief.urgencyAndAvailability!,
+          ),
+        ],
+        if (!compactMode && brief.photoNotes.isNotEmpty) ...[
+          const SizedBox(height: AppSpace.s8),
+          _BriefRow(
+            icon: Icons.photo_camera_outlined,
+            label: 'Observações nas fotos',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final note in brief.photoNotes)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpace.s2),
+                    child: Text(
+                      note,
+                      style: AppType.bodySm.copyWith(color: tk.text),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _BriefRow extends StatelessWidget {
+  const _BriefRow({
+    required this.icon,
+    required this.label,
+    this.value,
+    this.child,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpace.s12,
+        vertical: AppSpace.s8,
+      ),
+      decoration: BoxDecoration(
+        color: tk.card,
+        borderRadius: BorderRadius.circular(AppGeometry.itemRadius),
+        border: Border.all(color: tk.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 17, color: tk.textMuted),
+          const SizedBox(width: AppSpace.s8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: AppType.bodySm.copyWith(
+                    color: tk.textMuted,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: AppSpace.s2),
+                if (child != null)
+                  child!
+                else if (value != null)
+                  Text(
+                    value!,
+                    style: AppType.bodySm.copyWith(color: tk.text),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 AppTone _urgencyTone(UrgencyLevel level) => switch (level) {
       UrgencyLevel.criticalEmergency => AppTone.danger,

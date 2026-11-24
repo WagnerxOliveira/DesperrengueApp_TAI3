@@ -642,81 +642,105 @@ class _AddressFormState extends State<AddressForm> {
 
   Widget _buildGpsHeroCard(BuildContext context) {
     final tk = context.tk;
-    return AppCard(
-      variant: AppCardVariant.elevated,
-      radius: 20,
-      borderColor: tk.accentInk.withValues(alpha: tk.isDark ? 0.30 : 0.22),
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpace.s16,
-        vertical: AppSpace.s12,
-      ),
-      onTap: _loadingGps ? null : _useGps,
-      semanticLabel: _loadingGps
-          ? _gpsProgressLabel
-          : 'Usar minha localização atual',
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
-        child: Row(
-          children: [
-            ExcludeSemantics(
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: tk.accentSoft,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: tk.accentInk.withValues(alpha: tk.isDark ? 0.26 : 0.16),
-                  ),
-                ),
-                child: Icon(
-                  Icons.my_location_rounded,
-                  size: 21,
-                  color: tk.accentInk,
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpace.s12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _loadingGps
-                        ? _gpsProgressLabel
-                        : 'Usar minha localização atual',
-                    style: AppType.bodyStrong.copyWith(color: tk.text),
-                  ),
-                  const SizedBox(height: AppSpace.s2),
-                  Text(
-                    'Preenche rua, bairro e cidade automaticamente pelo GPS',
-                    style: AppType.bodySm.copyWith(color: tk.textMuted),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppSpace.s12),
-            if (_loadingGps)
-              const AppSkeleton(width: 24, height: 24, circle: true)
-            else
-              ExcludeSemantics(
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: tk.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: tk.border),
-                  ),
-                  child: Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: tk.accentInk,
-                  ),
-                ),
-              ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(tk.card, tk.accentSoft, tk.isDark ? 0.35 : 0.45)!,
+            tk.card,
           ],
+        ),
+        border: Border.all(
+          color: tk.accentInk.withValues(alpha: tk.isDark ? 0.36 : 0.24),
+        ),
+        boxShadow: tk.isDark ? const [] : tk.elevation(1),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: _loadingGps ? null : _useGps,
+          child: Semantics(
+            button: true,
+            label: _loadingGps
+                ? _gpsProgressLabel
+                : 'Usar minha localização atual',
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: AppGeometry.minTarget),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpace.s16,
+                  vertical: AppSpace.s8 + 2,
+                ),
+                child: Row(
+                  children: [
+                    ExcludeSemantics(
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: tk.accentSoft,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: tk.accentInk.withValues(
+                              alpha: tk.isDark ? 0.34 : 0.22,
+                            ),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.my_location_rounded,
+                          size: 21,
+                          color: tk.accentInk,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.s12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _loadingGps
+                                ? _gpsProgressLabel
+                                : 'Usar minha localização atual',
+                            style: AppType.bodyStrong.copyWith(color: tk.text),
+                          ),
+                          const SizedBox(height: AppSpace.s2),
+                          Text(
+                            'Detecta rua, bairro e cidade pelo GPS',
+                            style: AppType.bodySm.copyWith(color: tk.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: AppSpace.s12),
+                    if (_loadingGps)
+                      const AppSkeleton(width: 24, height: 24, circle: true)
+                    else
+                      ExcludeSemantics(
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: tk.accent,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.chevron_right_rounded,
+                            size: 20,
+                            color: AppTokens.onColor(tk.accent),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -953,9 +977,9 @@ class _AddressFormState extends State<AddressForm> {
       children: [
         _buildGpsHeroCard(context),
         _buildInlineMiniMapPreview(context),
-        const SizedBox(height: AppSpace.s16),
+        const SizedBox(height: AppSpace.s8),
         _buildDivider(context),
-        const SizedBox(height: AppSpace.s16),
+        const SizedBox(height: AppSpace.s8),
         KycPorcelainSectionCard(
           title: 'Endereço do atendimento',
           icon: Icons.location_on_outlined,

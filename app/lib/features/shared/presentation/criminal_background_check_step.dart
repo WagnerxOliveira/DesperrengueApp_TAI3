@@ -590,7 +590,7 @@ class _CriminalBackgroundCheckStepState
                 ),
                 const SizedBox(height: AppSpace.s4),
                 Text(
-                  'Escolha um arquivo salvo no celular, uma foto da galeria ou fotografe com a câmera.',
+                  'Escolha um PDF no aparelho, foto da galeria ou câmera — os campos abaixo preenchem sozinhos.',
                   style: AppType.bodySm.copyWith(color: tk.textMuted),
                 ),
               ],
@@ -794,9 +794,7 @@ class _CriminalBackgroundCheckStepState
               ? 'Renovação Semestral de Antecedentes Criminais'
               : 'Certidão de Antecedentes Criminais (Polícia Federal)',
           subtitle:
-              'Para proteger quem abre a porta de casa e quem entra para trabalhar, '
-              'o Desperrengue valida a Certidão Negativa da Polícia Federal a cada 6 meses. '
-              'Sua validação fica salva para os dois perfis (Cliente e Profissional) sem precisar enviar novamente.',
+              'Emita grátis no gov.br e envie o PDF ou foto. Validação válida por 6 meses para Cliente e Profissional.',
         ),
         const SizedBox(height: AppSpace.s12),
         const Wrap(
@@ -816,34 +814,34 @@ class _CriminalBackgroundCheckStepState
             ),
           ],
         ),
-        const SizedBox(height: AppSpace.s20),
+        const SizedBox(height: AppSpace.s16),
 
         // PASSO 1 GUIADO — EMISSÃO OFICIAL GRATUITA EM 1 MINUTO
         KycPorcelainSectionCard(
           title: '1. Emitir grátis no gov.br',
-          subtitle: 'Emissão oficial gratuita em cerca de 1 minuto pelo portal da Polícia Federal.',
+          subtitle: 'Emissão gratuita em menos de 1 minuto no portal da PF.',
           icon: Icons.account_balance_rounded,
           statusChipLabel: 'Grátis',
           statusTone: AppTone.info,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _CriminalGuideStepRow(
+              const KycNumberedStepRow(
                 stepNumber: '1',
-                text:
-                    'Toque no botão abaixo para abrir o portal oficial da Polícia Federal (gov.br).',
+                description:
+                    'Abra o portal oficial da Polícia Federal (gov.br) pelo botão abaixo.',
+                showConnector: true,
               ),
-              const SizedBox(height: AppSpace.s8),
-              const _CriminalGuideStepRow(
+              const KycNumberedStepRow(
                 stepNumber: '2',
-                text:
-                    'Informe seu nome civil e CPF para emitir gratuitamente a certidão "Nada Consta".',
+                description:
+                    'Preencha seu nome civil e CPF para emitir a certidão "Nada Consta".',
+                showConnector: true,
               ),
-              const SizedBox(height: AppSpace.s8),
-              const _CriminalGuideStepRow(
+              const KycNumberedStepRow(
                 stepNumber: '3',
-                text:
-                    'Salve o PDF no celular ou tire uma foto nítida para enviar no passo abaixo.',
+                description:
+                    'Salve o PDF no aparelho (ou fotografe nítido) e envie no passo 2.',
               ),
               const SizedBox(height: AppSpace.s16),
               AppButton(
@@ -863,7 +861,7 @@ class _CriminalBackgroundCheckStepState
         KycPorcelainSectionCard(
           title: '2. Enviar certidão',
           subtitle:
-              'Envie o PDF oficial ou uma foto nítida da certidão emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
+              'Envie PDF ou foto nítida emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
           icon: Icons.upload_file_rounded,
           statusChipLabel: approved
               ? 'Validada'
@@ -879,6 +877,11 @@ class _CriminalBackgroundCheckStepState
               else
                 _buildEmptyUploadSurface(context),
               const SizedBox(height: AppSpace.s16),
+              Text(
+                'Dados da certidão (preenchidos automaticamente)',
+                style: AppType.bodyStrong.copyWith(color: tk.text),
+              ),
+              const SizedBox(height: AppSpace.s12),
               if (_autoFilledProtocol)
                 _buildAutoFilledBadge(const ValueKey('badge-autofill-protocol')),
               AppTextField(
@@ -1040,55 +1043,6 @@ class _CriminalBackgroundCheckStepState
             holderName: widget.expectedFullName,
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _CriminalGuideStepRow extends StatelessWidget {
-  const _CriminalGuideStepRow({
-    required this.stepNumber,
-    required this.text,
-  });
-
-  final String stepNumber;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = context.tk;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ExcludeSemantics(
-          child: Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: tk.accentSoft,
-              border: Border.all(
-                color: tk.accentInk.withValues(alpha: tk.isDark ? 0.28 : 0.16),
-              ),
-            ),
-            child: Center(
-              child: Text(
-                stepNumber,
-                style: AppType.tabular(AppType.caption).copyWith(
-                  color: tk.accentInk,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: AppSpace.s12),
-        Expanded(
-          child: Text(
-            text,
-            style: AppType.bodySm.copyWith(color: tk.textMuted),
-          ),
-        ),
       ],
     );
   }

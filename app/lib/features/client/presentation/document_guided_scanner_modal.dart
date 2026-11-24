@@ -85,6 +85,9 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
   bool _streamRebindAttempted = false;
   CameraImage? _latestStreamImage;
   img.Image? _decodedReferenceFront;
+  Size? _stageSize;
+  double? _renderedCameraAspect;
+  double? _streamFrameAspect;
 
   final DocumentAlignmentTracker _tracker = DocumentAlignmentTracker();
   DocumentAlignmentSnapshot? _snapshot;
@@ -171,6 +174,8 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
     _framesDeliveredByCamera = 0;
     _streamRebindAttempted = false;
     _latestStreamImage = null;
+    _renderedCameraAspect = null;
+    _streamFrameAspect = null;
     _tracker.reset();
     final prev = _controller;
     _controller = null;
@@ -327,6 +332,29 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
     }
   }
 
+  Rect? _computeSensorCutoutRect({double? frameAspectOverride}) {
+    final Size? stageSize = _stageSize;
+    if (stageSize == null || stageSize.width <= 0 || stageSize.height <= 0) {
+      return null;
+    }
+    final double effectiveAspect = frameAspectOverride ??
+        _renderedCameraAspect ??
+        _streamFrameAspect ??
+        (stageSize.width / stageSize.height);
+    if (effectiveAspect <= 0 || !effectiveAspect.isFinite) {
+      return null;
+    }
+    final Rect cutoutRect = DocumentScannerOverlayPainter.computeCutoutRect(
+      stageSize,
+      isVertical: _isVerticalOrientation,
+    );
+    return projectViewportCutoutToSensorRect(
+      viewportSize: stageSize,
+      cutoutRect: cutoutRect,
+      cameraAspect: effectiveAspect,
+    );
+  }
+
   Future<void> _evaluateLiveFrame() async {
     if (!mounted ||
         _capturing ||
@@ -339,6 +367,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
     _evaluatingFrame = true;
     try {
       DocumentFrameAssessment? assessment;
+      final Rect? sensorRoiRect = _computeSensorCutoutRect();
 
       if (kIsWeb) {
         final Uint8List? frameBytes = await grabWebVideoFramePngBytes(
@@ -353,6 +382,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
             isFront: widget.isFront,
             isVerticalOrientation: _isVerticalOrientation,
             referenceFrontBytes: widget.referenceFrontBytes,
+            normalizedRoiRect: sensorRoiRect,
           );
         }
       } else if (_latestStreamImage != null) {
@@ -364,12 +394,17 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
           targetMaxDimension: 240,
         );
         if (rgb != null) {
+          if (rgb.width > 0 && rgb.height > 0) {
+            _streamFrameAspect = rgb.width / rgb.height;
+          }
+          final Rect? liveRoiRect = _computeSensorCutoutRect();
           assessment = DocumentFrameAlignmentEngine.evaluateDecodedFrame(
             frame: rgb,
             isFront: widget.isFront,
             isVerticalOrientation: _isVerticalOrientation,
             referenceFrontBytes: widget.referenceFrontBytes,
             referenceFrontDecoded: _decodedReferenceFront,
+            normalizedRoiRect: liveRoiRect,
           );
         }
       }
@@ -424,10 +459,52 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         throw StateError('Não foi possível capturar a imagem do documento.');
       }
 
+      final Rect? sensorRect = _computeSensorCutoutRect();
+
+      // Revalidação óptica pós-captura obrigatória na imagem final em alta
+      // resolução (Frente e Verso): impede aprovar documento cortado, deslocado
+      // ou com faixa de mesa vazia caso o usuário tenha movido a mão no clique.
+      if (!_isTestDriven && widget.testCaptureOverride == null) {
+        final DocumentFrameAssessment postCapture =
+            await DocumentFrameAlignmentEngine.evaluateFrameBytesInIsolate(
+          frameBytes: rawBytes,
+          isFront: widget.isFront,
+          isVerticalOrientation: _isVerticalOrientation,
+          referenceFrontBytes: widget.referenceFrontBytes,
+          normalizedRoiRect: sensorRect,
+        );
+        if (!postCapture.isValid) {
+          if (!mounted) return;
+          _tracker.reset();
+          final String reason =
+              KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
+            postCapture.humanHint,
+          );
+          setState(() {
+            _capturing = false;
+            _snapshot = null;
+            _errorMessage = reason;
+          });
+          if (!kIsWeb &&
+              _controller != null &&
+              _controller!.value.isInitialized) {
+            await _startDocumentImageStream(_controller!);
+          }
+          if (mounted && _controller != null) {
+            _samplingTimer = Timer.periodic(
+              const Duration(milliseconds: 200),
+              (_) => _evaluateLiveFrame(),
+            );
+          }
+          return;
+        }
+      }
+
       final Uint8List croppedBytes =
           DocumentOcrAndLivenessService.cropDocumentToGuidedFrameNamed(
         fullCameraFrameBytes: rawBytes,
         isVerticalOrientation: _isVerticalOrientation,
+        normalizedCropRect: sensorRect,
       );
 
       if (!mounted) return;
@@ -440,10 +517,15 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         _errorMessage = 'Falha ao capturar a imagem. Tente novamente.';
       });
       if (!_isTestDriven && _controller != null) {
-        _samplingTimer = Timer.periodic(
-          const Duration(milliseconds: 200),
-          (_) => _evaluateLiveFrame(),
-        );
+        if (!kIsWeb && _controller!.value.isInitialized) {
+          await _startDocumentImageStream(_controller!);
+        }
+        if (mounted) {
+          _samplingTimer = Timer.periodic(
+            const Duration(milliseconds: 200),
+            (_) => _evaluateLiveFrame(),
+          );
+        }
       }
     }
   }
@@ -515,6 +597,7 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
                   final double stageWidth = isWideViewport
                       ? math.min(constraints.maxWidth - AppSpace.s48, 680.0)
                       : constraints.maxWidth;
+                  _stageSize = Size(stageWidth, constraints.maxHeight);
 
                   Widget stage = SizedBox(
                     width: stageWidth,
@@ -823,9 +906,21 @@ class _DocumentGuidedScannerModalState extends State<DocumentGuidedScannerModal>
         builder: (context, box) {
           final double containerW = math.max(1.0, box.maxWidth);
           final double containerH = math.max(1.0, box.maxHeight);
-          final double previewAspect = ctrl.value.aspectRatio > 0
-              ? (1.0 / ctrl.value.aspectRatio)
-              : (containerW / containerH);
+          final bool isPortraitBox = containerH >= containerW;
+          final double previewAspect;
+          if (ctrl.value.aspectRatio > 0) {
+            final double rawAspect = ctrl.value.aspectRatio;
+            if (kIsWeb) {
+              previewAspect = rawAspect;
+            } else {
+              previewAspect = isPortraitBox
+                  ? (rawAspect > 1.0 ? 1.0 / rawAspect : rawAspect)
+                  : (rawAspect < 1.0 ? 1.0 / rawAspect : rawAspect);
+            }
+          } else {
+            previewAspect = containerW / containerH;
+          }
+          _renderedCameraAspect = previewAspect;
           final double containerAspect = containerW / containerH;
 
           final double renderW;
@@ -1058,16 +1153,10 @@ class DocumentScannerOverlayPainter extends CustomPainter {
   final Color? guideColor;
   final double stabilityProgress;
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final dark = AppTokens.dark;
-    final resolvedScrim = scrimColor ?? dark.scrim;
-    final resolvedGreen = sharpColor ?? dark.success;
-    final resolvedRed = accentColor ?? dark.danger;
-    final resolvedGuide = guideColor ?? dark.text;
-    final resolvedBorder =
-        borderColorOverride ?? (isSharpEnough ? resolvedGreen : resolvedRed);
-
+  /// Calcula o retângulo guia ISO/IEC 7810 ID-1 desenhado na tela ([size]).
+  /// Fonte única da verdade compartilhada entre o `CustomPainter`, a validação
+  /// em tempo real e o recorte pós-captura.
+  static Rect computeCutoutRect(Size size, {required bool isVertical}) {
     // Proporção oficial ISO/IEC 7810 ID-1 (85.60 x 53.98 mm = 1.5858)
     const double isoRatio = 85.60 / 53.98;
     final double rectWidth;
@@ -1082,11 +1171,24 @@ class DocumentScannerOverlayPainter extends CustomPainter {
     }
 
     final Offset center = Offset(size.width / 2, size.height * 0.50);
-    final Rect cutoutRect = Rect.fromCenter(
+    return Rect.fromCenter(
       center: center,
       width: rectWidth,
       height: rectHeight,
     );
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final dark = AppTokens.dark;
+    final resolvedScrim = scrimColor ?? dark.scrim;
+    final resolvedGreen = sharpColor ?? dark.success;
+    final resolvedRed = accentColor ?? dark.danger;
+    final resolvedGuide = guideColor ?? dark.text;
+    final resolvedBorder =
+        borderColorOverride ?? (isSharpEnough ? resolvedGreen : resolvedRed);
+
+    final Rect cutoutRect = computeCutoutRect(size, isVertical: isVertical);
     final RRect cutoutRRect = RRect.fromRectAndRadius(
       cutoutRect,
       const Radius.circular(16),

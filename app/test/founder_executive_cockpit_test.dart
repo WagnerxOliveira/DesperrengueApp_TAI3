@@ -2436,9 +2436,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 260));
       }
 
-      await tester.tap(
-        find.byKey(ValueKey<String>('ceo-calendar-day-$pastIso')),
+      final pastDayFinder = find.byKey(
+        ValueKey<String>('ceo-calendar-day-$pastIso'),
       );
+      await tester.ensureVisible(pastDayFinder);
+      await tester.pump();
+      await tester.tap(pastDayFinder);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 220));
 

@@ -1342,11 +1342,25 @@ class DocumentOcrAndLivenessService {
     );
   }
 
-  /// Versão nomeada para o modal de scanner guiado ISO ID-1 (suporta orientação horizontal ou vertical).
+  /// Versão nomeada para o modal de scanner guiado ISO ID-1 (suporta orientação
+  /// horizontal ou vertical e retângulo exato projetado do viewport para o sensor).
   static Uint8List cropDocumentToGuidedFrameNamed({
     required Uint8List fullCameraFrameBytes,
     bool isVerticalOrientation = false,
+    Rect? normalizedCropRect,
   }) {
+    if (normalizedCropRect != null &&
+        normalizedCropRect.width > 0.12 &&
+        normalizedCropRect.height > 0.12) {
+      return _cropDocumentGuidedInternal(
+        rawCameraBytes: fullCameraFrameBytes,
+        leftRatio: normalizedCropRect.left,
+        topRatio: normalizedCropRect.top,
+        widthRatio: normalizedCropRect.width,
+        heightRatio: normalizedCropRect.height,
+        allowExactSensorBounds: true,
+      );
+    }
     return _cropDocumentGuidedInternal(
       rawCameraBytes: fullCameraFrameBytes,
       leftRatio: isVerticalOrientation ? 0.13 : 0.06,
@@ -1362,15 +1376,18 @@ class DocumentOcrAndLivenessService {
     required double topRatio,
     required double widthRatio,
     required double heightRatio,
+    bool allowExactSensorBounds = false,
   }) {
     final img.Image? decoded = img.decodeImage(rawCameraBytes);
     if (decoded == null) return rawCameraBytes;
 
     final img.Image baked = img.bakeOrientation(decoded);
-    final int x = (baked.width * leftRatio.clamp(0.0, 0.40)).round();
-    final int y = (baked.height * topRatio.clamp(0.0, 0.40)).round();
-    final int w = math.max(32, (baked.width * widthRatio.clamp(0.20, 1.0)).round());
-    final int h = math.max(32, (baked.height * heightRatio.clamp(0.20, 1.0)).round());
+    final double maxOffset = allowExactSensorBounds ? 0.80 : 0.40;
+    final double minSpan = allowExactSensorBounds ? 0.12 : 0.20;
+    final int x = (baked.width * leftRatio.clamp(0.0, maxOffset)).round();
+    final int y = (baked.height * topRatio.clamp(0.0, maxOffset)).round();
+    final int w = math.max(32, (baked.width * widthRatio.clamp(minSpan, 1.0)).round());
+    final int h = math.max(32, (baked.height * heightRatio.clamp(minSpan, 1.0)).round());
 
     final int safeW = (x + w > baked.width) ? (baked.width - x) : w;
     final int safeH = (y + h > baked.height) ? (baked.height - y) : h;

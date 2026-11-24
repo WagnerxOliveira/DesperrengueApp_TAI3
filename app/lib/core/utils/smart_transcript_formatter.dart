@@ -12,6 +12,7 @@
 /// Tudo determinístico, sem rede e sem IA externa: roda offline, no Web/PWA também.
 library;
 
+import 'structured_voice_brief.dart';
 import 'tag_normalizer.dart' show normalizeTag;
 
 class SmartTranscriptFormatter {
@@ -143,6 +144,7 @@ class SmartTranscriptFormatter {
         .replaceAllMapped(_stutter, (m) => m.group(1)!)
         .replaceAllMapped(_colloquialRe, (m) => _colloquial[m.group(0)!.toLowerCase()] ?? m.group(0)!)
         .replaceFirstMapped(_greeting, (m) => '${m.group(1)},');
+    t = StructuredVoiceBriefEngine.repairTechnicalSpeech(t);
     t = t
         .replaceAll(RegExp(r'\.{2,}'), '.')
         .replaceAll(RegExp(r',{2,}'), ',')

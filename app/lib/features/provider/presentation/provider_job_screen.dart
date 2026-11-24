@@ -410,7 +410,7 @@ class _QuoteFormScreenState extends State<QuoteFormScreen> {
                 children: [
                   ClientCardTile(jobId: job.id),
                   const SizedBox(height: AppSpace.s12),
-                  Text(job.description, style: AppType.body.copyWith(color: tk.text)),
+                  StructuredClientBriefView(description: job.description),
                 ],
               ),
             ),
@@ -751,7 +751,7 @@ class _EmergencyDecisionScreenState extends State<EmergencyDecisionScreen> {
                 children: [
                   ClientCardTile(jobId: job.id),
                   const SizedBox(height: AppSpace.s12),
-                  Text(job.description, style: AppType.body.copyWith(color: tk.text)),
+                  StructuredClientBriefView(description: job.description),
                 ],
               ),
             ),

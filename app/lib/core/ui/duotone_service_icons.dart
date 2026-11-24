@@ -424,13 +424,17 @@ class SmartOrderHeadlineFormatter {
     String? fallbackDescription,
     int maxChars = 68,
   }) {
-    final primaryCleaned = _stripGreetingsAndNormalize(rawTitleOrDescription);
+    final unpackedPrimary = _extractResumoIfStructured(rawTitleOrDescription);
+    final unpackedFallback = fallbackDescription == null
+        ? null
+        : _extractResumoIfStructured(fallbackDescription);
+    final primaryCleaned = _stripGreetingsAndNormalize(unpackedPrimary);
 
     String candidate = primaryCleaned;
     if ((candidate.isEmpty || _incompleteTailStub.hasMatch(candidate)) &&
-        fallbackDescription != null &&
-        fallbackDescription.trim().isNotEmpty) {
-      final fromDesc = _stripGreetingsAndNormalize(fallbackDescription);
+        unpackedFallback != null &&
+        unpackedFallback.trim().isNotEmpty) {
+      final fromDesc = _stripGreetingsAndNormalize(unpackedFallback);
       if (fromDesc.isNotEmpty && !_incompleteTailStub.hasMatch(fromDesc)) {
         candidate = fromDesc;
       }
@@ -441,13 +445,23 @@ class SmartOrderHeadlineFormatter {
       if (cat.isNotEmpty) {
         return 'Atendimento de $cat';
       }
-      final fallbackRaw = rawTitleOrDescription.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final fallbackRaw = unpackedPrimary.replaceAll(RegExp(r'\s+'), ' ').trim();
       return fallbackRaw.isEmpty ? 'Solicitação de serviço' : _truncateCleanly(fallbackRaw, maxChars);
     }
 
     // Capitaliza a primeira letra caso a remoção da saudação tenha exposto letra minúscula.
     final capitalized = _capitalizeFirst(candidate);
     return _truncateCleanly(capitalized, maxChars);
+  }
+
+  static String _extractResumoIfStructured(String raw) {
+    final m = RegExp(r'^RESUMO\s*:\s*(.+)$', caseSensitive: false, multiLine: true)
+        .firstMatch(raw);
+    if (m != null) {
+      final extracted = m.group(1)?.trim() ?? '';
+      if (extracted.isNotEmpty) return extracted;
+    }
+    return raw;
   }
 
   static final String _legacyPhotoNotesSeparator = '\n\n${String.fromCharCode(0x1F4F7)}';

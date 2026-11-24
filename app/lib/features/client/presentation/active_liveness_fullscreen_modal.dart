@@ -177,6 +177,7 @@ class _ActiveLivenessFullscreenModalState
   bool _stillFallbackActive = false;
   bool _stillCaptureBusy = false;
   double? _cameraPreviewAspect;
+  double? _streamFrameAspect;
   double? _viewportAspect;
   LiveFaceObservation? _lastValidNeuralObservation;
   img.Image? _goldenFrontImage;
@@ -415,6 +416,12 @@ class _ActiveLivenessFullscreenModalState
         _lastProcessedFrameMs = now;
         final DeviceOrientation deviceOrientation =
             controller.value.deviceOrientation;
+        if (image.width > 0 && image.height > 0) {
+          final bool swapped = sensorOrientation == 90 || sensorOrientation == 270;
+          final double effW = (swapped ? image.height : image.width).toDouble();
+          final double effH = (swapped ? image.width : image.height).toDouble();
+          if (effH > 0) _streamFrameAspect = effW / effH;
+        }
         unawaited(
           adapter
               .analyzeCameraImage(
@@ -582,7 +589,7 @@ class _ActiveLivenessFullscreenModalState
     // Em modo câmera real, projeta o bounding box do sensor cru para o espaço
     // visível do viewport recortado por `coverScale` (ex.: câmera 3:4 em tela 9:20).
     LiveFaceObservation effectiveObservation = observation;
-    final double? camAspect = _cameraPreviewAspect;
+    final double? camAspect = _streamFrameAspect ?? _cameraPreviewAspect;
     final double? boxAspect = _viewportAspect;
     if (!_isTestMode &&
         observation.faceCount > 0 &&
@@ -1309,8 +1316,8 @@ class ActiveLivenessOvalPainter extends CustomPainter {
 
   /// Proporção largura:altura do oval generoso (`1 : 1.32`).
   static const double ovalHeightToWidthRatio = 1.32;
-  static const double ovalWidthFraction = 0.66;
-  static const double ovalMaxHeightFraction = 0.48;
+  static const double ovalWidthFraction = 0.72;
+  static const double ovalMaxHeightFraction = 0.52;
 
   final Color scrimColor;
   final Color contourColor;

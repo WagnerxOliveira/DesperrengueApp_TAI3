@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 
 import 'package:desperrengue_app/core/ui/design_system/design_system.dart';
 
-/// Fundo editorial Porcelain com aura radial suave no topo da jornada de cadastro.
+/// Fundo editorial Porcelain / Obsidian com aura radial dupla no topo e rodapé
+/// da jornada de cadastro.
 ///
-/// Mantém base neutra (`tk.background`) com gradiente radial translúcido em
-/// [RepaintBoundary], preservando contraste WCAG 2.2 AA em temas claro e escuro,
-/// tanto no Modo Cliente quanto no Modo Profissional.
+/// Mantém base neutra (`tk.background`) com gradientes radiais translúcidos em
+/// [RepaintBoundary] (zero recomposição por frame), preservando contraste
+/// WCAG 2.2 AA em temas claro e escuro, tanto no Modo Cliente quanto Profissional.
 class KycAmbientBackdrop extends StatelessWidget {
   const KycAmbientBackdrop({
     super.key,
@@ -23,7 +24,9 @@ class KycAmbientBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final tk = context.tk;
     final auraColor = isProviderMode ? tk.providerAccent : tk.accent;
-    final peakAlpha = tk.isDark ? 0.08 : 0.05;
+    final counterAura = isProviderMode ? tk.clientAccent : tk.brand;
+    final peakAlpha = tk.isDark ? 0.11 : 0.06;
+    final counterAlpha = tk.isDark ? 0.06 : 0.03;
 
     return ColoredBox(
       color: tk.background,
@@ -33,19 +36,37 @@ class KycAmbientBackdrop extends StatelessWidget {
             child: IgnorePointer(
               child: ExcludeSemantics(
                 child: RepaintBoundary(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: RadialGradient(
-                        center: const Alignment(0, -1.10),
-                        radius: 1.05,
-                        colors: [
-                          auraColor.withValues(alpha: peakAlpha),
-                          auraColor.withValues(alpha: peakAlpha * 0.30),
-                          auraColor.withValues(alpha: 0),
-                        ],
-                        stops: const [0.0, 0.42, 1.0],
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(-0.15, -1.08),
+                            radius: 1.08,
+                            colors: [
+                              auraColor.withValues(alpha: peakAlpha),
+                              auraColor.withValues(alpha: peakAlpha * 0.32),
+                              auraColor.withValues(alpha: 0),
+                            ],
+                            stops: const [0.0, 0.44, 1.0],
+                          ),
+                        ),
                       ),
-                    ),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: const Alignment(0.85, 1.05),
+                            radius: 0.95,
+                            colors: [
+                              counterAura.withValues(alpha: counterAlpha),
+                              counterAura.withValues(alpha: 0),
+                            ],
+                            stops: const [0.0, 1.0],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -58,12 +79,10 @@ class KycAmbientBackdrop extends StatelessWidget {
   }
 }
 
-/// Cabeçalho de progresso unificado das etapas da jornada de configuração.
+/// Cabeçalho de progresso luminoso (Stepped Progress Dock) das 6 etapas.
 ///
-/// Exibe selo discreto do modo ativo, contador tabular com estimativa de tempo,
-/// barra segmentada animada respeitando `AppMotion.reduced` e o nome limpo da
-/// etapa atual. Reflui automaticamente em `Wrap` em viewports compactos ou com
-/// escala tipográfica aumentada.
+/// Exibe selo do modo ativo, contador tabular com tempo estimado, trilho
+/// segmentado com estágio ativo destacado, indicador da etapa atual e percentual.
 class KycJourneyProgressHeader extends StatelessWidget {
   const KycJourneyProgressHeader({
     super.key,
@@ -97,6 +116,7 @@ class KycJourneyProgressHeader extends StatelessWidget {
     final modeFg = isProviderMode ? tk.providerAccentInk : tk.clientAccentInk;
     final modeBg = isProviderMode ? tk.providerSoft : tk.clientSoft;
     final fillColor = isProviderMode ? tk.providerAccent : tk.accent;
+    final inkColor = isProviderMode ? tk.providerAccentInk : tk.accentInk;
     final trackColor = tk.isDark ? tk.border : tk.surfaceInset;
 
     final remainingTrimmed = estimatedRemaining.trim();
@@ -120,78 +140,123 @@ class KycJourneyProgressHeader extends StatelessWidget {
     );
 
     final useWrap = layout.isCompact || layout.isLargeText;
+    final hasStepName = stepName.trim().isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (useWrap)
-          SizedBox(
-            width: double.infinity,
-            child: Wrap(
-              spacing: AppSpace.s8,
-              runSpacing: AppSpace.s8,
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                modeChip,
-                counterText,
-              ],
-            ),
-          )
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Flexible(fit: FlexFit.loose, child: modeChip),
-              const SizedBox(width: AppSpace.s12),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    stepCounterLabel,
-                    textAlign: TextAlign.end,
-                    style: AppType.tabular(AppType.bodySm).copyWith(
-                      color: tk.textMuted,
-                      fontWeight: FontWeight.w600,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: tk.isDark
+            ? tk.surface.withValues(alpha: 0.92)
+            : tk.card.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: tk.border.withValues(alpha: tk.isDark ? 0.85 : 0.95),
+        ),
+        boxShadow: tk.isDark ? const [] : tk.elevation(1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpace.s12,
+          vertical: AppSpace.s4,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (useWrap)
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  spacing: AppSpace.s8,
+                  runSpacing: AppSpace.s2,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    modeChip,
+                    counterText,
+                  ],
+                ),
+              )
+            else
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(fit: FlexFit.loose, child: modeChip),
+                  const SizedBox(width: AppSpace.s12),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        stepCounterLabel,
+                        textAlign: TextAlign.end,
+                        style: AppType.tabular(AppType.bodySm).copyWith(
+                          color: tk.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
+              ),
+            const SizedBox(height: AppSpace.s4 + 2),
+            Semantics(
+              label: 'Progresso da configuração: etapa $safeStep de $safeTotal',
+              value: '$percent por cento',
+              excludeSemantics: true,
+              child: Row(
+                children: [
+                  for (var i = 0; i < safeTotal; i++) ...[
+                    if (i > 0) const SizedBox(width: AppSpace.s4),
+                    Expanded(
+                      child: _ProgressSegment(
+                        filled: i < safeStep,
+                        isCurrent: i == safeStep - 1,
+                        fillColor: fillColor,
+                        trackColor: trackColor,
+                        reduced: reduced,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (hasStepName) ...[
+              const SizedBox(height: AppSpace.s4),
+              Row(
+                children: [
+                  ExcludeSemantics(
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: inkColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.s8),
+                  Expanded(
+                    child: Text(
+                      stepName,
+                      style: AppType.bodySm.copyWith(
+                        color: tk.text,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.s8),
+                  Text(
+                    '$percent%',
+                    style: AppType.tabular(AppType.bodySm).copyWith(
+                      color: inkColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ],
-          ),
-        const SizedBox(height: AppSpace.s12),
-        Semantics(
-          label: 'Progresso da configuração: etapa $safeStep de $safeTotal',
-          value: '$percent por cento',
-          excludeSemantics: true,
-          child: Row(
-            children: [
-              for (var i = 0; i < safeTotal; i++) ...[
-                if (i > 0) const SizedBox(width: AppSpace.s4),
-                Expanded(
-                  child: _ProgressSegment(
-                    filled: i < safeStep,
-                    fillColor: fillColor,
-                    trackColor: trackColor,
-                    reduced: reduced,
-                  ),
-                ),
-              ],
-            ],
-          ),
+          ],
         ),
-        if (stepName.trim().isNotEmpty) ...[
-          const SizedBox(height: AppSpace.s8),
-          Text(
-            stepName,
-            style: AppType.bodySm.copyWith(
-              color: tk.textMuted,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ],
+      ),
     );
   }
 }
@@ -199,12 +264,14 @@ class KycJourneyProgressHeader extends StatelessWidget {
 class _ProgressSegment extends StatelessWidget {
   const _ProgressSegment({
     required this.filled,
+    required this.isCurrent,
     required this.fillColor,
     required this.trackColor,
     required this.reduced,
   });
 
   final bool filled;
+  final bool isCurrent;
   final Color fillColor;
   final Color trackColor;
   final bool reduced;
@@ -223,7 +290,7 @@ class _ProgressSegment extends StatelessWidget {
     return ClipRRect(
       borderRadius: radius,
       child: Container(
-        height: 4.5,
+        height: isCurrent ? 5.5 : 4.5,
         color: trackColor,
         alignment: Alignment.centerLeft,
         child: reduced
@@ -245,8 +312,9 @@ class _ProgressSegment extends StatelessWidget {
   }
 }
 
-/// Bloco editorial no topo de cada etapa com emblema estilizado ou customizado,
-/// título de destaque, subtítulo acolhedor e micro-selo de confiança opcional.
+/// Bloco editorial no topo de cada etapa com emblema estilizado compacto,
+/// título de destaque em Plus Jakarta Sans, subtítulo objetivo e micro-selo
+/// de confiança opcional.
 class KycStepHeroHeader extends StatelessWidget {
   const KycStepHeroHeader({
     super.key,
@@ -270,35 +338,33 @@ class KycStepHeroHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final emblem = leadingEmblem ??
-        (icon == null
-            ? null
-            : ExcludeSemantics(
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: tk.accentSoft.withValues(alpha: tk.isDark ? 0.55 : 0.65),
-                    border: Border.all(
-                      color: tk.accentInk.withValues(alpha: tk.isDark ? 0.28 : 0.16),
-                    ),
-                  ),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: tk.accentSoft,
-                      border: Border.all(
-                        color: tk.accentInk.withValues(alpha: tk.isDark ? 0.22 : 0.12),
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(icon, size: 24, color: tk.accentInk),
-                    ),
-                  ),
+    final layout = context.layout;
+
+    final iconSquircle = icon == null
+        ? null
+        : ExcludeSemantics(
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(13),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    tk.accentSoft,
+                    Color.lerp(tk.accentSoft, tk.card, 0.35)!,
+                  ],
                 ),
-              ));
+                border: Border.all(
+                  color: tk.accentInk.withValues(alpha: tk.isDark ? 0.34 : 0.20),
+                ),
+              ),
+              child: Center(
+                child: Icon(icon, size: 21, color: tk.accentInk),
+              ),
+            ),
+          );
 
     final titleStyle =
         (isDisplayTitle ? AppType.display : AppType.headline).copyWith(
@@ -306,26 +372,51 @@ class KycStepHeroHeader extends StatelessWidget {
     );
 
     final badgeText = trustBadgeText?.trim() ?? '';
+    final useInlineHeader =
+        leadingEmblem == null && iconSquircle != null && !layout.isLargeText;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (emblem != null) ...[
-          emblem,
-          const SizedBox(height: AppSpace.s16),
+        if (leadingEmblem != null) ...[
+          leadingEmblem!,
+          const SizedBox(height: AppSpace.s8),
+          Semantics(
+            header: true,
+            child: Text(title, style: titleStyle),
+          ),
+        ] else if (useInlineHeader) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              iconSquircle,
+              const SizedBox(width: AppSpace.s12),
+              Expanded(
+                child: Semantics(
+                  header: true,
+                  child: Text(title, style: titleStyle),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          if (iconSquircle != null) ...[
+            iconSquircle,
+            const SizedBox(height: AppSpace.s8),
+          ],
+          Semantics(
+            header: true,
+            child: Text(title, style: titleStyle),
+          ),
         ],
-        Semantics(
-          header: true,
-          child: Text(title, style: titleStyle),
-        ),
-        const SizedBox(height: AppSpace.s8),
+        const SizedBox(height: AppSpace.s4),
         Text(
           subtitle,
           style: AppType.bodySm.copyWith(color: tk.textMuted),
         ),
         if (badgeText.isNotEmpty) ...[
-          const SizedBox(height: AppSpace.s12),
+          const SizedBox(height: AppSpace.s8),
           KycTrustMicroBadge(
             text: badgeText,
             icon: trustBadgeIcon ?? Icons.lock_outline_rounded,
@@ -426,10 +517,17 @@ class KycPorcelainSectionCard extends StatelessWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                color: tk.accentSoft,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    tk.accentSoft,
+                    Color.lerp(tk.accentSoft, tk.card, 0.35)!,
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
                 border: Border.all(
-                  color: tk.accentInk.withValues(alpha: tk.isDark ? 0.24 : 0.14),
+                  color: tk.accentInk.withValues(alpha: tk.isDark ? 0.28 : 0.16),
                 ),
               ),
               child: Icon(icon, size: 19, color: tk.accentInk),
@@ -469,8 +567,15 @@ class KycPorcelainSectionCard extends StatelessWidget {
             ? constraints.maxWidth
             : layout.width;
         final singleRowHeader = effectiveWidth >= 480 && !layout.isLargeText;
+        final inlineLeadingOnly = !singleRowHeader &&
+            statusChip == null &&
+            leadingIcon != null &&
+            !layout.isLargeText;
         final cardPadding = singleRowHeader
-            ? const EdgeInsets.all(AppSpace.cardLarge)
+            ? const EdgeInsets.symmetric(
+                horizontal: AppSpace.cardLarge,
+                vertical: AppSpace.s16,
+              )
             : EdgeInsets.symmetric(
                 horizontal:
                     effectiveWidth < 390 ? AppSpace.card : AppSpace.cardLarge,
@@ -498,6 +603,15 @@ class KycPorcelainSectionCard extends StatelessWidget {
                       const SizedBox(width: AppSpace.s12),
                       Flexible(fit: FlexFit.loose, child: statusChip),
                     ],
+                  ],
+                )
+              else if (inlineLeadingOnly)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    leadingIcon,
+                    const SizedBox(width: AppSpace.s12),
+                    Expanded(child: titleBlock),
                   ],
                 )
               else ...[
@@ -999,4 +1113,107 @@ class _DocumentCardWireframePainter extends CustomPainter {
       old.border != border ||
       old.textMuted != textMuted ||
       old.isDark != isDark;
+}
+
+/// Linha numerada com medalhão circular de acento, instrução objetiva e conector
+/// vertical opcional entre etapas sequenciais.
+class KycNumberedStepRow extends StatelessWidget {
+  const KycNumberedStepRow({
+    super.key,
+    required this.stepNumber,
+    required this.description,
+    this.title,
+    this.icon,
+    this.showConnector = false,
+  });
+
+  final String stepNumber;
+  final String? title;
+  final String description;
+  final IconData? icon;
+  final bool showConnector;
+
+  @override
+  Widget build(BuildContext context) {
+    final tk = context.tk;
+    final hasTitle = title != null && title!.trim().isNotEmpty;
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ExcludeSemantics(
+            child: Column(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        tk.accentSoft,
+                        Color.lerp(tk.accentSoft, tk.card, 0.30)!,
+                      ],
+                    ),
+                    border: Border.all(
+                      color: tk.accentInk.withValues(alpha: tk.isDark ? 0.34 : 0.22),
+                    ),
+                  ),
+                  child: Center(
+                    child: icon != null
+                        ? Icon(icon, size: 15, color: tk.accentInk)
+                        : Text(
+                            stepNumber,
+                            style: AppType.tabular(AppType.bodySm).copyWith(
+                              color: tk.accentInk,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                  ),
+                ),
+                if (showConnector)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: AppSpace.s4),
+                      child: Container(
+                        width: 1.5,
+                        color: tk.border.withValues(alpha: tk.isDark ? 0.80 : 0.90),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpace.s12),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: showConnector ? AppSpace.s12 : 0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (hasTitle) ...[
+                    Text(
+                      title!,
+                      style: AppType.bodyStrong.copyWith(color: tk.text),
+                    ),
+                    const SizedBox(height: AppSpace.s2),
+                  ],
+                  Text(
+                    description,
+                    style: AppType.bodySm.copyWith(color: tk.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

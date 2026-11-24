@@ -973,7 +973,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         estimatedRemaining: _estimatedRemainingFor(_step),
                         isProviderMode: isProviderMode,
                       ),
-                      const SizedBox(height: AppSpace.s16),
+                      const SizedBox(height: AppSpace.s8 + 2),
                       AnimatedSwitcher(
                         duration: AppMotion.d(context, AppMotion.page),
                         reverseDuration: AppMotion.d(
@@ -1009,7 +1009,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         child: activeStepChild,
                       ),
                       if (_error != null) ...[
-                        const SizedBox(height: AppSpace.s16),
+                        const SizedBox(height: AppSpace.s12),
                         InfoBanner(_error!, tone: BannerTone.danger),
                       ],
                     ],
@@ -1119,24 +1119,58 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         AppCard(
           key: const ValueKey('step0-welcome-hero-card'),
           variant: AppCardVariant.tonal,
+          color: tk.isDark ? tk.card : tk.surface,
           radius: AppGeometry.heroRadius,
-          borderColor: tk.accentInk.withValues(alpha: tk.isDark ? 0.30 : 0.18),
-          padding: const EdgeInsets.all(AppSpace.card),
+          borderColor: tk.accentInk.withValues(alpha: tk.isDark ? 0.34 : 0.22),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpace.card,
+            vertical: AppSpace.s12,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              KycStepHeroHeader(
-                isDisplayTitle: true,
-                leadingEmblem: AppAvatar(
-                  name: widget.profile.firstName,
-                  radius: 22,
-                ),
-                title: 'Bem-vindo, ${widget.profile.firstName}!',
-                subtitle: isProviderTarget
-                    ? 'Configure sua conta profissional com validação unificada (válida por 6 meses também no modo Cliente).'
-                    : 'Vamos configurar sua conta de cliente com validação de identidade para proteger seus pedidos e sua garantia.',
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2.5),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: tk.accentInk.withValues(alpha: 0.45),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: AppAvatar(
+                      name: widget.profile.firstName,
+                      radius: 22,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpace.s12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Semantics(
+                          header: true,
+                          child: Text(
+                            'Bem-vindo, ${widget.profile.firstName}!',
+                            style: AppType.headline.copyWith(color: tk.text),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpace.s2),
+                        Text(
+                          isProviderTarget
+                              ? 'Ative seu perfil profissional — validação única para Cliente e Profissional por 6 meses.'
+                              : 'Complete 3 passos rápidos para pedir serviços com segurança e garantia.',
+                          style: AppType.bodySm.copyWith(color: tk.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: AppSpace.s8),
+              const SizedBox(height: AppSpace.s12),
               const Wrap(
                 spacing: AppSpace.s8,
                 runSpacing: AppSpace.s8,
@@ -1158,13 +1192,13 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
             ],
           ),
         ),
-        const SizedBox(height: AppSpace.s12),
+        const SizedBox(height: AppSpace.s8),
 
         // 2. Cartão Porcelain "Seus dados pessoais" com contador vivo
         KycPorcelainSectionCard(
           key: const ValueKey('step0-personal-data-card'),
           title: 'Seus dados pessoais',
-          subtitle: 'Preencha exatamente como consta no seu documento oficial.',
+          subtitle: 'Use os mesmos dados do seu documento oficial.',
           icon: Icons.person_outline_rounded,
           statusChipLabel: progressChipLabel,
           statusTone: progressTone,
@@ -1185,7 +1219,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 prefixIcon: Icons.person_outline,
                 success: nameValid,
               ),
-              const SizedBox(height: AppSpace.s12),
+              const SizedBox(height: AppSpace.s8),
               AppTextField(
                 key: const ValueKey('client-setup-phone'),
                 controller: _phone,
@@ -1194,8 +1228,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                 label: 'Telefone com DDD',
                 hint: '(35) 99999-9999',
                 prefixIcon: Icons.phone_outlined,
-                helper:
-                    'Obrigatório para avisos de chegada e segurança do pedido.',
+                helper: 'Para avisos de chegada e segurança do pedido.',
                 success: phoneValid,
               ),
               const SizedBox(height: AppSpace.s12),
@@ -1213,7 +1246,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     : null,
                 helper: cpfCompleteValid
                     ? 'CPF válido e verificado com sucesso'
-                    : 'Utilizado para cruzar com seu documento oficial e proteger seu PIX.',
+                    : 'Confere com seu documento e protege seus pagamentos via PIX.',
               ),
             ],
           ),
@@ -1369,15 +1402,15 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               ? 'Qual é sua localização base de atendimento?'
               : 'Onde você precisa do serviço?',
           subtitle: isProviderTarget
-              ? 'Usamos sua cidade e endereço base para conectar você aos chamados próximos na sua região com total segurança.'
-              : 'O endereço completo só é compartilhado com o profissional contratado.',
+              ? 'Define sua cidade e região para receber chamados próximos.'
+              : 'Use o GPS para preencher ou digite seu CEP.',
           trustBadgeText: isProviderTarget
               ? 'Sua localização exata nunca fica pública no mapa'
               : 'Endereço oculto até você aprovar o orçamento',
           trustBadgeIcon: Icons.lock_outline_rounded,
         ),
         SizedBox(
-          height: context.layout.width >= 520 ? AppSpace.s40 : AppSpace.s24,
+          height: context.layout.width >= 520 ? AppSpace.s12 : AppSpace.s16,
         ),
         AddressForm(
           initial: _address.isEmpty ? null : _address,
@@ -1409,43 +1442,60 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           icon: Icons.face_retouching_natural_rounded,
           title: 'Prova de Vida Facial',
           subtitle:
-              'Antes de abrir a câmera, confira as orientações abaixo para confirmar sua identidade com tranquilidade em poucos segundos.',
+              'Faça 3 movimentos simples na câmera para confirmar sua identidade em segundos.',
           trustBadgeText: 'Protegido pela LGPD · Válido por 6 meses',
           trustBadgeIcon: Icons.verified_user_outlined,
         ),
-        const SizedBox(height: AppSpace.s20),
+        const SizedBox(height: AppSpace.s16),
         KeyedSubtree(
           key: const ValueKey('liveness-prep-card'),
           child: KycPorcelainSectionCard(
             title: 'Prepare-se para a câmera ao vivo',
-            subtitle:
-                'A câmera só será aberta quando você tocar no botão abaixo.',
+            subtitle: 'A câmera só abre quando você tocar no botão abaixo.',
+            icon: Icons.videocam_outlined,
             statusChipLabel: '3 passos simples',
             statusTone: AppTone.accent,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Center(child: KycFaceIdIllustration(size: 108)),
-                const SizedBox(height: AppSpace.s20),
-                const _LivenessPrepTipRow(
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(AppSpace.s12),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          tk.accentSoft,
+                          tk.accentSoft.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                    child: const KycFaceIdIllustration(size: 100),
+                  ),
+                ),
+                const SizedBox(height: AppSpace.s16),
+                const KycNumberedStepRow(
+                  stepNumber: '1',
                   icon: Icons.wb_sunny_outlined,
-                  title: 'Iluminação de frente para o rosto',
+                  title: 'Luz de frente para o rosto',
                   description:
-                      'Escolha um local bem iluminado e evite ficar contra a luz de janelas ou lâmpadas.',
+                      'Escolha um local iluminado e evite janelas ou lâmpadas atrás de você.',
+                  showConnector: true,
                 ),
-                const SizedBox(height: AppSpace.s12),
-                const _LivenessPrepTipRow(
+                const KycNumberedStepRow(
+                  stepNumber: '2',
                   icon: Icons.visibility_outlined,
-                  title: 'Sem óculos escuros ou acessórios',
+                  title: 'Rosto totalmente visível',
                   description:
-                      'Mantenha o rosto descoberto e certifique-se de que apenas você apareça na câmera.',
+                      'Retire óculos escuros ou boné e apareça sozinho na tela.',
+                  showConnector: true,
                 ),
-                const SizedBox(height: AppSpace.s12),
-                const _LivenessPrepTipRow(
+                const KycNumberedStepRow(
+                  stepNumber: '3',
                   icon: Icons.motion_photos_on_outlined,
-                  title: '3 movimentos simples ao vivo',
+                  title: '3 movimentos rápidos',
                   description:
-                      'Enquadre o rosto na moldura, pisque os olhos e faça um leve movimento com a cabeça.',
+                      'Centralize o rosto, pisque devagar e vire levemente a cabeça.',
                 ),
                 const SizedBox(height: AppSpace.s20),
                 AppButton(
@@ -1570,7 +1620,8 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         const KycStepHeroHeader(
           icon: Icons.badge_outlined,
           title: 'Validação Oficial do Documento',
-          subtitle: 'Fotografe a frente e o verso com boa iluminação.',
+          subtitle:
+              'Escolha o documento e fotografe frente e verso em local iluminado e sem reflexo.',
           trustBadgeText: 'Leitura automática segura',
           trustBadgeIcon: Icons.shield_outlined,
         ),
@@ -1578,29 +1629,66 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
         KycPorcelainSectionCard(
           key: const ValueKey('doc-type-selector-card'),
           title: 'Qual documento você vai usar?',
+          subtitle: 'Recomendamos CNH ou CIN para leitura mais rápida.',
+          icon: Icons.credit_card_rounded,
           child: Wrap(
             spacing: AppSpace.s8,
-            runSpacing: AppSpace.s4,
+            runSpacing: AppSpace.s8,
             children: [
               for (final t in OfficialDocumentType.values)
-                ChoiceChip(
-                  key: ValueKey('doc-type-${t.code}'),
-                  tooltip: t.label,
-                  materialTapTargetSize: MaterialTapTargetSize.padded,
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s8),
-                  labelPadding: const EdgeInsets.symmetric(
-                    horizontal: AppSpace.s4,
-                  ),
-                  label: Text(t.code),
-                  selected: _docType == t,
-                  onSelected: (_) {
-                    setState(() {
-                      _docType = t;
-                      _ocrResult = null;
-                    });
-                    if (_docFrontBytes != null && _docBackBytes != null) {
-                      unawaited(_runForensicDocumentOcrValidation());
-                    }
+                Builder(
+                  builder: (context) {
+                    final selected = _docType == t;
+                    return ChoiceChip(
+                      key: ValueKey('doc-type-${t.code}'),
+                      tooltip: t.label,
+                      selected: selected,
+                      showCheckmark: false,
+                      backgroundColor: tk.surface,
+                      selectedColor: tk.accent,
+                      side: BorderSide(
+                        color: selected
+                            ? tk.accent
+                            : tk.border.withValues(alpha: tk.isDark ? 0.9 : 1.0),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppGeometry.pillRadius),
+                      ),
+                      materialTapTargetSize: MaterialTapTargetSize.padded,
+                      visualDensity: VisualDensity.standard,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpace.s8,
+                        vertical: AppSpace.s4,
+                      ),
+                      labelPadding: const EdgeInsets.symmetric(
+                        horizontal: AppSpace.s4,
+                      ),
+                      avatar: selected
+                          ? Icon(
+                              Icons.check_circle_rounded,
+                              size: 16,
+                              color: AppTokens.onColor(tk.accent),
+                            )
+                          : null,
+                      label: Text(
+                        t.code,
+                        style: AppType.bodyStrong.copyWith(
+                          color: selected
+                              ? AppTokens.onColor(tk.accent)
+                              : tk.text,
+                        ),
+                      ),
+                      onSelected: (_) {
+                        setState(() {
+                          _docType = t;
+                          _ocrResult = null;
+                        });
+                        if (_docFrontBytes != null && _docBackBytes != null) {
+                          unawaited(_runForensicDocumentOcrValidation());
+                        }
+                      },
+                    );
                   },
                 ),
             ],
@@ -1624,7 +1712,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
               key: const ValueKey('capture-doc-back'),
               isFront: false,
               title: '2. Verso do documento',
-              subtitle: 'CPF e código',
+              subtitle: 'CPF e verso',
               validatedBadgeLabel: 'Verso validado',
               imageBytes: _docBackBytes,
               onTap: () => _captureDocumentSide(isFront: false),
@@ -1717,9 +1805,11 @@ class _WelcomeJourneyPill extends StatelessWidget {
     final tk = context.tk;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: tk.surfaceAt(1),
+        color: tk.isDark ? tk.surface : tk.card,
         borderRadius: BorderRadius.circular(AppGeometry.pillRadius),
-        border: Border.all(color: tk.border),
+        border: Border.all(
+          color: tk.accentInk.withValues(alpha: tk.isDark ? 0.28 : 0.16),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -1743,55 +1833,6 @@ class _WelcomeJourneyPill extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _LivenessPrepTipRow extends StatelessWidget {
-  const _LivenessPrepTipRow({
-    required this.icon,
-    required this.title,
-    required this.description,
-  });
-
-  final IconData icon;
-  final String title;
-  final String description;
-
-  @override
-  Widget build(BuildContext context) {
-    final tk = context.tk;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: AppGeometry.iconTileSize,
-          height: AppGeometry.iconTileSize,
-          decoration: BoxDecoration(
-            color: tk.surface,
-            borderRadius: BorderRadius.circular(AppGeometry.iconTileRadius),
-            border: Border.all(color: tk.border),
-          ),
-          child: Icon(icon, size: 20, color: tk.accentInk),
-        ),
-        const SizedBox(width: AppSpace.s12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppType.bodyStrong.copyWith(color: tk.text),
-              ),
-              const SizedBox(height: AppSpace.s2),
-              Text(
-                description,
-                style: AppType.bodySm.copyWith(color: tk.textMuted),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1900,7 +1941,9 @@ class _DocumentCaptureCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: tk.surfaceInset,
                 borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
-                border: Border.all(color: tk.border),
+                border: Border.all(
+                  color: tk.accentInk.withValues(alpha: tk.isDark ? 0.28 : 0.18),
+                ),
               ),
               child: Center(
                 child: KycDocumentCardWireframe(
@@ -1928,7 +1971,7 @@ class _DocumentCaptureCard extends StatelessWidget {
             Text(
               'Toque para refazer',
               textAlign: TextAlign.center,
-              style: AppType.caption.copyWith(
+              style: AppType.bodySm.copyWith(
                 color: tk.successInk,
                 fontWeight: FontWeight.w600,
               ),

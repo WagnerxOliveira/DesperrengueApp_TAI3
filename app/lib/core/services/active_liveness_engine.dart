@@ -114,29 +114,31 @@ enum LivenessCueKind {
 @immutable
 class ActiveLivenessConfig {
   const ActiveLivenessConfig({
-    this.ovalWidthFraction = 0.66,
-    this.ovalCenterY = 0.47,
-    this.maxCenterOffset = 0.15,
-    this.minFaceWidthToOvalRatio = 0.42,
-    this.maxFaceWidthToOvalRatio = 0.94,
+    this.ovalWidthFraction = 0.72,
+    this.ovalCenterY = 0.50,
+    this.maxCenterOffset = 0.18,
+    this.maxCenterOffsetY = 0.20,
+    this.activeChallengeCenterOffset = 0.26,
+    this.minFaceWidthToOvalRatio = 0.35,
+    this.maxFaceWidthToOvalRatio = 1.06,
     this.minLuminance = 45.0,
     this.maxLuminance = 228.0,
     this.minSharpness = 6.0,
     this.maxBlueMonitorRatio = 0.22,
     this.minTextureMotionDelta = 0.12,
     this.maxConsecutiveStaticFrames = 4,
-    this.maxAbsenceBeforeResetMs = 1200,
-    this.centerRequiredFrames = 5,
-    this.centerMaxYawDeg = 14.0,
-    this.centerMaxPitchDeg = 16.0,
-    this.centerMaxRollDeg = 15.0,
-    this.centerMinEyeOpen = 0.58,
+    this.maxAbsenceBeforeResetMs = 1400,
+    this.centerRequiredFrames = 4,
+    this.centerMaxYawDeg = 16.0,
+    this.centerMaxPitchDeg = 18.0,
+    this.centerMaxRollDeg = 16.0,
+    this.centerMinEyeOpen = 0.48,
     this.blinkBaselineFrames = 2,
-    this.blinkBaselineMinEyeOpen = 0.55,
+    this.blinkBaselineMinEyeOpen = 0.48,
     this.blinkClosedMaxEyeOpen = 0.28,
-    this.blinkMaxYawDeg = 14.0,
+    this.blinkMaxYawDeg = 16.0,
     this.blinkReopenFrames = 2,
-    this.blinkReopenMinEyeOpen = 0.55,
+    this.blinkReopenMinEyeOpen = 0.48,
     this.blinkReopenTimeoutMs = 1800,
     this.turnTargetYawDeg = 18.0,
     this.turnWrongDirectionYawDeg = 12.0,
@@ -144,15 +146,23 @@ class ActiveLivenessConfig {
     this.turnRequiredFrames = 3,
     this.returnMaxYawDeg = 6.5,
     this.returnMaxPitchDeg = 8.5,
-    this.returnMinEyeOpen = 0.55,
+    this.returnMinEyeOpen = 0.48,
     this.returnRequiredFrames = 3,
   });
 
   final double ovalWidthFraction;
 
-  /// Centro vertical do oval no viewport (`0.47`, sincronizado com `ActiveLivenessOvalPainter`).
+  /// Centro vertical esperado do bounding box facial (queixo→sobrancelha) quando
+  /// a cabeça inteira está centralizada visualmente no oval em `y = 0.47`.
   final double ovalCenterY;
   final double maxCenterOffset;
+
+  /// Tolerância vertical ergonômica na Etapa 1 (compensa testa/cabelo acima do bounding box).
+  final double maxCenterOffsetY;
+
+  /// Tolerância de centralização durante os desafios ativos (Etapas 2 e 3),
+  /// evitando que o deslocamento natural ao girar a cabeça 20° lute contra o usuário.
+  final double activeChallengeCenterOffset;
   final double minFaceWidthToOvalRatio;
   final double maxFaceWidthToOvalRatio;
   final double minLuminance;
@@ -302,13 +312,18 @@ class ActiveLivenessStateMachine {
   ActiveLivenessSnapshot get currentSnapshot => _currentSnapshot;
 
   /// Mapeia probabilidade de olho aberto `[0.0..1.0]` para a escala EAR equivalente
-  /// `[0.12..0.345]` compatível com `DocumentOcrAndLivenessService.detectHumanBlinkSequence`:
-  /// - `>= 0.55` -> `>= 0.24375` (`> 0.24` aberto)
-  /// - `<= 0.28` -> `<= 0.1830` (`< 0.185` fechado)
-  /// - `>= 0.55` -> `>= 0.24375` (`> 0.24` reaberto)
+  /// `[0.12..0.340]` compatível com `DocumentOcrAndLivenessService.detectHumanBlinkSequence`:
+  /// - `<= 0.28` -> `[0.120..0.180]` (`< 0.185` fechado)
+  /// - `>= 0.48` -> `[0.245..0.340]` (`> 0.24` aberto — acolhe olhos mais cerrados/óculos)
   static double eyeOpenProbabilityToEar(double eyeOpenProbability) {
     final double clamped = eyeOpenProbability.clamp(0.0, 1.0);
-    return 0.12 + (clamped * 0.225);
+    if (clamped <= 0.28) {
+      return 0.12 + (clamped / 0.28) * 0.06;
+    }
+    if (clamped >= 0.48) {
+      return 0.245 + ((clamped - 0.48) / 0.52) * 0.095;
+    }
+    return 0.18 + ((clamped - 0.28) / 0.20) * 0.065;
   }
 
   /// Reinicia completamente a sessão para a Etapa 1 (opcionalmente sorteando nova direção).
@@ -468,9 +483,26 @@ class ActiveLivenessStateMachine {
     }
 
     // 8. Enquadramento real dentro do oval (distância e centralização).
+    // Durante desafios ativos (piscar / girar cabeça 20° / retornar), relaxamos
+    // sutilmente a margem geométrica para que o deslocamento natural do rosto
+    // ao virar a cabeça não brigue com o usuário nem quebre a sequência.
+    final bool inActiveChallenge = _stage != LivenessStage.centerFaceInOval;
+    final double minWidthRatio = inActiveChallenge
+        ? math.min(config.minFaceWidthToOvalRatio, 0.30)
+        : config.minFaceWidthToOvalRatio;
+    final double maxWidthRatio = inActiveChallenge
+        ? math.max(config.maxFaceWidthToOvalRatio, 1.14)
+        : config.maxFaceWidthToOvalRatio;
+    final double allowedOffsetX = inActiveChallenge
+        ? config.activeChallengeCenterOffset
+        : config.maxCenterOffset;
+    final double allowedOffsetY = inActiveChallenge
+        ? config.activeChallengeCenterOffset
+        : config.maxCenterOffsetY;
+
     final double faceWidthToOval =
         obs.normalizedBox.width / config.ovalWidthFraction;
-    if (faceWidthToOval < config.minFaceWidthToOvalRatio) {
+    if (faceWidthToOval < minWidthRatio) {
       _decayStageStreak();
       _currentSnapshot = _buildSnapshot(
         contourState: LivenessContourState.invalidRed,
@@ -480,7 +512,7 @@ class ActiveLivenessStateMachine {
       );
       return _currentSnapshot;
     }
-    if (faceWidthToOval > config.maxFaceWidthToOvalRatio) {
+    if (faceWidthToOval > maxWidthRatio) {
       _decayStageStreak();
       _currentSnapshot = _buildSnapshot(
         contourState: LivenessContourState.invalidRed,
@@ -493,8 +525,7 @@ class ActiveLivenessStateMachine {
 
     final double dx = obs.normalizedBox.center.dx - 0.50;
     final double dy = obs.normalizedBox.center.dy - config.ovalCenterY;
-    if (dx.abs() > config.maxCenterOffset ||
-        dy.abs() > config.maxCenterOffset) {
+    if (dx.abs() > allowedOffsetX || dy.abs() > allowedOffsetY) {
       _decayStageStreak();
       // Coordenadas já estão no espaço espelhado natural da câmera frontal:
       // dx < -tol -> rosto à esquerda na tela -> mover para a direita;
@@ -503,11 +534,11 @@ class ActiveLivenessStateMachine {
       // dy > +tol -> rosto abaixo na moldura  -> levantar o rosto.
       final String directionalInstruction;
       if (dx.abs() >= dy.abs()) {
-        directionalInstruction = dx < -config.maxCenterOffset
+        directionalInstruction = dx < -allowedOffsetX
             ? 'Centralize movendo o rosto um pouco para a direita'
             : 'Centralize movendo o rosto um pouco para a esquerda';
       } else {
-        directionalInstruction = dy < -config.maxCenterOffset
+        directionalInstruction = dy < -allowedOffsetY
             ? 'Abaixe um pouco o rosto na moldura'
             : 'Levante um pouco o rosto na moldura';
       }
@@ -558,7 +589,7 @@ class ActiveLivenessStateMachine {
         rightEye >= config.centerMinEyeOpen;
 
     if (!poseNeutral || !eyesOpen) {
-      _stageStreak = 0;
+      _decayStageStreak();
       _currentSnapshot = _buildSnapshot(
         contourState: LivenessContourState.invalidRed,
         instruction: !poseNeutral

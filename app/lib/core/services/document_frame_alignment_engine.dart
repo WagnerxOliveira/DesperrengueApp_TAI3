@@ -1,11 +1,61 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Rect, Size;
 
 import 'package:image/image.dart' as img;
 
 import '../security/perceptual_hash_guard.dart';
 import '../utils/off_thread.dart';
 import 'document_ocr_and_liveness_service.dart';
+
+/// Projeta o retângulo guia desenhado na tela ([cutoutRect] dentro de
+/// [viewportSize]) para o retângulo normalizado `[0..1]` **exato** no quadro
+/// cru (já verticalizado) da câmera após o recorte `BoxFit.cover` centralizado.
+///
+/// Garante correspondência 1:1 pixel a pixel entre o que o usuário enquadra na
+/// tela (Frente e Verso, horizontal ou vertical, em qualquer celular 16:9,
+/// 19.5:9, 20:9, tablet ou Web) e a área validada e recortada na captura final.
+Rect projectViewportCutoutToSensorRect({
+  required Size viewportSize,
+  required Rect cutoutRect,
+  required double cameraAspect,
+}) {
+  if (viewportSize.width <= 0 ||
+      viewportSize.height <= 0 ||
+      cameraAspect <= 0 ||
+      !cameraAspect.isFinite) {
+    return const Rect.fromLTWH(0.06, 0.22, 0.88, 0.56);
+  }
+
+  final double viewportAspect = viewportSize.width / viewportSize.height;
+  final double vLeft = (cutoutRect.left / viewportSize.width).clamp(0.0, 0.95);
+  final double vRight = (cutoutRect.right / viewportSize.width).clamp(vLeft + 0.05, 1.0);
+  final double vTop = (cutoutRect.top / viewportSize.height).clamp(0.0, 0.95);
+  final double vBottom = (cutoutRect.bottom / viewportSize.height).clamp(vTop + 0.05, 1.0);
+
+  double sLeft = vLeft;
+  double sRight = vRight;
+  double sTop = vTop;
+  double sBottom = vBottom;
+
+  if ((cameraAspect - viewportAspect).abs() >= 0.005) {
+    if (cameraAspect > viewportAspect) {
+      // Portrait típico (câmera 3:4 em tela 9:20): BoxFit.cover recorta laterais do sensor.
+      final double visibleW = (viewportAspect / cameraAspect).clamp(0.15, 1.0);
+      final double cropX = (1.0 - visibleW) * 0.5;
+      sLeft = (cropX + vLeft * visibleW).clamp(0.0, 0.90);
+      sRight = (cropX + vRight * visibleW).clamp(sLeft + 0.10, 1.0);
+    } else {
+      // Paisagem / desktop largo: BoxFit.cover recorta topo e base do sensor.
+      final double visibleH = (cameraAspect / viewportAspect).clamp(0.15, 1.0);
+      final double cropY = (1.0 - visibleH) * 0.5;
+      sTop = (cropY + vTop * visibleH).clamp(0.0, 0.90);
+      sBottom = (cropY + vBottom * visibleH).clamp(sTop + 0.10, 1.0);
+    }
+  }
+
+  return Rect.fromLTRB(sLeft, sTop, sRight, sBottom);
+}
 
 /// Estado determinístico da validação óptica em tempo real de um quadro
 /// da câmera dentro do retângulo guia ISO/IEC 7810 ID-1.
@@ -193,6 +243,7 @@ class DocumentFrameAlignmentEngine {
     required bool isFront,
     bool isVerticalOrientation = false,
     Uint8List? referenceFrontBytes,
+    Rect? normalizedRoiRect,
   }) {
     return runOffMainThread(
       () => evaluateFrameBytes(
@@ -200,6 +251,7 @@ class DocumentFrameAlignmentEngine {
         isFront: isFront,
         isVerticalOrientation: isVerticalOrientation,
         referenceFrontBytes: referenceFrontBytes,
+        normalizedRoiRect: normalizedRoiRect,
       ),
     );
   }
@@ -210,6 +262,7 @@ class DocumentFrameAlignmentEngine {
     required bool isFront,
     bool isVerticalOrientation = false,
     Uint8List? referenceFrontBytes,
+    Rect? normalizedRoiRect,
   }) {
     if (frameBytes.isEmpty) {
       return const DocumentFrameAssessment(
@@ -225,8 +278,8 @@ class DocumentFrameAlignmentEngine {
       );
     }
 
-    final img.Image? decoded = img.decodeImage(frameBytes);
-    if (decoded == null) {
+    final img.Image? rawDecoded = img.decodeImage(frameBytes);
+    if (rawDecoded == null) {
       return const DocumentFrameAssessment(
         status: DocumentFrameStatus.noDocument,
         humanHint: 'Posicione o documento inteiro dentro do retângulo.',
@@ -240,11 +293,13 @@ class DocumentFrameAlignmentEngine {
       );
     }
 
+    final img.Image decoded = img.bakeOrientation(rawDecoded);
     return evaluateDecodedFrame(
       frame: decoded,
       isFront: isFront,
       isVerticalOrientation: isVerticalOrientation,
       referenceFrontBytes: referenceFrontBytes,
+      normalizedRoiRect: normalizedRoiRect,
     );
   }
 
@@ -255,6 +310,7 @@ class DocumentFrameAlignmentEngine {
     bool isVerticalOrientation = false,
     Uint8List? referenceFrontBytes,
     img.Image? referenceFrontDecoded,
+    Rect? normalizedRoiRect,
   }) {
     if (frame.width < 40 || frame.height < 40) {
       return const DocumentFrameAssessment(
@@ -288,11 +344,19 @@ class DocumentFrameAlignmentEngine {
     final int w = work.width;
     final int h = work.height;
 
-    // Mesmas proporções da moldura ISO ID-1 usadas no recorte final
-    final double leftRatio = isVerticalOrientation ? 0.13 : 0.06;
-    final double topRatio = isVerticalOrientation ? 0.16 : 0.22;
-    final double widthRatio = isVerticalOrientation ? 0.74 : 0.88;
-    final double heightRatio = isVerticalOrientation ? 0.68 : 0.56;
+    // Usa o retângulo exato projetado do viewport para o sensor quando informado
+    // (correspondência 1:1 entre moldura visível e recorte final em qualquer tela).
+    final bool useExactRect = normalizedRoiRect != null &&
+        normalizedRoiRect.width > 0.12 &&
+        normalizedRoiRect.height > 0.12;
+    final double leftRatio =
+        useExactRect ? normalizedRoiRect.left : (isVerticalOrientation ? 0.13 : 0.06);
+    final double topRatio =
+        useExactRect ? normalizedRoiRect.top : (isVerticalOrientation ? 0.16 : 0.22);
+    final double widthRatio =
+        useExactRect ? normalizedRoiRect.width : (isVerticalOrientation ? 0.74 : 0.88);
+    final double heightRatio =
+        useExactRect ? normalizedRoiRect.height : (isVerticalOrientation ? 0.68 : 0.56);
 
     final int rx0 = (w * leftRatio).round().clamp(2, w - 10);
     final int ry0 = (h * topRatio).round().clamp(2, h - 10);
@@ -537,8 +601,36 @@ class DocumentFrameAlignmentEngine {
     }
 
     // B) Verifica se o documento está cortado / extrapolando para fora da moldura
+    //    ou deslocado deixando faixa vazia de mesa dentro do retângulo (Frente e Verso).
     final bool hasRichRoiContent = coreEdgeDensity >= 0.05 || coreStdDev >= 15.0;
-    final bool hasOverflowOutside =
+    final String? strictLeakHint = hasRichRoiContent
+        ? _detectStrictOutsideDocumentLeak(
+            gray: gray,
+            w: w,
+            h: h,
+            rx0: rx0,
+            ry0: ry0,
+            rx1: rx1,
+            ry1: ry1,
+            centerMean: centerMean,
+            extMean: extMeanLum,
+          )
+        : null;
+    final String? unfilledSideEarlyHint = hasRichRoiContent
+        ? _detectUnfilledInternalSideStrip(
+            gray: gray,
+            w: w,
+            h: h,
+            rx0: rx0,
+            ry0: ry0,
+            rx1: rx1,
+            ry1: ry1,
+            centerMean: centerMean,
+            extMean: extMeanLum,
+          )
+        : null;
+    final bool hasOverflowOutside = strictLeakHint != null ||
+        unfilledSideEarlyHint != null ||
         _detectOuterEdgeOverflow(
           gray: gray,
           w: w,
@@ -559,7 +651,8 @@ class DocumentFrameAlignmentEngine {
     if (edgesDetected < 4 && hasRichRoiContent && hasOverflowOutside) {
       return DocumentFrameAssessment(
         status: DocumentFrameStatus.outOfBounds,
-        humanHint:
+        humanHint: strictLeakHint ??
+            unfilledSideEarlyHint ??
             'Documento cortado nas bordas. Encaixe os 4 cantos dentro do retângulo.',
         edgeAlignmentScore: edgeAlignmentScore,
         interiorExteriorContrast: interiorExteriorContrast,
@@ -593,6 +686,63 @@ class DocumentFrameAlignmentEngine {
         status: DocumentFrameStatus.noDocument,
         humanHint:
             'Posicione o documento inteiro sobre uma superfície firme dentro do retângulo.',
+        edgeAlignmentScore: edgeAlignmentScore,
+        interiorExteriorContrast: interiorExteriorContrast,
+        laplacianSharpness: laplacian,
+        glareRatioPct: glarePct,
+        meanLuminance: meanLum,
+        contentDensityScore: contentDensityScore,
+        edgesDetectedCount: edgesDetected,
+      );
+    }
+
+    // C.2) Validação rigorosa de preenchimento dos 4 lados internos (Frente e Verso):
+    // Impede que um documento deslocado (ex.: cortado no topo e deixando 20% de mesa
+    // vazia embaixo, ou deslocado para uma lateral) fique verde mesmo que alguma
+    // linha interna/veio da mesa tenha acionado os 4 gradientes de borda.
+    final String? unfilledSideHint = _detectUnfilledInternalSideStrip(
+      gray: gray,
+      w: w,
+      h: h,
+      rx0: rx0,
+      ry0: ry0,
+      rx1: rx1,
+      ry1: ry1,
+      centerMean: centerMean,
+      extMean: extMeanLum,
+    );
+    if (unfilledSideHint != null) {
+      return DocumentFrameAssessment(
+        status: DocumentFrameStatus.outOfBounds,
+        humanHint: unfilledSideHint,
+        edgeAlignmentScore: edgeAlignmentScore,
+        interiorExteriorContrast: interiorExteriorContrast,
+        laplacianSharpness: laplacian,
+        glareRatioPct: glarePct,
+        meanLuminance: meanLum,
+        contentDensityScore: contentDensityScore,
+        edgesDetectedCount: edgesDetected,
+      );
+    }
+
+    // C.3) Validação de vazamento de documento para fora da moldura mesmo com 4 bordas:
+    // Se uma linha interna da CNH/RG enganou uma borda mas o papel/texto continua
+    // visivelmente para fora do retângulo, rejeita como documento cortado!
+    final String? clippedOutsideHint = _detectStrictOutsideDocumentLeak(
+      gray: gray,
+      w: w,
+      h: h,
+      rx0: rx0,
+      ry0: ry0,
+      rx1: rx1,
+      ry1: ry1,
+      centerMean: centerMean,
+      extMean: extMeanLum,
+    );
+    if (clippedOutsideHint != null) {
+      return DocumentFrameAssessment(
+        status: DocumentFrameStatus.outOfBounds,
+        humanHint: clippedOutsideHint,
         edgeAlignmentScore: edgeAlignmentScore,
         interiorExteriorContrast: interiorExteriorContrast,
         laplacianSharpness: laplacian,
@@ -704,6 +854,7 @@ class DocumentFrameAlignmentEngine {
       final bool duplicate = _isDuplicateOfFrontSide(
         currentFrame: frame,
         isVerticalOrientation: isVerticalOrientation,
+        normalizedRoiRect: normalizedRoiRect,
         referenceFrontBytes: referenceFrontBytes,
         referenceFrontDecoded: referenceFrontDecoded,
       );
@@ -952,9 +1103,134 @@ class DocumentFrameAlignmentEngine {
     return math.max(0.0, (sqSum / count) - (mean * mean));
   }
 
+  /// Verifica se alguma das 4 faixas periféricas internas do retângulo guia
+  /// está ocupada pelo fundo/mesa externa em vez do documento (ex.: CNH cortada
+  /// no topo deixando ~20% de mesa de madeira vazia na parte inferior).
+  static String? _detectUnfilledInternalSideStrip({
+    required Float64List gray,
+    required int w,
+    required int h,
+    required int rx0,
+    required int ry0,
+    required int rx1,
+    required int ry1,
+    required double centerMean,
+    required double extMean,
+  }) {
+    // Só aplica quando há contraste real entre documento e superfície externa.
+    final double docVsBgGap = (centerMean - extMean).abs();
+    if (docVsBgGap < 20.0) return null;
+
+    final int roiW = rx1 - rx0;
+    final int roiH = ry1 - ry0;
+    final int stripH = math.max(4, (roiH * 0.14).round());
+    final int stripW = math.max(4, (roiW * 0.12).round());
+    final int padX = math.max(2, (roiW * 0.10).round());
+    final int padY = math.max(2, (roiH * 0.10).round());
+
+    bool stripLooksLikeTable(int x0, int y0, int x1, int y1) {
+      if (x1 <= x0 + 2 || y1 <= y0 + 2) return false;
+      double sum = 0.0;
+      int count = 0;
+      for (int y = math.max(1, y0); y < math.min(h - 1, y1); y++) {
+        final int row = y * w;
+        for (int x = math.max(1, x0); x < math.min(w - 1, x1); x++) {
+          sum += gray[row + x];
+          count++;
+        }
+      }
+      if (count == 0) return false;
+      final double stripMean = sum / count;
+      final double distToTable = (stripMean - extMean).abs();
+      final double distToDoc = (stripMean - centerMean).abs();
+      return distToTable < distToDoc * 0.55 && distToDoc >= 18.0;
+    }
+
+    if (stripLooksLikeTable(rx0 + padX, ry0 + 2, rx1 - padX, ry0 + stripH)) {
+      return 'Documento deslocado para baixo. Enquadre o documento inteiro preenchendo o retângulo.';
+    }
+    if (stripLooksLikeTable(rx0 + padX, ry1 - stripH, rx1 - padX, ry1 - 2)) {
+      return 'Documento deslocado para cima. Enquadre o documento inteiro preenchendo o retângulo.';
+    }
+    if (stripLooksLikeTable(rx0 + 2, ry0 + padY, rx0 + stripW, ry1 - padY)) {
+      return 'Documento deslocado para a direita. Enquadre o documento inteiro dentro do retângulo.';
+    }
+    if (stripLooksLikeTable(rx1 - stripW, ry0 + padY, rx1 - 2, ry1 - padY)) {
+      return 'Documento deslocado para a esquerda. Enquadre o documento inteiro dentro do retângulo.';
+    }
+    return null;
+  }
+
+  /// Detecta se o documento ultrapassa visivelmente qualquer uma das 4 bordas
+  /// externas da moldura (ex.: cabeçalho da CNH/RG/CIN cortado no topo enquanto
+  /// uma linha interna do documento enganou o detector de borda superior).
+  static String? _detectStrictOutsideDocumentLeak({
+    required Float64List gray,
+    required int w,
+    required int h,
+    required int rx0,
+    required int ry0,
+    required int rx1,
+    required int ry1,
+    required double centerMean,
+    required double extMean,
+  }) {
+    final double docVsBgGap = (centerMean - extMean).abs();
+    if (docVsBgGap < 20.0) return null;
+
+    final int roiW = rx1 - rx0;
+    final int roiH = ry1 - ry0;
+    final int bandH = math.max(4, (roiH * 0.11).round());
+    final int bandW = math.max(4, (roiW * 0.10).round());
+    final int padX = math.max(2, (roiW * 0.15).round());
+    final int padY = math.max(2, (roiH * 0.15).round());
+
+    bool outerBandHasDocument(int x0, int y0, int x1, int y1) {
+      final int cx0 = math.max(1, x0);
+      final int cy0 = math.max(1, y0);
+      final int cx1 = math.min(w - 1, x1);
+      final int cy1 = math.min(h - 1, y1);
+      if (cx1 <= cx0 + 2 || cy1 <= cy0 + 2) return false;
+      double sum = 0.0;
+      int count = 0;
+      for (int y = cy0; y < cy1; y++) {
+        final int row = y * w;
+        for (int x = cx0; x < cx1; x++) {
+          sum += gray[row + x];
+          count++;
+        }
+      }
+      if (count == 0) return false;
+      final double mean = sum / count;
+      final double distToDoc = (mean - centerMean).abs();
+      final double distToBg = (mean - extMean).abs();
+      // Faixa externa imediata está claramente na cor/brilho do documento, não da mesa.
+      return distToDoc < distToBg * 0.48 && distToBg >= 18.0;
+    }
+
+    if (ry0 - bandH - 2 >= 1 &&
+        outerBandHasDocument(rx0 + padX, ry0 - bandH - 2, rx1 - padX, ry0 - 3)) {
+      return 'Documento cortado no topo. Afaste ou ajuste até os 4 cantos caberem no retângulo.';
+    }
+    if (ry1 + bandH + 2 < h - 1 &&
+        outerBandHasDocument(rx0 + padX, ry1 + 3, rx1 - padX, ry1 + bandH + 2)) {
+      return 'Documento cortado na parte inferior. Afaste ou ajuste até os 4 cantos caberem no retângulo.';
+    }
+    if (rx0 - bandW - 2 >= 1 &&
+        outerBandHasDocument(rx0 - bandW - 2, ry0 + padY, rx0 - 3, ry1 - padY)) {
+      return 'Documento cortado à esquerda. Encaixe o documento inteiro dentro do retângulo.';
+    }
+    if (rx1 + bandW + 2 < w - 1 &&
+        outerBandHasDocument(rx1 + 3, ry0 + padY, rx1 + bandW + 2, ry1 - padY)) {
+      return 'Documento cortado à direita. Encaixe o documento inteiro dentro do retângulo.';
+    }
+    return null;
+  }
+
   static bool _isDuplicateOfFrontSide({
     required img.Image currentFrame,
     required bool isVerticalOrientation,
+    Rect? normalizedRoiRect,
     Uint8List? referenceFrontBytes,
     img.Image? referenceFrontDecoded,
   }) {
@@ -972,6 +1248,7 @@ class DocumentFrameAlignmentEngine {
           DocumentOcrAndLivenessService.cropDocumentToGuidedFrameNamed(
         fullCameraFrameBytes: currentRaw,
         isVerticalOrientation: isVerticalOrientation,
+        normalizedCropRect: normalizedRoiRect,
       );
 
       final metricsRoi = PerceptualHashGuard.evaluateDocumentFrontBackDistinction(

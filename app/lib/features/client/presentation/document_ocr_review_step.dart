@@ -80,7 +80,7 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
               icon: Icons.fact_check_rounded,
               title: 'Confira os dados do seu documento',
               subtitle:
-                  'Lemos automaticamente a frente e o verso do seu documento. Verifique se está tudo certo antes de continuar.',
+                  'Verifique se nome, CPF e data de nascimento conferem com seu documento oficial.',
               trustBadgeText: 'Leitura confirmada com sucesso',
               trustBadgeIcon: Icons.verified_rounded,
             ),
@@ -132,7 +132,11 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                       strong: true,
                       stacked: true,
                     ),
-                    if (widget.typedName.trim().isNotEmpty)
+                    Divider(
+                      height: 1,
+                      color: tk.border.withValues(alpha: 0.55),
+                    ),
+                    if (widget.typedName.trim().isNotEmpty) ...[
                       AppInfoRow(
                         label: 'Nome no cadastro',
                         stacked: true,
@@ -142,6 +146,11 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                               .copyWith(color: tk.text),
                         ),
                       ),
+                      Divider(
+                        height: 1,
+                        color: tk.border.withValues(alpha: 0.55),
+                      ),
+                    ],
                     AppInfoRow(
                       label: 'CPF do titular',
                       stacked: true,
@@ -170,6 +179,10 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                         ],
                       ),
                     ),
+                    Divider(
+                      height: 1,
+                      color: tk.border.withValues(alpha: 0.55),
+                    ),
                     AppInfoRow(
                       label: 'Documento',
                       stacked: isLargeText,
@@ -181,6 +194,10 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                             .copyWith(color: tk.text),
                       ),
                     ),
+                    Divider(
+                      height: 1,
+                      color: tk.border.withValues(alpha: 0.55),
+                    ),
                     AppInfoRow(
                       label: 'Data de nascimento',
                       stacked: isLargeText,
@@ -191,6 +208,10 @@ class _DocumentOcrReviewStepState extends State<DocumentOcrReviewStep> {
                         style: AppType.tabular(AppType.bodyStrong)
                             .copyWith(color: tk.text),
                       ),
+                    ),
+                    Divider(
+                      height: 1,
+                      color: tk.border.withValues(alpha: 0.55),
                     ),
                     AppInfoRow(
                       label: 'Órgão emissor',
