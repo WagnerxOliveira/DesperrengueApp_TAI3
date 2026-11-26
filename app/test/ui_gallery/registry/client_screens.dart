@@ -388,7 +388,8 @@ List<GalleryScreen> clientScreens() => <GalleryScreen>[
     owner: _shared,
     kind: GalleryKind.widget,
     modes: _client,
-    builder: (_, _) => Padding(
+    // O painel vive sempre dentro da tela rolavel do pedido (SingleChildScrollView).
+    builder: (_, _) => SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: VoiceDictationPanel(
         textController: TextEditingController(text: 'O disjuntor desarma quando ligo o chuveiro.'),

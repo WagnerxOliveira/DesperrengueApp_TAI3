@@ -258,12 +258,13 @@ void main() {
       return (ctl, fake);
     }
 
-    testWidgets('mostra o tutorial curto acima do microfone', (t) async {
+    testWidgets('mostra o guia em 3 passos acima do microfone', (t) async {
       await open(t);
-      expect(find.textContaining('Como usar a voz', findRichText: true), findsOneWidget);
-      expect(find.textContaining('Toque no microfone e solte', findRichText: true), findsOneWidget);
-      expect(find.textContaining('Fale normalmente explicando o problema', findRichText: true), findsOneWidget);
-      expect(find.textContaining('Toque novamente para parar e gerar o texto organizado', findRichText: true), findsOneWidget);
+      expect(find.text('Falar o que aconteceu'), findsOneWidget);
+      expect(find.text('Como usar a voz'), findsOneWidget);
+      expect(find.text('Toque no microfone'), findsOneWidget);
+      expect(find.text('Fale normalmente'), findsOneWidget);
+      expect(find.text('Toque de novo para parar'), findsOneWidget);
       expect(find.text('Toque para falar'), findsOneWidget);
     });
 

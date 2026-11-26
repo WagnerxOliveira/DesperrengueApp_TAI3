@@ -294,7 +294,7 @@ void main() {
       await tester.tap(toggleBtn);
       await tester.pump();
       expect(ctl.text, isNot(contains('RESUMO:')));
-      expect(find.text('Usar versão estruturada'), findsOneWidget);
+      expect(find.text('Usar versão organizada'), findsOneWidget);
     });
 
     testWidgets('StructuredClientBriefView exibe blocos organizados para o profissional sem overflow', (tester) async {

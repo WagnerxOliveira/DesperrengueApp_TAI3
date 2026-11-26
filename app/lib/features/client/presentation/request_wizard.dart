@@ -327,6 +327,64 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
     }
   }
 
+  /// Organiza com a IA o relato digitado (o mesmo motor usado pela voz).
+  Future<void> _structureTypedText() async {
+    final raw = _description.text.trim();
+    if (raw.length < 15) return;
+    setState(() => _structuringTypedText = true);
+    try {
+      final refiner = widget.textRefiner ??
+          StructuredVoiceRefiner(
+            categoryProvider: () => _category,
+            photoNotesProvider: () => [
+              for (final img in _images)
+                if (img.hasContextAnnotation) img.combinedSummary,
+            ],
+            maxLength: 900,
+          );
+      final structured = await refiner.refine(raw);
+      if (!mounted) return;
+      if (structured.trim().isNotEmpty && _description.text.trim() == raw) {
+        _description.value = TextEditingValue(
+          text: structured,
+          selection: TextSelection.collapsed(offset: structured.length),
+        );
+      }
+      if (_description.text.trim().length >= 6) {
+        _runSmartTriage(silentIfEmpty: true);
+      }
+    } finally {
+      if (mounted) setState(() => _structuringTypedText = false);
+    }
+  }
+
+  /// "Apagar tudo": limpa o relato (digitado, falado ou organizado pela IA) e a triagem derivada
+  /// dele. O painel de voz percebe o campo vazio e descarta a versão organizada/fala original.
+  /// Sem diálogo de confirmação: o snackbar oferece **Desfazer** (ação reversível > pergunta).
+  void _clearDescription() {
+    final previous = _description.text;
+    if (previous.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    _description.clear();
+    setState(() {
+      _triage = null;
+      _analyzingTriage = false;
+    });
+    AppSnackbar.show(
+      context,
+      'Texto apagado.',
+      actionLabel: 'Desfazer',
+      onAction: () {
+        if (!mounted || _description.text.isNotEmpty) return;
+        _description.value = TextEditingValue(
+          text: previous,
+          selection: TextSelection.collapsed(offset: previous.length),
+        );
+        setState(() {});
+      },
+    );
+  }
+
   /// Executa a Triagem Inteligente Multimodal (descrição + transcrição de voz + anexos + legendas das fotos).
   void _runSmartTriage({bool silentIfEmpty = false}) {
     final raw = _description.text.trim();
@@ -731,53 +789,50 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
           onChanged: (_) => setState(() {}),
           hint: 'Ex: Meu disjuntor do chuveiro está desarmando toda vez que ligo na temperatura quente...',
         ),
-        if (_description.text.trim().length >= 15 &&
-            StructuredVoiceBrief.tryParseStructuredText(_description.text) == null) ...[
+        if (_description.text.isNotEmpty) ...[
           const SizedBox(height: AppSpace.s4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: AppButton(
-              key: const ValueKey('btn-structure-typed-text'),
-              label: _structuringTypedText
-                  ? 'Estruturando relato...'
-                  : 'Estruturar relato digitado',
-              icon: Icons.auto_awesome_outlined,
-              variant: AppButtonVariant.tertiary,
-              compact: true,
-              expand: false,
-              loading: _structuringTypedText,
-              onPressed: _structuringTypedText
-                  ? null
-                  : () async {
-                      final raw = _description.text.trim();
-                      if (raw.length < 15) return;
-                      setState(() => _structuringTypedText = true);
-                      try {
-                        final refiner = widget.textRefiner ??
-                            StructuredVoiceRefiner(
-                              categoryProvider: () => _category,
-                              photoNotesProvider: () => [
-                                for (final img in _images)
-                                  if (img.hasContextAnnotation) img.combinedSummary,
-                              ],
-                              maxLength: 900,
-                            );
-                        final structured = await refiner.refine(raw);
-                        if (!mounted) return;
-                        if (structured.trim().isNotEmpty && _description.text.trim() == raw) {
-                          _description.value = TextEditingValue(
-                            text: structured,
-                            selection: TextSelection.collapsed(offset: structured.length),
-                          );
-                        }
-                        if (_description.text.trim().length >= 6) {
-                          _runSmartTriage(silentIfEmpty: true);
-                        }
-                      } finally {
-                        if (mounted) setState(() => _structuringTypedText = false);
-                      }
-                    },
-            ),
+          Wrap(
+            key: const ValueKey('description-actions'),
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: AppSpace.s8,
+            runSpacing: AppSpace.s4,
+            children: [
+              if (StructuredVoiceBrief.tryParseStructuredText(_description.text) != null)
+                Row(
+                  key: const ValueKey('description-organized-chip'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, size: 16, color: tk.successInk),
+                    const SizedBox(width: AppSpace.s4),
+                    Text(
+                      'Organizado pela IA',
+                      style: AppType.bodySm.copyWith(color: tk.successInk, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              if (_description.text.trim().length >= 15 &&
+                  StructuredVoiceBrief.tryParseStructuredText(_description.text) == null)
+                AppButton(
+                  key: const ValueKey('btn-structure-typed-text'),
+                  label: _structuringTypedText ? 'Estruturando relato...' : 'Estruturar relato digitado',
+                  icon: Icons.auto_awesome_outlined,
+                  variant: AppButtonVariant.tertiary,
+                  compact: true,
+                  expand: false,
+                  loading: _structuringTypedText,
+                  onPressed: _structuringTypedText ? null : _structureTypedText,
+                ),
+              AppButton(
+                key: const ValueKey('btn-clear-description'),
+                label: 'Apagar tudo',
+                icon: Icons.delete_outline_rounded,
+                variant: AppButtonVariant.tertiary,
+                compact: true,
+                expand: false,
+                onPressed: _clearDescription,
+              ),
+            ],
           ),
         ],
         const SizedBox(height: AppSpace.s8),
