@@ -1302,12 +1302,31 @@ void main() {
           );
 
           final skipBtn = find.byKey(const Key('btn-skip-welcome-cinema'));
+          final closeBtn = find.byKey(const Key('btn-close-welcome-cinema'));
           expect(find.text('Pular'), findsOneWidget);
           _expectMinTouchTarget(
             tester,
             skipBtn,
+            minWidth: 48.0,
+            minHeight: 48.0,
             label: 'btn-skip-welcome-cinema (Pular)',
           );
+          _expectMinTouchTarget(
+            tester,
+            closeBtn,
+            minWidth: 48.0,
+            minHeight: 48.0,
+            label: 'btn-close-welcome-cinema (Fechar discreto ×)',
+          );
+          expect(
+            find.descendant(
+              of: closeBtn,
+              matching: find.byIcon(Icons.close_rounded),
+            ),
+            findsOneWidget,
+          );
+          expect(find.byTooltip('Fechar apresentação'), findsOneWidget);
+          expect(find.byTooltip('Pular apresentação'), findsOneWidget);
 
           final nextBtn = find.byKey(const Key('btn-story-next'));
           final prevBtn = find.byKey(const Key('btn-story-prev'));
@@ -1462,16 +1481,115 @@ void main() {
             const Key('btn-close-replay-cinema'),
           );
           expect(find.text('Fechar'), findsOneWidget);
+          expect(
+            find.descendant(
+              of: closeReplayBtn,
+              matching: find.byIcon(Icons.close_rounded),
+            ),
+            findsOneWidget,
+          );
           _expectMinTouchTarget(
             tester,
             closeReplayBtn,
-            label: 'btn-close-replay-cinema (Fechar)',
+            minWidth: 48.0,
+            minHeight: 48.0,
+            label: 'btn-close-replay-cinema (× Fechar)',
           );
 
           await tester.tap(closeReplayBtn);
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 350));
           expect(find.byType(RoleSelectionScreen), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'botão discreto de fechar (×) coexiste com Pular nas 6 etapas, dispara onClose/onCompleted idempotente (1x) e leva à RoleSelectionScreen',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1.0;
+          addTearDown(tester.view.reset);
+
+          // A) Coexistência nas 6 etapas + disparo exclusivo de onClose sem duplicidade
+          var completedCount = 0;
+          var closeCount = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DesperrengueWelcomeCinemaScreen(
+                key: const ValueKey('cinema-discreet-close-callback'),
+                userFirstName: 'Wagner',
+                onCompleted: () => completedCount++,
+                onClose: () => closeCount++,
+              ),
+            ),
+          );
+          await tester.pump();
+
+          final skipBtn = find.byKey(const Key('btn-skip-welcome-cinema'));
+          final closeBtn = find.byKey(const Key('btn-close-welcome-cinema'));
+
+          for (var story = 0; story < 6; story++) {
+            await tester.tap(find.byKey(Key('cinema-chapter-tap-$story')));
+            await tester.pump();
+            _expectActiveStory(story);
+            expect(skipBtn, findsOneWidget);
+            expect(closeBtn, findsOneWidget);
+            // Botão discreto de fechar fica alinhado à direita de Pular sem sobreposição
+            expect(
+              tester.getRect(closeBtn).left,
+              greaterThanOrEqualTo(tester.getRect(skipBtn).right),
+            );
+          }
+
+          // Volta para a Etapa 2 ("Privacidade Total ao Pedir") e toca no botão discreto ×
+          await tester.tap(find.byKey(const Key('cinema-chapter-tap-1')));
+          await tester.pump();
+          _expectActiveStory(1);
+
+          await tester.tap(closeBtn);
+          await tester.tap(skipBtn, warnIfMissed: false);
+          await tester.pump();
+          expect(closeCount, 1);
+          expect(completedCount, 0);
+
+          // B) Fallback padrão (sem onClose) no fluxo real pós-cadastro: fecha e grava WelcomeCinemaTracker
+          final freshProfile = _makeProfile(
+            id: 'wagner-close-btn-1',
+            fullName: 'Wagner',
+          );
+          await WelcomeCinemaTracker.armForFreshRegistration(
+            'wagner-close-btn-1',
+          );
+
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: AppTheme.resolve(null, Brightness.light),
+              home: _PostSignupCinemaHarness(
+                profile: freshProfile,
+                cinemaDuration: const Duration(milliseconds: 63000),
+              ),
+            ),
+          );
+          await tester.pump();
+          expect(
+            find.text('Casa Resolvida Sem Dor de Cabeça'),
+            findsOneWidget,
+          );
+          expect(closeBtn, findsOneWidget);
+          expect(skipBtn, findsOneWidget);
+
+          await tester.tap(closeBtn);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 450));
+
+          expect(find.byType(RoleSelectionScreen), findsOneWidget);
+          expect(find.text('Olá, Wagner'), findsOneWidget);
+          expect(
+            await WelcomeCinemaTracker.shouldShowBeforeRoleSelection(
+              profile: freshProfile,
+            ),
+            isFalse,
+          );
         },
       );
 
@@ -1952,7 +2070,16 @@ void main() {
             _expectMinTouchTarget(
               tester,
               find.byKey(const Key('btn-skip-welcome-cinema')),
+              minWidth: 48.0,
+              minHeight: 48.0,
               label: 'btn-skip-welcome-cinema em ${vp.label}',
+            );
+            _expectMinTouchTarget(
+              tester,
+              find.byKey(const Key('btn-close-welcome-cinema')),
+              minWidth: 48.0,
+              minHeight: 48.0,
+              label: 'btn-close-welcome-cinema em ${vp.label}',
             );
             _expectMinTouchTarget(
               tester,

@@ -37,6 +37,10 @@ abstract final class CinemaColors {
   static const Color porcelain = Color(0xFFF8FAFC);
   static const Color amber = Color(0xFFF59E0B);
   static const Color ctaInk = Color(0xFF0B1320);
+  static const Color chromePillSurface = Color(0xFF0E1D24);
+  static const Color closeGlassFill = Color(0x1AFFFFFF);
+  static const Color closeGlassHoverFill = Color(0x33FFFFFF);
+  static const Color closeGlassBorder = Color(0x42FFFFFF);
 }
 
 /// Grade de 4 pt para espaçamentos.

@@ -651,6 +651,7 @@ void main() {
           }
 
           expect48(_btn('btn-skip-welcome-cinema'), 'Pular');
+          expect48(_btn('btn-close-welcome-cinema'), 'Fechar apresentação');
           expect48(_btn('btn-story-prev'), '<');
           expect48(_btn('btn-story-next'), '>');
           for (var i = 0; i < 6; i++) {
@@ -1182,6 +1183,17 @@ void main() {
           RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
           SystemMouseCursors.click,
         );
+
+        // Hover no botão discreto de fechar (`×`): cursor click e anel esmeralda #A7F3D0
+        final closeBtn = _btn('btn-close-welcome-cinema');
+        expect(_ringOpacity(tester, closeBtn), 0.0);
+        await mouse.moveTo(tester.getCenter(closeBtn));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(
+          RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
+          SystemMouseCursors.click,
+        );
+        expect(_ringOpacity(tester, closeBtn), 1.0);
       },
     );
 

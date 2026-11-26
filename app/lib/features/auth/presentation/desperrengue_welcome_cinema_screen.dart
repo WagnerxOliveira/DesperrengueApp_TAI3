@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
@@ -42,6 +43,7 @@ class DesperrengueWelcomeCinemaScreen extends StatefulWidget {
     super.key,
     this.userFirstName = '',
     required this.onCompleted,
+    this.onClose,
     this.isReplay = false,
     this.totalDuration = const Duration(milliseconds: 63000),
     @visibleForTesting this.onActiveHeroBuild,
@@ -51,6 +53,10 @@ class DesperrengueWelcomeCinemaScreen extends StatefulWidget {
 
   final String userFirstName;
   final VoidCallback onCompleted;
+
+  /// Callback opcional acionado pelo botão discreto de fechar (`×`).
+  /// Quando omitido, encerra a apresentação pelo mesmo fluxo seguro de [onCompleted].
+  final VoidCallback? onClose;
   final bool isReplay;
   final Duration totalDuration;
 
@@ -313,7 +319,7 @@ class _DesperrengueWelcomeCinemaScreenState
     }
   }
 
-  void _completeShowcase() {
+  void _completeShowcase({bool viaCloseButton = false}) {
     if (_completedDispatched) return;
     _completedDispatched = true;
     _holdPauseTimer?.cancel();
@@ -326,8 +332,13 @@ class _DesperrengueWelcomeCinemaScreenState
       _isHoldPausedNotifier.value = false;
     }
     _storyProgressController.stop(canceled: false);
-    HapticFeedback.mediumImpact();
-    widget.onCompleted();
+    if (viaCloseButton) {
+      HapticFeedback.lightImpact();
+      (widget.onClose ?? widget.onCompleted)();
+    } else {
+      HapticFeedback.mediumImpact();
+      widget.onCompleted();
+    }
   }
 
   void _jumpToStoryImmediate(
@@ -524,7 +535,8 @@ class _DesperrengueWelcomeCinemaScreenState
               _handleNextAction(),
           const SingleActivator(LogicalKeyboardKey.space): () =>
               _handleNextAction(),
-          const SingleActivator(LogicalKeyboardKey.escape): _completeShowcase,
+          const SingleActivator(LogicalKeyboardKey.escape): () =>
+              _completeShowcase(viaCloseButton: true),
         },
         child: Focus(
           autofocus: true,
@@ -589,7 +601,9 @@ class _DesperrengueWelcomeCinemaScreenState
                     activeStoryListenable: _activeStoryNotifier,
                     isReplay: widget.isReplay,
                     holdPausedListenable: _isHoldPausedNotifier,
-                    onExitPressed: _completeShowcase,
+                    onSkipPressed: () => _completeShowcase(),
+                    onClosePressed: () =>
+                        _completeShowcase(viaCloseButton: true),
                   ),
                   Expanded(child: _buildStage(isCompact: isCompact)),
                   const SizedBox(height: CinemaSpace.s12),
@@ -1309,13 +1323,15 @@ class _TopStageHeaderRow extends StatelessWidget {
     required this.activeStoryListenable,
     required this.isReplay,
     required this.holdPausedListenable,
-    required this.onExitPressed,
+    required this.onSkipPressed,
+    required this.onClosePressed,
   });
 
   final ValueListenable<int> activeStoryListenable;
   final bool isReplay;
   final ValueListenable<bool> holdPausedListenable;
-  final VoidCallback onExitPressed;
+  final VoidCallback onSkipPressed;
+  final VoidCallback onClosePressed;
 
   @override
   Widget build(BuildContext context) {
@@ -1355,38 +1371,349 @@ class _TopStageHeaderRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: CinemaSpace.s8),
-          TextButton(
-            key: Key(
-              isReplay ? 'btn-close-replay-cinema' : 'btn-skip-welcome-cinema',
+          if (isReplay)
+            _CinemaDiscreetPillButton(
+              key: const Key('btn-close-replay-cinema'),
+              label: 'Fechar',
+              tooltip: 'Fechar apresentação',
+              leadingIcon: Icons.close_rounded,
+              onPressed: onClosePressed,
+            )
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _CinemaDiscreetPillButton(
+                  key: const Key('btn-skip-welcome-cinema'),
+                  label: 'Pular',
+                  tooltip: 'Pular apresentação',
+                  onPressed: onSkipPressed,
+                ),
+                const SizedBox(width: CinemaSpace.s4),
+                _CinemaDiscreetCloseIconButton(
+                  key: const Key('btn-close-welcome-cinema'),
+                  onPressed: onClosePressed,
+                ),
+              ],
             ),
-            onPressed: onExitPressed,
-            style: TextButton.styleFrom(
-              foregroundColor: CinemaColors.onAurora,
-              backgroundColor: const Color(0xFF13222A).withValues(alpha: 0.72),
-              minimumSize: const Size(64, 48),
-              padding: const EdgeInsets.symmetric(
-                horizontal: CinemaSpace.s16,
-                vertical: CinemaSpace.s8,
-              ),
-              tapTargetSize: MaterialTapTargetSize.padded,
-              enabledMouseCursor: SystemMouseCursors.click,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(CinemaGeometry.pillRadius),
-                side: BorderSide(
-                  color: Colors.white.withValues(alpha: 0.34),
-                  width: 1.0,
+        ],
+      ),
+    );
+  }
+}
+
+/// Pílula translúcida discreta do cabeçalho (`Pular` no pós-cadastro ou
+/// `× Fechar` no modo replay), com alvo tátil >= 48×48 dp, contraste AAA
+/// sobre todas as auroras, anel de foco esmeralda (Web/teclado) e mola tátil.
+class _CinemaDiscreetPillButton extends StatefulWidget {
+  const _CinemaDiscreetPillButton({
+    super.key,
+    required this.label,
+    required this.tooltip,
+    required this.onPressed,
+    this.leadingIcon,
+  });
+
+  final String label;
+  final String tooltip;
+  final VoidCallback onPressed;
+  final IconData? leadingIcon;
+
+  @override
+  State<_CinemaDiscreetPillButton> createState() =>
+      _CinemaDiscreetPillButtonState();
+}
+
+class _CinemaDiscreetPillButtonState extends State<_CinemaDiscreetPillButton>
+    with SingleTickerProviderStateMixin {
+  static const double _pressedScale = 0.95;
+  static final SpringDescription _spring = SpringDescription.withDampingRatio(
+    mass: 1.0,
+    stiffness: 720.0,
+    ratio: 1.0,
+  );
+
+  late final AnimationController _scale;
+  bool _focused = false;
+  bool _hovered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scale = AnimationController(
+      vsync: this,
+      lowerBound: 0.85,
+      upperBound: 1.0,
+      value: 1.0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scale.dispose();
+    super.dispose();
+  }
+
+  void _animateScaleTo(double target) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scale.value = target;
+      return;
+    }
+    _scale.animateWith(SpringSimulation(_spring, _scale.value, target, 0.0));
+  }
+
+  void _handleTapDown(TapDownDetails _) {
+    HapticFeedback.selectionClick();
+    _animateScaleTo(_pressedScale);
+  }
+
+  void _handleTapRelease() {
+    _animateScaleTo(1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final highlighted = _focused || _hovered;
+    final fill = CinemaColors.chromePillSurface.withValues(
+      alpha: _hovered ? 0.68 : 0.46,
+    );
+    final borderColor = highlighted
+        ? CinemaColors.emeraldRing
+        : Colors.white.withValues(alpha: 0.24);
+
+    return Semantics(
+      button: true,
+      label: widget.tooltip,
+      excludeSemantics: true,
+      child: Tooltip(
+        message: widget.tooltip,
+        excludeFromSemantics: true,
+        child: FocusableActionDetector(
+          mouseCursor: SystemMouseCursors.click,
+          onShowFocusHighlight: (value) => setState(() => _focused = value),
+          onShowHoverHighlight: (value) => setState(() => _hovered = value),
+          actions: <Type, Action<Intent>>{
+            ActivateIntent: CallbackAction<ActivateIntent>(
+              onInvoke: (_) {
+                widget.onPressed();
+                return null;
+              },
+            ),
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: _handleTapDown,
+            onTapUp: (_) => _handleTapRelease(),
+            onTapCancel: _handleTapRelease,
+            onTap: widget.onPressed,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 48.0, minHeight: 48.0),
+              child: Center(
+                widthFactor: 1.0,
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: fill,
+                      borderRadius: BorderRadius.circular(
+                        CinemaGeometry.pillRadius,
+                      ),
+                      border: Border.all(
+                        color: borderColor,
+                        width: highlighted ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: CinemaSpace.s12,
+                        vertical: CinemaSpace.s8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (widget.leadingIcon != null) ...[
+                            Icon(
+                              widget.leadingIcon,
+                              size: 16,
+                              color: CinemaColors.onAurora,
+                            ),
+                            const SizedBox(width: CinemaSpace.s4),
+                          ],
+                          Text(
+                            widget.label,
+                            style: CinemaType.chrome.copyWith(
+                              color: CinemaColors.onAurora,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-            child: Text(
-              isReplay ? 'Fechar' : 'Pular',
-              style: CinemaType.chrome.copyWith(
-                color: CinemaColors.onAurora,
-                fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Botão circular translúcido discreto de fechar (`×`) da apresentação,
+/// alinhado à mesma linguagem de vidro de [StoryNavCircleButton]:
+/// - Alvo tátil WCAG/Material `48×48 dp` com círculo visual discreto `36×36 dp`;
+/// - Vidro sutil (`rgba(255,255,255,0.10)`) + borda hairline `0.26`;
+/// - Anel esmeralda `2 px` (`#A7F3D0`) em foco/hover (Web e teclado);
+/// - Mola criticamente amortecida (`0.92`) respeitando `disableAnimations`.
+class _CinemaDiscreetCloseIconButton extends StatefulWidget {
+  const _CinemaDiscreetCloseIconButton({
+    super.key,
+    required this.onPressed,
+  });
+
+  final VoidCallback onPressed;
+
+  static const double touchSize = 48.0;
+  static const double visualSize = 36.0;
+  static const double iconSize = 18.0;
+  static const Color glassFill = CinemaColors.closeGlassFill;
+  static const Color glassHoverFill = CinemaColors.closeGlassHoverFill;
+  static const Color glassBorder = CinemaColors.closeGlassBorder;
+
+  @override
+  State<_CinemaDiscreetCloseIconButton> createState() =>
+      _CinemaDiscreetCloseIconButtonState();
+}
+
+class _CinemaDiscreetCloseIconButtonState
+    extends State<_CinemaDiscreetCloseIconButton>
+    with SingleTickerProviderStateMixin {
+  static const double _pressedScale = 0.92;
+  static final SpringDescription _spring = SpringDescription.withDampingRatio(
+    mass: 1.0,
+    stiffness: 720.0,
+    ratio: 1.0,
+  );
+
+  late final AnimationController _scale;
+  bool _focused = false;
+  bool _hovered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scale = AnimationController(
+      vsync: this,
+      lowerBound: 0.80,
+      upperBound: 1.0,
+      value: 1.0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _scale.dispose();
+    super.dispose();
+  }
+
+  void _animateScaleTo(double target) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _scale.value = target;
+      return;
+    }
+    _scale.animateWith(SpringSimulation(_spring, _scale.value, target, 0.0));
+  }
+
+  void _handleTapDown(TapDownDetails _) {
+    HapticFeedback.selectionClick();
+    _animateScaleTo(_pressedScale);
+  }
+
+  void _handleTapRelease() {
+    _animateScaleTo(1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showRing = _focused || _hovered;
+    final fill = _hovered
+        ? _CinemaDiscreetCloseIconButton.glassHoverFill
+        : _CinemaDiscreetCloseIconButton.glassFill;
+
+    final glass = DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: fill,
+        border: Border.all(
+          color: _CinemaDiscreetCloseIconButton.glassBorder,
+        ),
+      ),
+      child: const Center(
+        child: Icon(
+          Icons.close_rounded,
+          size: _CinemaDiscreetCloseIconButton.iconSize,
+          color: CinemaColors.onAurora,
+        ),
+      ),
+    );
+
+    final ring = IgnorePointer(
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 120),
+        opacity: showRing ? 1.0 : 0.0,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: CinemaColors.emeraldRing, width: 2.0),
+          ),
+        ),
+      ),
+    );
+
+    return Semantics(
+      button: true,
+      label: 'Fechar apresentação',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: 'Fechar apresentação',
+        excludeFromSemantics: true,
+        child: SizedBox(
+          width: _CinemaDiscreetCloseIconButton.touchSize,
+          height: _CinemaDiscreetCloseIconButton.touchSize,
+          child: FocusableActionDetector(
+            mouseCursor: SystemMouseCursors.click,
+            onShowFocusHighlight: (value) => setState(() => _focused = value),
+            onShowHoverHighlight: (value) => setState(() => _hovered = value),
+            actions: <Type, Action<Intent>>{
+              ActivateIntent: CallbackAction<ActivateIntent>(
+                onInvoke: (_) {
+                  widget.onPressed();
+                  return null;
+                },
+              ),
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: _handleTapDown,
+              onTapUp: (_) => _handleTapRelease(),
+              onTapCancel: _handleTapRelease,
+              onTap: widget.onPressed,
+              child: Center(
+                child: ScaleTransition(
+                  scale: _scale,
+                  child: SizedBox(
+                    width: _CinemaDiscreetCloseIconButton.visualSize,
+                    height: _CinemaDiscreetCloseIconButton.visualSize,
+                    child: Stack(fit: StackFit.expand, children: [glass, ring]),
+                  ),
+                ),
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
