@@ -452,37 +452,37 @@ void main() {
           expect(tester.getSize(removeBtnFinder).height, greaterThanOrEqualTo(48));
           expect(tester.getSize(replaceBtnFinder).height, greaterThanOrEqualTo(48));
 
-          final protoField = tester.widget<TextField>(
-            find.descendant(
-              of: find.byKey(const ValueKey('input-criminal-protocol')),
-              matching: find.byType(TextField),
-            ),
-          );
-          final codeField = tester.widget<TextField>(
-            find.descendant(
-              of: find.byKey(const ValueKey('input-criminal-validation-code')),
-              matching: find.byType(TextField),
-            ),
-          );
-          expect(protoField.controller?.text, equals('195290532026'));
-          expect(codeField.controller?.text, equals('AAA1.BBB2.CCC3.DDD4'));
-          expect(find.text('11/11/2026'), findsOneWidget);
+          // Garante zero campos manuais expostos ao usuário (validação 100% interna!)
           expect(
-            find.byKey(const ValueKey('badge-autofill-protocol')),
-            findsOneWidget,
+            find.byKey(const ValueKey('input-criminal-protocol')),
+            findsNothing,
           );
           expect(
-            find.byKey(const ValueKey('badge-autofill-date')),
-            findsOneWidget,
+            find.byKey(const ValueKey('btn-pick-criminal-issue-date')),
+            findsNothing,
           );
           expect(
-            find.byKey(const ValueKey('badge-autofill-validation-code')),
-            findsOneWidget,
+            find.byKey(const ValueKey('input-criminal-validation-code')),
+            findsNothing,
           );
           expect(validatedHistory.last, isNotNull);
           expect(validatedHistory.last!.passed, isTrue);
+          expect(validatedHistory.last!.protocolNumber, equals('195290532026'));
+          expect(
+            validatedHistory.last!.validationCode,
+            equals('AAA1.BBB2.CCC3.DDD4'),
+          );
+          expect(
+            validatedHistory.last!.issuedDate,
+            equals(DateTime.utc(2026, 11, 11)),
+          );
+          expect(
+            find.byKey(const ValueKey('criminal-check-approved-card')),
+            findsOneWidget,
+          );
+          expect(find.textContaining('11/11/2026'), findsOneWidget);
 
-          // 4. Toca em "Trocar arquivo" -> escolhe Foto da Galeria -> SOBRESCREVE campos automaticamente!
+          // 4. Toca em "Trocar arquivo" -> escolhe Foto da Galeria -> revalida internamente!
           await tester.ensureVisible(replaceBtnFinder);
           await tester.tap(replaceBtnFinder);
           await tester.pumpAndSettle();
@@ -498,13 +498,23 @@ void main() {
 
           expect(find.text('foto_certidao_galeria.png'), findsOneWidget);
           expect(find.textContaining('PNG ·'), findsOneWidget);
-          expect(protoField.controller?.text, equals('2026.9988776655'));
-          expect(codeField.controller?.text, equals('ZZZ9.YYY8.XXX7.WWW6'));
-          expect(find.text('16/11/2026'), findsOneWidget);
           expect(validatedHistory.last, isNotNull);
           expect(validatedHistory.last!.passed, isTrue);
+          expect(
+            validatedHistory.last!.protocolNumber,
+            equals('2026.9988776655'),
+          );
+          expect(
+            validatedHistory.last!.validationCode,
+            equals('ZZZ9.YYY8.XXX7.WWW6'),
+          );
+          expect(
+            validatedHistory.last!.issuedDate,
+            equals(DateTime.utc(2026, 11, 16)),
+          );
+          expect(find.textContaining('16/11/2026'), findsOneWidget);
 
-          // 5. Toca em "Remover" -> limpa arquivo, zera campos, remove badges e chama onValidated(null)
+          // 5. Toca em "Remover" -> limpa arquivo, oculta cartão aprovado e chama onValidated(null)
           await tester.ensureVisible(removeBtnFinder);
           await tester.tap(removeBtnFinder);
           await tester.pumpAndSettle();
@@ -515,22 +525,12 @@ void main() {
             findsNothing,
           );
           expect(
+            find.byKey(const ValueKey('criminal-check-approved-card')),
+            findsNothing,
+          );
+          expect(
             find.byKey(const ValueKey('btn-upload-criminal-certificate')),
             findsOneWidget,
-          );
-          expect(protoField.controller?.text, isEmpty);
-          expect(codeField.controller?.text, isEmpty);
-          expect(
-            find.byKey(const ValueKey('badge-autofill-protocol')),
-            findsNothing,
-          );
-          expect(
-            find.byKey(const ValueKey('badge-autofill-date')),
-            findsNothing,
-          );
-          expect(
-            find.byKey(const ValueKey('badge-autofill-validation-code')),
-            findsNothing,
           );
           expect(validatedHistory.last, isNull);
           expect(find.textContaining('Certidão removida'), findsOneWidget);

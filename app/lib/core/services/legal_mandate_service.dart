@@ -24,11 +24,11 @@ class LegalMandateService {
   /// Versão unificada retrocompatível (`v1`) preservada para suítes existentes.
   static const String currentMandateVersion = '2026.11-ART653-V1';
 
-  /// Versão vigente dos Termos de Uso e Proteção do Cliente (`v2`).
-  static const String currentClientTermsVersion = '2026.11-CLIENT-V2';
+  /// Versão vigente dos Termos de Uso e Proteção do Cliente (`v3` — blindagem jurídica BR completa).
+  static const String currentClientTermsVersion = '2026.11-CLIENT-V3';
 
-  /// Versão vigente dos Termos de Parceria e Cláusula-Mandato do Profissional (`v2`).
-  static const String currentProviderTermsVersion = '2026.11-PROVIDER-V2';
+  /// Versão vigente dos Termos de Parceria e Cláusula-Mandato do Profissional (`v3` — blindagem jurídica BR completa).
+  static const String currentProviderTermsVersion = '2026.11-PROVIDER-V3';
 
   /// Cláusulas canônicas retrocompatíveis (`v1`).
   static const List<LegalMandateClause> canonicalClauses = <LegalMandateClause>[
@@ -72,108 +72,243 @@ class LegalMandateService {
     ),
   ];
 
-  /// Contrato exclusivo do Modo Cliente (6 cláusulas completas).
+  /// Contrato completo e juridicamente blindado do Modo Cliente (12 cláusulas —
+  /// LGPD Lei 13.709/2018, CDC Lei 8.078/1990, Marco Civil Lei 12.965/2014,
+  /// Código Civil, MP 2.200-2/2001, Lei 14.063/2020 e Ciclo de 90 Dias PF).
   static const List<LegalMandateClause> clientTermsClauses = <LegalMandateClause>[
     LegalMandateClause(
-      title: '1. Objeto e Intermediação Digital Residencial',
+      title: '1. Objeto, Natureza da Intermediação Digital e Elegibilidade',
       body:
-          'O Desperrengue atua como plataforma tecnológica de intermediação digital segura, conectando você '
-          'a profissionais autônomos independentes previamente identificados. Os orçamentos, prazos e execução '
-          'técnica do serviço residencial são realizados pelo Profissional escolhido por você no aplicativo.',
+          'O Desperrengue atua exclusivamente como plataforma tecnológica de intermediação digital segura, '
+          'conectando Clientes residenciais e comerciais a Profissionais autônomos independentes previamente '
+          'verificados (Arts. 593 a 609 do Código Civil). Para criar e manter uma conta de Cliente, o titular '
+          'declara ser pessoa física plenamente capaz (maior de 18 anos), possuir CPF ativo e regular perante '
+          'a Receita Federal do Brasil e fornecer dados rigorosamente verdadeiros, assumindo integral '
+          'responsabilidade civil e penal pela veracidade das informações prestadas.',
     ),
     LegalMandateClause(
-      title: '2. Custódia Protegida e Liberação por Código PIN de 4 Dígitos',
+      title: '2. Verificação de Identidade (KYC), Biometria Facial e Renovação de 90 Dias (Polícia Federal)',
       body:
-          'Todo pagamento realizado no aplicativo permanece 100% protegido em conta de custódia segregada até '
-          'que o serviço seja concluído no local. A liberação financeira só ocorre mediante a entrega voluntária '
-          'do seu código PIN exclusivo de 4 dígitos após sua conferência do trabalho executado.',
+          'Para proteger os lares e todos os membros da comunidade, a ativação da conta exige validação '
+          'automatizada de documento oficial com foto (CNH, CIN ou RG), prova de vida facial ao vivo '
+          'contra fraudes e Certidão Negativa de Antecedentes Criminais ("Nada Consta") emitida pela Polícia '
+          'Federal (ePol/SINIC). Alinhada à validade oficial da certidão da Polícia Federal, a verificação '
+          'de segurança possui vigência de 90 (noventa) dias corridos, com envio de avisos prévios automáticos '
+          'por e-mail antes do vencimento (15 dias e 5 dias antes) para renovação simples. Dentro desses 90 dias '
+          'válidos, sua validação é reaproveitada automaticamente caso você decida ativar também o modo Profissional.',
     ),
     LegalMandateClause(
-      title: '3. Peças e Materiais com 0% de Taxa mediante Nota Fiscal (NF-e)',
+      title: '3. Aprovação Cadastral e Confirmação Obrigatória de E-mail',
       body:
-          'Quando o atendimento exigir compra de peças ou materiais consumíveis pelo Profissional, o reembolso '
-          'é integralmente isento de comissão da plataforma (0% de taxa) mediante apresentação de Nota Fiscal '
-          'Eletrônica válida de 44 dígitos vinculada ao atendimento, garantindo transparência total de custos.',
+          'Após a aprovação das verificações de identidade e antecedentes, o Desperrengue envia um e-mail '
+          'oficial de confirmação para o endereço cadastrado pelo titular. O acesso pleno à solicitação de '
+          'serviços é liberado após a validação desse e-mail de aprovação, garantindo a autenticidade do canal '
+          'de comunicações jurídicas, recibos, garantias e alertas de vencimento de segurança.',
     ),
     LegalMandateClause(
-      title: '4. Garantia Técnica de 90 Dias em 3 Camadas (Art. 26, II do CDC)',
+      title: '4. Orçamentos, Pagamento em Custódia Protegida (Escrow) e Código PIN de 4 Dígitos',
       body:
-          'Todos os serviços concluídos pela plataforma contam com garantia legal e contratual de 90 (noventa) dias '
-          'sobre a mão de obra executada, assegurada em 3 camadas: atendimento prioritário pelo prestador original, '
-          'mediação técnica assistida e cobertura pelo Fundo Garantidor Desperrengue para reparo corretivo.',
+          'Os valores acordados no aplicativo permanecem 100% protegidos em conta de custódia segregada desde '
+          'a confirmação do pedido até a conclusão presencial do atendimento. A liberação financeira ao Profissional '
+          'somente ocorre após a entrega voluntária do seu código PIN pessoal e intransferível de 4 dígitos, '
+          'fornecido exclusivamente após você conferir o serviço executado no local.',
     ),
     LegalMandateClause(
-      title: '5. Privacidade Geoespacial do Imóvel e LGPD (Lei 13.709/2018)',
+      title: '5. Peças e Materiais Consumíveis com 0% de Comissão mediante NF-e',
       body:
-          'Seu endereço completo, número da residência e coordenadas exatas permanecem ocultos durante toda a fase '
-          'de orçamento, exibindo apenas uma região aproximada. Os dados exatos só são liberados ao Profissional '
-          'efetivamente contratado na data programada para o serviço, podendo você excluir sua conta a qualquer momento.',
+          'Quando o serviço demandar a aquisição de peças de reposição ou materiais consumíveis pelo Profissional, '
+          'o reembolso desses itens é totalmente isento de taxa ou comissão da plataforma (0% de comissão), '
+          'condicionado à apresentação e conferência de Nota Fiscal Eletrônica (NF-e/NFC-e) autêntica de 44 dígitos '
+          'junto à SEFAZ, vinculada à respectiva ordem de serviço.',
     ),
     LegalMandateClause(
-      title: '6. Validação Semestral de Segurança e Antecedentes (a cada 6 Meses)',
+      title: '6. Direito de Arrependimento, Cancelamento e Reagendamento (Art. 49 do CDC)',
       body:
-          'Para proteger os lares e todos os participantes da comunidade, o Desperrengue exige validação de documento '
-          'oficial, biometria facial ao vivo e Certidão Negativa de Antecedentes Criminais da Polícia Federal, com '
-          'renovação periódica obrigatória a cada 6 (seis) meses. Caso você ative também o modo Profissional dentro '
-          'desse período válido, sua validação é reaproveitada sem novo envio de documentos.',
+          'Em conformidade com o Código de Defesa do Consumidor (Lei 8.078/1990), o Cliente pode cancelar ou '
+          'reagendar o atendimento diretamente pelo aplicativo sem qualquer custo antes do início do deslocamento '
+          'do Profissional, bem como exercer o direito de arrependimento (Art. 49 do CDC) nos serviços ainda não '
+          'iniciados. Em caso de cancelamento quando o Profissional já estiver em deslocamento ou no local combinado '
+          'sem acesso ao imóvel por culpa do Cliente, poderá incidir apenas taxa transparente de deslocamento '
+          'previamente informada; havendo ausência injustificada do Profissional, o reembolso ao Cliente é integral.',
+    ),
+    LegalMandateClause(
+      title: '7. Garantia Legal e Contratual de 90 Dias em 3 Camadas (Art. 26, II do CDC)',
+      body:
+          'Todos os serviços contratados e pagos integralmente dentro do aplicativo contam com garantia de '
+          '90 (noventa) dias sobre vícios de execução da mão de obra (Art. 26, II do CDC), estruturada em '
+          '3 camadas: (i) retorno corretivo prioritário e sem custo adicional pelo Profissional original; '
+          '(ii) mediação técnica documentada pela equipe Desperrengue; e (iii) acionamento do Fundo Garantidor '
+          'Desperrengue para reparo corretivo ou ressarcimento proporcional, conforme evidências fotográficas.',
+    ),
+    LegalMandateClause(
+      title: '8. Conduta Segura no Imóvel, Política Anticontorno e Protocolo Anti-Coação',
+      body:
+          'O Cliente compromete-se a manter ambiente seguro, respeitoso e livre de riscos não informados para a '
+          'execução do serviço, bem como a não propor nem aceitar pagamentos por fora da plataforma para chamados '
+          'originados no Desperrengue — a contratação por fora extingue automaticamente a custódia, o seguro e a '
+          'garantia de 90 dias. Em qualquer situação de ameaça ou coação presencial, o aplicativo disponibiliza '
+          'protocolo silencioso de proteção que retém preventivamente os valores em custódia sem expor o usuário.',
+    ),
+    LegalMandateClause(
+      title: '9. Privacidade Geoespacial e Proteção de Dados Pessoais (LGPD — Lei 13.709/2018)',
+      body:
+          'Seu endereço exato, complemento e coordenadas permanecem criptograficamente protegidos durante a etapa '
+          'de orçamento (exibindo apenas a região aproximada) e são liberados exclusivamente ao Profissional '
+          'contratado após a confirmação da custódia. Dados pessoais sensíveis (biometria facial e documentos de '
+          'identificação) são tratados sob sigilo estrito e criptografia, exclusivamente para prevenção à fraude e '
+          'garantia de segurança do titular (Art. 11, II, "g" da LGPD). Você pode exercer a qualquer momento seus '
+          'direitos de acesso, correção, portabilidade, revogação e eliminação de conta (Art. 18 da LGPD) nas '
+          'configurações do aplicativo ou junto ao Encarregado de Dados (DPO) em privacidade@desperrengue.com.br.',
+    ),
+    LegalMandateClause(
+      title: '10. Marco Civil da Internet, Registros de Auditoria e Propriedade Intelectual',
+      body:
+          'Em observância ao Marco Civil da Internet (Lei 12.965/2014 e Decreto 8.771/2016), o Desperrengue mantém '
+          'registros seguros de data, hora, identificação e integridade de acessos e aceites pelo prazo legal. '
+          'Marcas, códigos-fonte, algoritmos, interfaces, fluxos e conteúdos da plataforma são de titularidade '
+          'exclusiva do Desperrengue (Leis 9.609/1998 e 9.610/1998), sendo vedada sua cópia, engenharia reversa '
+          'ou exploração comercial não autorizada.',
+    ),
+    LegalMandateClause(
+      title: '11. Limitação de Responsabilidade, Caso Fortuito e Força Maior (Art. 393 do Código Civil)',
+      body:
+          'O Desperrengue emprega as melhores práticas de segurança digital e verificação documental, mas não '
+          'responde por interrupções decorrentes de caso fortuito ou força maior (Art. 393 do Código Civil), '
+          'falhas de operadoras de internet, órgãos públicos emissores de certidões ou por acordos paralelos '
+          'firmados diretamente fora do aplicativo. A responsabilidade técnica pela execução física do reparo '
+          'pertence ao Profissional escolhido, sem prejuízo da cobertura da Garantia de 90 Dias nas regras aqui previstas.',
+    ),
+    LegalMandateClause(
+      title: '12. Assinatura Eletrônica SHA-256, Atualizações Contratuais e Foro (MP 2.200-2/2001)',
+      body:
+          'O aceite eletrônico registrado nesta tela possui plena validade jurídica e força probante (MP 2.200-2/2001 '
+          'e Lei 14.063/2020), sendo vinculado de forma imutável à sua conta por selo criptográfico SHA-256 e '
+          'carimbo de data/hora. Eventuais atualizações relevantes destes Termos serão comunicadas previamente por '
+          'e-mail e notificação no aplicativo. Estes Termos são regidos pelas leis da República Federativa do Brasil, '
+          'preservando-se o foro do domicílio do consumidor para resolução de controvérsias (Art. 101, I do CDC).',
     ),
   ];
 
-  /// Contrato exclusivo do Modo Profissional (7 cláusulas completas incluindo Cláusula-Mandato Art. 653 CC).
+  /// Contrato completo e juridicamente blindado do Modo Profissional (13 cláusulas —
+  /// CLT Art. 442-B, Código Civil Arts. 593–609 e Arts. 653–692 Cláusula-Mandato,
+  /// LGPD Lei 13.709/2018, CDC Lei 8.078/1990, Marco Civil e Ciclo de 90 Dias PF).
   static const List<LegalMandateClause> providerTermsClauses = <LegalMandateClause>[
     LegalMandateClause(
-      title: '1. Parceria Autônoma Independente e Inexistência de Vínculo Empregatício',
+      title: '1. Parceria Autônoma Independente e Inexistência de Vínculo Empregatício (Art. 442-B da CLT)',
       body:
-          'O Profissional atua com total autonomia técnica, liberdade de agenda, livre precificação de seus orçamentos '
-          'e ausência de exclusividade ou subordinação jurídica, inexistindo vínculo empregatício de qualquer natureza '
-          'com o Desperrengue, nos termos da legislação civil aplicável.',
+          'O Profissional atua como prestador de serviços autônomo e independente (Arts. 593 a 609 do Código Civil '
+          'e Art. 442-B da CLT), com plena autonomia técnica, liberdade absoluta de agenda, direito de recusar ou '
+          'aceitar chamados sem penalidade, livre precificação de seus orçamentos e total ausência de exclusividade '
+          'ou subordinação jurídica. O presente instrumento não estabelece vínculo empregatício, sociedade, '
+          'representação comercial exclusiva ou franquia entre o Profissional e o Desperrengue.',
     ),
     LegalMandateClause(
-      title: '2. Cláusula-Mandato Mercantil Expressa (Arts. 653 a 692 do Código Civil — 85% / 13,5% / 1,5%)',
+      title: '2. Verificação de Identidade, Antecedentes Criminais PF e Renovação Obrigatória de 90 Dias',
+      body:
+          'É requisito indispensável para habilitação e permanência na plataforma a comprovação de identidade civil '
+          '(documento oficial com foto), prova de vida facial ao vivo e Certidão Negativa de Antecedentes Criminais '
+          '("Nada Consta") emitida pela Polícia Federal (ePol/SINIC). Alinhada ao prazo máximo oficial de validade '
+          'da certidão da Polícia Federal, toda a validação de segurança possui vigência de 90 (noventa) dias corridos, '
+          'devendo ser renovada ao final de cada ciclo mediante lembretes prévios enviados automaticamente por e-mail '
+          '(15 dias e 5 dias antes do vencimento). Caso o Profissional já possua validação vigente feita no modo Cliente, '
+          'os documentos são reaproveitados automaticamente até o término dos 90 dias sem nova cobrança.',
+    ),
+    LegalMandateClause(
+      title: '3. Aprovação Cadastral e Validação Obrigatória de E-mail',
+      body:
+          'Concluída a análise documental e de segurança, o Desperrengue encaminha e-mail oficial de aprovação ao '
+          'endereço eletrônico do Profissional. A ativação definitiva para recebimento de chamados e liquidação de '
+          'repasses depende da confirmação desse e-mail oficial, mantendo válido o canal de notificações contratuais, '
+          'extratos financeiros e avisos de renovação de 90 dias.',
+    ),
+    LegalMandateClause(
+      title: '4. Cláusula-Mandato Mercantil Expressa — Smart Split 85% / 13,5% / 1,5% (Arts. 653 a 692 do CC)',
       body:
           'Pelo presente instrumento, o Profissional outorga mandato mercantil especial e específico ao Desperrengue '
-          'para, em seu nome e por sua conta: (i) receber e manter em custódia segregada os valores pagos pelos Clientes; '
-          '(ii) deduzir exclusivamente a taxa de intermediação tecnológica de 13,5% (treze inteiros e cinco décimos por cento) '
-          'sobre o valor da mão de obra; (iii) destinar 1,5% (um inteiro e cinco décimos por cento) da mão de obra ao Fundo '
-          'Garantidor de 90 dias; e (iv) repassar integralmente ao Profissional os 85,0% (oitenta e cinco por cento) líquidos '
-          'da mão de obra para a conta titular vinculada ao seu CPF após a maturação de segurança.',
+          '(Arts. 653 a 692 do Código Civil) para, em seu nome e por sua conta: (i) receber e manter em conta de '
+          'custódia segregada os valores pagos pelos Clientes; (ii) deduzir exclusivamente a taxa de intermediação '
+          'tecnológica de 13,5% (treze inteiros e cinco décimos por cento) sobre a mão de obra; (iii) destinar '
+          '1,5% (um inteiro e cinco décimos por cento) da mão de obra ao Fundo Garantidor de 90 dias; e (iv) repassar '
+          'integralmente ao Profissional os 85,0% (oitenta e cinco por cento) líquidos da mão de obra para conta '
+          'bancária ou chave PIX de mesma titularidade CPF/CNPJ após o prazo de maturação antifraude.',
     ),
     LegalMandateClause(
-      title: '3. Reembolso Integral de Peças e Materiais (0% de Taxa com NF-e de 44 Dígitos)',
+      title: '5. Reembolso Integral de Peças e Materiais (0% de Taxa com NF-e de 44 Dígitos)',
       body:
-          'Insumos e peças consumíveis aplicados diretamente na ordem de serviço, quando comprovados por Nota Fiscal '
-          'Eletrônica autêntica de 44 dígitos autorizada na SEFAZ (excluídas ferramentas de uso permanente), são '
-          'reembolsados ao Profissional com 0% (zero por cento) de retenção de taxa. O cancelamento indevido da nota '
-          'fiscal após a conclusão enseja estorno compensatório da taxa correspondente.',
+          'Peças e materiais consumíveis adquiridos pelo Profissional para aplicação direta no imóvel do Cliente, '
+          'quando comprovados por Nota Fiscal Eletrônica (NF-e/NFC-e) autêntica de 44 dígitos autorizada na SEFAZ '
+          '(excluídas ferramentas e equipamentos permanentes de trabalho), constituem mero reembolso de despesas '
+          'por conta e ordem do Cliente, com 0% (zero por cento) de comissão da plataforma. O cancelamento indevido '
+          'ou fraude na nota fiscal após o repasse autoriza estorno compensatório imediato e bloqueio cadastral.',
     ),
     LegalMandateClause(
-      title: '4. Garantia Técnica de 90 Dias e Conduta Ética Residencial',
+      title: '6. Autonomia Fiscal, Tributária e Previdenciária do Profissional',
       body:
-          'O Profissional compromete-se a executar os serviços com excelência técnica, pontualidade, respeito no interior '
-          'das residências e registro fotográfico de entrada e conclusão, prestando suporte de garantia de 90 dias (Art. 26, '
-          'II do CDC) sobre vícios de execução e vedando qualquer tentativa de desvio de chamados por fora da custódia segura.',
+          'O Profissional é o único e exclusivo responsável pela regularidade fiscal e previdenciária de sua atividade '
+          '(MEI, autônomo ou pessoa jurídica), incluindo a emissão de Nota Fiscal de Serviços (NFS-e) ou recibo ao '
+          'Cliente pelo valor total de sua mão de obra quando exigido por lei, bem como o recolhimento de ISS, INSS, '
+          'DAS-MEI, IRPF/IRPJ e demais encargos incidentes sobre sua remuneração, sem qualquer solidariedade trabalhista.',
     ),
     LegalMandateClause(
-      title: '5. Antecedentes Criminais e Revalidação Semestral Obrigatória (a cada 6 Meses)',
+      title: '7. Excelência Técnica, Registro Fotográfico, PIN de Conclusão e Garantia de 90 Dias (Art. 26, II CDC)',
       body:
-          'É requisito indispensável para manter o perfil ativo a comprovação de identidade civil, prova de vida facial '
-          'e Certidão Negativa de Antecedentes Criminais emitida pela Polícia Federal (SINIC/ePol), devendo toda a '
-          'documentação ser obrigatoriamente revalidada a cada 6 (seis) meses. Caso o Profissional já possua validação '
-          'vigente realizada no modo Cliente, os documentos são reaproveitados automaticamente até o fim do semestre.',
+          'O Profissional compromete-se a executar os serviços com rigor técnico, pontualidade, observância das normas '
+          'de segurança (incluindo NR-10, NR-35 e EPIs quando aplicáveis) e registro fotográfico de início e conclusão '
+          'no aplicativo, encerrando cada ordem de serviço exclusivamente mediante validação do código PIN presencial '
+          'fornecido pelo Cliente. O Profissional assegura garantia legal de 90 (noventa) dias sobre vícios de execução '
+          'da mão de obra (Art. 26, II do CDC), comprometendo-se ao pronto retorno corretivo sem custo adicional quando '
+          'constatada falha técnica atribuível ao serviço realizado.',
     ),
     LegalMandateClause(
-      title: '6. Protocolo de Proteção Física Anti-Coação',
+      title: '8. Conduta Ética Residencial, Política Anticontorno e Sanções Progressivas',
       body:
-          'Para proteção da integridade física de Clientes e Profissionais em atendimentos presenciais, a plataforma '
-          'dispõe de mecanismos silenciosos anti-coação que congelam preventivamente a liquidação financeira sem expor '
-          'a vítima no local, submetendo o evento à auditoria de segurança.',
+          'É estritamente proibido ao Profissional solicitar ou aceitar pagamentos por fora do aplicativo para clientes '
+          'ou chamados intermediados pelo Desperrengue, repassar credenciais de conta a terceiros, subcontratar pessoa '
+          'não verificada para entrar na residência do Cliente ou adotar conduta intimidadora, discriminatória ou ilegal. '
+          'Infrações sujeitam a conta a advertência, suspensão preventiva, compensação de prejuízos comprovados ou '
+          'banimento definitivo com bloqueio permanente do CPF.',
     ),
     LegalMandateClause(
-      title: '7. Sigilo Estrito de Endereço e Conformidade LGPD (Lei 13.709/2018)',
+      title: '9. Protocolo Silencioso de Proteção Física Anti-Coação',
       body:
-          'Os endereços, fotos técnicas e dados de contato dos Clientes são confiados ao Profissional exclusivamente '
-          'para a execução da ordem de serviço contratada, sendo terminantemente proibido o armazenamento externo, '
-          'compartilhamento com terceiros ou uso para finalidade diversa, sob as penas da Lei Geral de Proteção de Dados.',
+          'Para salvaguardar a integridade física tanto do Profissional quanto do Cliente durante atendimentos presenciais, '
+          'a plataforma opera protocolo silencioso anti-coação que congela preventivamente a liquidação financeira sem '
+          'expor a parte vulnerável no local, encaminhando a ocorrência para auditoria de segurança e apoio prioritário.',
+    ),
+    LegalMandateClause(
+      title: '10. Sigilo Estrito de Endereços e Conformidade LGPD (Lei 13.709/2018)',
+      body:
+          'Endereços, telefones, fotografias internas de imóveis e quaisquer dados pessoais dos Clientes são confiados '
+          'ao Profissional exclusivamente para execução da ordem de serviço contratada, sendo terminantemente proibido '
+          'copiar, divulgar, armazenar externamente ou reutilizar tais dados após o atendimento, sob pena de rescisão '
+          'imediata e responsabilização integral na forma da LGPD (Lei 13.709/2018). Os dados biométricos e documentais '
+          'do Profissional são tratados com base no Art. 11, II, "g" da LGPD para prevenção à fraude e segurança; '
+          'solicitações de direitos do titular (Art. 18) podem ser exercidas no app ou via privacidade@desperrengue.com.br.',
+    ),
+    LegalMandateClause(
+      title: '11. Marco Civil da Internet, Registros de Acesso e Propriedade Intelectual',
+      body:
+          'Nos termos do Marco Civil da Internet (Lei 12.965/2014 e Decreto 8.771/2016), o Desperrengue registra logs '
+          'seguros de acessos, aceites contratuais, transações e confirmações de PIN para fins de auditoria e proteção '
+          'jurídica. Todo software, marca, algoritmo, layout e material da plataforma são protegidos pelas Leis '
+          '9.609/1998 e 9.610/1998, sendo vedado seu uso não autorizado.',
+    ),
+    LegalMandateClause(
+      title: '12. Responsabilidade Civil Técnica, Indenização e Força Maior (Art. 393 do Código Civil)',
+      body:
+          'O Profissional responde civil e tecnicamente pelos danos materiais ou pessoais comprovadamente causados por '
+          'dolo, imperícia, imprudência ou negligência durante a execução dos serviços no imóvel do Cliente, autorizando '
+          'a retenção cautelar ou compensação de valores em custódia enquanto perdurar apuração de disputa formal. '
+          'Nenhuma das partes responderá por eventos caracterizados como caso fortuito ou força maior (Art. 393 do CC).',
+    ),
+    LegalMandateClause(
+      title: '13. Vigência, Rescisão, Assinatura Eletrônica SHA-256 e Foro (MP 2.200-2/2001)',
+      body:
+          'Este contrato vigora por prazo indeterminado e pode ser encerrado por qualquer das partes mediante aviso no '
+          'aplicativo, ressalvadas as ordens de serviço em andamento, garantias de 90 dias já assumidas e saldos '
+          'pendentes de maturação. O aceite eletrônico possui plena validade jurídica e força executiva (MP 2.200-2/2001 '
+          'e Lei 14.063/2020), autenticado por hash SHA-256 e carimbo temporal imutável. Aplica-se integralmente a '
+          'legislação brasileira, priorizando-se mediação eletrônica prévia antes da via judicial.',
     ),
   ];
 

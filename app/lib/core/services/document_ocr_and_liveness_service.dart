@@ -1815,7 +1815,9 @@ class DocumentOcrAndLivenessService {
       extractedDocumentNumber: parsed.documentNumber,
       extractedDocumentNumberMasked: _maskDocumentNumber(parsed.documentNumber),
       extractedBirthDate: parsed.birthDate,
-      extractedBirthDateFormatted: _formatDateBr(parsed.birthDate),
+      extractedBirthDateFormatted: parsed.birthDate.year <= 1900
+          ? 'Não consta no documento'
+          : _formatDateBr(parsed.birthDate),
       extractedIssuingAuthority: parsed.issuingAuthority,
       frontPerceptualHash64: frontPhash,
       backPerceptualHash64: backPhash,
@@ -1931,14 +1933,24 @@ class DocumentOcrAndLivenessService {
               '${documentType.code}-${(frontPhash.abs() % 90000000 + 10000000)}')
           .trim();
 
-      final RegExp dateRegex = RegExp(r'(\d{2})/(\d{2})/(\d{4})');
-      DateTime birthDate = DateTime.utc(1995, 1, 3);
-      final dateMatch = dateRegex.firstMatch(combinedRaw);
-      if (dateMatch != null) {
-        final d = int.tryParse(dateMatch.group(1)!) ?? 3;
-        final m = int.tryParse(dateMatch.group(2)!) ?? 1;
-        final y = int.tryParse(dateMatch.group(3)!) ?? 1995;
-        birthDate = DateTime.utc(y, m, d);
+      final ParsedBrazilianDocumentOcr parsedReal =
+          BrazilianDocumentOcrParser.parse(
+        frontText: frontText ?? '',
+        backText: backText ?? '',
+        expectedDocumentType: documentType,
+      );
+      DateTime birthDate = parsedReal.birthDate ?? DateTime.utc(1900, 1, 1);
+      if (parsedReal.birthDate == null) {
+        final RegExp dateRegex = RegExp(r'(\d{2})/(\d{2})/(\d{4})');
+        final dateMatch = dateRegex.firstMatch(combinedRaw);
+        if (dateMatch != null) {
+          final d = int.tryParse(dateMatch.group(1)!) ?? 1;
+          final m = int.tryParse(dateMatch.group(2)!) ?? 1;
+          final y = int.tryParse(dateMatch.group(3)!) ?? 1900;
+          if (y >= 1915 && y <= DateTime.now().year - 10) {
+            birthDate = DateTime.utc(y, m, d);
+          }
+        }
       }
 
       final RegExp issuerRegex = RegExp(

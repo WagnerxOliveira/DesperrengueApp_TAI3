@@ -155,11 +155,13 @@ Future<_OcrPassOutput> _recognizeTextSpatialMultiPass({
   );
   int bestScore = _ocrQualityScore(best.text, expectDatesAndCpf);
 
-  // Passada 2 (realce de contraste anti-guilloché): útil quando o fundo verde
-  // da CNH física mascara barras '/' ou dígitos da data de nascimento.
+  // Passada 2A (realce de contraste anti-guilloché): dispara sempre que ainda
+  // não houver data de nascimento plausível na frente OU score abaixo de 105.
+  // Corrige o caso real da CNH 2022 onde 4a Emissão e 4b Validade aparecem na
+  // 1ª passada mas o campo 3 (Data de Nascimento) fica mascarado pelo fundo verde.
   if (baked != null &&
       expectDatesAndCpf &&
-      (!_hasDateLikePattern(best.text) || bestScore < 95)) {
+      (!_hasPlausibleBirthDatePattern(best.text) || bestScore < 105)) {
     final img.Image enhanced = _enhanceDocumentInkContrast(baked);
     final Uint8List enhancedBytes =
         Uint8List.fromList(img.encodeJpg(enhanced, quality: 95));
@@ -174,13 +176,13 @@ Future<_OcrPassOutput> _recognizeTextSpatialMultiPass({
     );
     final int enhancedScore =
         _ocrQualityScore(enhancedPass.text, expectDatesAndCpf);
-    if (enhancedScore > bestScore) {
+    final bool bestHasBirth = _hasPlausibleBirthDatePattern(best.text);
+    final bool enhHasBirth = _hasPlausibleBirthDatePattern(enhancedPass.text);
+    if (enhancedScore > bestScore && (enhHasBirth || !bestHasBirth)) {
       best = enhancedPass;
       bestScore = enhancedScore;
-    } else if (_hasDateLikePattern(enhancedPass.text) &&
-        !_hasDateLikePattern(best.text)) {
-      // Preserva linhas extras enriquecidas caso a versão de alto contraste tenha
-      // resgatado datas que a versão original perdeu.
+    } else if (enhHasBirth && !bestHasBirth) {
+      // Preserva linhas enriquecidas que resgataram a data de nascimento.
       best = (
         text: '${best.text}\n${enhancedPass.text}'.trim(),
         lines: <OcrTextLineBox>[...best.lines, ...enhancedPass.lines],
@@ -190,10 +192,71 @@ Future<_OcrPassOutput> _recognizeTextSpatialMultiPass({
     }
   }
 
+  // Passada 2B (zoom 1.6x + realce na metade superior): na CNH 2022 e CNH Clássica,
+  // o campo 3 ("DATA, LOCAL E UF DE NASCIMENTO") fica na metade superior com fonte
+  // menor sobre fundo guilloché. Recorta 58% superiores, amplia 1.6x e remapeia
+  // as caixas normalizadas para a geometria original do documento.
+  if (baked != null &&
+      expectDatesAndCpf &&
+      !_hasPlausibleBirthDatePattern(best.text)) {
+    final int cropH = math.max(64, (baked.height * 0.58).round());
+    final img.Image topCrop = img.copyCrop(
+      baked,
+      x: 0,
+      y: 0,
+      width: baked.width,
+      height: math.min(cropH, baked.height),
+    );
+    final int upscaledW = math.min(2400, (topCrop.width * 1.6).round());
+    final int upscaledH = math.min(1800, (topCrop.height * 1.6).round());
+    final double scaleX = upscaledW / baked.width;
+    final double scaleY = upscaledH / cropH;
+    final img.Image topUpscaled = _enhanceDocumentInkContrast(
+      img.copyResize(
+        topCrop,
+        width: upscaledW,
+        height: upscaledH,
+        interpolation: img.Interpolation.cubic,
+      ),
+    );
+    final Uint8List topBytes =
+        Uint8List.fromList(img.encodeJpg(topUpscaled, quality: 95));
+    final _OcrPassOutput topPass = await _processSingleBytesSpatial(
+      recognizer: recognizer,
+      bytes: topBytes,
+      imageWidth: upscaledW.toDouble(),
+      imageHeight: upscaledH.toDouble(),
+      rotation: 0,
+      tempDir: tempDir,
+      fileName: '${prefix}_0_top_zoom.jpg',
+    );
+    if (_hasPlausibleBirthDatePattern(topPass.text)) {
+      final List<OcrTextLineBox> remappedLines = topPass.lines
+          .map(
+            (l) => OcrTextLineBox(
+              text: l.text,
+              left: l.left / scaleX,
+              top: l.top / scaleY,
+              right: l.right / scaleX,
+              bottom: l.bottom / scaleY,
+              imageWidth: baseW,
+              imageHeight: baseH,
+            ),
+          )
+          .toList(growable: false);
+      best = (
+        text: '${best.text}\n${topPass.text}'.trim(),
+        lines: <OcrTextLineBox>[...best.lines, ...remappedLines],
+        rotation: best.rotation,
+      );
+      bestScore = _ocrQualityScore(best.text, expectDatesAndCpf);
+    }
+  }
+
   // Passada 3 (multi-orientação): dispara se texto veio curto OU se faltam
-  // dígitos/datas na frente (foto enviada de pé em 90°/270° ou de ponta-cabeça).
+  // datas plausíveis de nascimento na frente (foto enviada de pé em 90°/270° ou 180°).
   final bool needsRotationRetry = _meaningfulCharCount(best.text) < 36 ||
-      (expectDatesAndCpf && !_hasDateLikePattern(best.text));
+      (expectDatesAndCpf && !_hasPlausibleBirthDatePattern(best.text));
 
   if (baked != null && needsRotationRetry) {
     for (final int angle in const <int>[90, 270, 180]) {
@@ -214,8 +277,8 @@ Future<_OcrPassOutput> _recognizeTextSpatialMultiPass({
       if (candidateScore > bestScore) {
         best = candidate;
         bestScore = candidateScore;
-        if (bestScore >= 110 &&
-            (!expectDatesAndCpf || _hasDateLikePattern(best.text))) {
+        if (bestScore >= 120 &&
+            (!expectDatesAndCpf || _hasPlausibleBirthDatePattern(best.text))) {
           break;
         }
       }
@@ -374,8 +437,29 @@ Future<List<String>> _scanQrCodesSafe({
 int _meaningfulCharCount(String text) =>
     text.replaceAll(RegExp(r'[^A-Za-zÀ-ÿ0-9]'), '').length;
 
-bool _hasDateLikePattern(String text) =>
-    RegExp(r'\b\d{2}[/.\-\s]\d{2}[/.\-\s](?:19|20)\d{2}\b').hasMatch(text);
+bool _hasPlausibleBirthDatePattern(String text) {
+  final int maxBirthYear = DateTime.now().year - 10;
+  final RegExp re = RegExp(
+    r'(?<!\d)(\d{2})[/.\-\s]+(\d{2})[/.\-\s]+((?:19|20)\d{2})(?!\d)',
+  );
+  for (final m in re.allMatches(text)) {
+    final int? d = int.tryParse(m.group(1)!);
+    final int? mo = int.tryParse(m.group(2)!);
+    final int? y = int.tryParse(m.group(3)!);
+    if (d != null &&
+        mo != null &&
+        y != null &&
+        d >= 1 &&
+        d <= 31 &&
+        mo >= 1 &&
+        mo <= 12 &&
+        y >= 1915 &&
+        y <= maxBirthYear) {
+      return true;
+    }
+  }
+  return false;
+}
 
 int _ocrQualityScore(String text, bool expectDatesAndCpf) {
   int score = math.min(70, _meaningfulCharCount(text) ~/ 2);
@@ -384,10 +468,13 @@ int _ocrQualityScore(String text, bool expectDatesAndCpf) {
       score += 30;
     }
     final dateMatches =
-        RegExp(r'\b\d{2}[/.\-\s]\d{2}[/.\-\s](?:19|20)\d{2}\b')
+        RegExp(r'(?<!\d)\d{2}[/.\-\s]+\d{2}[/.\-\s]+(?:19|20)\d{2}(?!\d)')
             .allMatches(text)
             .length;
     score += math.min(35, dateMatches * 15);
+    if (_hasPlausibleBirthDatePattern(text)) {
+      score += 25;
+    }
     final upper = text.toUpperCase();
     if (upper.contains('NASCIMENTO') || upper.contains('NASC')) score += 10;
     if (upper.contains('NOME')) score += 8;

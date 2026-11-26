@@ -72,7 +72,7 @@ class _VerificacaoStep6cTermosScreenState
               ),
               const SizedBox(height: AppSpace.s8),
               Text(
-                'Versão vigente: $modeVersion · Código Civil Art. 653 e LGPD · Validação Semestral (6 meses)',
+                'Versão vigente: $modeVersion · Código Civil, CDC, Marco Civil e LGPD · Validação de Segurança a cada 90 dias',
                 style: AppType.caption.copyWith(color: tk.textMuted),
               ),
               const SizedBox(height: AppSpace.s16),

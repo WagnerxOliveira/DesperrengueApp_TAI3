@@ -79,7 +79,8 @@ class ProfileService {
       'kyc_billing_lock_until, criminal_record_verified, criminal_record_verified_at, '
       'criminal_record_expires_at, criminal_certificate_number_masked, '
       'client_terms_accepted, client_terms_accepted_at, client_terms_version, '
-      'provider_terms_accepted, provider_terms_accepted_at, provider_terms_version';
+      'provider_terms_accepted, provider_terms_accepted_at, provider_terms_version, '
+      'approval_email_confirmed, approval_email_sent_at, approval_email_confirmed_at';
 
   /// Perfil do usuário logado (null se não houver sessão ou linha).
   Future<UserProfile?> fetchCurrent() async {
@@ -300,7 +301,7 @@ class ProfileService {
   }
 
   /// Ativa o segundo modo (`Cliente` <-> `Profissional`) reaproveitando a validação
-  /// semestral vigente de KYC + Antecedentes Criminais sem pedir documentos de novo
+  /// vigente (90 dias) de KYC + Antecedentes Criminais sem pedir documentos de novo
   /// e sem gerar cobrança de API (`activate_role_reusing_valid_kyc`).
   Future<void> activateRoleReusingValidKyc(UserMode targetMode) async {
     final user = _client.auth.currentUser;
@@ -314,6 +315,40 @@ class ProfileService {
         'p_terms_sha256': LegalMandateService.sha256ForMode(targetMode),
       },
     );
+  }
+
+  /// Dispara (ou reenvia) o e-mail oficial de aprovação da conta via Edge Function
+  /// `enviar-email-aprovacao` (Resend), tanto para **Cliente** quanto para **Profissional**.
+  Future<bool> sendApprovalEmail({UserMode targetMode = UserMode.client}) async {
+    final client = _clientOrNull;
+    if (client == null || client.auth.currentUser == null) return false;
+    try {
+      final res = await client.functions.invoke(
+        'enviar-email-aprovacao',
+        body: <String, dynamic>{
+          'target_mode': targetMode.wire,
+        },
+      );
+      final data = res.data;
+      if (data is Map && data['sent'] == true) return true;
+      return res.status >= 200 && res.status < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Confirma no servidor (`confirm_account_approval_email`) que o usuário validou
+  /// o e-mail oficial de aprovação, liberando o acesso pleno à conta (Cliente ou Profissional).
+  Future<void> confirmAccountApprovalEmail() async {
+    final user = _client.auth.currentUser;
+    if (user == null) throw const AuthException('Sessão expirada.');
+    try {
+      await _client.rpc<dynamic>('confirm_account_approval_email');
+    } on PostgrestException catch (e) {
+      if (e.code == '42501' || e.code == 'P0001') rethrow;
+      // Compatibilidade caso a RPC antiga de prestador seja a única disponível
+      await _client.rpc<dynamic>('activate_approved_provider');
+    }
   }
 
   /// Submete de forma atômica o KYC Biométrico completo do Cliente (4 Passos):

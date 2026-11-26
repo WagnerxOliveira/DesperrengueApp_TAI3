@@ -235,10 +235,10 @@ void main() {
         isTrue,
       );
 
-      expect(LegalMandateService.currentClientTermsVersion, '2026.11-CLIENT-V2');
-      expect(LegalMandateService.currentProviderTermsVersion, '2026.11-PROVIDER-V2');
-      expect(LegalMandateService.clientTermsClauses.length, 6);
-      expect(LegalMandateService.providerTermsClauses.length, 7);
+      expect(LegalMandateService.currentClientTermsVersion, '2026.11-CLIENT-V3');
+      expect(LegalMandateService.currentProviderTermsVersion, '2026.11-PROVIDER-V3');
+      expect(LegalMandateService.clientTermsClauses.length, 12);
+      expect(LegalMandateService.providerTermsClauses.length, 13);
 
       expect(
         LegalMandateService.clausesForMode(UserMode.client),
@@ -250,11 +250,11 @@ void main() {
       );
       expect(
         LegalMandateService.versionForMode(UserMode.client),
-        '2026.11-CLIENT-V2',
+        '2026.11-CLIENT-V3',
       );
       expect(
         LegalMandateService.versionForMode(UserMode.provider),
-        '2026.11-PROVIDER-V2',
+        '2026.11-PROVIDER-V3',
       );
 
       final clientSha = LegalMandateService.sha256ForMode(UserMode.client);
@@ -270,11 +270,11 @@ void main() {
       );
       expect(
         LegalMandateService.fullTextForMode(UserMode.provider),
-        contains('6 (seis) meses'),
+        contains('90 (noventa) dias'),
       );
       expect(
         LegalMandateService.fullTextForMode(UserMode.client),
-        contains('6 (seis) meses'),
+        contains('90 (noventa) dias'),
       );
     });
   });

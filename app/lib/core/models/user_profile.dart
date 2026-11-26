@@ -70,7 +70,7 @@ class UserProfile {
     this.ocrVerified = false,
     this.kycOcrConfidence = 0.0,
     this.kycVerifiedAt,
-    // Ciclo Semestral Unificado (6 Meses) + Antecedentes Criminais PF + Termos por Papel
+    // Ciclo de Segurança de 90 Dias + Antecedentes Criminais PF + Termos por Papel + E-mail de Aprovação
     this.kycExpiresAt,
     this.kycValidationCycle = 0,
     this.kycBillingLockUntil,
@@ -84,6 +84,9 @@ class UserProfile {
     this.providerTermsAccepted = false,
     this.providerTermsAcceptedAt,
     this.providerTermsVersion,
+    this.approvalEmailConfirmed = true,
+    this.approvalEmailSentAt,
+    this.approvalEmailConfirmedAt,
     this.trustTier = 'STANDARD',
     this.isTrustedAnchor = false,
     this.externalTrustScore = 0.0,
@@ -133,7 +136,7 @@ class UserProfile {
   final double kycOcrConfidence;
   final DateTime? kycVerifiedAt;
 
-  // Ciclo Semestral Unificado (6 Meses), Antecedentes Criminais PF e Termos por Papel
+  // Ciclo de Segurança de 90 Dias, Antecedentes Criminais PF, Termos por Papel e E-mail de Aprovação
   final DateTime? kycExpiresAt;
   final int kycValidationCycle;
   final DateTime? kycBillingLockUntil;
@@ -147,6 +150,9 @@ class UserProfile {
   final bool providerTermsAccepted;
   final DateTime? providerTermsAcceptedAt;
   final String? providerTermsVersion;
+  final bool approvalEmailConfirmed;
+  final DateTime? approvalEmailSentAt;
+  final DateTime? approvalEmailConfirmedAt;
 
   // Campos de Governança de Garantia, Marco Zero (Cold-Start) e Carteira Bipartida
   final String trustTier;
@@ -224,6 +230,13 @@ class UserProfile {
         providerTermsAcceptedAt:
             _parseOptionalDate(map['provider_terms_accepted_at']),
         providerTermsVersion: map['provider_terms_version'] as String?,
+        approvalEmailConfirmed:
+            map['approval_email_confirmed'] == null
+                ? true
+                : map['approval_email_confirmed'] == true,
+        approvalEmailSentAt: _parseOptionalDate(map['approval_email_sent_at']),
+        approvalEmailConfirmedAt:
+            _parseOptionalDate(map['approval_email_confirmed_at']),
         trustTier: (map['trust_tier'] as String?) ?? 'STANDARD',
         isTrustedAnchor: (map['is_trusted_anchor'] as bool?) ?? false,
         externalTrustScore:
@@ -519,6 +532,7 @@ enum AppDestination {
   kycSixMonthRenewal,
   kycInReview,
   kycApproved,
+  approvalEmailVerification,
   providerSetup,
   providerHome,
 }
@@ -566,6 +580,9 @@ AppDestination destinationFor(
       if (!profile.clientSetupDone || profile.clientKycStatus == 'REJECTED') {
         return AppDestination.clientSetup;
       }
+      if (!profile.approvalEmailConfirmed) {
+        return AppDestination.approvalEmailVerification;
+      }
       return AppDestination.clientHome;
     case UserMode.provider:
       if ((!profile.isProvider ||
@@ -583,6 +600,9 @@ AppDestination destinationFor(
         case VerificationStatus.approvedPendingEmail:
           return AppDestination.kycApproved;
         case VerificationStatus.active:
+          if (!profile.approvalEmailConfirmed) {
+            return AppDestination.approvalEmailVerification;
+          }
           return profile.providerSetupDone
               ? AppDestination.providerHome
               : AppDestination.providerSetup;

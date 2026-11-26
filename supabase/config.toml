@@ -473,3 +473,9 @@ entrypoint = "./functions/asaas-webhook-guard/index.ts"
 verify_jwt = false
 import_map = "./functions/voice-triage-structurer/deno.json"
 entrypoint = "./functions/voice-triage-structurer/index.ts"
+
+[functions.kyc-expiry-reminder]
+# Lembrete automatico previo de vencimento do ciclo de 90 dias da Certidao PF (15d / 5d / expirado) via Resend.
+verify_jwt = false
+import_map = "./functions/kyc-expiry-reminder/deno.json"
+entrypoint = "./functions/kyc-expiry-reminder/index.ts"

@@ -4,9 +4,11 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/app_session.dart';
 import '../../../core/services/draft_store.dart';
 import '../../../core/services/instant_image_cache_engine.dart';
 import '../../../core/services/media_service.dart';
+import '../../../core/services/profile_service.dart';
 import 'deep_link_policy.dart';
 import 'login_screen.dart';
 import 'post_auth_router.dart';
@@ -88,6 +90,20 @@ class _AuthGateState extends State<AuthGate> {
     final now = DateTime.now();
     if (!DeepLinkPolicy.shouldRefresh(lastRefresh: _lastLinkRefresh, now: now)) return;
     _lastLinkRefresh = now;
+    if (_userId != null) {
+      unawaited(
+        ProfileService()
+            .confirmAccountApprovalEmail()
+            .catchError((_) {})
+            .whenComplete(() {
+              if (mounted) {
+                AppSession.instance.refreshProfile();
+                setState(() => _refreshTick++);
+              }
+            }),
+      );
+      return;
+    }
     setState(() => _refreshTick++);
   }
 

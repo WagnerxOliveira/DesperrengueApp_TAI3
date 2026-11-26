@@ -18,6 +18,7 @@ import '../../../core/services/precise_geocoder.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/services/registration_guard_service.dart';
 import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/kyc_human_feedback_translator.dart';
 import '../../../core/ui/widgets.dart';
 import '../../auth/presentation/auth_gate.dart';
@@ -826,6 +827,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           backImageBytes: _docBackBytes,
           selfieImageBytes: _selfieBytes,
         );
+        if (!widget.isSixMonthRenewal) {
+          unawaited(service.sendApprovalEmail(targetMode: widget.targetMode));
+        }
       }
       _saveTimer?.cancel();
       await DraftStore.clear(_draftKey);
@@ -870,6 +874,16 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    return Theme(
+      data: AppTheme.onboarding(brightness),
+      child: Builder(
+        builder: (themedContext) => _buildOnboardingScaffold(themedContext),
+      ),
+    );
+  }
+
+  Widget _buildOnboardingScaffold(BuildContext context) {
     final tk = context.tk;
     final margin = context.layout.margin;
     final isProviderMode = widget.targetMode == UserMode.provider;
@@ -958,9 +972,9 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                           child: InfoBanner(
                             'Seus dados cadastrais, histórico e carteira estão preservados. '
                             'Para manter a segurança de todos dentro das residências, basta revalidar '
-                            'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 6 meses.',
+                            'Biometria Facial + Documento + Certidão de Antecedentes Criminais por mais 90 dias.',
                             title:
-                                'Renovação Semestral de Segurança (a cada 6 meses)',
+                                'Renovação de Segurança (a cada 90 dias)',
                             tone: BannerTone.security,
                             icon: Icons.event_repeat_rounded,
                           ),
@@ -1161,7 +1175,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                         const SizedBox(height: AppSpace.s2),
                         Text(
                           isProviderTarget
-                              ? 'Ative seu perfil profissional — validação única para Cliente e Profissional por 6 meses.'
+                              ? 'Ative seu perfil profissional — validação única para Cliente e Profissional por 90 dias.'
                               : 'Complete 3 passos rápidos para pedir serviços com segurança e garantia.',
                           style: AppType.bodySm.copyWith(color: tk.textMuted),
                         ),
@@ -1302,7 +1316,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                     ],
                   ),
                   const AppStatusChip(
-                    'Validade 6 meses',
+                    'Validade 90 dias',
                     tone: AppTone.info,
                     icon: Icons.event_repeat_rounded,
                   ),
@@ -1355,7 +1369,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
                               vertical: AppSpace.s8,
                             ),
                             child: Text(
-                              'Aceito os $termsTitle e a validação semestral de segurança (a cada 6 meses).',
+                              'Aceito os $termsTitle e a renovação de segurança a cada 90 dias.',
                               style: AppType.bodySm.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: tk.text,
@@ -1443,7 +1457,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           title: 'Prova de Vida Facial',
           subtitle:
               'Faça 3 movimentos simples na câmera para confirmar sua identidade em segundos.',
-          trustBadgeText: 'Protegido pela LGPD · Válido por 6 meses',
+          trustBadgeText: 'Protegido pela LGPD · Válido por 90 dias',
           trustBadgeIcon: Icons.verified_user_outlined,
         ),
         const SizedBox(height: AppSpace.s16),
@@ -1527,7 +1541,7 @@ class _ClientSetupScreenState extends State<ClientSetupScreen> {
           title: 'Prova de Vida Facial',
           subtitle:
               'Sua verificação facial ao vivo foi concluída. Continue para fotografar seu documento oficial.',
-          trustBadgeText: 'Protegido pela LGPD · Válido por 6 meses',
+          trustBadgeText: 'Protegido pela LGPD · Válido por 90 dias',
           trustBadgeIcon: Icons.verified_rounded,
         ),
         const SizedBox(height: AppSpace.s20),

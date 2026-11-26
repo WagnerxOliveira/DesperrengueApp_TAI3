@@ -178,7 +178,7 @@ void main() {
             findsOneWidget,
           );
           expect(
-            find.textContaining('Certidão validada por 6 meses'),
+            find.textContaining('Certidão validada por 90 dias'),
             findsOneWidget,
           );
 
@@ -275,7 +275,10 @@ void main() {
             const ValueKey('checkbox-accept-role-terms'),
           );
           await tester.ensureVisible(checkbox);
-          await tester.tap(checkbox);
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.descendant(of: checkbox, matching: find.byType(Checkbox)),
+          );
           await tester.pump();
 
           final confirmBtn = find.byKey(
@@ -437,7 +440,7 @@ void main() {
             findsOneWidget,
           );
           expect(
-            find.text('Renovação Semestral de Segurança (a cada 6 meses)'),
+            find.text('Renovação de Segurança (a cada 90 dias)'),
             findsOneWidget,
           );
           expect(
@@ -679,7 +682,7 @@ void main() {
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           expect(
-            find.text('Ciclo Semestral de Segurança Ativo'),
+            find.text('Ciclo de Segurança Ativo (90 dias)'),
             findsOneWidget,
           );
         },

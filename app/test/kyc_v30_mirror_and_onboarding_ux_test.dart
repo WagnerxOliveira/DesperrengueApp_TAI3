@@ -396,7 +396,7 @@ void main() {
           expect(find.text('3. Selo de segurança'), findsOneWidget);
           expect(find.text('Seus dados pessoais'), findsOneWidget);
           expect(find.text('0 de 3'), findsOneWidget);
-          expect(find.text('Validade 6 meses'), findsOneWidget);
+          expect(find.text('Validade 90 dias'), findsOneWidget);
 
           // Preenche Nome -> 1 de 3
           await tester.enterText(
@@ -476,7 +476,7 @@ void main() {
             findsOneWidget,
           );
           expect(
-            find.text('Protegido pela LGPD · Válido por 6 meses'),
+            find.text('Protegido pela LGPD · Válido por 90 dias'),
             findsOneWidget,
           );
 

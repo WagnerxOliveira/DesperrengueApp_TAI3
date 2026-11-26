@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -25,12 +24,14 @@ typedef CriminalCertificateExtractorOverride =
 
 enum _CertificateUploadSource { downloads, gallery, camera }
 
-/// Etapa unificada e ultra-responsiva de validação da Certidão Negativa de
-/// Antecedentes Criminais da Polícia Federal (ePol / SINIC — gov.br).
+/// Etapa unificada e ultra-responsiva de validação 100% automática da Certidão
+/// Negativa de Antecedentes Criminais da Polícia Federal (ePol / SINIC — gov.br).
 ///
-/// A validação aprovada possui vigência de **6 meses (180 dias)** e é compartilhada
-/// entre os modos **Cliente** e **Profissional** sem exigir novo envio nem gerar
-/// nova cobrança de verificação.
+/// Sem campos manuais para o usuário digitar: protocolo, data de emissão, código
+/// de autenticidade, CPF, nome do titular e situação "Nada Consta" são extraídos
+/// e validados internamente direto do PDF ou foto da certidão, respeitando o
+/// prazo oficial de **90 dias** da Polícia Federal e enviando avisos prévios
+/// automáticos por e-mail antes do vencimento.
 class CriminalBackgroundCheckStep extends StatefulWidget {
   const CriminalBackgroundCheckStep({
     super.key,
@@ -70,26 +71,11 @@ class CriminalBackgroundCheckStep extends StatefulWidget {
 
 class _CriminalBackgroundCheckStepState
     extends State<CriminalBackgroundCheckStep> {
-  late final TextEditingController _protocolCtrl = TextEditingController(
-    text: widget.initialResult?.protocolNumber ?? '',
-  );
-  late final TextEditingController _validationCodeCtrl = TextEditingController(
-    text: widget.initialResult?.validationCode ?? '',
-  );
-
-  late DateTime _issuedDate =
-      widget.initialResult?.issuedDate ??
-      (widget.referenceNow ?? DateTime.now());
-  late bool _hasExplicitDate = widget.initialResult != null;
-
   Uint8List? _fileBytes;
   String? _fileName;
   String? _lastExtractedText;
   String? _lastQrPayload;
   bool _analyzing = false;
-  bool _autoFilledProtocol = false;
-  bool _autoFilledDate = false;
-  bool _autoFilledValidationCode = false;
   AuditedCriminalRecordResult? _result;
   String? _errorMessage;
 
@@ -109,29 +95,9 @@ class _CriminalBackgroundCheckStepState
     if (widget.initialResult != oldWidget.initialResult &&
         widget.initialResult != null) {
       _result = widget.initialResult;
-      if (_protocolCtrl.text.trim().isEmpty) {
-        _protocolCtrl.text = widget.initialResult!.protocolNumber;
-      }
-      if (_validationCodeCtrl.text.trim().isEmpty) {
-        _validationCodeCtrl.text = widget.initialResult!.validationCode;
-      }
-      _issuedDate = widget.initialResult!.issuedDate;
-      _hasExplicitDate = true;
+      _fileBytes = _result!.fileBytes;
+      _fileName = 'certidao_pf.${_result!.fileExtension}';
     }
-  }
-
-  @override
-  void dispose() {
-    _protocolCtrl.dispose();
-    _validationCodeCtrl.dispose();
-    super.dispose();
-  }
-
-  static String _formatDateBr(DateTime date) {
-    final d = date.day.toString().padLeft(2, '0');
-    final m = date.month.toString().padLeft(2, '0');
-    final y = date.year.toString().padLeft(4, '0');
-    return '$d/$m/$y';
   }
 
   static String _formatFileSize(int byteLength) {
@@ -161,25 +127,6 @@ class _CriminalBackgroundCheckStepState
           kind: AppSnackKind.info,
         );
       }
-    }
-  }
-
-  Future<void> _pickIssueDate() async {
-    final now = widget.referenceNow ?? DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _issuedDate.isAfter(now) ? now : _issuedDate,
-      firstDate: now.subtract(const Duration(days: 365)),
-      lastDate: now,
-      helpText: 'Data de emissão da Certidão PF',
-    );
-    if (picked != null && mounted) {
-      setState(() {
-        _issuedDate = picked;
-        _hasExplicitDate = true;
-        _autoFilledDate = false;
-        _errorMessage = null;
-      });
     }
   }
 
@@ -368,42 +315,9 @@ class _CriminalBackgroundCheckStepState
       }
 
       if (!mounted) return;
-      final fields = extraction.fields;
-      final fallbackNow = widget.referenceNow ?? DateTime.now();
-
       setState(() {
         _lastExtractedText = extraction.extractedText;
         _lastQrPayload = extraction.qrPayload;
-
-        // Autopreenchimento imediato: SEMPRE atualiza com os dados do novo arquivo
-        // (sobrescrevendo qualquer valor de um arquivo anterior).
-        if (fields.protocolNumber != null &&
-            fields.protocolNumber!.trim().isNotEmpty) {
-          _protocolCtrl.text = fields.protocolNumber!.trim();
-          _autoFilledProtocol = true;
-        } else if (_autoFilledProtocol) {
-          _protocolCtrl.clear();
-          _autoFilledProtocol = false;
-        }
-
-        if (fields.validationCode != null &&
-            fields.validationCode!.trim().isNotEmpty) {
-          _validationCodeCtrl.text = fields.validationCode!.trim();
-          _autoFilledValidationCode = true;
-        } else if (_autoFilledValidationCode) {
-          _validationCodeCtrl.clear();
-          _autoFilledValidationCode = false;
-        }
-
-        if (fields.issuedDate != null) {
-          _issuedDate = fields.issuedDate!;
-          _hasExplicitDate = true;
-          _autoFilledDate = true;
-        } else if (_autoFilledDate) {
-          _issuedDate = fallbackNow;
-          _hasExplicitDate = false;
-          _autoFilledDate = false;
-        }
       });
 
       await _runValidation(
@@ -432,13 +346,6 @@ class _CriminalBackgroundCheckStepState
       _errorMessage = null;
       _lastExtractedText = null;
       _lastQrPayload = null;
-      _protocolCtrl.clear();
-      _validationCodeCtrl.clear();
-      _issuedDate = widget.referenceNow ?? DateTime.now();
-      _hasExplicitDate = false;
-      _autoFilledProtocol = false;
-      _autoFilledDate = false;
-      _autoFilledValidationCode = false;
     });
     widget.onValidated(null);
     AppSnackbar.show(
@@ -458,36 +365,14 @@ class _CriminalBackgroundCheckStepState
     });
 
     try {
-      final manualProtocol = _protocolCtrl.text.trim();
-      final manualCode = _validationCodeCtrl.text.trim();
-
-      Uint8List effectiveBytes = _fileBytes ?? Uint8List(0);
-      String effectiveFileName = _fileName ?? 'certidao_pf.pdf';
-
-      // Caso o usuário tenha preenchido os dados estruturados da certidão PF
-      // (Protocolo + Código de Validação Eletrônica) diretamente e tocado em validar:
-      if (effectiveBytes.isEmpty &&
-          manualProtocol.isNotEmpty &&
-          manualCode.isNotEmpty) {
-        final syntheticDoc =
-            '%PDF-1.4\n'
-            'POLICIA FEDERAL - SISTEMA NACIONAL DE INFORMACOES CRIMINAIS - SINIC\n'
-            'CERTIDAO DE ANTECEDENTES CRIMINAIS - NADA CONSTA\n'
-            'A Policia Federal CERTIFICA que NAO CONSTA condenação com transito em julgado\n'
-            'NOME: ${widget.expectedFullName.toUpperCase()}\n'
-            'CPF: ${widget.expectedCpfRaw}\n'
-            'CERTIDAO N: $manualProtocol\n'
-            'DATA DE EMISSAO: ${_formatDateBr(_issuedDate)}\n'
-            'CODIGO DE VALIDACAO: $manualCode\n';
-        effectiveBytes = Uint8List.fromList(utf8.encode(syntheticDoc));
-        effectiveFileName = 'certidao_pf_eletronica.pdf';
-      }
+      final Uint8List effectiveBytes = _fileBytes ?? Uint8List(0);
+      final String effectiveFileName = _fileName ?? 'certidao_pf.pdf';
 
       if (effectiveBytes.isEmpty) {
         setState(() {
           _analyzing = false;
           _errorMessage =
-              'Envie o arquivo (PDF ou foto nítida) da Certidão da Polícia Federal ou preencha o Nº da Certidão e o Código de Validação.';
+              'Envie o arquivo PDF original baixado no site da Polícia Federal (gov.br) ou uma foto nítida de página inteira.';
         });
         widget.onValidated(null);
         return;
@@ -501,17 +386,14 @@ class _CriminalBackgroundCheckStepState
               : null);
       final effectiveQr = qrPayloadOverride ?? _lastQrPayload;
 
+      // Validação 100% interna e automática: protocolo, data de emissão (<= 90 dias)
+      // e código de autenticidade são extraídos diretamente do documento.
       final result =
           await CriminalBackgroundService.analyzeAndValidateCertificate(
             fileBytes: effectiveBytes,
             fileName: effectiveFileName,
             expectedFullName: widget.expectedFullName,
             expectedCpfRaw: widget.expectedCpfRaw,
-            manualProtocol: manualProtocol.isEmpty ? null : manualProtocol,
-            manualIssuedDate: _hasExplicitDate || _fileBytes == null
-                ? _issuedDate
-                : null,
-            manualValidationCode: manualCode.isEmpty ? null : manualCode,
             rawExtractedTextOverride: effectiveTextOverride,
             qrPayload: effectiveQr,
             referenceNow: widget.referenceNow,
@@ -521,17 +403,6 @@ class _CriminalBackgroundCheckStepState
       setState(() {
         _result = result;
         _analyzing = false;
-        if (result.protocolNumber.isNotEmpty &&
-            _protocolCtrl.text.trim().isEmpty) {
-          _protocolCtrl.text = result.protocolNumber;
-          _autoFilledProtocol = true;
-        }
-        if (result.validationCode.isNotEmpty &&
-            _validationCodeCtrl.text.trim().isEmpty) {
-          _validationCodeCtrl.text = result.validationCode;
-          _autoFilledValidationCode = true;
-        }
-        _issuedDate = result.issuedDate;
         if (!result.passed) {
           _errorMessage = KycHumanFeedbackTranslator.sanitizeForHumanDisplay(
             result.humanFeedbackMessage,
@@ -590,7 +461,7 @@ class _CriminalBackgroundCheckStepState
                 ),
                 const SizedBox(height: AppSpace.s4),
                 Text(
-                  'Escolha um PDF no aparelho, foto da galeria ou câmera — os campos abaixo preenchem sozinhos.',
+                  'Anexe o PDF baixado do gov.br, foto da galeria ou câmera — a validação ocorre automaticamente na hora.',
                   style: AppType.bodySm.copyWith(color: tk.textMuted),
                 ),
               ],
@@ -763,24 +634,9 @@ class _CriminalBackgroundCheckStepState
     );
   }
 
-  Widget _buildAutoFilledBadge(Key key) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpace.s8),
-      child: AppStatusChip(
-        'Preenchido automaticamente',
-        key: key,
-        tone: AppTone.info,
-        icon: Icons.auto_awesome_rounded,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final now = widget.referenceNow ?? DateTime.now();
-    final ageDays = now.difference(_issuedDate).inDays;
-    final isDateRecent = ageDays >= -1 && ageDays <= 90;
     final approved = _result != null && _result!.passed;
     final hasFile = _fileBytes != null && _fileBytes!.isNotEmpty;
 
@@ -791,10 +647,10 @@ class _CriminalBackgroundCheckStepState
         KycStepHeroHeader(
           icon: Icons.gpp_good_rounded,
           title: widget.isSixMonthRenewal
-              ? 'Renovação Semestral de Antecedentes Criminais'
+              ? 'Renovação de Antecedentes Criminais (90 dias)'
               : 'Certidão de Antecedentes Criminais (Polícia Federal)',
           subtitle:
-              'Emita grátis no gov.br e envie o PDF ou foto. Validação válida por 6 meses para Cliente e Profissional.',
+              'Emita grátis no gov.br e envie o PDF ou foto. Nossa auditoria lê e valida tudo automaticamente, seguindo o prazo oficial de 90 dias da Polícia Federal.',
         ),
         const SizedBox(height: AppSpace.s12),
         const Wrap(
@@ -803,13 +659,18 @@ class _CriminalBackgroundCheckStepState
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             AppStatusChip(
-              'Validade 6 meses',
+              'Validade 90 dias',
               tone: AppTone.info,
               icon: Icons.verified_user_rounded,
             ),
             AppStatusChip(
-              'Cliente e Profissional',
+              'Leitura automática',
               tone: AppTone.success,
+              icon: Icons.auto_awesome_rounded,
+            ),
+            AppStatusChip(
+              'Cliente e Profissional',
+              tone: AppTone.neutral,
               icon: Icons.sync_alt_rounded,
             ),
           ],
@@ -819,7 +680,7 @@ class _CriminalBackgroundCheckStepState
         // PASSO 1 GUIADO — EMISSÃO OFICIAL GRATUITA EM 1 MINUTO
         KycPorcelainSectionCard(
           title: '1. Emitir grátis no gov.br',
-          subtitle: 'Emissão gratuita em menos de 1 minuto no portal da PF.',
+          subtitle: 'Emissão gratuita em menos de 1 minuto no portal da Polícia Federal.',
           icon: Icons.account_balance_rounded,
           statusChipLabel: 'Grátis',
           statusTone: AppTone.info,
@@ -835,13 +696,13 @@ class _CriminalBackgroundCheckStepState
               const KycNumberedStepRow(
                 stepNumber: '2',
                 description:
-                    'Preencha seu nome civil e CPF para emitir a certidão "Nada Consta".',
+                    'Preencha seu nome civil e CPF para gerar a certidão "Nada Consta".',
                 showConnector: true,
               ),
               const KycNumberedStepRow(
                 stepNumber: '3',
                 description:
-                    'Salve o PDF no aparelho (ou fotografe nítido) e envie no passo 2.',
+                    'Salve o PDF no celular (ou fotografe nítido) e anexe logo abaixo — sem digitar nada.',
               ),
               const SizedBox(height: AppSpace.s16),
               AppButton(
@@ -857,18 +718,22 @@ class _CriminalBackgroundCheckStepState
         ),
         const SizedBox(height: AppSpace.s16),
 
-        // PASSO 2 — ENVIO UNIFICADO DO ARQUIVO E AUTOPREENCHIMENTO
+        // PASSO 2 — ENVIO UNIFICADO COM VALIDAÇÃO INTERNA AUTOMÁTICA (ZERO CAMPOS MANUAIS)
         KycPorcelainSectionCard(
           title: '2. Enviar certidão',
           subtitle:
-              'Envie PDF ou foto nítida emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
+              'Anexe o PDF ou foto nítida emitida nos últimos 90 dias em nome de ${widget.expectedFullName.isEmpty ? "seu CPF" : widget.expectedFullName}.',
           icon: Icons.upload_file_rounded,
-          statusChipLabel: approved
-              ? 'Validada'
-              : (hasFile ? 'Anexada' : 'Aguardando'),
-          statusTone: approved
-              ? AppTone.success
-              : (hasFile ? AppTone.info : AppTone.neutral),
+          statusChipLabel: _analyzing
+              ? 'Validando...'
+              : (approved
+                    ? 'Validada'
+                    : (hasFile ? 'Anexada' : 'Aguardando')),
+          statusTone: _analyzing
+              ? AppTone.info
+              : (approved
+                    ? AppTone.success
+                    : (hasFile ? AppTone.info : AppTone.neutral)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -876,134 +741,43 @@ class _CriminalBackgroundCheckStepState
                 _buildAttachedFileCard(context, approved: approved)
               else
                 _buildEmptyUploadSurface(context),
-              const SizedBox(height: AppSpace.s16),
-              Text(
-                'Dados da certidão (preenchidos automaticamente)',
-                style: AppType.bodyStrong.copyWith(color: tk.text),
-              ),
               const SizedBox(height: AppSpace.s12),
-              if (_autoFilledProtocol)
-                _buildAutoFilledBadge(const ValueKey('badge-autofill-protocol')),
-              AppTextField(
-                key: const ValueKey('input-criminal-protocol'),
-                controller: _protocolCtrl,
-                label: 'Protocolo PF',
-                hint: 'Ex.: 2026.0192837465',
-                helper:
-                    'Preenchido automaticamente ao ler a certidão ou digitado manualmente.',
-                prefixIcon: Icons.numbers_rounded,
-                keyboardType: TextInputType.text,
-                textInputAction: TextInputAction.next,
-                enabled: !_analyzing,
-                onChanged: (_) {
-                  if (_autoFilledProtocol) {
-                    setState(() => _autoFilledProtocol = false);
-                  }
-                },
-              ),
-              const SizedBox(height: AppSpace.s16),
-              if (_autoFilledDate)
-                _buildAutoFilledBadge(const ValueKey('badge-autofill-date')),
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  key: const ValueKey('btn-pick-criminal-issue-date'),
-                  borderRadius: BorderRadius.circular(AppGeometry.fieldRadius),
-                  onTap: _analyzing ? null : _pickIssueDate,
-                  child: InputDecorator(
-                    decoration: InputDecoration(
-                      labelText: 'Data de emissão',
-                      labelStyle: AppType.body.copyWith(color: tk.textMuted),
-                      floatingLabelStyle: AppType.caption
-                          .copyWith(color: tk.textMuted)
-                          .apply(fontSizeFactor: 1 / 0.75),
-                      prefixIcon: Icon(
-                        Icons.event_available_rounded,
-                        color: tk.textMuted,
-                      ),
-                      helperText: isDateRecent
-                          ? 'Emissão dentro do prazo de 90 dias exigido.'
-                          : 'A certidão deve ter sido emitida nos últimos 90 dias.',
-                      helperStyle: AppType.bodySm.copyWith(
-                        color: tk.textMuted,
-                      ),
-                      errorText: isDateRecent
-                          ? null
-                          : 'Certidão emitida há mais de 90 dias. Emita uma nova gratuitamente.',
-                      errorStyle: AppType.bodySm.copyWith(color: tk.dangerInk),
-                      filled: true,
-                      fillColor: tk.isDark ? tk.surface : tk.surfaceInset,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppGeometry.fieldRadius,
-                        ),
-                        borderSide: BorderSide(color: tk.border),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppGeometry.fieldRadius,
-                        ),
-                        borderSide: BorderSide(color: tk.border),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _formatDateBr(_issuedDate),
-                            style: AppType.tabular(AppType.bodyStrong)
-                                .copyWith(color: tk.text),
-                          ),
-                        ),
-                        Icon(
-                          Icons.calendar_month_rounded,
-                          size: 20,
-                          color: tk.accentInk,
-                        ),
-                      ],
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.verified_outlined,
+                    size: 18,
+                    color: tk.accentInk,
+                  ),
+                  const SizedBox(width: AppSpace.s8),
+                  Expanded(
+                    child: Text(
+                      'Conferimos nome, CPF, resultado Nada Consta e a validade de 90 dias diretamente no arquivo — você não precisa digitar protocolo nem código.',
+                      style: AppType.bodySm.copyWith(color: tk.textMuted),
                     ),
                   ),
+                ],
+              ),
+              if (hasFile && !approved) ...[
+                const SizedBox(height: AppSpace.s12),
+                AppButton(
+                  key: const ValueKey('btn-validate-criminal-certificate'),
+                  label: _analyzing
+                      ? 'Validando Certidão da Polícia Federal...'
+                      : 'Tentar validar novamente',
+                  icon: Icons.policy_rounded,
+                  variant: AppButtonVariant.secondary,
+                  compact: true,
+                  loading: _analyzing,
+                  onPressed: _analyzing ? null : _runValidation,
                 ),
-              ),
-              const SizedBox(height: AppSpace.s16),
-              if (_autoFilledValidationCode)
-                _buildAutoFilledBadge(
-                  const ValueKey('badge-autofill-validation-code'),
-                ),
-              AppTextField(
-                key: const ValueKey('input-criminal-validation-code'),
-                controller: _validationCodeCtrl,
-                label: 'Código PF',
-                hint: 'Código alfanumérico de autenticidade no rodapé',
-                prefixIcon: Icons.verified_outlined,
-                textInputAction: TextInputAction.done,
-                enabled: !_analyzing,
-                onChanged: (_) {
-                  if (_autoFilledValidationCode) {
-                    setState(() => _autoFilledValidationCode = false);
-                  }
-                },
-                onSubmitted: (_) {
-                  if (!_analyzing) _runValidation();
-                },
-              ),
-              const SizedBox(height: AppSpace.s16),
-              AppButton(
-                key: const ValueKey('btn-validate-criminal-certificate'),
-                label: _analyzing
-                    ? 'Validando Certidão da Polícia Federal...'
-                    : (approved
-                          ? 'Revalidar Certidão Negativa'
-                          : 'Validar Certidão da Polícia Federal'),
-                icon: Icons.policy_rounded,
-                loading: _analyzing,
-                onPressed: _runValidation,
-              ),
+              ],
             ],
           ),
         ),
 
-        // PASSO 3 — RESULTADO DA VALIDAÇÃO FORENSE
+        // PASSO 3 — RESULTADO DA VALIDAÇÃO INTERNA
         if (_errorMessage != null) ...[
           const SizedBox(height: AppSpace.s16),
           AppCard(
@@ -1067,7 +841,7 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tk = context.tk;
-    final expiresAt = result.issuedDate.add(const Duration(days: 180));
+    final expiresAt = result.expiresAt;
 
     return AppCard(
       key: const ValueKey('criminal-check-approved-card'),
@@ -1112,12 +886,12 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpace.s12),
           Text(
-            'Certidão validada por 6 meses',
+            'Certidão validada por 90 dias',
             style: AppType.title.copyWith(color: tk.text),
           ),
           const SizedBox(height: AppSpace.s4),
           Text(
-            'Situação confirmada junto à Polícia Federal. Válida até ${_formatDateBr(expiresAt)} para Cliente e Profissional.',
+            'Situação confirmada automaticamente junto à Polícia Federal. Válida até ${_formatDateBr(expiresAt)} — enviaremos lembretes por e-mail antes do vencimento.',
             style: AppType.tabular(AppType.bodySm).copyWith(
               color: tk.textMuted,
             ),
@@ -1130,16 +904,17 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
             stacked: true,
           ),
           AppInfoRow(
-            label: 'Protocolo PF',
+            label: 'Registro interno PF',
             value: result.protocolMasked.isNotEmpty
                 ? result.protocolMasked
-                : result.protocolNumber,
+                : 'Validado automaticamente',
             strong: true,
             stacked: true,
           ),
           AppInfoRow(
-            label: 'Emissão e validade',
-            value: 'Emitida em ${_formatDateBr(result.issuedDate)} · Válida até ${_formatDateBr(expiresAt)}',
+            label: 'Emissão e validade (90 dias)',
+            value:
+                'Emitida em ${_formatDateBr(result.issuedDate)} · Válida até ${_formatDateBr(expiresAt)}',
             strong: true,
             stacked: true,
           ),
@@ -1157,7 +932,7 @@ class _ApprovedCriminalRecordCard extends StatelessWidget {
 }
 
 /// Tela de consulta rápida do status da Certidão de Antecedentes Criminais e da
-/// Validade Semestral (6 meses) da verificação de segurança.
+/// Validade Oficial de 90 Dias da verificação de segurança.
 class CriminalBackgroundStatusScreen extends StatelessWidget {
   const CriminalBackgroundStatusScreen({
     super.key,
@@ -1187,7 +962,7 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
 
     return AppScaffold(
       backgroundColor: tk.background,
-      appBar: const AppAppBar(title: 'Validação e Antecedentes (6 Meses)'),
+      appBar: const AppAppBar(title: 'Validação e Antecedentes (90 Dias)'),
       body: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           layout.margin,
@@ -1221,8 +996,8 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
                       children: [
                         Text(
                           valid
-                              ? 'Ciclo Semestral de Segurança Ativo'
-                              : 'Revalidação Semestral Necessária',
+                              ? 'Ciclo de Segurança Ativo (90 dias)'
+                              : 'Renovação de Segurança Necessária',
                           style: AppType.bodyStrong.copyWith(
                             color: valid ? tk.successInk : tk.warningInk,
                           ),
@@ -1230,8 +1005,8 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
                         const SizedBox(height: AppSpace.s2),
                         Text(
                           valid
-                              ? 'Sua identidade biométrica e sua Certidão Negativa da Polícia Federal estão ativas e valem para os modos Cliente e Profissional sem duplicar envios.'
-                              : 'A validação de segurança do Desperrengue é renovada a cada 6 meses para garantir proteção total dentro das residências.',
+                              ? 'Sua identidade biométrica e sua Certidão Negativa da Polícia Federal estão válidas para Cliente e Profissional. Avisaremos por e-mail antes do vencimento de 90 dias.'
+                              : 'A certidão da Polícia Federal tem validade oficial de 90 dias. Atualize seus documentos para manter a proteção ativa em toda a comunidade.',
                           style: AppType.bodySm.copyWith(
                             color: valid ? tk.successInk : tk.warningInk,
                           ),
@@ -1248,7 +1023,7 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Resumo do Ciclo de Validação (6 Meses)',
+                    'Resumo do Ciclo de Validação (90 Dias)',
                     style: AppType.titleSm.copyWith(color: tk.text),
                   ),
                   Divider(height: AppSpace.s24, color: tk.border),
@@ -1261,11 +1036,11 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
                     label: 'Antecedentes PF',
                     value: valid
                         ? 'Nada Consta Verificado'
-                        : (expired ? 'Ciclo Expirado' : 'Pendente'),
+                        : (expired ? 'Ciclo Expirado (90 dias)' : 'Pendente'),
                     strong: true,
                   ),
                   AppInfoRow(
-                    label: 'Protocolo PF',
+                    label: 'Registro PF',
                     value:
                         profile.criminalCertificateNumberMasked ??
                         'Conferido eletronicamente',
@@ -1291,7 +1066,7 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
               const SizedBox(height: AppSpace.s20),
               AppButton(
                 key: const ValueKey('btn-trigger-six-month-renewal'),
-                label: 'Renovar Documentos e Antecedentes por +6 Meses',
+                label: 'Renovar Certidão PF e Identidade (+90 Dias)',
                 icon: Icons.refresh_rounded,
                 onPressed: onRequestRenewal,
               ),
@@ -1299,7 +1074,8 @@ class CriminalBackgroundStatusScreen extends StatelessWidget {
             const SizedBox(height: AppSpace.s16),
             Text(
               'Proteção LGPD: seus documentos são armazenados em cofre privado criptografado e '
-              'reaproveitados automaticamente quando você alterna entre Cliente e Profissional.',
+              'reaproveitados automaticamente quando você alterna entre Cliente e Profissional. '
+              'Lembretes automáticos são enviados por e-mail 15 dias e 5 dias antes do vencimento.',
               style: AppType.caption.copyWith(color: tk.textMuted),
             ),
           ],

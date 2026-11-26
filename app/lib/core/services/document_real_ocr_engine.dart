@@ -815,17 +815,12 @@ class BrazilianDocumentOcrParser {
       required bool restrictToBirthAge,
     }) {
       final List<DateTime> found = <DateTime>[];
-      final RegExp sepRe = RegExp(
-        r'(?<![0-9A-Za-z])([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{4})(?![0-9A-Za-z])',
-      );
-      for (final m in sepRe.allMatches(text)) {
-        final int? d = int.tryParse(repairDateDigits(m.group(1)!));
-        final int? mo = int.tryParse(repairDateDigits(m.group(2)!));
-        final int? y = int.tryParse(repairDateDigits(m.group(3)!));
-        if (d == null || mo == null || y == null) continue;
-        if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
-        if (y < 1915 || y > currentYear + 20) continue;
-        if (restrictToBirthAge && y > currentYear - minAgeYears) continue;
+
+      void tryAddDate(int? d, int? mo, int? y) {
+        if (d == null || mo == null || y == null) return;
+        if (mo < 1 || mo > 12 || d < 1 || d > 31) return;
+        if (y < 1915 || y > currentYear + 20) return;
+        if (restrictToBirthAge && y > currentYear - minAgeYears) return;
         try {
           final dt = DateTime.utc(y, mo, d);
           if (dt.year == y && dt.month == mo && dt.day == d && !found.contains(dt)) {
@@ -834,21 +829,69 @@ class BrazilianDocumentOcrParser {
         } catch (_) {}
       }
 
-      // Fallback para barras fundidas ao fundo guilloché (8 dígitos colados: DDMMAAAA)
+      // 1. Formato brasileiro padrão DD/MM/AAAA (tolerando letras coladas como
+      // "03/01/1995POCOS DE CALDAS/MG" ou confusão óptica O↔0 / I↔1 / S↔5).
+      final RegExp sepRe = RegExp(
+        r'(?<!\d)([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{2})[/.\-\s]+([0-9OoQDIl|!ZzSsBgq]{4})(?!\d)',
+      );
+      for (final m in sepRe.allMatches(text)) {
+        tryAddDate(
+          int.tryParse(repairDateDigits(m.group(1)!)),
+          int.tryParse(repairDateDigits(m.group(2)!)),
+          int.tryParse(repairDateDigits(m.group(3)!)),
+        );
+      }
+
+      // 2. Recuperação de barra '/' lida como '1', 'I', 'l' ou '|' sobre fundo
+      // guilloché (ex.: "03101/1995", "03/0111995", "0310111995", "03l01/1995").
+      if (found.isEmpty) {
+        final RegExp slashConfusedRe = RegExp(
+          r'(?<!\d)([0-3][0-9])[/.\-1Il|]([01][0-9])[/.\-1Il|]((?:19|20)\d{2})(?!\d)',
+        );
+        for (final m in slashConfusedRe.allMatches(text)) {
+          tryAddDate(
+            int.tryParse(m.group(1)!),
+            int.tryParse(m.group(2)!),
+            int.tryParse(m.group(3)!),
+          );
+        }
+      }
+
+      // 3. Formato ISO AAAA-MM-DD (presente em QR / CIN / campos digitais).
+      if (found.isEmpty) {
+        final RegExp isoRe = RegExp(r'(?<!\d)((?:19|20)\d{2})[/.\-](\d{2})[/.\-](\d{2})(?!\d)');
+        for (final m in isoRe.allMatches(text)) {
+          tryAddDate(
+            int.tryParse(m.group(3)!),
+            int.tryParse(m.group(2)!),
+            int.tryParse(m.group(1)!),
+          );
+        }
+      }
+
+      // 4. Número do campo "3" da CNH 2022 colado à data (ex.: "303/01/1995").
+      if (found.isEmpty) {
+        final RegExp cnhField3GluedRe = RegExp(
+          r'(?<!\d)3([0-3][0-9])[/.\-]([01][0-9])[/.\-]((?:19|20)\d{2})(?!\d)',
+        );
+        for (final m in cnhField3GluedRe.allMatches(text)) {
+          tryAddDate(
+            int.tryParse(m.group(1)!),
+            int.tryParse(m.group(2)!),
+            int.tryParse(m.group(3)!),
+          );
+        }
+      }
+
+      // 5. Fallback para barras fundidas ao fundo guilloché (8 dígitos colados: DDMMAAAA)
       if (found.isEmpty) {
         final RegExp compactRe = RegExp(r'(?<!\d)(\d{2})(\d{2})((?:19|20)\d{2})(?!\d)');
         for (final m in compactRe.allMatches(text)) {
-          final int? d = int.tryParse(m.group(1)!);
-          final int? mo = int.tryParse(m.group(2)!);
-          final int? y = int.tryParse(m.group(3)!);
-          final DateTime? dt = restrictToBirthAge
-              ? parsePlausibleBirthDate(d, mo, y)
-              : (d != null && mo != null && y != null && mo >= 1 && mo <= 12 && d >= 1 && d <= 31
-                  ? DateTime.utc(y, mo, d)
-                  : null);
-          if (dt != null && !found.contains(dt)) {
-            found.add(dt);
-          }
+          tryAddDate(
+            int.tryParse(m.group(1)!),
+            int.tryParse(m.group(2)!),
+            int.tryParse(m.group(3)!),
+          );
         }
       }
       return found;
@@ -859,12 +902,15 @@ class BrazilianDocumentOcrParser {
           upperAscii.contains('DATA DE NASCIMENTO') ||
           upperAscii.contains('DATA NASC') ||
           upperAscii.contains('DT NASC') ||
-          upperAscii.contains('DT. NASC')) {
+          upperAscii.contains('DT. NASC') ||
+          upperAscii.contains('LOCAL E UF DE NASC')) {
         return true;
       }
       // CNH 2022 Padrão Viena: Campo "3 DATA, LOCAL E UF DE NASCIMENTO"
       if (RegExp(r'\b3\s*\.?\s*DATA\b').hasMatch(upperAscii) ||
-          (upperAscii.contains('NASCIMENTO') && !upperAscii.contains('MUNICIPIO DE NASCIMENTO'))) {
+          upperAscii.contains('DATA, LOCAL') ||
+          (upperAscii.contains('NASCIMENTO') &&
+              !upperAscii.contains('MUNICIPIO DE NASCIMENTO'))) {
         return true;
       }
       return false;
@@ -928,6 +974,43 @@ class BrazilianDocumentOcrParser {
             int.tryParse(p[2]),
           );
           if (dt != null) return (date: dt, confidence: 0.99);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // PRIORIDADE 1B: PADRÃO ESTRUTURAL CNH 2022+ "<DD/MM/AAAA> <MUNICÍPIO>/<UF>"
+    // Ex.: "03/01/1995 POCOS DE CALDAS/MG" (Campo 3 da CNH Padrão Viena).
+    // Nenhuma outra data do documento (Emissão, Validade, 1ª Hab.) vem seguida
+    // de "CIDADE/UF" na mesma linha — altíssima certeza mesmo se o rótulo
+    // pequeno acima ("3 DATA, LOCAL E UF DE NASCIMENTO") ficar borrado.
+    // -------------------------------------------------------------------------
+    final List<String> allStructuralLines = <String>[
+      ...frontLines.map((l) => l.text),
+      ...frontRaw.split(RegExp(r'[\r\n]+')),
+      ...combinedRaw.split(RegExp(r'[\r\n]+')),
+    ];
+    final RegExp cityUfSuffixRe = RegExp(
+      r'([A-ZÀ-Ÿ][A-ZÀ-Ÿ\s\-\.]{1,36})\s*[/\-]\s*([A-Z]{2})\b',
+    );
+    for (final rawLine in allStructuralLines) {
+      final String trimmed = rawLine.trim();
+      if (trimmed.isEmpty) continue;
+      final String up = _toAsciiUpper(trimmed);
+      if (isNonBirthDateLabel(up)) continue;
+      final List<DateTime> birthDates = extractAllValidDatesInText(
+        trimmed,
+        restrictToBirthAge: true,
+      );
+      if (birthDates.isEmpty) continue;
+      for (final cityMatch in cityUfSuffixRe.allMatches(up)) {
+        final String uf = cityMatch.group(2)!;
+        final String prefixCity = cityMatch.group(1)!.trim();
+        if (_ufCodes.contains(uf) &&
+            !prefixCity.contains('DETRAN') &&
+            !prefixCity.contains('SSP') &&
+            !prefixCity.contains('SENATRAN')) {
+          return (date: birthDates.first, confidence: 0.97);
         }
       }
     }
@@ -1338,6 +1421,12 @@ class DocumentRealOcrEngine {
     required OfficialDocumentType fallbackType,
     required ParsedBrazilianDocumentOcr existing,
   }) {
+    // Nunca sobrescrever o OCR real local com resposta mock/stub sem IA faturada
+    // (ex.: quando GEMINI_API_KEY não está configurada no servidor).
+    if (resp['api_billed'] == false && resp['reused_valid_kyc'] != true) {
+      return null;
+    }
+
     final Object? qgObj = resp['quality_gate'];
     final Map<String, dynamic> qg =
         qgObj is Map ? Map<String, dynamic>.from(qgObj) : const <String, dynamic>{};

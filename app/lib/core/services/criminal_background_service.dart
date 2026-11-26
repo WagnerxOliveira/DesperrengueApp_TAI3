@@ -42,10 +42,22 @@ class AuditedCriminalRecordResult {
 
   bool get isNothingOnRecord => outcome == 'NOTHING_ON_RECORD';
 
+  /// Data exata de expiração oficial (90 dias corridos a partir da emissão da PF).
+  DateTime get expiresAt =>
+      issuedDate.add(const Duration(days: CriminalBackgroundService.validityCycleDays));
+
   String get issuedDateFormatted {
     final d = issuedDate.day.toString().padLeft(2, '0');
     final m = issuedDate.month.toString().padLeft(2, '0');
     final y = issuedDate.year.toString().padLeft(4, '0');
+    return '$d/$m/$y';
+  }
+
+  String get expiresAtFormatted {
+    final exp = expiresAt;
+    final d = exp.day.toString().padLeft(2, '0');
+    final m = exp.month.toString().padLeft(2, '0');
+    final y = exp.year.toString().padLeft(4, '0');
     return '$d/$m/$y';
   }
 
@@ -54,6 +66,14 @@ class AuditedCriminalRecordResult {
     final refDay = DateTime.utc(now.year, now.month, now.day);
     final issDay = DateTime.utc(issuedDate.year, issuedDate.month, issuedDate.day);
     return refDay.difference(issDay).inDays;
+  }
+
+  int daysUntilExpiration([DateTime? referenceNow]) {
+    final now = (referenceNow ?? DateTime.now()).toUtc();
+    final refDay = DateTime.utc(now.year, now.month, now.day);
+    final expDay = DateTime.utc(expiresAt.year, expiresAt.month, expiresAt.day);
+    final diff = expDay.difference(refDay).inDays;
+    return diff < 0 ? 0 : diff;
   }
 }
 
@@ -115,8 +135,14 @@ class CriminalBackgroundService {
   /// Prazo máximo legal de emissão da certidão da Polícia Federal (90 dias).
   static const int maxCertificateAgeDays = 90;
 
-  /// Ciclo obrigatório de revalidação semestral na plataforma (6 meses).
-  static const int validityCycleMonths = 6;
+  /// Ciclo obrigatório de revalidação na plataforma alinhado ao prazo oficial da PF (90 dias).
+  static const int validityCycleDays = 90;
+
+  /// Antecedência do primeiro e-mail de aviso prévio de vencimento (15 dias antes).
+  static const int expiryReminderLeadDays = 15;
+
+  /// Equivalente em meses do ciclo de revalidação (3 meses = 90 dias).
+  static const int validityCycleMonths = 3;
 
   static const Set<String> _connectives = <String>{
     'de',
@@ -906,11 +932,22 @@ class CriminalBackgroundService {
         );
       }
 
-      final resolvedDate = effectiveDate ?? DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+      // Validação real e rigorosa da data de emissão (JAMAIS assumir "hoje" se ilegível!).
+      if (effectiveDate == null) {
+        return reject(
+          'Não foi possível identificar a data de emissão na certidão enviada. Envie o PDF original baixado no portal da Polícia Federal (gov.br) ou uma foto nítida de página inteira mostrando a data de emissão.',
+          protocol: effectiveProtocol,
+          valCode: effectiveValCode,
+          nameOk: true,
+          cpfOk: true,
+        );
+      }
+
+      final resolvedDate = effectiveDate;
       final ageDays = _ageInDays(resolvedDate, nowUtc);
       if (ageDays < -1) {
         return reject(
-          'A data de emissão da certidão está no futuro. Verifique a data informada e tente novamente.',
+          'A data de emissão identificada na certidão está no futuro. Emita a certidão diretamente no portal oficial da Polícia Federal e tente novamente.',
           protocol: effectiveProtocol,
           issued: resolvedDate,
           valCode: effectiveValCode,
@@ -920,7 +957,7 @@ class CriminalBackgroundService {
       }
       if (ageDays > maxCertificateAgeDays) {
         return reject(
-          'Esta certidão foi emitida há mais de 90 dias. Emita gratuitamente uma nova certidão no site da Polícia Federal e envie novamente.',
+          'Esta certidão foi emitida há mais de 90 dias (prazo máximo oficial da Polícia Federal). Emita gratuitamente uma nova certidão no site da PF e envie novamente.',
           protocol: effectiveProtocol,
           issued: resolvedDate,
           valCode: effectiveValCode,
@@ -937,6 +974,10 @@ class CriminalBackgroundService {
           ? effectiveValCode.trim()
           : 'SINIC-${fileHash.substring(10, 18).toUpperCase()}';
 
+      final validUntil = resolvedDate.add(const Duration(days: validityCycleDays));
+      final validUntilBr =
+          '${validUntil.day.toString().padLeft(2, '0')}/${validUntil.month.toString().padLeft(2, '0')}/${validUntil.year.toString().padLeft(4, '0')}';
+
       return AuditedCriminalRecordResult(
         passed: true,
         protocolNumber: finalProtocol,
@@ -947,7 +988,7 @@ class CriminalBackgroundService {
         holderNameMatched: true,
         cpfMatched: true,
         humanFeedbackMessage:
-            'Certidão Negativa da Polícia Federal validada com sucesso! Vigência semestral garantida por 6 meses.',
+            'Certidão Negativa da Polícia Federal validada! Vigência de 90 dias (válida até $validUntilBr).',
         fileBytes: fileBytes,
         fileExtension: ext,
         outcome: 'NOTHING_ON_RECORD',
@@ -955,7 +996,7 @@ class CriminalBackgroundService {
     }
 
     // Caminho B: Upload de Imagem (foto/captura da certidão impressa) ou PDF escaneado em imagem
-    // Valida integridade visual/estrutural do arquivo + metadados oficiais obrigatórios (protocolo, emissão <= 90d e código PF).
+    // sem texto estrutural legível.
     if (ext == 'pdf') {
       if (!_startsWithPdfHeader(fileBytes)) {
         return reject(
@@ -976,10 +1017,20 @@ class CriminalBackgroundService {
       }
     }
 
+    // Sem campos manuais preenchidos (fluxo automático padrão da UI): solicita PDF original
+    // ou foto mais nítida em vez de pedir digitação manual ao usuário.
+    final bool hasAnyManualMetadata =
+        rawProtoInput.isNotEmpty || manualIssuedDate != null || rawValInput.isNotEmpty;
+    if (!hasAnyManualMetadata) {
+      return reject(
+        'Não conseguimos ler automaticamente os dados da Polícia Federal neste arquivo. Envie o PDF original baixado no gov.br ou uma foto bem iluminada de página inteira.',
+      );
+    }
+
     final cleanManualProto = effectiveProtocol.replaceAll(RegExp(r'[^A-Za-z0-9./\-]'), '');
     if (cleanManualProto.length < 6) {
       return reject(
-        'Informe o Nº da Certidão / Protocolo (mínimo de 6 dígitos) impresso na Certidão da Polícia Federal.',
+        'Não foi possível identificar o número da certidão da Polícia Federal (mínimo 6 dígitos).',
         protocol: effectiveProtocol,
         issued: effectiveDate,
         valCode: effectiveValCode,
@@ -988,7 +1039,7 @@ class CriminalBackgroundService {
 
     if (effectiveDate == null) {
       return reject(
-        'Selecione a Data de Emissão impressa na sua Certidão de Antecedentes Criminais.',
+        'Não foi possível identificar a data de emissão da Certidão de Antecedentes Criminais.',
         protocol: cleanManualProto,
         valCode: effectiveValCode,
       );
@@ -997,7 +1048,7 @@ class CriminalBackgroundService {
     final ageDays = _ageInDays(effectiveDate, nowUtc);
     if (ageDays < -1) {
       return reject(
-        'A data de emissão informada está no futuro. Confira a data impressa na certidão.',
+        'A data de emissão da certidão está no futuro. Emita uma nova certidão no portal oficial da Polícia Federal.',
         protocol: cleanManualProto,
         issued: effectiveDate,
         valCode: effectiveValCode,
@@ -1014,7 +1065,7 @@ class CriminalBackgroundService {
 
     if (effectiveValCode.trim().length < 4) {
       return reject(
-        'Informe o Código de Validação Eletrônica presente no rodapé da Certidão da Polícia Federal.',
+        'Não foi possível identificar o código de autenticidade eletrônica da Polícia Federal.',
         protocol: cleanManualProto,
         issued: effectiveDate,
         valCode: effectiveValCode,
@@ -1031,7 +1082,7 @@ class CriminalBackgroundService {
       holderNameMatched: true,
       cpfMatched: true,
       humanFeedbackMessage:
-          'Certidão Negativa de Antecedentes Criminais conferida e registrada com vigência de 6 meses.',
+          'Certidão Negativa de Antecedentes Criminais validada com vigência oficial de 90 dias.',
       fileBytes: fileBytes,
       fileExtension: ext,
       outcome: 'NOTHING_ON_RECORD',
@@ -1492,10 +1543,16 @@ class CriminalBackgroundService {
     }
 
     // 2. Fallback geral: dd/MM/yyyy, yyyy-MM-dd ou "dd de <mês> de yyyy" (ignorando nascimento)
+    // Preferimos a data não-nascimento MAIS RECENTE (para nunca confundir nascimento em 200x com emissão atual).
     bool isBirthContext(String src, int idx) {
-      final before = src.substring(math.max(0, idx - 24), idx);
-      return before.contains('nascid') || before.contains('nascimento');
+      final before = src.substring(math.max(0, idx - 42), idx);
+      return before.contains('nascid') ||
+          before.contains('nascimento') ||
+          before.contains('dt nasc') ||
+          before.contains('data nasc');
     }
+
+    final List<DateTime> fallbackDates = <DateTime>[];
 
     for (final m in RegExp(
       r'\b(0?[1-9]|[12]\d|3[01])/(0?[1-9]|1[0-2])/(20\d{2})\b',
@@ -1506,7 +1563,7 @@ class CriminalBackgroundService {
         int.parse(m.group(2)!),
         int.parse(m.group(1)!),
       );
-      if (dt != null) return dt;
+      if (dt != null) fallbackDates.add(dt);
     }
 
     for (final m in RegExp(
@@ -1518,7 +1575,7 @@ class CriminalBackgroundService {
         int.parse(m.group(2)!),
         int.parse(m.group(3)!),
       );
-      if (dt != null) return dt;
+      if (dt != null) fallbackDates.add(dt);
     }
 
     for (final m in RegExp(
@@ -1529,7 +1586,12 @@ class CriminalBackgroundService {
       final month = _ptMonths[m.group(2)!] ?? 0;
       final y = int.parse(m.group(3)!);
       final dt = _tryBuildUtcDate(y, month, d);
-      if (dt != null) return dt;
+      if (dt != null) fallbackDates.add(dt);
+    }
+
+    if (fallbackDates.isNotEmpty) {
+      fallbackDates.sort();
+      return fallbackDates.last;
     }
 
     return null;

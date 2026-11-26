@@ -21,7 +21,7 @@ import 'auth_gate.dart';
 import 'desperrengue_welcome_cinema_screen.dart';
 import 'role_selection_screen.dart';
 import 'verificacao_step6_feedback.dart';
-import 'verificacao_step7_aprovado.dart';
+import 'verify_approval_email_screen.dart';
 
 /// Carrega o perfil do usuário autenticado e mostra a tela correta
 /// (ver [destinationFor]), considerando o MODO escolhido na sessão
@@ -242,8 +242,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           key: const ValueKey('enroll-provider'),
         );
       case AppDestination.clientTermsGate:
-        return _themed(
-          UserMode.client,
+        return _onboardingThemed(
           RoleTermsAcceptanceScreen(
             profile: profile,
             mode: UserMode.client,
@@ -251,8 +250,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           ),
         );
       case AppDestination.providerTermsAndReuseGate:
-        return _themed(
-          UserMode.provider,
+        return _onboardingThemed(
           RoleTermsAcceptanceScreen(
             profile: profile,
             mode: UserMode.provider,
@@ -260,8 +258,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           ),
         );
       case AppDestination.kycSixMonthRenewal:
-        return _themed(
-          renewalTargetMode,
+        return _onboardingThemed(
           ClientSetupScreen(
             profile: profile,
             targetMode: renewalTargetMode,
@@ -269,8 +266,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
           ),
         );
       case AppDestination.clientSetup:
-        return _themed(
-          UserMode.client,
+        return _onboardingThemed(
           ClientSetupScreen(
             profile: profile,
             initialTermsAccepted: profile.clientTermsAccepted,
@@ -279,8 +275,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
       case AppDestination.clientHome:
         return _themed(UserMode.client, ClientShell(profile: profile));
       case AppDestination.kycStart:
-        return _themed(
-          UserMode.provider,
+        return _onboardingThemed(
           ClientSetupScreen(
             profile: profile,
             targetMode: UserMode.provider,
@@ -290,8 +285,16 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
       case AppDestination.kycInReview:
         return const VerificacaoStep6FeedbackScreen();
       case AppDestination.kycApproved:
-        return VerificacaoStep7AprovadoScreen(
-          nomeProfissional: profile.firstName,
+        return VerifyApprovalEmailScreen(
+          profile: profile,
+          mode: UserMode.provider,
+          autoTriggerInitialSend: true,
+        );
+      case AppDestination.approvalEmailVerification:
+        return VerifyApprovalEmailScreen(
+          profile: profile,
+          mode: renewalTargetMode,
+          autoTriggerInitialSend: true,
         );
       case AppDestination.providerSetup:
         return _themed(UserMode.provider, ProviderSetupFlow(profile: profile));
@@ -304,6 +307,11 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
 
   Widget _themed(UserMode mode, Widget child) => Theme(
     data: AppTheme.resolve(mode, Theme.of(context).brightness),
+    child: child,
+  );
+
+  Widget _onboardingThemed(Widget child) => Theme(
+    data: AppTheme.onboarding(Theme.of(context).brightness),
     child: child,
   );
 }

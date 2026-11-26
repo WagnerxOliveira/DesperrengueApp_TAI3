@@ -62,11 +62,77 @@ class AppTheme {
   AppTheme._();
 
   static final Map<(UserMode?, Brightness), ThemeData> _cache = {};
+  static final Map<Brightness, ThemeData> _onboardingCache = {};
 
   /// Tema pronto para o MaterialApp (com cache: montar ThemeData é caro e o
   /// MaterialApp reconstrói a cada troca de modo/tema).
   static ThemeData resolve(UserMode? mode, Brightness brightness) =>
       _cache.putIfAbsent((mode, brightness), () => mode == null ? brand(brightness) : forMode(mode, brightness));
+
+  /// Tema dedicado para a jornada de cadastro, KYC, Termos e Verificação de E-mail:
+  /// paleta **Safira Real & Porcelana** (claro) / **Cobalto Meia-Noite & Obsidiana**
+  /// (escuro) — refinada, serena e sem laranja, preservando contraste WCAG AA+/AAA.
+  static ThemeData onboarding([Brightness brightness = Brightness.light]) =>
+      _onboardingCache.putIfAbsent(brightness, () => _buildOnboarding(brightness));
+
+  static ThemeData _buildOnboarding(Brightness brightness) {
+    final base = brightness == Brightness.dark ? AppTokens.dark : AppTokens.light;
+    final bool isDark = base.isDark;
+    final Color sapphireAccent =
+        isDark ? const Color(0xFF60A5FA) : const Color(0xFF1D4ED8);
+    final Color sapphireInk =
+        isDark ? const Color(0xFF93C5FD) : const Color(0xFF1E40AF);
+    final Color sapphireSoft =
+        isDark ? const Color(0xFF111E35) : const Color(0xFFE8F0FE);
+    final Color emeraldAccent =
+        isDark ? const Color(0xFF34D399) : const Color(0xFF059669);
+
+    final tk = AppTokens(
+      brightness: base.brightness,
+      background: isDark ? const Color(0xFF090D16) : const Color(0xFFF7F9FC),
+      surface: isDark ? const Color(0xFF101726) : const Color(0xFFEEF3FA),
+      card: isDark ? const Color(0xFF151E30) : const Color(0xFFFFFFFF),
+      raised: isDark ? const Color(0xFF1C273D) : const Color(0xFFFFFFFF),
+      text: base.text,
+      textMuted: base.textMuted,
+      border: isDark ? const Color(0xFF25324A) : const Color(0xFFDCE5F2),
+      brand: sapphireAccent,
+      providerAccent: sapphireAccent,
+      clientAccent: sapphireAccent,
+      success: emeraldAccent,
+      successSoft: base.successSoft,
+      successInk: base.successInk,
+      warning: base.warning,
+      warningSoft: base.warningSoft,
+      warningInk: base.warningInk,
+      danger: base.danger,
+      dangerSoft: base.dangerSoft,
+      info: sapphireAccent,
+      infoSoft: sapphireSoft,
+      security: base.security,
+      securitySoft: base.securitySoft,
+      providerSoft: sapphireSoft,
+      clientSoft: sapphireSoft,
+      star: base.star,
+      shadow: base.shadow,
+      accent: sapphireAccent,
+      accentInk: sapphireInk,
+      onAccent: AppTokens.onColor(sapphireAccent),
+      accentSoft: sapphireSoft,
+      clientAccentInk: sapphireInk,
+      providerAccentInk: sapphireInk,
+      dangerInk: base.dangerInk,
+      surfaceInset: isDark ? const Color(0xFF0C1220) : const Color(0xFFE9EFF8),
+      scrim: base.scrim,
+      skeletonBase: base.skeletonBase,
+      skeletonHighlight: base.skeletonHighlight,
+    );
+    return _buildFromTokens(
+      seedColor: const Color(0xFF1D4ED8),
+      brightness: brightness,
+      tk: tk,
+    );
+  }
 
   /// Tema padrão (login, seleção de modo, KYC): azul da marca.
   static ThemeData brand([Brightness brightness = Brightness.light]) =>
@@ -117,9 +183,18 @@ class AppTheme {
       null => base.infoSoft,
     };
     final tk = base.forAccent(accent: accent, accentInk: accentInk, accentSoft: accentSoft);
+    return _buildFromTokens(seedColor: lightAccent, brightness: brightness, tk: tk);
+  }
+
+  static ThemeData _buildFromTokens({
+    required Color seedColor,
+    required Brightness brightness,
+    required AppTokens tk,
+  }) {
+    final accent = tk.accent;
     final onAccent = tk.onAccent;
     final scheme = ColorScheme.fromSeed(
-      seedColor: lightAccent,
+      seedColor: seedColor,
       brightness: brightness,
       primary: accent,
       onPrimary: onAccent,

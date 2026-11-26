@@ -609,9 +609,12 @@ void main() {
             find.byKey(const ValueKey('criminal-check-approved-card')),
             findsOneWidget,
           );
-          expect(find.text('2026.0849201735'), findsOneWidget);
-          expect(find.text('9482.7163.5041.8829'), findsOneWidget);
+          expect(find.byKey(const ValueKey('input-criminal-protocol')), findsNothing);
+          expect(find.byKey(const ValueKey('input-criminal-validation-code')), findsNothing);
+          expect(find.text('PF-***1735'), findsOneWidget);
           expect(results.isNotEmpty && results.last?.passed == true, isTrue);
+          expect(results.last?.protocolNumber, equals('2026.0849201735'));
+          expect(results.last?.validationCode, equals('9482.7163.5041.8829'));
           _assertZeroBannedTechnicalJargon(tester);
 
           // Botão Remover anexo (>= 48x48) limpa arquivo, campos e notifica onValidated(null)

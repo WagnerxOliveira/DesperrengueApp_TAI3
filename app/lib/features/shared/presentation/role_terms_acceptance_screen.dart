@@ -5,6 +5,7 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/legal_mandate_service.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
+import '../../../core/ui/app_theme.dart';
 import '../../../core/ui/design_system/design_system.dart';
 import '../../../core/ui/widgets.dart';
 
@@ -37,7 +38,7 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
   String? _error;
 
   static String _formatDateBr(DateTime? dt) {
-    final target = dt ?? DateTime.now().add(const Duration(days: 180));
+    final target = dt ?? DateTime.now().add(const Duration(days: 90));
     final d = target.day.toString().padLeft(2, '0');
     final m = target.month.toString().padLeft(2, '0');
     final y = target.year.toString().padLeft(4, '0');
@@ -88,6 +89,13 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.onboarding(Theme.of(context).brightness),
+      child: Builder(builder: (themedCtx) => _buildScaffold(themedCtx)),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     final tk = context.tk;
     final layout = context.layout;
     final isClientTarget = widget.mode == UserMode.client;
@@ -198,7 +206,7 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
                           icon: Icons.savings_outlined,
                         ),
                         AppStatusChip(
-                          'Vigência de 6 Meses Ativa',
+                          'Vigência Oficial de 90 Dias',
                           tone: AppTone.info,
                           icon: Icons.shield_outlined,
                         ),
@@ -215,7 +223,7 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
             ),
             const SizedBox(height: AppSpace.s8),
             Text(
-              'Versão vigente: $version · Titular: ${widget.profile.officialCivilName}',
+              'Versão vigente: $version · Titular: ${widget.profile.officialCivilName} · LGPD, CDC e Ciclo 90 dias',
               style: AppType.caption.copyWith(color: tk.textMuted),
             ),
             const SizedBox(height: AppSpace.s16),
@@ -232,7 +240,10 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
                     const SizedBox(height: AppSpace.s8),
                     Text(
                       clause.body,
-                      style: AppType.bodySm.copyWith(color: tk.textMuted),
+                      style: AppType.bodySm.copyWith(
+                        color: tk.textMuted,
+                        height: 1.5,
+                      ),
                     ),
                   ],
                 ),
@@ -298,8 +309,8 @@ class _RoleTermsAcceptanceScreenState extends State<RoleTermsAcceptanceScreen> {
                           padding: const EdgeInsets.only(top: AppSpace.s8),
                           child: Text(
                             isClientTarget
-                                ? 'Li e concordo com os Termos de Uso e Proteção do Cliente Desperrengue (incluindo Custódia Protegida, PIN de 4 dígitos, Garantia de 90 dias e Renovação Semestral de Segurança).'
-                                : 'Li e concordo com os Termos de Parceria e Cláusula-Mandato do Profissional Desperrengue (incluindo Mandato Art. 653 CC, 0% de taxa sobre peças com NF-e, Garantia de 90 dias e Renovação Semestral de Segurança).',
+                                ? 'Li e concordo integralmente com os Termos de Uso e Proteção do Cliente Desperrengue (incluindo LGPD, Custódia Protegida, PIN de 4 dígitos, Garantia de 90 dias, Política Anticontorno e Renovação de Segurança a cada 90 dias).'
+                                : 'Li e concordo integralmente com os Termos de Parceria e Cláusula-Mandato do Profissional Desperrengue (incluindo Autonomia Art. 442-B CLT, Mandato Art. 653 CC, 0% de taxa sobre peças com NF-e, LGPD, Garantia de 90 dias e Renovação de Segurança a cada 90 dias).',
                             style: AppType.bodySm.copyWith(
                               fontWeight: _accepted
                                   ? FontWeight.w700
