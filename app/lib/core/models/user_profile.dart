@@ -4,6 +4,8 @@ library;
 
 import 'dart:math' as math;
 
+import '../utils/person_name_formatter.dart';
+
 /// Espelha o enum `public.verification_status` do banco.
 enum VerificationStatus {
   notSubmitted('NOT_SUBMITTED'),
@@ -260,90 +262,20 @@ class UserProfile {
         pixKeyCpfMatched: (map['pix_key_cpf_matched'] as bool?) ?? false,
       );
 
-  static const List<String> _commonBrazilianSurnames = <String>[
-    'oliveira',
-    'silva',
-    'santos',
-    'souza',
-    'sousa',
-    'pereira',
-    'costa',
-    'ferreira',
-    'almeida',
-    'nascimento',
-    'lima',
-    'araujo',
-    'fernandes',
-    'carvalho',
-    'gomes',
-    'martins',
-    'rocha',
-    'ribeiro',
-    'alves',
-    'monteiro',
-    'mendes',
-    'barros',
-    'freitas',
-    'barbosa',
-    'pinto',
-    'moura',
-    'cavalcanti',
-    'dias',
-    'castro',
-    'campos',
-    'cardoso',
-    'teixeira',
-    'correia',
-    'moreira',
-    'vieira',
-    'marques',
-    'machado',
-    'lopes',
-    'ramos',
-    'melo',
-    'nunes',
-  ];
-
-  static String _capitalizeToken(String w) {
-    if (w.isEmpty) return '';
-    return '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
-  }
-
   /// Extrai um nome humano elegante quando `full_name` ainda contém um e-mail
   /// (ex.: `wagneroliveira9819@gmail.com` -> `Wagner Oliveira`).
-  static String? _humanizeEmailLocalPart(String raw) {
-    final trimmed = raw.trim();
-    if (!trimmed.contains('@')) return null;
-    final local = trimmed.split('@').first.replaceAll(RegExp(r'[0-9]+'), '');
-    final parts = local
-        .split(RegExp(r'[._\-]+'))
-        .map((e) => e.replaceAll(RegExp(r'[^a-zA-ZÀ-ÿ]'), '').trim())
-        .where((e) => e.length >= 2)
-        .toList();
-    if (parts.isEmpty) return null;
-    if (parts.length >= 2) {
-      return parts.map(_capitalizeToken).join(' ');
-    }
-    final single = parts.first.toLowerCase();
-    if (single.length < 3) return null;
-    for (final surname in _commonBrazilianSurnames) {
-      if (single.endsWith(surname) && single.length >= surname.length + 3) {
-        final given = single.substring(0, single.length - surname.length);
-        return '${_capitalizeToken(given)} ${_capitalizeToken(surname)}';
-      }
-    }
-    return _capitalizeToken(single);
-  }
+  static String? _humanizeEmailLocalPart(String raw) =>
+      PersonNameFormatter.fromEmail(raw);
 
   /// Nome de exibição limpo (nunca exibe um endereço de e-mail cru como título).
   String get displayName {
     final verified = verifiedFullName?.trim() ?? '';
     if (verified.isNotEmpty && !verified.contains('@')) {
-      return verified;
+      return PersonNameFormatter.humanize(verified);
     }
     final n = fullName.trim();
     if (n.isNotEmpty && !n.contains('@') && n != 'Usuário') {
-      return n;
+      return PersonNameFormatter.humanize(n);
     }
     final fromEmail = _humanizeEmailLocalPart(n);
     if (fromEmail != null && fromEmail.isNotEmpty) {
@@ -363,10 +295,16 @@ class UserProfile {
   String get firstName {
     final clean = displayName;
     if (clean.isEmpty || clean == 'Usuário') return 'você';
-    return clean.split(RegExp(r'\s+')).first;
+    return PersonNameFormatter.firstName(clean);
   }
 
   bool get hasBothModes => isClient && isProvider;
+
+  /// `true` enquanto a conta (já aprovada na verificação) aguarda o toque em
+  /// "Confirmar e Ativar Minha Conta" no e-mail. Perfis legados e contas ainda em
+  /// cadastro têm `approval_email_confirmed = true` e nunca caem neste portão.
+  bool get requiresApprovalEmailGate =>
+      (isClient || isProvider) && !approvalEmailConfirmed;
 
   /// Identidade Civil Homologada (compartilhada entre os modos Cliente e Profissional).
   /// Quando o usuário conclui o KYC Biométrico + OCR como Cliente, sua identidade civil
@@ -552,6 +490,13 @@ AppDestination destinationFor(
 }) {
   if (profile.isAdmin) return AppDestination.adminHome;
 
+  // PORTÃO DE ATIVAÇÃO: conta recém-aprovada (Cliente ou Profissional) só entra no
+  // app depois de tocar em "Confirmar e Ativar Minha Conta" no e-mail. Vale para
+  // qualquer modo/estado de sessão: nenhuma tela do app abre antes disso.
+  if (profile.requiresApprovalEmailGate) {
+    return AppDestination.approvalEmailVerification;
+  }
+
   // Se o ciclo semestral (6 meses) expirou em uma conta já cadastrada (ou com modo explícito),
   // direciona imediatamente para a renovação semestral de segurança.
   if (profile.isKycExpiredAt(referenceNow) &&
@@ -580,9 +525,6 @@ AppDestination destinationFor(
       if (!profile.clientSetupDone || profile.clientKycStatus == 'REJECTED') {
         return AppDestination.clientSetup;
       }
-      if (!profile.approvalEmailConfirmed) {
-        return AppDestination.approvalEmailVerification;
-      }
       return AppDestination.clientHome;
     case UserMode.provider:
       if ((!profile.isProvider ||
@@ -600,9 +542,6 @@ AppDestination destinationFor(
         case VerificationStatus.approvedPendingEmail:
           return AppDestination.kycApproved;
         case VerificationStatus.active:
-          if (!profile.approvalEmailConfirmed) {
-            return AppDestination.approvalEmailVerification;
-          }
           return profile.providerSetupDone
               ? AppDestination.providerHome
               : AppDestination.providerSetup;

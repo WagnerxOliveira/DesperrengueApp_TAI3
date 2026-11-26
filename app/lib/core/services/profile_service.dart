@@ -11,6 +11,20 @@ import 'criminal_background_service.dart';
 import 'legal_mandate_service.dart';
 import 'media_service.dart';
 
+/// Resultado do envio do e-mail de aprovação.
+enum ApprovalEmailSendOutcome {
+  /// E-mail enviado agora.
+  sent,
+
+  /// Já foi enviado há poucos instantes (reserva atômica de 30 s no servidor).
+  cooldown,
+
+  /// A conta já está ativada: não há o que reenviar.
+  alreadyConfirmed,
+
+  /// Falha de rede/provedor.
+  failed,
+}
 /// Acesso ao perfil e às RPCs de KYC. É a única camada que conhece nomes de
 /// tabelas, colunas e funções do banco — as telas só falam com este serviço.
 class ProfileService {
@@ -319,38 +333,49 @@ class ProfileService {
 
   /// Dispara (ou reenvia) o e-mail oficial de aprovação da conta via Edge Function
   /// `enviar-email-aprovacao` (Resend), tanto para **Cliente** quanto para **Profissional**.
-  Future<bool> sendApprovalEmail({UserMode targetMode = UserMode.client}) async {
+  ///
+  /// O e-mail traz o botão "Confirmar e Ativar Minha Conta" com token de uso único.
+  /// O app NUNCA confirma a conta sozinho: só consulta o estado com
+  /// [isApprovalGateOpen] até o servidor registrar o toque no botão do e-mail.
+  Future<ApprovalEmailSendOutcome> sendApprovalEmail({
+    UserMode targetMode = UserMode.client,
+  }) async {
     final client = _clientOrNull;
-    if (client == null || client.auth.currentUser == null) return false;
+    if (client == null || client.auth.currentUser == null) {
+      return ApprovalEmailSendOutcome.failed;
+    }
     try {
       final res = await client.functions.invoke(
         'enviar-email-aprovacao',
-        body: <String, dynamic>{
-          'target_mode': targetMode.wire,
-        },
+        body: <String, dynamic>{'target_mode': targetMode.wire},
       );
       final data = res.data;
-      if (data is Map && data['sent'] == true) return true;
-      return res.status >= 200 && res.status < 300;
+      if (data is Map) {
+        if (data['sent'] == true) return ApprovalEmailSendOutcome.sent;
+        return switch (data['reason']) {
+          'cooldown' => ApprovalEmailSendOutcome.cooldown,
+          'already_confirmed' => ApprovalEmailSendOutcome.alreadyConfirmed,
+          _ => ApprovalEmailSendOutcome.failed,
+        };
+      }
+      return ApprovalEmailSendOutcome.failed;
+    } catch (_) {
+      return ApprovalEmailSendOutcome.failed;
+    }
+  }
+
+  /// `true` quando o servidor já registrou o toque em "Confirmar e Ativar Minha Conta"
+  /// (conta liberada). Consulta somente-leitura: não altera nada no banco.
+  Future<bool> isApprovalGateOpen() async {
+    try {
+      final profile = await fetchCurrent();
+      if (profile == null) return false;
+      return profile.approvalEmailConfirmed &&
+          profile.verificationStatus != VerificationStatus.approvedPendingEmail;
     } catch (_) {
       return false;
     }
   }
-
-  /// Confirma no servidor (`confirm_account_approval_email`) que o usuário validou
-  /// o e-mail oficial de aprovação, liberando o acesso pleno à conta (Cliente ou Profissional).
-  Future<void> confirmAccountApprovalEmail() async {
-    final user = _client.auth.currentUser;
-    if (user == null) throw const AuthException('Sessão expirada.');
-    try {
-      await _client.rpc<dynamic>('confirm_account_approval_email');
-    } on PostgrestException catch (e) {
-      if (e.code == '42501' || e.code == 'P0001') rethrow;
-      // Compatibilidade caso a RPC antiga de prestador seja a única disponível
-      await _client.rpc<dynamic>('activate_approved_provider');
-    }
-  }
-
   /// Submete de forma atômica o KYC Biométrico completo do Cliente (4 Passos):
   /// Nome Civil, Telefone Obrigatório, CPF (Mod-11), Endereço, Prova de Vida Ativa (Liveness)
   /// e Autenticidade Documental (Frente + Verso + OCR Automático).

@@ -13,7 +13,6 @@ import 'package:desperrengue_app/core/services/document_real_ocr_engine.dart';
 import 'package:desperrengue_app/core/services/legal_mandate_service.dart';
 import 'package:desperrengue_app/core/ui/app_theme.dart';
 import 'package:desperrengue_app/core/ui/app_tokens.dart';
-import 'package:desperrengue_app/features/auth/presentation/verify_approval_email_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/client_setup_screen.dart';
 import 'package:desperrengue_app/features/shared/presentation/criminal_background_check_step.dart';
 
@@ -302,67 +301,8 @@ Codigo de Validacao: A1B2.C3D4.E5F6
       );
     });
 
-    testWidgets('VerifyApprovalEmailScreen sem overflow (320x640 @ 1.5x, Claro e Escuro) + reenvio + confirmação', (tester) async {
-      const profile = UserProfile(
-        id: 'u-verify',
-        fullName: 'Wagner Oliveira',
-        isClient: true,
-        clientSetupDone: true,
-        approvalEmailConfirmed: false,
-      );
-
-      bool confirmedCalled = false;
-      bool resendCalled = false;
-
-      for (final brightness in Brightness.values) {
-        tester.view.physicalSize = const Size(320, 640);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: AppTheme.onboarding(brightness),
-            home: MediaQuery(
-              data: const MediaQueryData(
-                size: Size(320, 640),
-                textScaler: TextScaler.linear(1.5),
-                disableAnimations: true,
-              ),
-              child: VerifyApprovalEmailScreen(
-                profile: profile,
-                mode: UserMode.client,
-                emailAddressOverride: 'wagner@exemplo.com.br',
-                customConfirmAction: () async => confirmedCalled = true,
-                customResendAction: () async {
-                  resendCalled = true;
-                  return true;
-                },
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(tester.takeException(), isNull);
-        expect(find.text('Verifique seu e-mail'), findsOneWidget);
-        expect(find.text('wagner@exemplo.com.br'), findsOneWidget);
-
-        if (brightness == Brightness.light) {
-          final resendFinder = find.byKey(const ValueKey('btn-resend-approval-email'));
-          await tester.ensureVisible(resendFinder);
-          await tester.tap(resendFinder);
-          await tester.pump();
-          expect(resendCalled, isTrue);
-
-          final confirmFinder = find.byKey(const ValueKey('btn-confirm-approval-email'));
-          await tester.tap(confirmFinder);
-          await tester.pump();
-          expect(confirmedCalled, isTrue);
-        }
-      }
-    });
-
+    // A tela 'Verifique seu e-mail' (portao real por token) e coberta em
+    // v2_37_0_email_gate_nome_categorias_test.dart.
     testWidgets('ClientSetupScreen aplica tema Safira (não laranja) no cadastro do cliente', (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       const profile = UserProfile(

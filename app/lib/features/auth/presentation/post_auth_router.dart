@@ -18,6 +18,7 @@ import '../../provider/presentation/provider_setup_screens.dart';
 import '../../provider/presentation/provider_shell.dart';
 import '../../shared/presentation/role_terms_acceptance_screen.dart';
 import 'auth_gate.dart';
+import 'account_activated_welcome_screen.dart';
 import 'desperrengue_welcome_cinema_screen.dart';
 import 'role_selection_screen.dart';
 import 'verificacao_step6_feedback.dart';
@@ -38,6 +39,7 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
   UserProfile? _profile;
   UserMode? _preferred;
   bool _showPostSignupCinema = false;
+  UserMode? _activationWelcomeMode;
   bool _loading = true;
   int _loadSeq = 0;
 
@@ -79,20 +81,32 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
       p = await ProfileService().cachedProfile();
     }
     var showCinema = false;
+    UserMode? activationWelcome;
     if (p != null) {
       showCinema = await WelcomeCinemaTracker.shouldShowBeforeRoleSelection(
         profile: p,
         authCreatedAt: DateTime.tryParse(user?.createdAt ?? ''),
         forceSelection: _session.forceSelection.value,
       );
+      // Boas-vindas pendentes: marcadas quando a tela "Verifique seu e-mail" apareceu.
+      if (uid != null) {
+        activationWelcome = await LocalPrefs.pendingActivationWelcome(uid);
+      }
     }
     if (!mounted || ticket != _loadSeq) return;
     setState(() {
       _profile = p;
       _preferred = preferred;
       _showPostSignupCinema = showCinema;
+      _activationWelcomeMode = activationWelcome;
       _loading = false;
     });
+  }
+
+  Future<void> _finishActivationWelcome() async {
+    final uid = _safeAuthUser()?.id;
+    if (uid != null) await LocalPrefs.clearActivationWelcome(uid);
+    if (mounted) setState(() => _activationWelcomeMode = null);
   }
 
   Future<void> _signOut() async {
@@ -194,6 +208,23 @@ class _PostAuthRouterState extends State<PostAuthRouter> {
     if (_session.theme.value != wanted) {
       WidgetsBinding.instance.addPostFrameCallback(
         (_) => _session.theme.value = wanted,
+      );
+    }
+    // Boas-vindas depois de ativar a conta pelo e-mail: só quando o servidor já
+    // liberou o acesso (portão aberto) e o destino é uma tela de entrada no app.
+    final welcomeMode = _activationWelcomeMode;
+    if (welcomeMode != null &&
+        !profile.requiresApprovalEmailGate &&
+        profile.verificationStatus != VerificationStatus.approvedPendingEmail &&
+        (dest == AppDestination.clientHome ||
+            dest == AppDestination.providerHome ||
+            dest == AppDestination.providerSetup ||
+            dest == AppDestination.modeSelection)) {
+      return AccountActivatedWelcomeScreen(
+        key: const ValueKey('account-activated-welcome'),
+        profile: profile,
+        mode: welcomeMode,
+        onContinue: _finishActivationWelcome,
       );
     }
     switch (dest) {

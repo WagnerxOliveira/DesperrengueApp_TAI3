@@ -479,3 +479,9 @@ entrypoint = "./functions/voice-triage-structurer/index.ts"
 verify_jwt = false
 import_map = "./functions/kyc-expiry-reminder/deno.json"
 entrypoint = "./functions/kyc-expiry-reminder/index.ts"
+
+[functions.confirmar-email-aprovacao]
+# Destino do botao "Confirmar e Ativar Minha Conta" do e-mail (link publico com token unico de 256 bits; sem JWT).
+verify_jwt = false
+import_map = "./functions/confirmar-email-aprovacao/deno.json"
+entrypoint = "./functions/confirmar-email-aprovacao/index.ts"

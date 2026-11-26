@@ -1,13 +1,17 @@
 // Edge Function: enviar-email-aprovacao
 //
-// Envia o e-mail oficial de aprovação da conta Desperrengue (via Resend) tanto
-// para **Clientes** quanto para **Profissionais**.
+// Envia o e-mail oficial de aprovação (via Resend) para Clientes e Profissionais.
+// O botão do e-mail "Confirmar e Ativar Minha Conta" aponta para a função
+// `confirmar-email-aprovacao` com um TOKEN de uso único (256 bits, 72 h). O app só
+// libera a conta depois que esse botão é tocado — nunca por ação do próprio app.
 //
 // Formas de invocação autorizadas:
-//  1. Trigger/Webhook do banco com header `x-webhook-secret` (compatível com
-//     `profiles_notify_kyc_approved` para APPROVED_PENDING_EMAIL);
-//  2. Chamada autenticada do aplicativo (`Authorization: Bearer <user_jwt>`)
-//     logo após concluir o cadastro KYC ou ao tocar em "Reenviar e-mail".
+//  1. Trigger/Webhook do banco com `x-webhook-secret` (APPROVED_PENDING_EMAIL);
+//  2. App autenticado (`Authorization: Bearer <jwt>`) ao concluir o cadastro ou ao
+//     tocar em "Reenviar e-mail de aprovação".
+//
+// Proteções: reserva atômica de envio (30 s, sem e-mails duplicados), só envia para
+// quem realmente aguarda confirmação, token guardado apenas como hash SHA-256.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -16,8 +20,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FROM = Deno.env.get("EMAIL_FROM") ??
   "Desperrengue <onboarding@desperrengue.tech>";
-const DEEP_LINK = Deno.env.get("ONBOARDING_DEEP_LINK") ??
-  "desperrengue://onboarding/ativar";
+const TOKEN_TTL_HOURS = 72;
+const MIN_INTERVAL_SECONDS = 30;
 
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -56,44 +60,56 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-function formatDateBr(isoOrNull: string | null | undefined): string {
-  const target = isoOrNull
-    ? new Date(isoOrNull)
-    : new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-  if (Number.isNaN(target.getTime())) {
-    const fallback = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-    return fallback.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-  }
-  return target.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+function base64Url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function formatDateBr(iso: string | null | undefined): string {
+  const target = iso ? new Date(iso) : new Date(Date.now() + 90 * 86400000);
+  const safe = Number.isNaN(target.getTime())
+    ? new Date(Date.now() + 90 * 86400000)
+    : target;
+  return safe.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 }
 
 function buildHtml(params: {
   nome: string;
   roleMode: "client" | "provider";
   validUntilBr: string;
+  confirmUrl: string;
 }): string {
   const safeName = escapeHtml(params.nome);
   const safeDate = escapeHtml(params.validUntilBr);
+  const safeUrl = escapeHtml(params.confirmUrl);
   const isProvider = params.roleMode === "provider";
   const badgeLabel = isProvider
     ? "CONTA DE PROFISSIONAL APROVADA"
     : "CONTA DE CLIENTE APROVADA";
   const leadParagraph = isProvider
-    ? "Concluímos a verificação da sua identidade biométrica, documento oficial e Certidão Negativa da Polícia Federal. Sua conta de <strong>Profissional Desperrengue foi aprovada com sucesso</strong>!"
-    : "Concluímos a verificação da sua identidade biométrica, documento oficial e Certidão Negativa da Polícia Federal. Sua conta de <strong>Cliente Desperrengue foi aprovada com sucesso</strong>!";
+    ? "Concluímos a verificação da sua identidade, documento oficial e Certidão Negativa da Polícia Federal. Seu cadastro de <strong>Profissional foi aprovado</strong>!"
+    : "Concluímos a verificação da sua identidade, documento oficial e Certidão Negativa da Polícia Federal. Seu cadastro de <strong>Cliente foi aprovado</strong>!";
   const actionParagraph = isProvider
-    ? "Toque no botão abaixo pelo seu celular para validar este e-mail, ativar seu perfil e começar a receber chamados com custódia protegida."
-    : "Toque no botão abaixo pelo seu celular para validar este e-mail e liberar seu acesso completo para contratar profissionais verificados com garantia de 90 dias.";
-  const ctaLabel = isProvider
-    ? "Confirmar e Ativar Perfil Profissional"
-    : "Confirmar e Ativar Minha Conta";
+    ? "Falta só um passo: toque no botão abaixo para confirmar este e-mail. Sua conta de Profissional <strong>só é liberada depois dessa confirmação</strong>."
+    : "Falta só um passo: toque no botão abaixo para confirmar este e-mail. Sua conta <strong>só é liberada depois dessa confirmação</strong>.";
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sua conta Desperrengue foi aprovada!</title>
+  <title>Confirme sua conta Desperrengue</title>
 </head>
 <body style="margin:0;padding:0;background:#F4F7FC;font-family:Inter,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#0F172A;">
   <div style="max-width:600px;margin:32px auto;background:#FFFFFF;border-radius:20px;overflow:hidden;border:1px solid #DCE5F2;box-shadow:0 8px 30px rgba(15,23,42,0.06);">
@@ -106,30 +122,28 @@ function buildHtml(params: {
     </div>
     <div style="padding:32px 28px;">
       <h2 style="margin:0 0 14px;font-size:22px;color:#0F172A;letter-spacing:-0.3px;">Tudo pronto, ${safeName}!</h2>
-      <p style="font-size:15px;line-height:1.65;color:#334155;margin:0 0 14px;">
-        ${leadParagraph}
-      </p>
-      <p style="font-size:15px;line-height:1.65;color:#334155;margin:0 0 24px;">
-        ${actionParagraph}
-      </p>
+      <p style="font-size:15px;line-height:1.65;color:#334155;margin:0 0 14px;">${leadParagraph}</p>
+      <p style="font-size:15px;line-height:1.65;color:#334155;margin:0 0 24px;">${actionParagraph}</p>
       <div style="text-align:center;margin:28px 0;">
-        <a href="${DEEP_LINK}"
+        <a href="${safeUrl}"
            style="background:#1D4ED8;color:#FFFFFF;text-decoration:none;padding:16px 32px;border-radius:14px;font-size:16px;font-weight:700;display:inline-block;box-shadow:0 6px 18px rgba(29,78,216,0.28);">
-          ${ctaLabel}
+          Confirmar e Ativar Minha Conta
         </a>
       </div>
       <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:14px;padding:16px 18px;margin:24px 0;">
         <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#065F46;">
-          🛡️ Validade Oficial de Segurança: 90 dias (até ${safeDate})
+          🛡️ Validade oficial de segurança: 90 dias (até ${safeDate})
         </p>
         <p style="margin:0;font-size:13px;line-height:1.55;color:#047857;">
-          Alinhada ao prazo oficial da Certidão da Polícia Federal, sua validação vale até <strong>${safeDate}</strong>.
-          Não se preocupe: enviaremos lembretes automáticos por e-mail 15 dias e 5 dias antes do vencimento.
+          Alinhada ao prazo da Certidão da Polícia Federal. Enviaremos lembretes por e-mail 15 e 5 dias antes do vencimento.
         </p>
       </div>
-      <p style="font-size:13px;line-height:1.6;color:#64748B;margin:0;">
-        Está lendo este e-mail em outro dispositivo ou o botão não abriu direto? Basta abrir o aplicativo
-        <strong>Desperrengue</strong> no seu celular e tocar em <strong>"Já validei meu e-mail"</strong>.
+      <p style="font-size:13px;line-height:1.6;color:#64748B;margin:0 0 10px;">
+        Este botão é pessoal, vale por ${TOKEN_TTL_HOURS} horas e só pode ser usado uma vez. Depois de tocar, volte ao aplicativo
+        <strong>Desperrengue</strong>: ele libera sua conta automaticamente.
+      </p>
+      <p style="font-size:12px;line-height:1.6;color:#94A3B8;margin:0;word-break:break-all;">
+        Se o botão não funcionar, copie e cole este endereço no navegador:<br />${safeUrl}
       </p>
     </div>
     <div style="text-align:center;padding:22px 24px;font-size:12px;color:#94A3B8;background:#F8FAFC;border-top:1px solid #E2E8F0;">
@@ -155,30 +169,19 @@ Deno.serve(async (req: Request) => {
     let targetUserId: string | null = null;
     let requestedMode: "client" | "provider" | null = null;
 
-    // Modo 1: Trigger/Webhook com segredo compartilhado
     if (WEBHOOK_SECRET && providedSecret && safeEqual(providedSecret, WEBHOOK_SECRET)) {
+      // Modo 1: trigger/webhook do banco (só o `id` do payload é usado)
       const record = payload?.record;
       if (!record || typeof record.id !== "string") {
         return json({ error: "Payload inválido." }, 400);
       }
-      if (
-        record.verification_status !== "APPROVED_PENDING_EMAIL" &&
-        record.client_kyc_status !== "APPROVED" &&
-        payload?.force !== true
-      ) {
-        return json({ sent: false, message: "Status não exige envio de e-mail." });
-      }
       targetUserId = record.id;
-      requestedMode = record.is_provider && !record.is_client
-        ? "provider"
-        : (payload?.target_mode === "provider" ? "provider" : "client");
+      requestedMode = payload?.target_mode === "provider" ? "provider" : null;
     } else if (authHeader.toLowerCase().startsWith("bearer ")) {
-      // Modo 2: Usuário autenticado via JWT do app
+      // Modo 2: usuário autenticado no app
       const jwt = authHeader.slice(7).trim();
       const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(jwt);
-      if (userErr || !userRes?.user?.id) {
-        return json({ error: "Unauthorized" }, 401);
-      }
+      if (userErr || !userRes?.user?.id) return json({ error: "Unauthorized" }, 401);
       targetUserId = userRes.user.id;
       requestedMode = payload?.target_mode === "provider" ? "provider" : "client";
     } else {
@@ -188,46 +191,77 @@ Deno.serve(async (req: Request) => {
     const { data: profile, error: profErr } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id, full_name, verified_full_name, is_client, is_provider, client_kyc_status, liveness_verified, verification_status, kyc_expires_at, criminal_record_expires_at",
+        "id, full_name, verified_full_name, is_client, is_provider, client_kyc_status, liveness_verified, verification_status, approval_email_confirmed, kyc_expires_at, criminal_record_expires_at",
       )
       .eq("id", targetUserId)
       .maybeSingle();
 
-    if (profErr || !profile) {
-      return json({ error: "Perfil não encontrado." }, 404);
+    if (profErr || !profile) return json({ error: "Perfil não encontrado." }, 404);
+
+    // Só envia para quem realmente aguarda confirmação (evita spam e reenvio indevido).
+    const awaitingConfirmation = profile.approval_email_confirmed === false ||
+      profile.verification_status === "APPROVED_PENDING_EMAIL";
+    if (!awaitingConfirmation) {
+      return json({ sent: false, reason: "already_confirmed" });
     }
 
-    const isApproved =
-      profile.client_kyc_status === "APPROVED" ||
+    const isApproved = profile.client_kyc_status === "APPROVED" ||
       profile.liveness_verified === true ||
       profile.verification_status === "APPROVED_PENDING_EMAIL" ||
       profile.verification_status === "ACTIVE";
-
     if (!isApproved) {
-      return json({ sent: false, message: "Conta ainda não aprovada." }, 409);
+      return json({ sent: false, reason: "not_approved" }, 409);
     }
 
     const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.getUserById(
-      targetUserId,
+      targetUserId!,
     );
     if (authErr || !authData?.user?.email) {
       return json({ error: "E-mail do usuário não encontrado." }, 404);
     }
 
+    if (!RESEND_API_KEY) {
+      return json({ sent: false, error: "RESEND_API_KEY não configurada." }, 500);
+    }
+
+    // Reserva atômica: apenas UMA chamada dentro da janela envia o e-mail.
+    const { data: claimed, error: claimErr } = await supabaseAdmin.rpc(
+      "claim_approval_email_send_slot",
+      { p_user_id: targetUserId, p_min_interval_seconds: MIN_INTERVAL_SECONDS },
+    );
+    if (claimErr) {
+      console.error("claim_approval_email_send_slot", claimErr);
+      return json({ sent: false, error: "Falha ao reservar o envio." }, 500);
+    }
+    if (claimed !== true) {
+      return json({ sent: false, reason: "cooldown" });
+    }
+
     const roleMode: "client" | "provider" = requestedMode ??
       (profile.is_provider && !profile.is_client ? "provider" : "client");
+
+    const rawToken = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const { error: issueErr } = await supabaseAdmin.rpc("issue_approval_email_token", {
+      p_user_id: targetUserId,
+      p_token_hash: await sha256Hex(rawToken),
+      p_target_mode: roleMode,
+      p_ttl_hours: TOKEN_TTL_HOURS,
+    });
+    if (issueErr) {
+      console.error("issue_approval_email_token", issueErr);
+      await supabaseAdmin.from("profiles").update({ approval_email_sent_at: null }).eq("id", targetUserId);
+      return json({ sent: false, error: "Falha ao gerar o link de ativação." }, 500);
+    }
+
+    const confirmUrl = `${SUPABASE_URL}/functions/v1/confirmar-email-aprovacao?t=${rawToken}`;
 
     const rawName = (profile.verified_full_name || profile.full_name || "").trim();
     const firstName = rawName && !rawName.includes("@")
       ? rawName.split(/\s+/)[0]
       : (roleMode === "provider" ? "Profissional" : "Cliente");
-
-    const validUntilIso = profile.kyc_expires_at || profile.criminal_record_expires_at;
-    const validUntilBr = formatDateBr(validUntilIso);
-
-    if (!RESEND_API_KEY) {
-      return json({ sent: false, error: "RESEND_API_KEY não configurada." }, 500);
-    }
+    const niceName = firstName.length > 1
+      ? firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase()
+      : firstName;
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -238,13 +272,12 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         from: FROM,
         to: [authData.user.email],
-        subject: roleMode === "provider"
-          ? "Sua conta de Profissional Desperrengue foi aprovada!"
-          : "Sua conta Desperrengue foi aprovada! Confirme seu e-mail",
+        subject: "Confirme seu e-mail para ativar sua conta Desperrengue",
         html: buildHtml({
-          nome: firstName,
+          nome: niceName,
           roleMode,
-          validUntilBr,
+          validUntilBr: formatDateBr(profile.kyc_expires_at || profile.criminal_record_expires_at),
+          confirmUrl,
         }),
       }),
     });
@@ -252,13 +285,9 @@ Deno.serve(async (req: Request) => {
     const result = await res.json().catch(() => ({}));
     if (!res.ok) {
       console.error("Resend error", res.status, result);
+      await supabaseAdmin.from("profiles").update({ approval_email_sent_at: null }).eq("id", targetUserId);
       return json({ sent: false, success: false, error: "Falha ao enviar e-mail." }, 502);
     }
-
-    await supabaseAdmin
-      .from("profiles")
-      .update({ approval_email_sent_at: new Date().toISOString() })
-      .eq("id", targetUserId);
 
     return json({ sent: true, success: true, id: result?.id, roleMode });
   } catch (error) {

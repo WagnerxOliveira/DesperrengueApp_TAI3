@@ -21,6 +21,7 @@ import 'package:desperrengue_app/features/client/presentation/client_orders_tab.
 import 'package:desperrengue_app/features/client/presentation/detalhe_servico_cliente_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/provider_search_screen.dart';
 import 'package:desperrengue_app/features/client/presentation/published_overlay.dart';
+import 'package:desperrengue_app/features/client/presentation/request_category_chooser.dart';
 import 'package:desperrengue_app/features/client/presentation/request_wizard.dart';
 import 'package:desperrengue_app/features/client/presentation/voice_dictation.dart';
 import 'package:desperrengue_app/features/shared/presentation/achievement_widgets.dart';
@@ -432,10 +433,54 @@ void main() {
       expect(find.byKey(const ValueKey('voice-mic')), findsOneWidget);
     });
 
-    testWidgets('sem categoria prévia (entrada direta) o seletor continua como último recurso', (t) async {
+    testWidgets('sem categoria prévia (entrada direta) o seletor compacto substitui as 32 pílulas', (t) async {
       await openWizard(t);
       expect(find.byKey(const ValueKey('category-banner')), findsNothing);
-      expect(find.byType(ChoiceChip), findsNWidgets(kCategories.length));
+      // Nada de 1 pílula por categoria: só os "mais pedidos" + "Ver todas".
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(find.byKey(const ValueKey('request-category-chooser')), findsOneWidget);
+      expect(find.byKey(const ValueKey('category-search-inline')), findsOneWidget);
+      for (final name in kPopularCategoryNames) {
+        expect(find.byKey(ValueKey('category-choice:$name')), findsOneWidget, reason: name);
+      }
+      expect(find.byKey(const ValueKey('category-choice:Piscina')), findsNothing);
+      expect(find.byKey(const ValueKey('category-choice-see-all')), findsOneWidget);
+      expect(find.text('Ver todas as ${kCategories.length} categorias'), findsOneWidget);
+    });
+
+    testWidgets('escolher a categoria recolhe o seletor num cartão de 1 linha e "Trocar" reabre', (t) async {
+      await openWizard(t);
+      final pickerHeight = t.getSize(find.byKey(const ValueKey('category-picker'))).height;
+
+      await t.ensureVisible(find.byKey(const ValueKey('category-choice:Elétrica')));
+      await t.tap(find.byKey(const ValueKey('category-choice:Elétrica')));
+      await t.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('category-selected-card')), findsOneWidget);
+      expect(find.byKey(const ValueKey('category-picker')), findsNothing);
+      expect(find.text('Elétrica'), findsOneWidget);
+      final cardHeight = t.getSize(find.byKey(const ValueKey('category-selected-card'))).height;
+      expect(cardHeight, lessThan(pickerHeight / 2), reason: 'o cartão deve liberar a tela');
+
+      await t.tap(find.byKey(const ValueKey('btn-change-category')));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('category-picker')), findsOneWidget);
+      expect(find.byKey(const ValueKey('category-selected-card')), findsNothing);
+    });
+
+    testWidgets('busca por nome/sinônimo filtra no máximo 8 resultados e mostra vazio amigável', (t) async {
+      await openWizard(t);
+      await t.enterText(find.byKey(const ValueKey('category-search-inline')), 'eletri');
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('category-search-results')), findsOneWidget);
+      expect(find.byKey(const ValueKey('category-choice:Elétrica')), findsOneWidget);
+      expect(find.byKey(const ValueKey('category-choice:Piscina')), findsNothing);
+      expect(find.text('Mais pedidos'), findsNothing);
+
+      await t.enterText(find.byKey(const ValueKey('category-search-inline')), 'zzzxqw');
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('category-search-empty')), findsOneWidget);
+      expect(find.text('Nenhuma categoria encontrada.'), findsOneWidget);
     });
 
     testWidgets('revisão: título pré-publicação e sem "Serviço agendado"', (t) async {

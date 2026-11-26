@@ -3,6 +3,8 @@ library;
 
 import 'dart:math' as math;
 
+import 'person_name_formatter.dart';
+
 /// 1234.5 -> "R$ 1.234,50"
 String brl(num? value) {
   final v = (value ?? 0).toDouble();
@@ -99,7 +101,11 @@ String distanceLabel(double? km) {
   return '${km.toStringAsFixed(1).replaceAll('.', ',')} km';
 }
 
-String firstName(String full) => full.trim().split(RegExp(r'\s+')).first;
+/// Primeiro nome bem formatado (`WAGNEROLIVEIRA` -> `Wagner`, `JOÃO SILVA` -> `João`).
+String firstName(String full) {
+  final nice = PersonNameFormatter.firstName(full);
+  return nice.isEmpty ? full.trim().split(RegExp(r'\s+')).first : nice;
+}
 
 String initials(String full) {
   final parts = full.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();

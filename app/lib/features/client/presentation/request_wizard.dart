@@ -32,6 +32,7 @@ import 'client_job_screen.dart';
 import 'client_setup_screen.dart';
 import 'payment_widgets.dart';
 import 'published_overlay.dart';
+import 'request_category_chooser.dart';
 import 'voice_dictation.dart';
 
 /// Assistente de pedido (protótipos 6, 7, 8 e emergência b2/c).
@@ -688,37 +689,18 @@ class _RequestWizardScreenState extends State<RequestWizardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (needsChooser) ...[
-          Text('Categoria', style: AppType.titleSm.copyWith(color: tk.text)),
-          const SizedBox(height: AppSpace.s8),
-          Wrap(
-            spacing: AppSpace.s8,
-            runSpacing: AppSpace.s8,
-            children: [
-              for (final c in (_provider != null && _provider!.specialties.isNotEmpty
-                  ? kCategories.where((c) => _provider!.matchesCategory(c.name))
-                  : kCategories))
-                ChoiceChip(
-                  label: Text(c.name),
-                  avatar: Icon(
-                    categoryIcon(c.name),
-                    size: 18,
-                    color: _category == c.name ? tk.onAccent : tk.accentInk,
-                  ),
-                  selected: _category == c.name,
-                  showCheckmark: false,
-                  backgroundColor: tk.surface,
-                  selectedColor: tk.accent,
-                  materialTapTargetSize: MaterialTapTargetSize.padded,
-                  visualDensity: VisualDensity.standard,
-                  padding: const EdgeInsets.symmetric(horizontal: AppSpace.s12, vertical: AppSpace.s12),
-                  labelPadding: const EdgeInsets.symmetric(vertical: AppSpace.s2),
-                  labelStyle: AppType.bodySm.copyWith(
-                    color: _category == c.name ? tk.onAccent : tk.text,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  onSelected: (_) => setState(() => _category = c.name),
-                ),
-            ],
+          // Seletor compacto (v2.37.0): busca + "mais pedidos" + "ver todas" no lugar
+          // das 32 pílulas em sequência; ao escolher, vira um cartão de 1 linha.
+          RequestCategoryChooser(
+            key: const ValueKey('request-category-chooser'),
+            selected: _category,
+            allowed: _provider != null && _provider!.specialties.isNotEmpty
+                ? [
+                    for (final c in kCategories)
+                      if (_provider!.matchesCategory(c.name)) c,
+                  ]
+                : null,
+            onSelected: (name) => setState(() => _category = name),
           ),
           const SizedBox(height: AppSpace.s20),
         ] else if (_category != null) ...[

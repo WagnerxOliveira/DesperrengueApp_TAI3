@@ -8,6 +8,7 @@ import '../../../core/services/app_session.dart';
 import '../../../core/services/profile_service.dart';
 import '../../../core/ui/app_scaffold.dart';
 import '../../../core/ui/design_system/design_system.dart';
+import '../../../core/utils/person_name_formatter.dart';
 import 'auth_gate.dart';
 import 'desperrengue_welcome_cinema_screen.dart';
 
@@ -48,7 +49,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       final fullName = user?.userMetadata?['full_name'] as String?;
       if (fullName != null && fullName.isNotEmpty) {
-        _nomeUsuario = fullName.split(' ')[0];
+        _nomeUsuario = PersonNameFormatter.firstName(fullName);
       }
     } catch (_) {
       // Ambiente de teste sem Supabase inicializado.

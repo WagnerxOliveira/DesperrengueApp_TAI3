@@ -63,4 +63,21 @@ class LocalPrefs {
 
   static Future<void> saveLastProfile(String uid, UserMode mode) =>
       write(keyLastProfile, encodeLastProfile(uid, mode));
+
+  // ------------------------------------- boas-vindas após ativar a conta por e-mail
+  // Marcado quando a tela "Verifique seu e-mail" aparece; consumido (e removido) quando
+  // o usuário toca em "Confirmar e Ativar Minha Conta" no e-mail e volta ao app —
+  // mesmo que o app tenha sido fechado no meio do caminho.
+
+  static String keyActivationWelcome(String uid) => 'boas_vindas_ativacao_$uid';
+
+  static Future<void> markActivationWelcomePending(String uid, UserMode mode) =>
+      write(keyActivationWelcome(uid), mode.wire);
+
+  /// Modo que deve receber a tela de boas-vindas, ou null se não há pendência.
+  static Future<UserMode?> pendingActivationWelcome(String uid) async =>
+      UserMode.parse(await read(keyActivationWelcome(uid)));
+
+  static Future<void> clearActivationWelcome(String uid) =>
+      remove(keyActivationWelcome(uid));
 }
